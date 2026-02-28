@@ -74,10 +74,37 @@ export async function createPatient(
   caregiverId: string,
   relationship?: string
 ): Promise<Patient> {
-  // Insert patient
+  
+  // 1️⃣ FIRST: Create the auth user
+  // Generate a temporary password
+  const tempPassword = Math.random().toString(36).slice(-8) + '1!';
+  
+  const { data: authData, error: authError } = await supabase.auth.signUp({
+    email: patientData.email!,
+    password: tempPassword,
+    options: {
+      data: {
+        first_name: patientData.firstName,
+        last_name: patientData.lastName,
+        role: 'patient'
+      }
+    }
+  });
+
+  if (authError) {
+    console.error('Error creating auth user:', authError);
+    throw new Error(`Failed to create user account: ${authError.message}`);
+  }
+  
+  if (!authData.user) {
+    throw new Error('Failed to create user account - no user returned');
+  }
+
+  // 2️⃣ SECOND: Insert patient with the auth user's ID
   const { data: patient, error: patientError } = await supabase
     .from('patients')
     .insert({
+      id: authData.user.id,  // Use the auth user ID
       first_name: patientData.firstName,
       last_name: patientData.lastName,
       preferred_name: patientData.preferredName,
@@ -101,7 +128,7 @@ export async function createPatient(
     throw patientError;
   }
 
-  // Create caregiver-patient relationship
+  // 3️⃣ THIRD: Create caregiver-patient relationship
   const { error: relError } = await supabase
     .from('caregiver_patients')
     .insert({
@@ -116,6 +143,9 @@ export async function createPatient(
     throw relError;
   }
 
+  // Optional: Show the temporary password (you'll need to handle this in the UI)
+  console.log('Temporary password for patient:', tempPassword);
+  
   return transformPatientFromDB(patient);
 }
 
