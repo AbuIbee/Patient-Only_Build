@@ -1,2 +1,7 @@
-.vercel
-.env*.local
+node_modules
+dist
+.vite
+.env
+.env.*
+02-26NewCareCompanion/
+.vercel/
