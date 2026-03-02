@@ -58,6 +58,7 @@ export interface PatientPreferences {
 export interface Patient {
   id: string;
   userId: string;
+  email?: string;
   firstName: string;
   lastName: string;
   preferredName: string;

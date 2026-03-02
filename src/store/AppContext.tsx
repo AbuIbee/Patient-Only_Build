@@ -397,7 +397,7 @@ function generatePatientData(patientId: string, patientInfo: Partial<Patient>): 
 // Mock Data Initialization - Multi-Patient Support
 export function initializeMockData(dispatch: Dispatch<Action>) {
   // Create multiple patients
-  const patient1 = generatePatientData('p1', {
+  const patient1 = ('p1', {
     firstName: 'Eleanor',
     lastName: 'Thompson',
     preferredName: 'Ellie',
@@ -488,8 +488,8 @@ export function initializeMockData(dispatch: Dispatch<Action>) {
 
   // Mock Caregiver Status
   const mockCaregiverStatus: CaregiverStatus = {
-    caregiverId: 'cg1',
-    patientId: 'p1',
+    // caregiverId: 'cg1',
+    // patientId: 'p1',
     stressLevel: 'medium',
     lastRespiteBreak: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
     supportSystemStrength: 'moderate',
