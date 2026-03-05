@@ -2,10 +2,8 @@ import { useState } from 'react';
 import { useApp } from '@/store/AppContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { supabase } from '@/lib/supabase'; // adjust path only if needed
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { toast } from 'sonner';
 import { Heart, ArrowLeft, User, UserCircle, Stethoscope } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { UserRole } from '@/types';
@@ -26,75 +24,29 @@ export default function LoginPage() {
   };
 
   const handleLogin = async (e: React.FormEvent) => {
-  e.preventDefault();
+    e.preventDefault();
+    if (!selectedRole) return;
 
-  setIsLoading(true);
-  try {
-    // 1) Sign in with Supabase Auth (this returns the REAL UUID user.id)
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    setIsLoading(true);
+    
+    // Simulate login
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
+    const mockUser = {
+      id: 'u1',
+      email: email || 'user@carecompanion.com',
+      firstName: selectedRole === 'patient' ? 'Eleanor' : selectedRole === 'caregiver' ? 'Mary' : 'Dr. Sarah',
+      lastName: selectedRole === 'patient' ? 'Thompson' : selectedRole === 'caregiver' ? 'Thompson' : 'Johnson',
+      role: selectedRole,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-    const authUser = data.user;
-    if (!authUser) {
-      toast.error('Login succeeded but Supabase returned no user.');
-      return;
-    }
-
-    // 2) Load profile (role is stored in public.profiles.role)
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, email, first_name, last_name, role, phone')
-      .eq('id', authUser.id)
-      .single();
-
-    if (profileError) {
-      toast.error(`Profile load failed: ${profileError.message}`);
-      return;
-    }
-
-    // 3) Optional security: role selection must match profile.role (prevents privilege escalation)
-    if (selectedRole && profile.role !== selectedRole) {
-      toast.error(`You selected "${selectedRole}" but your account role is "${profile.role}".`);
-      return;
-    }
-
-    // 4) Store REAL UUID in global app state
-    dispatch({
-      type: 'SET_USER',
-      payload: {
-        id: profile.id, // UUID
-        email: profile.email,
-        firstName: profile.first_name,
-        lastName: profile.last_name,
-        role: profile.role,
-        phone: profile.phone ?? null,
-      },
-    });
-
+    dispatch({ type: 'SET_USER', payload: mockUser });
+    dispatch({ type: 'SET_ROLE', payload: selectedRole });
     dispatch({ type: 'SET_AUTHENTICATED', payload: true });
-    dispatch({ type: 'SET_ROLE', payload: profile.role });
-    dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
-
-    toast.success('Logged in successfully');
-  } catch (err) {
-    console.error(err);
-    toast.error('Unexpected login error');
-  } finally {
     setIsLoading(false);
-  }
-};
-
-
-
-  // Optional: If you rely on roles from profiles, load it from profiles (see section 3).
-
+  };
 
   const roles = [
     { id: 'patient' as UserRole, label: 'I am a Patient', icon: User, description: 'Access your daily routine and memories', color: 'bg-soft-sage' },
