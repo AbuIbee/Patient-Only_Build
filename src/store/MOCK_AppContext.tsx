@@ -46,7 +46,6 @@ const initialState: AppState = {
   error: null,
   currentView: 'landing',
   sidebarOpen: true,
-  isDemoMode: false,
 };
 
 // Action Types
@@ -97,7 +96,6 @@ type Action =
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'SET_VIEW'; payload: string }
-  | { type: 'SET_DEMO_MODE'; payload: boolean }
   | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'LOGOUT' };
 
@@ -221,8 +219,6 @@ function appReducer(state: AppState, action: Action): AppState {
       return { ...state, currentView: action.payload };
     case 'TOGGLE_SIDEBAR':
       return { ...state, sidebarOpen: !state.sidebarOpen };
-    case 'SET_DEMO_MODE':
-      return { ...state, isDemoMode: action.payload };
     case 'LOGOUT':
       return initialState;
     default:

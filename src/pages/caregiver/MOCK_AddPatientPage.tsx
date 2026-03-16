@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useApp } from '@/store/AppContext';
-import { supabase } from '@/lib/supabase';
 import { createAndProvisionPatient } from '@/services/patientIntakeService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,7 +30,7 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
   const { state } = useApp();
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
-
+  
   const [formData, setFormData] = useState<PatientIntakeFormData>({
     // Patient Information (required)
     patientFirstName: '',
@@ -46,20 +45,20 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
     patientZipCode: '',
     patientPhone: '',
     patientEmail: '',
-
+    
     // Doctor/Therapist Information
     preferredHospital: '',
     doctorTherapistName: '',
     doctorTherapistPhone: '',
-
+    
     // Caregiver Information (snapshot)
     caregiverName: state.currentUser ? `${state.currentUser.firstName} ${state.currentUser.lastName}` : '',
     caregiverRelationship: '',
     caregiverPhone: state.currentUser?.phone || '',
-
+    
     // Medications
     medicationsAndDosage: '',
-
+    
     // Emergency Contact
     emergencyContactFullName: '',
     emergencyContactPhone: '',
@@ -67,13 +66,16 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
     emergencyContactRelationship: '',
   });
 
-  const handleInputChange = (field: keyof PatientIntakeFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
+const handleInputChange = <K extends keyof PatientIntakeFormData>(
+  field: K,
+  value: PatientIntakeFormData[K]
+) => {
+  setFormData(prev => ({ ...prev, [field]: value }));
+};
 
   const validateStep = (step: number): boolean => {
     const errors: string[] = [];
-
+    
     if (step === 1) {
       if (!formData.patientFirstName.trim()) errors.push('First name is required');
       if (!formData.patientLastName.trim()) errors.push('Last name is required');
@@ -82,7 +84,7 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
         errors.push('Please enter a valid email address');
       }
     }
-
+    
     if (errors.length > 0) {
       errors.forEach(error => toast.error(error));
       return false;
@@ -101,39 +103,24 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
   };
 
   const handleSubmit = async () => {
+     if (!state.currentUser?.id) {
+      toast.error('You must be logged in to add a patient');
+      return;
+    }
+
     if (!validateStep(1)) return;
 
     setIsLoading(true);
 
     try {
-      // ✅ FIXED: Always get the real authenticated Supabase user ID
-      // The AppContext mock ID (e.g. 'u1') does NOT work with Supabase RLS
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (!user) {
-        toast.error('You must be logged in to add a patient. Please log in again.');
-        setIsLoading(false);
-        return;
-      }
-
-      const realCaregiverId = user.id;
-
-      // Create intake record in Supabase and provision patient
-      const { patientProfileId, intakeId, error } = await createAndProvisionPatient(
+      // Step 1 & 2 combined: Create intake and provision patient
+      const { patientProfileId, error } = await createAndProvisionPatient(
         formData,
-        realCaregiverId
+        state.currentUser.id
       );
 
       if (error) {
-        // ✅ FIXED: If we got an intakeId back, the data WAS saved even if provisioning failed
-        if (intakeId) {
-          toast.success('Patient information saved successfully!');
-          toast.warning('Note: ' + error.message);
-          // Still navigate forward — the intake record exists
-          onPatientAdded(intakeId);
-        } else {
-          toast.error(error.message || 'Failed to create patient');
-        }
+        toast.error(error.message || 'Failed to create patient');
         return;
       }
 
@@ -234,19 +221,6 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="patientPhone">Contact Number</Label>
-                  <Input
-                    id="patientPhone"
-                    type="tel"
-                    value={formData.patientPhone}
-                    onChange={(e) => handleInputChange('patientPhone', e.target.value)}
-                    placeholder="(555) 123-4567"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
                   <Label htmlFor="patientDiagnosisDate">Diagnosis Date</Label>
                   <Input
                     id="patientDiagnosisDate"
@@ -255,69 +229,87 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
                     onChange={(e) => handleInputChange('patientDiagnosisDate', e.target.value)}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="patientDementiaStage">Dementia Stage</Label>
-                  <Select
-                    value={formData.patientDementiaStage || ''}
-                    onValueChange={(value) => handleInputChange('patientDementiaStage', value as DementiaStage)}
-                  >
-                    <SelectTrigger id="patientDementiaStage">
-                      <SelectValue placeholder="Select stage" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="early">Early Stage</SelectItem>
-                      <SelectItem value="middle">Middle Stage</SelectItem>
-                      <SelectItem value="late">Late Stage</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
 
               <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-warm-bronze" />
-                  Address
+                <Label htmlFor="patientDementiaStage">Dementia Stage</Label>
+                <Select
+                  value={formData.patientDementiaStage ?? ''}
+                  onValueChange={(value) => handleInputChange('patientDementiaStage', value as DementiaStage)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select stage" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="early">Early Stage</SelectItem>
+                    <SelectItem value="middle">Middle Stage</SelectItem>
+                    <SelectItem value="late">Late Stage</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="patientStreetAddress" className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />
+                  Street Address
                 </Label>
                 <Input
                   id="patientStreetAddress"
                   value={formData.patientStreetAddress}
                   onChange={(e) => handleInputChange('patientStreetAddress', e.target.value)}
-                  placeholder="Street address"
+                  placeholder="123 Main Street"
                 />
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  <div className="col-span-2">
-                    <Input
-                      id="patientCity"
-                      value={formData.patientCity}
-                      onChange={(e) => handleInputChange('patientCity', e.target.value)}
-                      placeholder="City"
-                    />
-                  </div>
-                  <div>
-                    <Select
-                      value={formData.patientState || ''}
-                      onValueChange={(value) => handleInputChange('patientState', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="State" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {US_STATES.map(state => (
-                          <SelectItem key={state} value={state}>{state}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Input
-                      id="patientZipCode"
-                      value={formData.patientZipCode}
-                      onChange={(e) => handleInputChange('patientZipCode', e.target.value)}
-                      placeholder="ZIP"
-                      maxLength={10}
-                    />
-                  </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-2 col-span-2">
+                  <Label htmlFor="patientCity">City</Label>
+                  <Input
+                    id="patientCity"
+                    value={formData.patientCity}
+                    onChange={(e) => handleInputChange('patientCity', e.target.value)}
+                    placeholder="City"
+                  />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="patientState">State</Label>
+                  <Select
+                    value={formData.patientState}
+                    onValueChange={(value) => handleInputChange('patientState', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="State" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {US_STATES.map(state => (
+                        <SelectItem key={state} value={state}>{state}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="patientZipCode">Zip Code</Label>
+                  <Input
+                    id="patientZipCode"
+                    value={formData.patientZipCode}
+                    onChange={(e) => handleInputChange('patientZipCode', e.target.value)}
+                    placeholder="12345"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="patientPhone" className="flex items-center gap-2">
+                  <Phone className="w-4 h-4" />
+                  Contact Number
+                </Label>
+                <Input
+                  id="patientPhone"
+                  type="tel"
+                  value={formData.patientPhone}
+                  onChange={(e) => handleInputChange('patientPhone', e.target.value)}
+                  placeholder="(555) 123-4567"
+                />
               </div>
             </CardContent>
           </Card>
@@ -334,12 +326,12 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="preferredHospital">Preferred Hospital / Clinic</Label>
+                <Label htmlFor="preferredHospital">Preferred Hospital</Label>
                 <Input
                   id="preferredHospital"
                   value={formData.preferredHospital}
                   onChange={(e) => handleInputChange('preferredHospital', e.target.value)}
-                  placeholder="e.g., Raleigh Medical Center"
+                  placeholder="Hospital or clinic name"
                 />
               </div>
 
@@ -350,11 +342,11 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
                     id="doctorTherapistName"
                     value={formData.doctorTherapistName}
                     onChange={(e) => handleInputChange('doctorTherapistName', e.target.value)}
-                    placeholder="Dr. Jane Smith"
+                    placeholder="Dr. Smith"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="doctorTherapistPhone">Doctor / Therapist Phone Number</Label>
+                  <Label htmlFor="doctorTherapistPhone">Doctor / Therapist Phone</Label>
                   <Input
                     id="doctorTherapistPhone"
                     type="tel"
@@ -561,7 +553,7 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Saving Patient...
+                Adding Patient...
               </>
             ) : (
               <>
