@@ -1,6 +1,6 @@
 // CareCompanion - Comprehensive Type Definitions
 
-export type UserRole = 'patient' | 'caregiver' | 'therapist' | 'admin';
+export type UserRole = 'patient' | 'caregiver' | 'therapist' | 'admin' | 'pending';
 
 export interface User {
   id: string;
