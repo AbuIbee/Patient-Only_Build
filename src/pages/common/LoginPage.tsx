@@ -36,7 +36,7 @@ export default function LoginPage() {
     setAuthMode('login');
   };
 
-  // ── MOCK LOGIN (demo / no Supabase account needed) ────────────────────────
+  // Mock login for demo purposes
   const handleMockLogin = () => {
     if (!selectedRole) return;
     const mockUser = {
@@ -59,12 +59,11 @@ export default function LoginPage() {
     dispatch({ type: 'SET_AUTHENTICATED', payload: true });
   };
 
-  // ── REAL SUPABASE LOGIN ───────────────────────────────────────────────────
+  // Real Supabase login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRole) return;
 
-    // If no Supabase credentials, use mock login for demo
     if (!email && !password) {
       handleMockLogin();
       return;
@@ -95,25 +94,52 @@ export default function LoginPage() {
         .single();
 
       if (profileError || !profile) {
-        toast.error('Could not load your profile. Please contact support.');
-        await supabase.auth.signOut();
-        return;
+        // Profile missing — create it automatically and continue
+        const { error: insertError } = await supabase.from('profiles').upsert({
+          id: data.user.id,
+          email: data.user.email,
+          first_name: data.user.user_metadata?.first_name || email.split('@')[0],
+          last_name: data.user.user_metadata?.last_name || '',
+          role: selectedRole,
+          must_change_password: false,
+        });
+
+        if (insertError) {
+          toast.error('Could not load your profile. Please contact support.');
+          await supabase.auth.signOut();
+          return;
+        }
+
+        // Use what we know
+        dispatch({
+          type: 'SET_USER',
+          payload: {
+            id: data.user.id,
+            email: data.user.email || email,
+            firstName: data.user.user_metadata?.first_name || email.split('@')[0],
+            lastName: data.user.user_metadata?.last_name || '',
+            role: selectedRole,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        });
+      } else {
+        dispatch({
+          type: 'SET_USER',
+          payload: {
+            id: profile.id,
+            email: profile.email,
+            firstName: profile.first_name,
+            lastName: profile.last_name,
+            role: profile.role as UserRole,
+            phone: profile.phone || undefined,
+            createdAt: profile.created_at,
+            updatedAt: profile.updated_at,
+          },
+        });
       }
 
-      dispatch({
-        type: 'SET_USER',
-        payload: {
-          id: profile.id,
-          email: profile.email,
-          firstName: profile.first_name,
-          lastName: profile.last_name,
-          role: profile.role as UserRole,
-          phone: profile.phone || undefined,
-          createdAt: profile.created_at,
-          updatedAt: profile.updated_at,
-        },
-      });
-      dispatch({ type: 'SET_ROLE', payload: profile.role as UserRole });
+      dispatch({ type: 'SET_ROLE', payload: selectedRole });
       dispatch({ type: 'SET_AUTHENTICATED', payload: true });
 
     } catch (err) {
@@ -124,7 +150,7 @@ export default function LoginPage() {
     }
   };
 
-  // ── SIGN UP (new users) ───────────────────────────────────────────────────
+  // Sign up new users
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRole) return;
@@ -162,18 +188,21 @@ export default function LoginPage() {
       }
 
       if (data.user) {
-        // Insert profile row (some Supabase setups do this via trigger; add manually as safety)
+        // Insert profile row immediately
         await supabase.from('profiles').upsert({
           id: data.user.id,
           email,
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           role: selectedRole,
+          must_change_password: false,
         });
 
-        toast.success('Account created! Check your email to confirm, then sign in.');
+        toast.success('Account created! You can now sign in.');
         setAuthMode('login');
         setPassword('');
+        setFirstName('');
+        setLastName('');
       }
     } catch (err) {
       console.error('Sign up error:', err);
@@ -186,7 +215,7 @@ export default function LoginPage() {
   const roles = [
     { id: 'patient'   as UserRole, label: 'I am a Patient',   icon: User,        description: 'Access your daily routine and memories', color: 'bg-soft-sage' },
     { id: 'caregiver' as UserRole, label: 'I am a Caregiver', icon: UserCircle,   description: 'Manage care and monitor wellbeing',       color: 'bg-warm-bronze' },
-    { id: 'therapist' as UserRole, label: 'I am a Therapist', icon: Stethoscope, description: 'Clinical tools and patient insights',      color: 'bg-calm-blue' },
+    { id: 'therapist' as UserRole, label: 'I am a Therapist', icon: Stethoscope,  description: 'Clinical tools and patient insights',     color: 'bg-calm-blue' },
     { id: 'admin'     as UserRole, label: 'Admin',             icon: ShieldCheck,  description: 'System administration and oversight',    color: 'bg-deep-bronze' },
   ];
 
@@ -212,10 +241,15 @@ export default function LoginPage() {
       </header>
 
       <main className="flex-1 flex items-center justify-center p-4">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="w-full max-w-md">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="w-full max-w-md"
+        >
           <AnimatePresence mode="wait">
 
-            {/* ── Role Selection ── */}
+            {/* Role Selection */}
             {authMode === 'select-role' && (
               <motion.div key="role-selection" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.3 }}>
                 <Card className="border-0 shadow-card">
@@ -225,8 +259,11 @@ export default function LoginPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {roles.map((role) => (
-                      <button key={role.id} onClick={() => handleRoleSelect(role.id)}
-                        className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-soft-taupe hover:border-warm-bronze hover:bg-warm-bronze/5 transition-all text-left group">
+                      <button
+                        key={role.id}
+                        onClick={() => handleRoleSelect(role.id)}
+                        className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-soft-taupe hover:border-warm-bronze hover:bg-warm-bronze/5 transition-all text-left group"
+                      >
                         <div className={`w-12 h-12 ${role.color} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
                           <role.icon className="w-6 h-6 text-white" />
                         </div>
@@ -241,7 +278,7 @@ export default function LoginPage() {
               </motion.div>
             )}
 
-            {/* ── Login Form ── */}
+            {/* Login Form */}
             {authMode === 'login' && (
               <motion.div key="login-form" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }}>
                 <Card className="border-0 shadow-card">
@@ -258,23 +295,47 @@ export default function LoginPage() {
                     <form onSubmit={handleLogin} className="space-y-5">
                       <div className="space-y-2">
                         <Label htmlFor="email">Email</Label>
-                        <Input id="email" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)}
-                          className="h-12 rounded-xl border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze/20" />
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="you@example.com"
+                          value={email}
+                          onChange={e => setEmail(e.target.value)}
+                          className="h-12 rounded-xl border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze/20"
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="password">Password</Label>
-                        <Input id="password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)}
-                          className="h-12 rounded-xl border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze/20" />
+                        <Input
+                          id="password"
+                          type="password"
+                          placeholder="••••••••"
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          className="h-12 rounded-xl border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze/20"
+                        />
                       </div>
-                      <Button type="submit" disabled={isLoading} className="w-full h-12 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl font-medium">
-                        {isLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Sign In'}
+                      <Button
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full h-12 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl font-medium"
+                      >
+                        {isLoading
+                          ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          : 'Sign In'
+                        }
                       </Button>
                     </form>
 
-                    {/* Demo mode shortcut */}
+                    {/* Demo shortcut */}
                     <div className="mt-4 p-3 bg-soft-taupe/30 rounded-xl text-center">
                       <p className="text-xs text-medium-gray mb-2">Just exploring? Use demo mode:</p>
-                      <Button variant="outline" size="sm" onClick={handleMockLogin} className="text-warm-bronze border-warm-bronze hover:bg-warm-bronze/5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleMockLogin}
+                        className="text-warm-bronze border-warm-bronze hover:bg-warm-bronze/5"
+                      >
                         Enter Demo as {roleLabel}
                       </Button>
                     </div>
@@ -282,7 +343,10 @@ export default function LoginPage() {
                     <div className="mt-4 text-center">
                       <p className="text-sm text-medium-gray">
                         Don't have an account?{' '}
-                        <button onClick={() => setAuthMode('signup')} className="text-warm-bronze hover:text-deep-bronze font-medium">
+                        <button
+                          onClick={() => setAuthMode('signup')}
+                          className="text-warm-bronze hover:text-deep-bronze font-medium"
+                        >
                           Create one
                         </button>
                       </p>
@@ -292,7 +356,7 @@ export default function LoginPage() {
               </motion.div>
             )}
 
-            {/* ── Sign Up Form ── */}
+            {/* Sign Up Form */}
             {authMode === 'signup' && (
               <motion.div key="signup-form" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.3 }}>
                 <Card className="border-0 shadow-card">
@@ -310,33 +374,65 @@ export default function LoginPage() {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
                           <Label htmlFor="firstName">First Name</Label>
-                          <Input id="firstName" placeholder="Jane" value={firstName} onChange={e => setFirstName(e.target.value)}
-                            className="h-12 rounded-xl border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze/20" />
+                          <Input
+                            id="firstName"
+                            placeholder="Jane"
+                            value={firstName}
+                            onChange={e => setFirstName(e.target.value)}
+                            className="h-12 rounded-xl border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze/20"
+                          />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="lastName">Last Name</Label>
-                          <Input id="lastName" placeholder="Smith" value={lastName} onChange={e => setLastName(e.target.value)}
-                            className="h-12 rounded-xl border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze/20" />
+                          <Input
+                            id="lastName"
+                            placeholder="Smith"
+                            value={lastName}
+                            onChange={e => setLastName(e.target.value)}
+                            className="h-12 rounded-xl border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze/20"
+                          />
                         </div>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="signupEmail">Email</Label>
-                        <Input id="signupEmail" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)}
-                          className="h-12 rounded-xl border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze/20" />
+                        <Input
+                          id="signupEmail"
+                          type="email"
+                          placeholder="you@example.com"
+                          value={email}
+                          onChange={e => setEmail(e.target.value)}
+                          className="h-12 rounded-xl border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze/20"
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="signupPassword">Password</Label>
-                        <Input id="signupPassword" type="password" placeholder="Min 6 characters" value={password} onChange={e => setPassword(e.target.value)}
-                          className="h-12 rounded-xl border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze/20" />
+                        <Input
+                          id="signupPassword"
+                          type="password"
+                          placeholder="Min 6 characters"
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          className="h-12 rounded-xl border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze/20"
+                        />
                       </div>
-                      <Button type="submit" disabled={isLoading} className="w-full h-12 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl font-medium">
-                        {isLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Create Account'}
+                      <Button
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full h-12 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl font-medium"
+                      >
+                        {isLoading
+                          ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          : 'Create Account'
+                        }
                       </Button>
                     </form>
                     <div className="mt-4 text-center">
                       <p className="text-sm text-medium-gray">
                         Already have an account?{' '}
-                        <button onClick={() => setAuthMode('login')} className="text-warm-bronze hover:text-deep-bronze font-medium">
+                        <button
+                          onClick={() => setAuthMode('login')}
+                          className="text-warm-bronze hover:text-deep-bronze font-medium"
+                        >
                           Sign in
                         </button>
                       </p>
