@@ -27,7 +27,7 @@
   }
 }
 
-/* CareCompanion - Custom Design System */
+/* MemoriaHelps - Custom Design System */
 :root {
   /* Warm, Calming Color Palette */
   --warm-ivory: #FAF8F5;
@@ -107,7 +107,7 @@
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
   
-  /* Custom CareCompanion Colors */
+  /* Custom MemoriaHelps Colors */
   --color-warm-ivory: var(--warm-ivory);
   --color-soft-taupe: var(--soft-taupe);
   --color-warm-bronze: var(--warm-bronze);

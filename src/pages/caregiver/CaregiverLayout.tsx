@@ -29,42 +29,73 @@ type CaregiverView =
   | 'documents' | 'reminders' | 'crisis' | 'timeline' | 'addPatient' | 'myportal';
 
 // ── Empty State ──────────────────────────────────────────────────────────────
-function EmptyState({ onAddPatient, onEnterDemo }: { onAddPatient: () => void; onEnterDemo: () => void }) {
+function EmptyState({ onAddPatient, onEnterDemo, onLogout, onRefresh }: {
+  onAddPatient: () => void;
+  onEnterDemo: () => void;
+  onLogout: () => void;
+  onRefresh: () => void;
+}) {
   return (
-    <div className="min-h-screen bg-warm-ivory flex items-center justify-center p-6">
-      <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="max-w-lg w-full text-center space-y-8">
-        <div className="w-28 h-28 bg-warm-bronze/10 rounded-full flex items-center justify-center mx-auto">
-          <Users className="w-14 h-14 text-warm-bronze" />
+    <div className="min-h-screen bg-warm-ivory flex flex-col">
+      {/* Top bar with logout */}
+      <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-soft-taupe">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-warm-bronze rounded-xl flex items-center justify-center">
+            <Heart className="w-4 h-4 text-white" />
+          </div>
+          <span className="font-semibold text-charcoal">MemoriaHelps</span>
         </div>
-        <div className="space-y-3">
-          <h1 className="text-3xl font-bold text-charcoal">Welcome to MemoriaHelps</h1>
-          <p className="text-medium-gray text-lg leading-relaxed">You don't have any patients yet. Add your first real patient or explore the app with demo data.</p>
+        <div className="flex items-center gap-2">
+          <button onClick={onRefresh}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm text-medium-gray hover:text-charcoal hover:bg-soft-taupe/30 rounded-xl transition-colors">
+            <RefreshCw className="w-4 h-4" />Refresh
+          </button>
+          <button onClick={onLogout}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm text-gentle-coral hover:bg-gentle-coral/10 rounded-xl transition-colors font-medium">
+            <LogOut className="w-4 h-4" />Logout
+          </button>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={onAddPatient}
-            className="flex flex-col items-center gap-4 p-6 bg-warm-bronze text-white rounded-2xl shadow-lg hover:bg-deep-bronze transition-colors">
-            <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
-              <UserPlus className="w-7 h-7 text-white" />
-            </div>
-            <div><p className="font-bold text-lg">Add First Patient</p><p className="text-white/80 text-sm mt-1">Start managing real patient care</p></div>
-          </motion.button>
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={onEnterDemo}
-            className="flex flex-col items-center gap-4 p-6 bg-white border-2 border-soft-taupe rounded-2xl shadow-sm hover:border-warm-bronze hover:bg-warm-bronze/5 transition-colors">
-            <div className="w-14 h-14 bg-warm-bronze/10 rounded-xl flex items-center justify-center">
-              <FlaskConical className="w-7 h-7 text-warm-bronze" />
-            </div>
-            <div><p className="font-bold text-lg text-charcoal">Try Demo Mode</p><p className="text-medium-gray text-sm mt-1">Explore with 3 sample patients</p></div>
-          </motion.button>
-        </div>
-        <div className="bg-white border border-soft-taupe rounded-xl p-5 text-left space-y-3">
-          <p className="font-semibold text-charcoal flex items-center gap-2"><Sparkles className="w-4 h-4 text-warm-bronze" />Demo includes:</p>
-          <ul className="text-sm text-medium-gray space-y-1.5">
-            {['3 sample patients (Eleanor, Robert, Margaret)', 'Medications, moods, memories & reminders', 'Safety alerts and care team data', 'Tasks, appointments and goals'].map(item => (
-              <li key={item} className="flex items-center gap-2"><span className="w-1.5 h-1.5 bg-warm-bronze rounded-full flex-shrink-0" />{item}</li>
-            ))}
-          </ul>
-        </div>
-      </motion.div>
+      </div>
+      <div className="flex-1 flex items-center justify-center p-6">
+        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="max-w-lg w-full text-center space-y-8">
+          <div className="w-28 h-28 bg-warm-bronze/10 rounded-full flex items-center justify-center mx-auto">
+            <Users className="w-14 h-14 text-warm-bronze" />
+          </div>
+          <div className="space-y-3">
+            <h1 className="text-3xl font-bold text-charcoal">Welcome to MemoriaHelps</h1>
+            <p className="text-medium-gray text-lg leading-relaxed">You don't have any patients yet. Add your first real patient or explore the app with demo data.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={onAddPatient}
+              className="flex flex-col items-center gap-4 p-6 bg-warm-bronze text-white rounded-2xl shadow-lg hover:bg-deep-bronze transition-colors">
+              <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
+                <UserPlus className="w-7 h-7 text-white" />
+              </div>
+              <div><p className="font-bold text-lg">Add First Patient</p><p className="text-white/80 text-sm mt-1">Start managing real patient care</p></div>
+            </motion.button>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={onEnterDemo}
+              className="flex flex-col items-center gap-4 p-6 bg-white border-2 border-soft-taupe rounded-2xl shadow-sm hover:border-warm-bronze hover:bg-warm-bronze/5 transition-colors">
+              <div className="w-14 h-14 bg-warm-bronze/10 rounded-xl flex items-center justify-center">
+                <FlaskConical className="w-7 h-7 text-warm-bronze" />
+              </div>
+              <div><p className="font-bold text-lg text-charcoal">Try Demo Mode</p><p className="text-medium-gray text-sm mt-1">Explore with 3 sample patients</p></div>
+            </motion.button>
+          </div>
+          <div className="bg-white border border-soft-taupe rounded-xl p-5 text-left space-y-3">
+            <p className="font-semibold text-charcoal flex items-center gap-2"><Sparkles className="w-4 h-4 text-warm-bronze" />Demo includes:</p>
+            <ul className="text-sm text-medium-gray space-y-1.5">
+              {['3 sample patients (Eleanor, Robert, Margaret)', 'Medications, moods, memories & reminders', 'Safety alerts and care team data', 'Tasks, appointments and goals'].map(item => (
+                <li key={item} className="flex items-center gap-2"><span className="w-1.5 h-1.5 bg-warm-bronze rounded-full flex-shrink-0" />{item}</li>
+              ))}
+            </ul>
+          </div>
+          <p className="text-xs text-medium-gray">
+            If you already have patients but don't see them,{' '}
+            <button onClick={onRefresh} className="text-warm-bronze underline">click Refresh</button>
+            {' '}or check that your account has caregiver access in Supabase.
+          </p>
+        </motion.div>
+      </div>
     </div>
   );
 }
@@ -193,7 +224,7 @@ export default function CaregiverLayout() {
 
   // ── Empty State ──
   if (allPatients.length === 0 && !isDemoMode && currentView !== 'addPatient') {
-    return <EmptyState onAddPatient={() => setCurrentView('addPatient')} onEnterDemo={handleEnterDemo} />;
+    return <EmptyState onAddPatient={() => setCurrentView('addPatient')} onEnterDemo={handleEnterDemo} onLogout={handleLogout} onRefresh={loadPatients} />;
   }
 
   // ── Add Patient from empty state (no sidebar yet) ──

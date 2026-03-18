@@ -28,7 +28,7 @@ export default function LandingPage() {
             <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center">
               <Heart className="w-6 h-6 text-white" />
             </div>
-            <span className="text-xl font-semibold text-charcoal">CareCompanion</span>
+            <span className="text-xl font-semibold text-charcoal">MemoriaHelps</span>
           </div>
           <Button
             onClick={handleGetStarted}
@@ -210,7 +210,7 @@ export default function LandingPage() {
               Begin your care journey today
             </h2>
             <p className="text-lg text-gray-400 mb-8 max-w-2xl mx-auto">
-              Join thousands of families using CareCompanion to provide better care 
+              Join thousands of families using MemoriaHelps to provide better care 
               and maintain meaningful connections.
             </p>
             <Button
@@ -232,7 +232,7 @@ export default function LandingPage() {
               <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center">
                 <Heart className="w-6 h-6 text-white" />
               </div>
-              <span className="text-xl font-semibold text-charcoal">CareCompanion</span>
+              <span className="text-xl font-semibold text-charcoal">MemoriaHelps</span>
             </div>
             <div className="flex items-center gap-6 text-medium-gray">
               <a href="#" className="hover:text-charcoal transition-colors">Privacy</a>
@@ -244,7 +244,7 @@ export default function LandingPage() {
               </a>
             </div>
             <p className="text-sm text-light-gray">
-              © 2024 CareCompanion. All rights reserved.
+              © 2025 MemoriaHelps. All rights reserved.
             </p>
           </div>
         </div>

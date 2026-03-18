@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import { useApp } from '@/store/AppContext';
+import CarePartnerCheckinSummary from '@/pages/caregiver/CarePartnerCheckinSummary';
+import AssignTherapistModal from './AssignTherapistModal';
 import { useSelectedPatient } from '@/hooks/useSelectedPatient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,6 +16,7 @@ import {
   ChevronRight,
   TrendingUp,
   TrendingDown,
+  Stethoscope,
   Minus,
   User,
 } from 'lucide-react';
@@ -21,6 +25,7 @@ import { format } from 'date-fns';
 
 export default function CaregiverDashboard() {
   const { state, dispatch } = useApp();
+  const [showAssignTherapist, setShowAssignTherapist] = useState(false);
   const selectedPatient = useSelectedPatient();
   
   // Use selected patient data or fallback to legacy state
@@ -353,6 +358,21 @@ export default function CaregiverDashboard() {
         </motion.div>
       </div>
 
+      {/* Care Partner Check-In Summary */}
+      {patient && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.45 }}
+        >
+          <h3 className="text-lg font-semibold text-charcoal mb-3">Care Partner Check-In</h3>
+          <CarePartnerCheckinSummary
+            patientId={patient.id}
+            patientName={`${patient.firstName} ${patient.lastName}`}
+          />
+        </motion.div>
+      )}
+
       {/* Quick Actions */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -373,8 +393,21 @@ export default function CaregiverDashboard() {
             <Activity className="w-4 h-4 mr-2" />
             Log Vitals
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => setShowAssignTherapist(true)}
+            className="border-calm-blue text-calm-blue hover:bg-calm-blue hover:text-white rounded-xl"
+          >
+            <Stethoscope className="w-4 h-4 mr-2" />
+            Assign Therapist
+          </Button>
         </div>
       </motion.div>
+
+      {/* Assign Therapist Modal */}
+      {showAssignTherapist && (
+        <AssignTherapistModal onClose={() => setShowAssignTherapist(false)} />
+      )}
     </div>
   );
 }

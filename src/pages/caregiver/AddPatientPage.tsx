@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, UserPlus, Loader2, Stethoscope, Pill, Phone, MapPin, User } from 'lucide-react';
+import { ArrowLeft, UserPlus, Loader2, Stethoscope, Pill, Phone, MapPin, User, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PatientIntakeFormData, DementiaStage } from '@/types/patientIntake';
 
@@ -31,6 +31,7 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
   const { state } = useApp();
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const [showTempPass, setShowTempPass] = useState(false);
 
   const [formData, setFormData] = useState<PatientIntakeFormData>({
     // Patient Information (required)
@@ -46,6 +47,7 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
     patientZipCode: '',
     patientPhone: '',
     patientEmail: '',
+    patientTempPassword: '',
 
     // Doctor/Therapist Information
     preferredHospital: '',
@@ -78,6 +80,7 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
       if (!formData.patientFirstName.trim()) errors.push('First name is required');
       if (!formData.patientLastName.trim()) errors.push('Last name is required');
       if (!formData.patientEmail.trim()) errors.push('Email is required');
+      if (formData.patientTempPassword && formData.patientTempPassword.length < 6) errors.push('Temporary password must be at least 6 characters');
       if (formData.patientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.patientEmail)) {
         errors.push('Please enter a valid email address');
       }
@@ -220,6 +223,32 @@ export default function AddPatientPage({ onBack, onPatientAdded }: AddPatientPag
                     onChange={(e) => handleInputChange('patientEmail', e.target.value)}
                     placeholder="patient@example.com"
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="patientTempPassword">
+                    Temporary Password
+                    <span className="text-medium-gray text-xs font-normal ml-2">(optional — patient will set their own on first login)</span>
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="patientTempPassword"
+                      type={showTempPass ? 'text' : 'password'}
+                      value={formData.patientTempPassword || ''}
+                      onChange={(e) => handleInputChange('patientTempPassword', e.target.value)}
+                      placeholder="Leave blank to auto-generate"
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowTempPass(!showTempPass)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-medium-gray hover:text-charcoal"
+                    >
+                      {showTempPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-medium-gray">
+                    Patient will receive an email to set or change their password on first login.
+                  </p>
                 </div>
               </div>
 

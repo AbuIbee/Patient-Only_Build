@@ -70,6 +70,7 @@ export async function createAndProvisionPatient(
         lastName: formData.patientLastName,
         preferredName: formData.patientPreferredName || undefined,
         email: formData.patientEmail,
+        tempPassword: (formData as any).patientTempPassword || undefined,
         dateOfBirth: formData.patientDateOfBirth || undefined,
         dementiaStage: formData.patientDementiaStage as 'early' | 'middle' | 'late' | undefined,
         diagnosisDate: formData.patientDiagnosisDate || undefined,

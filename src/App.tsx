@@ -1,6 +1,7 @@
 import { AppProvider, useApp } from '@/store/AppContext';
 import LandingPage from '@/pages/common/LandingPage';
 import LoginPage from '@/pages/common/LoginPage';
+import ResetPasswordPage from '@/pages/common/ResetPasswordPage';
 import PatientLayout from '@/pages/patient/PatientLayout';
 import CaregiverLayout from '@/pages/caregiver/CaregiverLayout';
 import TherapistLayout from '@/pages/therapist/TherapistLayout';
@@ -13,19 +14,15 @@ import './App.css';
 
 function AppContent() {
   const { state, dispatch } = useApp();
-  // Show a loading screen while we check for an existing session on refresh
   const [checkingSession, setCheckingSession] = useState(true);
+  // When Supabase fires PASSWORD_RECOVERY, show the reset password page
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
 
   useEffect(() => {
-    // ── On every page load / refresh ──────────────────────────────────────
-    // Check if Supabase still has an active session saved in localStorage.
-    // If yes, restore the user into React state so they stay logged in.
     const restoreSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-
         if (session?.user) {
-          // Session exists — fetch their profile and restore state
           const { data: profile } = await supabase
             .from('profiles')
             .select('*')
@@ -36,23 +33,22 @@ function AppContent() {
             dispatch({
               type: 'SET_USER',
               payload: {
-                id: profile.id,
-                email: profile.email,
+                id:        profile.id,
+                email:     profile.email,
                 firstName: profile.first_name,
-                lastName: profile.last_name,
-                role: profile.role as UserRole,
-                phone: profile.phone || undefined,
+                lastName:  profile.last_name,
+                role:      profile.role as UserRole,
+                phone:     profile.phone || undefined,
                 createdAt: profile.created_at,
                 updatedAt: profile.updated_at,
               },
             });
-            dispatch({ type: 'SET_ROLE', payload: profile.role as UserRole });
+            dispatch({ type: 'SET_ROLE',          payload: profile.role as UserRole });
             dispatch({ type: 'SET_AUTHENTICATED', payload: true });
           }
         }
       } catch (err) {
         console.error('Session restore error:', err);
-        // Session invalid or expired — stay on landing page, no logout needed
       } finally {
         setCheckingSession(false);
       }
@@ -60,22 +56,57 @@ function AppContent() {
 
     restoreSession();
 
-    // ── Listen for auth state changes (login / logout / token refresh) ────
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === 'SIGNED_OUT') {
           dispatch({ type: 'LOGOUT' });
+          setShowPasswordReset(false);
         }
-        // TOKEN_REFRESHED: session silently refreshed — no action needed,
-        // user stays logged in
+
+        // ── PASSWORD_RECOVERY ─────────────────────────────────────────────
+        // Fired when the user clicks the reset/invitation link in their email.
+        // Show the set-password page instead of the landing page.
+        if (event === 'PASSWORD_RECOVERY') {
+          setShowPasswordReset(true);
+          setCheckingSession(false);
+        }
+
+        // ── SIGNED_IN after password reset ────────────────────────────────
+        // Once the user sets their new password and Supabase signs them in,
+        // load their profile and route them to their portal.
+        if (event === 'SIGNED_IN' && session?.user && showPasswordReset) {
+          setShowPasswordReset(false);
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+          if (profile) {
+            dispatch({
+              type: 'SET_USER',
+              payload: {
+                id:        profile.id,
+                email:     profile.email,
+                firstName: profile.first_name,
+                lastName:  profile.last_name,
+                role:      profile.role as UserRole,
+                phone:     profile.phone || undefined,
+                createdAt: profile.created_at,
+                updatedAt: profile.updated_at,
+              },
+            });
+            dispatch({ type: 'SET_ROLE',          payload: profile.role as UserRole });
+            dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+          }
+          setCheckingSession(false);
+        }
       }
     );
 
     return () => subscription.unsubscribe();
-  }, [dispatch]);
+  }, [dispatch, showPasswordReset]);
 
-  // Show a blank loading screen while checking for existing session
-  // This prevents the login page from flashing before session is restored
   if (checkingSession) {
     return (
       <div className="min-h-screen bg-warm-ivory flex items-center justify-center">
@@ -83,6 +114,16 @@ function AppContent() {
           <div className="w-16 h-16 border-4 border-warm-bronze border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-charcoal font-medium">Loading...</p>
         </div>
+      </div>
+    );
+  }
+
+  // Show password reset/set page when user clicks email link
+  if (showPasswordReset) {
+    return (
+      <div className="min-h-screen bg-warm-ivory">
+        <ResetPasswordPage onComplete={() => setShowPasswordReset(false)} />
+        <Toaster position="top-center" />
       </div>
     );
   }
