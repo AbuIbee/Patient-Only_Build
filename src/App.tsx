@@ -1,4 +1,5 @@
-import { AppProvider, useApp, initializeMockData } from '@/store/AppContext';
+// App Component - Main Entry Point
+import { AppProvider, useApp } from '@/store/AppContext';
 import LandingPage from '@/pages/common/LandingPage';
 import LoginPage from '@/pages/common/LoginPage';
 import PatientLayout from '@/pages/patient/PatientLayout';
@@ -6,17 +7,15 @@ import CaregiverLayout from '@/pages/caregiver/CaregiverLayout';
 import TherapistLayout from '@/pages/therapist/TherapistLayout';
 import AdminLayout from '@/pages/admin/AdminLayout';
 import { Toaster } from '@/components/ui/sonner';
-import { useEffect } from 'react';
 import './App.css';
 
 function AppContent() {
-  const { state, dispatch } = useApp();
+  const { state } = useApp();
 
-  useEffect(() => {
-    if (state.isAuthenticated && !state.patient) {
-      initializeMockData(dispatch);
-    }
-  }, [state.isAuthenticated, state.patient, dispatch]);
+  // ✅ REMOVED: initializeMockData was auto-loading Eleanor on every login
+  // which overrode CaregiverLayout's logic and always showed demo data.
+  // Mock data is now only loaded when the user explicitly clicks "Try Demo Mode"
+  // inside CaregiverLayout, or when TherapistLayout needs it for its dashboard.
 
   const renderContent = () => {
     if (!state.isAuthenticated) {
