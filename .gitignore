@@ -4,4 +4,4 @@ dist
 .env
 .env.*
 02-26NewCareCompanion/
-.vercel/
+.vercel/"dist/" 
