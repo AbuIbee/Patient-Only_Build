@@ -6,15 +6,16 @@ import TherapistDashboard from './TherapistDashboard';
 import TherapistTools from './TherapistTools';
 import TherapistGoals from './TherapistGoals';
 import TherapistAnalysis from './TherapistAnalysis';
+import MediaUploader from '@/components/MediaUploader';
 import {
-  LayoutDashboard, Stethoscope, Target, BarChart3,
+  LayoutDashboard, Stethoscope, Target, BarChart3, Film,
   ChevronLeft, ChevronRight, LogOut, Heart, ChevronDown,
   Users, User,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
-type TherapistView = 'dashboard' | 'tools' | 'goals' | 'analysis';
+type TherapistView = 'dashboard' | 'tools' | 'goals' | 'analysis' | 'media';
 
 export default function TherapistLayout() {
   const [currentView, setCurrentView]         = useState<TherapistView>('dashboard');
@@ -54,6 +55,7 @@ export default function TherapistLayout() {
     { id: 'tools'     as TherapistView, label: 'Therapy Tools',       icon: Stethoscope },
     { id: 'goals'     as TherapistView, label: 'Goal Tracking',       icon: Target },
     { id: 'analysis'  as TherapistView, label: 'Behavioral Analysis', icon: BarChart3 },
+    { id: 'media'     as TherapistView, label: 'Videos & Media',    icon: Film },
   ];
 
   // All patients from state
@@ -67,6 +69,7 @@ export default function TherapistLayout() {
       case 'tools':     return <TherapistTools />;
       case 'goals':     return <TherapistGoals />;
       case 'analysis':  return <TherapistAnalysis />;
+      case 'media':     return <MediaUploader />;
       default:          return <TherapistDashboard />;
     }
   };

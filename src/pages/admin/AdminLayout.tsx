@@ -15,9 +15,54 @@ import { motion, AnimatePresence } from 'framer-motion';
 type AdminView = 'overview' | 'pending' | 'caregivers' | 'therapists' | 'admins' | 'patients' | 'audit';
 
 // ── Role-filtered user list ───────────────────────────────────────────────────
+function UserDetailPanel({ user, onClose }: { user: any; onClose: () => void }) {
+  const roleColor: Record<string, string> = {
+    caregiver:  'bg-warm-bronze/10 text-warm-bronze',
+    therapist:  'bg-calm-blue/10 text-blue-700',
+    admin:      'bg-deep-bronze/10 text-deep-bronze',
+    patient:    'bg-soft-sage/20 text-green-700',
+    superadmin: 'bg-purple-100 text-purple-700',
+  };
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-soft-taupe">
+          <h3 className="font-semibold text-charcoal text-lg">User Profile</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-soft-taupe transition-colors text-medium-gray text-xl font-bold">×</button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-warm-bronze/10 rounded-full flex items-center justify-center flex-shrink-0">
+              <span className="text-warm-bronze font-bold text-2xl">{user.first_name?.[0]}{user.last_name?.[0]}</span>
+            </div>
+            <div>
+              <p className="text-xl font-bold text-charcoal">{user.first_name} {user.last_name}</p>
+              <span className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize ${roleColor[user.role] || 'bg-soft-taupe text-medium-gray'}`}>{user.role}</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3">
+            {[
+              ['Email',   user.email],
+              ['Phone',   user.phone || '—'],
+              ['User ID', user.id],
+              ['Joined',  new Date(user.created_at).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })],
+            ].map(([label, value]) => (
+              <div key={label as string} className="flex gap-3 p-3 bg-soft-taupe/20 rounded-xl">
+                <span className="text-xs font-semibold text-medium-gray uppercase tracking-wide w-16 flex-shrink-0 pt-0.5">{label as string}</span>
+                <span className="text-sm text-charcoal break-all">{value as string}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RoleUserList({ role, title }: { role: string; title: string }) {
-  const [users, setUsers]   = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [users,    setUsers]   = useState<any[]>([]);
+  const [loading,  setLoading] = useState(true);
+  const [selected, setSelected] = useState<any | null>(null);
 
   useEffect(() => {
     supabase.from('profiles')
@@ -28,9 +73,10 @@ function RoleUserList({ role, title }: { role: string; title: string }) {
   }, [role]);
 
   const roleColor: Record<string, string> = {
-    caregiver: 'bg-warm-bronze/10 text-warm-bronze',
+    caregiver:  'bg-warm-bronze/10 text-warm-bronze',
     therapist:  'bg-calm-blue/10 text-blue-700',
     admin:      'bg-deep-bronze/10 text-deep-bronze',
+    superadmin: 'bg-purple-100 text-purple-700',
   };
 
   if (loading) return <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-warm-bronze border-t-transparent rounded-full animate-spin" /></div>;
@@ -48,14 +94,14 @@ function RoleUserList({ role, title }: { role: string; title: string }) {
           <table className="w-full">
             <thead className="bg-soft-taupe/20">
               <tr>
-                {['Name', 'Email', 'Phone', 'Role', 'Joined'].map(h => (
+                {['Name', 'Email', 'Phone', 'Role', 'Joined', ''].map(h => (
                   <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-medium-gray uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-soft-taupe/30">
               {users.map(u => (
-                <tr key={u.id} className="hover:bg-soft-taupe/10 transition-colors">
+                <tr key={u.id} className="hover:bg-soft-taupe/10 transition-colors cursor-pointer" onClick={() => setSelected(u)}>
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 bg-warm-bronze/10 rounded-full flex items-center justify-center flex-shrink-0">
@@ -69,8 +115,11 @@ function RoleUserList({ role, title }: { role: string; title: string }) {
                   <td className="px-5 py-3">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${roleColor[u.role] || 'bg-soft-taupe text-medium-gray'}`}>{u.role}</span>
                   </td>
-                  <td className="px-5 py-3 text-medium-gray text-sm">
+                  <td className="px-5 py-3 text-medium-gray text-sm whitespace-nowrap">
                     {new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </td>
+                  <td className="px-5 py-3">
+                    <span className="text-warm-bronze text-sm font-medium hover:text-deep-bronze">View →</span>
                   </td>
                 </tr>
               ))}
@@ -78,6 +127,7 @@ function RoleUserList({ role, title }: { role: string; title: string }) {
           </table>
         )}
       </div>
+      {selected && <UserDetailPanel user={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }

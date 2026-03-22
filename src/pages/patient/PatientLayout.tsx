@@ -9,15 +9,17 @@ import PatientDocuments from './PatientDocuments';
 import PatientReminders from './PatientReminders';
 import PatientMoodTracker from './PatientMoodTracker';
 import CarePartnerCheckin from './CarePartnerCheckin';
+import PatientCareTeam from './PatientCareTeam';
+import MediaUploader from '@/components/MediaUploader';
 import {
   LayoutDashboard, Calendar, Pill, FileText, Bell,
   Heart, Smile, Users, MoreHorizontal, ChevronLeft,
-  ChevronRight, Volume2, VolumeX, Sun, Moon, LogOut, ClipboardList,
+  ChevronRight, Volume2, VolumeX, Sun, Moon, LogOut, ClipboardList, UserCheck, Film,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
-type PatientView = 'dashboard' | 'medications' | 'routines' | 'memories' | 'mood' | 'documents' | 'reminders' | 'checkin';
+type PatientView = 'dashboard' | 'medications' | 'routines' | 'memories' | 'mood' | 'documents' | 'reminders' | 'checkin' | 'careteam' | 'media';
 
 export default function PatientLayout() {
   const [currentView, setCurrentView]           = useState<PatientView>('dashboard');
@@ -110,12 +112,14 @@ export default function PatientLayout() {
     { id: 'mood'      as PatientView, label: 'How I Feel', icon: Smile },
     { id: 'reminders' as PatientView, label: 'Reminders',   icon: Bell },
     { id: 'checkin'   as PatientView, label: 'Daily Check-In', icon: ClipboardList },
+    { id: 'careteam'  as PatientView, label: 'My Care Team',   icon: UserCheck },
   ];
 
   const moreNavItems = [
     { id: 'medications' as PatientView, label: 'Medications', icon: Pill },
     { id: 'routines'    as PatientView, label: 'My Day',      icon: Calendar },
     { id: 'documents'   as PatientView, label: 'Papers',      icon: FileText },
+    { id: 'media'       as PatientView, label: 'Videos & Media', icon: Film },
   ];
 
   const allNavItems = [...navItems, ...moreNavItems];
@@ -130,6 +134,8 @@ export default function PatientLayout() {
       case 'documents':   return <PatientDocuments />;
       case 'reminders':   return <PatientReminders />;
       case 'checkin':     return <CarePartnerCheckin />;
+      case 'careteam':    return <PatientCareTeam />;
+      case 'media':       return <MediaUploader readOnly={false} patientId={state.currentUser?.id} patientName={state.patient?.preferredName || state.patient?.firstName} />;
       default:            return <PatientHome />;
     }
   };
