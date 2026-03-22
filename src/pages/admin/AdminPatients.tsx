@@ -1,30 +1,29 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, User, Calendar, Stethoscope } from 'lucide-react';
+import { Search, User } from 'lucide-react';
 
 interface PatientRow {
   id: string;
   email: string;
   first_name: string;
   last_name: string;
-  preferred_name: string | null;
-  dementia_stage: string | null;
   created_at: string;
-  caregiver_email?: string;
   caregiver_name?: string;
+  caregiver_email?: string;
+  therapist_name?: string;
+  therapist_email?: string;
 }
 
 export function AdminPatients() {
-  const [patients,   setPatients]   = useState<PatientRow[]>([]);
-  const [loading,    setLoading]    = useState(true);
-  const [search,     setSearch]     = useState('');
+  const [patients, setPatients] = useState<PatientRow[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [search,   setSearch]   = useState('');
 
   useEffect(() => { loadPatients(); }, []);
 
   const loadPatients = async () => {
     setLoading(true);
     try {
-      // Step 1: Get all patient profiles
       const { data: profiles, error } = await supabase
         .from('profiles')
         .select('id, email, first_name, last_name, created_at')
@@ -33,30 +32,20 @@ export function AdminPatients() {
 
       if (error) throw error;
 
-      // Step 2: Get patient records for stage/preferred name
       const patientIds = (profiles || []).map((p: any) => p.id);
-      const { data: patientRows } = patientIds.length > 0
-        ? await supabase.from('patients').select('id, preferred_name, dementia_stage').in('id', patientIds)
-        : { data: [] };
+      if (patientIds.length === 0) { setPatients([]); setLoading(false); return; }
 
-      const patientMap: Record<string, any> = {};
-      (patientRows || []).forEach((p: any) => { patientMap[p.id] = p; });
+      const { data: links } = await supabase
+        .from('caregiver_patients')
+        .select('patient_id, caregiver_id')
+        .in('patient_id', patientIds)
+        .eq('is_primary', true);
 
-      // Step 3: Get caregiver links
-      const { data: links } = patientIds.length > 0
-        ? await supabase.from('caregiver_patients')
-            .select('patient_id, caregiver_id')
-            .in('patient_id', patientIds)
-            .eq('is_primary', true)
-        : { data: [] };
-
-      // Step 4: Get therapist links
-      const { data: thLinks } = patientIds.length > 0
-        ? await supabase.from('therapist_relationships')
-            .select('patient_id, therapist_id')
-            .in('patient_id', patientIds)
-            .eq('is_active', true)
-        : { data: [] };
+      const { data: thLinks } = await supabase
+        .from('therapist_relationships')
+        .select('patient_id, therapist_id')
+        .in('patient_id', patientIds)
+        .eq('is_active', true);
 
       const caregiverIds  = [...new Set((links   || []).map((l: any) => l.caregiver_id))];
       const therapistIds  = [...new Set((thLinks || []).map((l: any) => l.therapist_id))];
@@ -110,11 +99,9 @@ export function AdminPatients() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-charcoal">All Patients (System Wide)</h2>
-          <p className="text-medium-gray text-sm mt-1">{patients.length} total patients across all caregivers</p>
-        </div>
+      <div>
+        <h2 className="text-2xl font-bold text-charcoal">All Patients (System Wide)</h2>
+        <p className="text-medium-gray text-sm mt-1">{patients.length} total patients across all caregivers</p>
       </div>
 
       <div className="relative">
@@ -153,27 +140,18 @@ export function AdminPatients() {
                       </div>
                     </td>
                     <td className="px-5 py-3 text-medium-gray text-sm">{p.email}</td>
-                    <td className="px-5 py-3 text-medium-gray text-sm">{p.preferred_name || '—'}</td>
-                    <td className="px-5 py-3">
-                      {p.dementia_stage ? (
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${stageColor(p.dementia_stage)}`}>
-                          {p.dementia_stage}
-                        </span>
-                      ) : <span className="text-medium-gray text-sm">—</span>}
+                    <td className="px-5 py-3 text-sm">
+                      {p.caregiver_name
+                        ? <div><p className="font-medium text-charcoal">{p.caregiver_name}</p><p className="text-xs text-medium-gray">{p.caregiver_email}</p></div>
+                        : <span className="text-medium-gray">Unassigned</span>}
                     </td>
                     <td className="px-5 py-3 text-sm">
-                      {p.caregiver_name ? (
-                        <div>
-                          <p className="font-medium text-charcoal">{p.caregiver_name}</p>
-                          <p className="text-xs text-medium-gray">{p.caregiver_email}</p>
-                        </div>
-                      ) : <span className="text-medium-gray">Unassigned</span>}
+                      {p.therapist_name
+                        ? <div><p className="font-medium text-charcoal">{p.therapist_name}</p><p className="text-xs text-medium-gray">{p.therapist_email}</p></div>
+                        : <span className="text-medium-gray">Unassigned</span>}
                     </td>
                     <td className="px-5 py-3 text-medium-gray text-sm whitespace-nowrap">
                       {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className="text-xs text-medium-gray bg-soft-taupe/30 px-2 py-1 rounded-lg">View</span>
                     </td>
                   </tr>
                 ))}
