@@ -9,17 +9,15 @@ import PatientDocuments from './PatientDocuments';
 import PatientReminders from './PatientReminders';
 import PatientMoodTracker from './PatientMoodTracker';
 import CarePartnerCheckin from './CarePartnerCheckin';
-import PatientCareTeam from './PatientCareTeam';
-import MediaUploader from '@/components/MediaUploader';
 import {
   LayoutDashboard, Calendar, Pill, FileText, Bell,
   Heart, Smile, Users, MoreHorizontal, ChevronLeft,
-  ChevronRight, Volume2, VolumeX, Sun, Moon, LogOut, ClipboardList, UserCheck, Film,
+  ChevronRight, Volume2, VolumeX, Sun, Moon, LogOut, ClipboardList,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
-type PatientView = 'dashboard' | 'medications' | 'routines' | 'memories' | 'mood' | 'documents' | 'reminders' | 'checkin' | 'careteam' | 'media';
+type PatientView = 'dashboard' | 'medications' | 'routines' | 'memories' | 'mood' | 'documents' | 'reminders' | 'checkin';
 
 export default function PatientLayout() {
   const [currentView, setCurrentView]           = useState<PatientView>('dashboard');
@@ -33,9 +31,9 @@ export default function PatientLayout() {
   const hour = new Date().getHours();
   const isSundowningTime = hour >= 16 && hour <= 19;
   const isEvening = hour >= 19;
-  const [simplifiedMode, setSimplifiedMode] = useState(isSundowningTime);
+  const [simplifiedMode, setSimplifiedMode] = useState(false); // Never auto-hide sidebar
 
-  useEffect(() => { setSimplifiedMode(isSundowningTime); }, [hour]);
+  // Simplified mode is only activated manually via the sundowning banner button
 
   // ── Load real patient data from Supabase ────────────────────────────────────
   useEffect(() => { loadPatientData(); }, []);
@@ -112,14 +110,12 @@ export default function PatientLayout() {
     { id: 'mood'      as PatientView, label: 'How I Feel', icon: Smile },
     { id: 'reminders' as PatientView, label: 'Reminders',   icon: Bell },
     { id: 'checkin'   as PatientView, label: 'Daily Check-In', icon: ClipboardList },
-    { id: 'careteam'  as PatientView, label: 'My Care Team',   icon: UserCheck },
   ];
 
   const moreNavItems = [
     { id: 'medications' as PatientView, label: 'Medications', icon: Pill },
     { id: 'routines'    as PatientView, label: 'My Day',      icon: Calendar },
     { id: 'documents'   as PatientView, label: 'Papers',      icon: FileText },
-    { id: 'media'       as PatientView, label: 'Videos & Media', icon: Film },
   ];
 
   const allNavItems = [...navItems, ...moreNavItems];
@@ -134,8 +130,6 @@ export default function PatientLayout() {
       case 'documents':   return <PatientDocuments />;
       case 'reminders':   return <PatientReminders />;
       case 'checkin':     return <CarePartnerCheckin />;
-      case 'careteam':    return <PatientCareTeam />;
-      case 'media':       return <MediaUploader readOnly={false} patientId={state.currentUser?.id} patientName={state.patient?.preferredName || state.patient?.firstName} />;
       default:            return <PatientHome />;
     }
   };
@@ -313,6 +307,17 @@ export default function PatientLayout() {
                 {isPlaying ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
               </button>
             )}
+            {/* Simplified view toggle */}
+            <button onClick={() => setSimplifiedMode(!simplifiedMode)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-colors text-sm font-medium ${
+                simplifiedMode
+                  ? 'bg-warm-bronze text-white'
+                  : 'bg-soft-taupe/30 hover:bg-soft-taupe text-charcoal'
+              }`}>
+              <span className="text-base">{simplifiedMode ? '⊞' : '⊟'}</span>
+              <span className="hidden sm:inline">{simplifiedMode ? 'Full View' : 'Simple View'}</span>
+            </button>
+
             {/* Logout button always visible in header */}
             <button onClick={handleLogout}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-gentle-coral/10 hover:bg-gentle-coral hover:text-white text-gentle-coral rounded-xl transition-colors text-sm font-medium">

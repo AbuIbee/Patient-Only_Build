@@ -73,6 +73,18 @@ function AppContent() {
           dispatch({ type: 'LOGOUT' });
           setShowPasswordReset(false);
           setForcedChange(false);
+          // Clear any saved credentials from browser storage
+          try {
+            const keys = Object.keys(localStorage).filter(k =>
+              k.includes('supabase') || k.includes('sb-') || k.includes('auth')
+            );
+            // Only clear auth tokens, not the entire storage
+            keys.forEach(k => {
+              if (k.includes('token') || k.includes('session') || k.includes('refresh')) {
+                localStorage.removeItem(k);
+              }
+            });
+          } catch { /* ignore */ }
         }
         // User clicked password reset/invitation email link
         if (event === 'PASSWORD_RECOVERY') {

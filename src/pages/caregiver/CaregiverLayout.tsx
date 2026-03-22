@@ -140,7 +140,8 @@ export default function CaregiverLayout() {
         const patients = await getCaregiverPatients();
         if (patients.length > 0) {
           dispatch({ type: 'SET_PATIENTS', payload: patients });
-          dispatch({ type: 'SELECT_PATIENT', payload: patients[0].patient.id });
+          // Do NOT auto-select a patient — open on All Patients dashboard
+          dispatch({ type: 'SELECT_PATIENT', payload: null });
           setHasRealPatients(true);
         }
         // else: stay on empty state, user chooses demo or add patient
@@ -209,7 +210,7 @@ export default function CaregiverLayout() {
     setCurrentView('dashboard');
   };
 
-  const handleLogout = () => dispatch({ type: 'LOGOUT' });
+  const handleLogout = async () => { await supabase.auth.signOut(); dispatch({ type: 'LOGOUT' }); };
   const selectedPatientAlerts = selectedPatient?.alerts.filter(a => !a.isRead).length || 0;
 
   // ── Loading ──

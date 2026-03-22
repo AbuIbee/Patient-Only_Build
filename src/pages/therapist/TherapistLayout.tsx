@@ -48,7 +48,7 @@ export default function TherapistLayout() {
     }
   };
 
-  const handleLogout = () => dispatch({ type: 'LOGOUT' });
+  const handleLogout = async () => { await supabase.auth.signOut(); dispatch({ type: 'LOGOUT' }); };
 
   const navItems = [
     { id: 'dashboard' as TherapistView, label: 'Dashboard',           icon: LayoutDashboard },
