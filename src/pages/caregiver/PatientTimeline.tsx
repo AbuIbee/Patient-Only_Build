@@ -36,12 +36,6 @@ export default function PatientTimeline() {
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState<Note['noteType']>('general');
 
-useEffect(() => {
-  if (selectedPatient?.patient.id) {
-    loadNotes();
-  }
-}, [selectedPatient?.patient.id, loadNotes]);
-
   const loadNotes = async () => {
     if (!selectedPatient?.patient.id) return;
     
@@ -56,6 +50,12 @@ useEffect(() => {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (selectedPatient?.patient.id) {
+      loadNotes();
+    }
+  }, [selectedPatient?.patient.id]);
 
   const handleAddNote = async () => {
     if (!newNote.trim() || !selectedPatient?.patient.id || !state.currentUser) {

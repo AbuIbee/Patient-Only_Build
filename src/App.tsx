@@ -6,6 +6,7 @@ import PatientLayout from '@/pages/patient/PatientLayout';
 import CaregiverLayout from '@/pages/caregiver/CaregiverLayout';
 import TherapistLayout from '@/pages/therapist/TherapistLayout';
 import AdminLayout from '@/pages/admin/AdminLayout';
+import SuperAdminLayout from '@/pages/admin/SuperAdminLayout';
 import { Toaster } from '@/components/ui/sonner';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -135,6 +136,7 @@ function AppContent() {
       case 'caregiver': return <CaregiverLayout />;
       case 'therapist': return <TherapistLayout />;
       case 'admin':     return <AdminLayout />;
+      case 'superadmin': return <SuperAdminLayout />;
       default:          return <LandingPage />;
     }
   };
