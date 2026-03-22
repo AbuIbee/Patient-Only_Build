@@ -15,9 +15,9 @@ import './App.css';
 
 function AppContent() {
   const { state, dispatch } = useApp();
-  const [checkingSession,  setCheckingSession]  = useState(true);
-  const [showPasswordReset, setShowPasswordReset] = useState(false); // email link flow
-  const [forcedChange,      setForcedChange]      = useState(false); // temp password flow
+  const [checkingSession,   setCheckingSession]   = useState(true);
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [forcedChange,      setForcedChange]      = useState(false);
   const [currentUserEmail,  setCurrentUserEmail]  = useState('');
 
   const restoreUser = (profile: any) => {
@@ -32,6 +32,7 @@ function AppContent() {
     dispatch({ type: 'SET_AUTHENTICATED', payload: true });
   };
 
+  // ── Session restore + auth listener ──────────────────────────────────────
   useEffect(() => {
     const restoreSession = async () => {
       try {
@@ -40,11 +41,9 @@ function AppContent() {
           const { data: profile } = await supabase
             .from('profiles').select('*').eq('id', session.user.id).maybeSingle();
           if (profile) {
-            // Intercept if admin/caregiver set a temp password
             if (profile.must_change_password) {
               setCurrentUserEmail(profile.email || '');
               setForcedChange(true);
-              // Set user in state so updateUser works in ResetPasswordPage
               dispatch({ type: 'SET_USER', payload: {
                 id: profile.id, email: profile.email,
                 firstName: profile.first_name, lastName: profile.last_name,
@@ -68,25 +67,20 @@ function AppContent() {
     restoreSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (event, _session) => {
         if (event === 'SIGNED_OUT') {
           dispatch({ type: 'LOGOUT' });
           setShowPasswordReset(false);
           setForcedChange(false);
-          // Clear any saved credentials from browser storage
           try {
-            const keys = Object.keys(localStorage).filter(k =>
-              k.includes('supabase') || k.includes('sb-') || k.includes('auth')
-            );
-            // Only clear auth tokens, not the entire storage
-            keys.forEach(k => {
-              if (k.includes('token') || k.includes('session') || k.includes('refresh')) {
-                localStorage.removeItem(k);
-              }
-            });
+            Object.keys(localStorage)
+              .filter(k => k.includes('supabase') || k.includes('sb-') || k.includes('auth'))
+              .forEach(k => {
+                if (k.includes('token') || k.includes('session') || k.includes('refresh'))
+                  localStorage.removeItem(k);
+              });
           } catch { /* ignore */ }
         }
-        // User clicked password reset/invitation email link
         if (event === 'PASSWORD_RECOVERY') {
           setShowPasswordReset(true);
           setForcedChange(false);
@@ -95,6 +89,27 @@ function AppContent() {
       }
     );
     return () => subscription.unsubscribe();
+  }, [dispatch]);
+
+  // ── Browser history — push state so back button works ────────────────────
+  useEffect(() => {
+    if (state.isAuthenticated && state.selectedRole) {
+      window.history.pushState({ role: state.selectedRole }, '', '/' + state.selectedRole);
+    } else if (!state.isAuthenticated) {
+      window.history.replaceState({}, '', '/');
+    }
+  }, [state.isAuthenticated, state.selectedRole]);
+
+  // ── Browser back button — log out ─────────────────────────────────────────
+  useEffect(() => {
+    const handlePop = () => {
+      if (!window.history.state?.role) {
+        supabase.auth.signOut();
+        dispatch({ type: 'LOGOUT' });
+      }
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
   }, [dispatch]);
 
   const handlePasswordSet = async () => {
@@ -108,6 +123,7 @@ function AppContent() {
     }
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
   if (checkingSession) {
     return (
       <div className="min-h-screen bg-warm-ivory flex items-center justify-center">
@@ -119,7 +135,6 @@ function AppContent() {
     );
   }
 
-  // Forced change — user logged in with a temp password set by admin/caregiver
   if (forcedChange) {
     return (
       <div className="min-h-screen bg-warm-ivory">
@@ -129,7 +144,6 @@ function AppContent() {
     );
   }
 
-  // Email link reset flow
   if (showPasswordReset) {
     return (
       <div className="min-h-screen bg-warm-ivory">
@@ -139,38 +153,17 @@ function AppContent() {
     );
   }
 
-  // Push history entry when role changes so browser back button works
-  useEffect(() => {
-    if (state.isAuthenticated && state.selectedRole) {
-      window.history.pushState({ role: state.selectedRole }, '', '/' + state.selectedRole);
-    } else if (!state.isAuthenticated) {
-      window.history.replaceState({}, '', '/');
-    }
-  }, [state.isAuthenticated, state.selectedRole]);
-
-  // Handle browser back button — log out and return to landing
-  useEffect(() => {
-    const handlePop = () => {
-      if (!window.history.state?.role) {
-        supabase.auth.signOut();
-        dispatch({ type: 'LOGOUT' });
-      }
-    };
-    window.addEventListener('popstate', handlePop);
-    return () => window.removeEventListener('popstate', handlePop);
-  }, [dispatch]);
-
   const renderContent = () => {
     if (!state.isAuthenticated) {
       return state.currentView === 'login' ? <LoginPage /> : <LandingPage />;
     }
     switch (state.selectedRole) {
-      case 'patient':   return <PatientLayout />;
-      case 'caregiver': return <CaregiverLayout />;
-      case 'therapist': return <TherapistLayout />;
-      case 'admin':     return <AdminLayout />;
+      case 'patient':    return <PatientLayout />;
+      case 'caregiver':  return <CaregiverLayout />;
+      case 'therapist':  return <TherapistLayout />;
+      case 'admin':      return <AdminLayout />;
       case 'superadmin': return <SuperAdminLayout />;
-      default:          return <LandingPage />;
+      default:           return <LandingPage />;
     }
   };
 
