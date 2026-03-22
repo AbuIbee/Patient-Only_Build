@@ -1,232 +1,182 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { Search, User, Calendar, Stethoscope } from 'lucide-react';
 
-interface PatientWithDetails {
+interface PatientRow {
   id: string;
+  email: string;
   first_name: string;
   last_name: string;
-  full_name: string;
   preferred_name: string | null;
-  email: string;
-  diagnosis: string | null;
   dementia_stage: string | null;
-  date_of_birth: string | null;
   created_at: string;
-  caregiver?: {
-    id: string;
-    full_name: string;
-    email: string;
-  };
-}
-
-interface CaregiverOption {
-  id: string;
-  full_name: string;
-  email: string;
+  caregiver_email?: string;
+  caregiver_name?: string;
 }
 
 export function AdminPatients() {
-  const [patients, setPatients] = useState<PatientWithDetails[]>([]);
-  const [caregivers, setCaregivers] = useState<CaregiverOption[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [patients,   setPatients]   = useState<PatientRow[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [search,     setSearch]     = useState('');
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadPatients(); }, []);
 
-  const loadData = async () => {
+  const loadPatients = async () => {
+    setLoading(true);
     try {
-      // Load all patients with their profile data and caregiver relationships
-      const { data: patientsData, error: patientsError } = await supabase
-        .from('patients')
-        .select(`
-          id,
-          preferred_name,
-          diagnosis,
-          dementia_stage,
-          date_of_birth,
-          created_at,
-          profiles!inner(
-            email,
-            first_name,
-            last_name
-          ),
-          caregiver_patients(
-            caregiver:profiles!caregiver_patients_caregiver_id_fkey(
-              id,
-              first_name,
-              last_name,
-              email
-            )
-          )
-        `)
+      // Step 1: Get all patient profiles
+      const { data: profiles, error } = await supabase
+        .from('profiles')
+        .select('id, email, first_name, last_name, created_at')
+        .eq('role', 'patient')
         .order('created_at', { ascending: false });
 
-      if (patientsError) throw patientsError;
+      if (error) throw error;
 
-      // Format patients data
-      const formattedPatients = (patientsData || []).map(p => ({
-        id: p.id,
-        first_name: p.profiles.first_name,
-        last_name: p.profiles.last_name,
-        full_name: `${p.profiles.first_name} ${p.profiles.last_name}`,
-        email: p.profiles.email,
-        preferred_name: p.preferred_name,
-        diagnosis: p.diagnosis,
-        dementia_stage: p.dementia_stage,
-        date_of_birth: p.date_of_birth,
-        created_at: p.created_at,
-        caregiver: p.caregiver_patients?.[0]?.caregiver ? {
-          id: p.caregiver_patients[0].caregiver.id,
-          full_name: `${p.caregiver_patients[0].caregiver.first_name} ${p.caregiver_patients[0].caregiver.last_name}`,
-          email: p.caregiver_patients[0].caregiver.email
-        } : undefined
-      }));
+      // Step 2: Get patient records for stage/preferred name
+      const patientIds = (profiles || []).map((p: any) => p.id);
+      const { data: patientRows } = patientIds.length > 0
+        ? await supabase.from('patients').select('id, preferred_name, dementia_stage').in('id', patientIds)
+        : { data: [] };
 
-      // Load all caregivers (profiles with role = 'caregiver')
-      const { data: caregiversData, error: caregiversError } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name, email')
-        .eq('role', 'caregiver')
-        .order('last_name');
+      const patientMap: Record<string, any> = {};
+      (patientRows || []).forEach((p: any) => { patientMap[p.id] = p; });
 
-      if (caregiversError) throw caregiversError;
+      // Step 3: Get caregiver links
+      const { data: links } = patientIds.length > 0
+        ? await supabase.from('caregiver_patients')
+            .select('patient_id, caregiver_id')
+            .in('patient_id', patientIds)
+            .eq('is_primary', true)
+        : { data: [] };
 
-      const formattedCaregivers = (caregiversData || []).map(c => ({
-        id: c.id,
-        full_name: `${c.first_name} ${c.last_name}`,
-        email: c.email
-      }));
+      const caregiverIds = [...new Set((links || []).map((l: any) => l.caregiver_id))];
+      const { data: caregivers } = caregiverIds.length > 0
+        ? await supabase.from('profiles')
+            .select('id, first_name, last_name, email')
+            .in('id', caregiverIds)
+        : { data: [] };
 
-      setPatients(formattedPatients);
-      setCaregivers(formattedCaregivers);
-    } catch (error) {
-      console.error('Error loading data:', error);
+      const caregiverMap: Record<string, any> = {};
+      (caregivers || []).forEach((c: any) => { caregiverMap[c.id] = c; });
+
+      const linkMap: Record<string, string> = {};
+      (links || []).forEach((l: any) => { linkMap[l.patient_id] = l.caregiver_id; });
+
+      const rows: PatientRow[] = (profiles || []).map((p: any) => {
+        const caregiverId = linkMap[p.id];
+        const caregiver   = caregiverId ? caregiverMap[caregiverId] : null;
+        const patRow      = patientMap[p.id];
+        return {
+          id:             p.id,
+          email:          p.email,
+          first_name:     p.first_name,
+          last_name:      p.last_name,
+          preferred_name: patRow?.preferred_name || null,
+          dementia_stage: patRow?.dementia_stage || null,
+          created_at:     p.created_at,
+          caregiver_email: caregiver?.email,
+          caregiver_name:  caregiver ? `${caregiver.first_name} ${caregiver.last_name}` : undefined,
+        };
+      });
+
+      setPatients(rows);
+    } catch (err: any) {
+      console.error('AdminPatients error:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const reassignPatient = async (patientId: string, newCaregiverId: string) => {
-    try {
-      // Check if there's an existing caregiver_patients record
-      const { data: existing } = await supabase
-        .from('caregiver_patients')
-        .select('id')
-        .eq('patient_id', patientId)
-        .maybeSingle();
+  const filtered = patients.filter(p =>
+    `${p.first_name} ${p.last_name} ${p.email}`.toLowerCase().includes(search.toLowerCase())
+  );
 
-      if (existing) {
-        // Update existing relationship
-        const { error } = await supabase
-          .from('caregiver_patients')
-          .update({ caregiver_id: newCaregiverId })
-          .eq('patient_id', patientId);
-
-        if (error) throw error;
-      } else if (newCaregiverId) {
-        // Create new relationship
-        const { error } = await supabase
-          .from('caregiver_patients')
-          .insert({
-            caregiver_id: newCaregiverId,
-            patient_id: patientId,
-            is_primary: true
-          });
-
-        if (error) throw error;
-      }
-
-      // Reload data
-      await loadData();
-    } catch (error: any) {
-      alert('Error reassigning patient: ' + error.message);
-    }
+  const stageColor = (stage: string | null) => {
+    if (stage === 'early')  return 'bg-green-100 text-green-700';
+    if (stage === 'middle') return 'bg-amber-100 text-amber-700';
+    if (stage === 'late')   return 'bg-gentle-coral/10 text-gentle-coral';
+    return 'bg-soft-taupe text-medium-gray';
   };
 
-  const deletePatient = async (patientId: string) => {
-    if (!confirm('Permanently delete this patient and all their data? This action cannot be undone.')) return;
-
-    try {
-      // Delete profile (cascades to patients and all related tables)
-      const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', patientId);
-
-      if (error) throw error;
-      
-      // Reload data
-      await loadData();
-    } catch (error: any) {
-      alert('Error deleting patient: ' + error.message);
-    }
-  };
-
-  if (loading) return <div className="p-8 text-center">Loading...</div>;
+  if (loading) return (
+    <div className="flex justify-center py-20">
+      <div className="w-10 h-10 border-4 border-warm-bronze border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-charcoal">All Patients (System Wide)</h2>
-      
-      <div className="bg-white rounded-xl shadow-soft p-6 overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-soft-taupe/20">
-            <tr>
-              <th className="px-4 py-3 text-left text-sm font-medium text-charcoal">Patient</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-charcoal">Email</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-charcoal">Preferred Name</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-charcoal">Stage</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-charcoal">Assigned Caregiver</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-charcoal">Created</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-charcoal">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-soft-taupe/30">
-            {patients.map(patient => (
-              <tr key={patient.id} className="hover:bg-soft-taupe/10">
-                <td className="px-4 py-3">
-                  <div className="font-medium text-charcoal">{patient.full_name}</div>
-                </td>
-                <td className="px-4 py-3 text-medium-gray">{patient.email}</td>
-                <td className="px-4 py-3 text-medium-gray">{patient.preferred_name || '-'}</td>
-                <td className="px-4 py-3">
-                  <span className="px-2 py-1 bg-soft-taupe/20 rounded-full text-xs capitalize">
-                    {patient.dementia_stage || 'Unknown'}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <select
-                    value={patient.caregiver?.id || ''}
-                    onChange={(e) => reassignPatient(patient.id, e.target.value)}
-                    className="px-2 py-1 border border-soft-taupe rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze"
-                  >
-                    <option value="">Unassigned</option>
-                    {caregivers.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.full_name}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td className="px-4 py-3 text-medium-gray text-sm">
-                  {new Date(patient.created_at).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-3">
-                  <button 
-                    onClick={() => deletePatient(patient.id)}
-                    className="px-3 py-1 bg-gentle-coral/10 text-gentle-coral rounded-lg hover:bg-gentle-coral/20 transition-colors text-sm"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-charcoal">All Patients (System Wide)</h2>
+          <p className="text-medium-gray text-sm mt-1">{patients.length} total patients across all caregivers</p>
+        </div>
+      </div>
 
-        {patients.length === 0 && (
-          <p className="text-center text-medium-gray py-8">No patients found</p>
+      <div className="relative">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-medium-gray" />
+        <input type="text" placeholder="Search by name or email..."
+          value={search} onChange={e => setSearch(e.target.value)}
+          className="w-full pl-11 pr-4 py-3 border border-soft-taupe rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze bg-white" />
+      </div>
+
+      <div className="bg-white rounded-2xl border border-soft-taupe shadow-sm overflow-hidden">
+        {filtered.length === 0 ? (
+          <div className="text-center py-12 text-medium-gray">
+            <User className="w-12 h-12 mx-auto mb-3 text-soft-taupe" />
+            <p className="font-medium">No patients found</p>
+            <p className="text-sm mt-1">Patients are created by caregivers through the Add Patient form</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-soft-taupe/20">
+                <tr>
+                  {['Patient', 'Email', 'Preferred Name', 'Stage', 'Assigned Caregiver', 'Created', 'Actions'].map(h => (
+                    <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-medium-gray uppercase tracking-wide whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-soft-taupe/30">
+                {filtered.map(p => (
+                  <tr key={p.id} className="hover:bg-soft-taupe/10 transition-colors">
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-soft-sage/20 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-green-700 font-semibold text-sm">{p.first_name?.[0]}{p.last_name?.[0]}</span>
+                        </div>
+                        <span className="font-medium text-charcoal text-sm">{p.first_name} {p.last_name}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-medium-gray text-sm">{p.email}</td>
+                    <td className="px-5 py-3 text-medium-gray text-sm">{p.preferred_name || '—'}</td>
+                    <td className="px-5 py-3">
+                      {p.dementia_stage ? (
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${stageColor(p.dementia_stage)}`}>
+                          {p.dementia_stage}
+                        </span>
+                      ) : <span className="text-medium-gray text-sm">—</span>}
+                    </td>
+                    <td className="px-5 py-3 text-sm">
+                      {p.caregiver_name ? (
+                        <div>
+                          <p className="font-medium text-charcoal">{p.caregiver_name}</p>
+                          <p className="text-xs text-medium-gray">{p.caregiver_email}</p>
+                        </div>
+                      ) : <span className="text-medium-gray">Unassigned</span>}
+                    </td>
+                    <td className="px-5 py-3 text-medium-gray text-sm whitespace-nowrap">
+                      {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </td>
+                    <td className="px-5 py-3">
+                      <span className="text-xs text-medium-gray bg-soft-taupe/30 px-2 py-1 rounded-lg">View</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

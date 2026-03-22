@@ -117,7 +117,7 @@ export async function createPatient(
     first_name: patientData.firstName || '',
     last_name:  patientData.lastName  || '',
     role: 'patient', phone: patientData.phone || null,
-    must_change_password: false,
+    must_change_password: true,  // Forces patient to set their own password on first login
   });
   if (profileError) throw new Error(`Failed to create profile: ${profileError.message}`);
 

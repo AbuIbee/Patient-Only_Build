@@ -14,9 +14,22 @@ import './App.css';
 
 function AppContent() {
   const { state, dispatch } = useApp();
-  const [checkingSession, setCheckingSession] = useState(true);
-  // When Supabase fires PASSWORD_RECOVERY, show the reset password page
-  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [checkingSession,  setCheckingSession]  = useState(true);
+  const [showPasswordReset, setShowPasswordReset] = useState(false); // email link flow
+  const [forcedChange,      setForcedChange]      = useState(false); // temp password flow
+  const [currentUserEmail,  setCurrentUserEmail]  = useState('');
+
+  const restoreUser = (profile: any) => {
+    dispatch({ type: 'SET_USER', payload: {
+      id: profile.id, email: profile.email,
+      firstName: profile.first_name, lastName: profile.last_name,
+      role: profile.role as UserRole,
+      phone: profile.phone || undefined,
+      createdAt: profile.created_at, updatedAt: profile.updated_at,
+    }});
+    dispatch({ type: 'SET_ROLE',          payload: profile.role as UserRole });
+    dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+  };
 
   useEffect(() => {
     const restoreSession = async () => {
@@ -24,27 +37,24 @@ function AppContent() {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle();
-
+            .from('profiles').select('*').eq('id', session.user.id).maybeSingle();
           if (profile) {
-            dispatch({
-              type: 'SET_USER',
-              payload: {
-                id:        profile.id,
-                email:     profile.email,
-                firstName: profile.first_name,
-                lastName:  profile.last_name,
-                role:      profile.role as UserRole,
-                phone:     profile.phone || undefined,
-                createdAt: profile.created_at,
-                updatedAt: profile.updated_at,
-              },
-            });
-            dispatch({ type: 'SET_ROLE',          payload: profile.role as UserRole });
-            dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+            // Intercept if admin/caregiver set a temp password
+            if (profile.must_change_password) {
+              setCurrentUserEmail(profile.email || '');
+              setForcedChange(true);
+              // Set user in state so updateUser works in ResetPasswordPage
+              dispatch({ type: 'SET_USER', payload: {
+                id: profile.id, email: profile.email,
+                firstName: profile.first_name, lastName: profile.last_name,
+                role: profile.role as UserRole,
+                phone: profile.phone || undefined,
+                createdAt: profile.created_at, updatedAt: profile.updated_at,
+              }});
+              setCheckingSession(false);
+              return;
+            }
+            restoreUser(profile);
           }
         }
       } catch (err) {
@@ -61,51 +71,29 @@ function AppContent() {
         if (event === 'SIGNED_OUT') {
           dispatch({ type: 'LOGOUT' });
           setShowPasswordReset(false);
+          setForcedChange(false);
         }
-
-        // ── PASSWORD_RECOVERY ─────────────────────────────────────────────
-        // Fired when the user clicks the reset/invitation link in their email.
-        // Show the set-password page instead of the landing page.
+        // User clicked password reset/invitation email link
         if (event === 'PASSWORD_RECOVERY') {
           setShowPasswordReset(true);
-          setCheckingSession(false);
-        }
-
-        // ── SIGNED_IN after password reset ────────────────────────────────
-        // Once the user sets their new password and Supabase signs them in,
-        // load their profile and route them to their portal.
-        if (event === 'SIGNED_IN' && session?.user && showPasswordReset) {
-          setShowPasswordReset(false);
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle();
-
-          if (profile) {
-            dispatch({
-              type: 'SET_USER',
-              payload: {
-                id:        profile.id,
-                email:     profile.email,
-                firstName: profile.first_name,
-                lastName:  profile.last_name,
-                role:      profile.role as UserRole,
-                phone:     profile.phone || undefined,
-                createdAt: profile.created_at,
-                updatedAt: profile.updated_at,
-              },
-            });
-            dispatch({ type: 'SET_ROLE',          payload: profile.role as UserRole });
-            dispatch({ type: 'SET_AUTHENTICATED', payload: true });
-          }
+          setForcedChange(false);
           setCheckingSession(false);
         }
       }
     );
-
     return () => subscription.unsubscribe();
-  }, [dispatch, showPasswordReset]);
+  }, [dispatch]);
+
+  const handlePasswordSet = async () => {
+    setShowPasswordReset(false);
+    setForcedChange(false);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      const { data: profile } = await supabase
+        .from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+      if (profile) restoreUser(profile);
+    }
+  };
 
   if (checkingSession) {
     return (
@@ -118,11 +106,21 @@ function AppContent() {
     );
   }
 
-  // Show password reset/set page when user clicks email link
+  // Forced change — user logged in with a temp password set by admin/caregiver
+  if (forcedChange) {
+    return (
+      <div className="min-h-screen bg-warm-ivory">
+        <ResetPasswordPage forced={true} userEmail={currentUserEmail} onComplete={handlePasswordSet} />
+        <Toaster position="top-center" />
+      </div>
+    );
+  }
+
+  // Email link reset flow
   if (showPasswordReset) {
     return (
       <div className="min-h-screen bg-warm-ivory">
-        <ResetPasswordPage onComplete={() => setShowPasswordReset(false)} />
+        <ResetPasswordPage forced={false} userEmail={currentUserEmail} onComplete={handlePasswordSet} />
         <Toaster position="top-center" />
       </div>
     );

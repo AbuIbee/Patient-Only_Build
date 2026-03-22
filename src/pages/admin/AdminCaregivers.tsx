@@ -124,7 +124,7 @@ function AddUserModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
         throw error;
       }
       if (!data.user) throw new Error('No user returned');
-      await supabase.from('profiles').upsert({ id: data.user.id, email: form.email.trim().toLowerCase(), first_name: form.firstName.trim(), last_name: form.lastName.trim(), role: form.role, phone: form.phone.trim() || null, must_change_password: false });
+      await supabase.from('profiles').upsert({ id: data.user.id, email: form.email.trim().toLowerCase(), first_name: form.firstName.trim(), last_name: form.lastName.trim(), role: form.role, phone: form.phone.trim() || null, must_change_password: true });  // Forces new user to set their own password on first login
       toast.success(`${form.firstName} ${form.lastName} added as ${form.role}`);
       onAdded(); onClose();
     } catch (err: any) {

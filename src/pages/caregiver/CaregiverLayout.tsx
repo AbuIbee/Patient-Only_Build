@@ -15,18 +15,19 @@ import CaregiverCrisisPrevention from './CaregiverCrisisPrevention';
 import MultiPatientDashboard from './MultiPatientDashboard';
 import AddPatientPage from './AddPatientPage';
 import PatientTimeline from './PatientTimeline';
+import MediaUploader from '@/components/MediaUploader';
 import {
   LayoutDashboard, Pill, Calendar, Heart, BookOpen, FileText,
   Bell, AlertTriangle, User, LogOut, ChevronLeft, ChevronRight,
   ChevronDown, Users, Plus, Clock, FlaskConical, UserPlus,
-  Sparkles, X,
+  Sparkles, X, Film,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
 type CaregiverView =
   | 'dashboard' | 'medications' | 'routines' | 'memories' | 'mood'
-  | 'documents' | 'reminders' | 'crisis' | 'timeline' | 'addPatient' | 'myportal';
+  | 'documents' | 'reminders' | 'crisis' | 'timeline' | 'addPatient' | 'myportal' | 'media';
 
 // ── Empty State ──────────────────────────────────────────────────────────────
 function EmptyState({ onAddPatient, onEnterDemo, onLogout, onRefresh }: {
@@ -198,6 +199,7 @@ export default function CaregiverLayout() {
     { id: 'reminders'   as CaregiverView, label: 'Reminders',         icon: Bell },
     { id: 'crisis'      as CaregiverView, label: 'Crisis Prevention', icon: AlertTriangle },
     { id: 'timeline'    as CaregiverView, label: 'Timeline',          icon: Clock },
+    { id: 'media'       as CaregiverView, label: 'Videos & Media',    icon: Film },
     { id: 'myportal'    as CaregiverView, label: 'My Portal',         icon: User },
   ];
 
@@ -254,6 +256,7 @@ export default function CaregiverLayout() {
       case 'reminders':   return <CaregiverReminders />;
       case 'crisis':      return <CaregiverCrisisPrevention />;
       case 'timeline':    return <PatientTimeline />;
+      case 'media':       return <MediaUploader />;
       case 'myportal':    return <CaregiverProfile />;
       default:            return <MultiPatientDashboard onSelectPatient={handlePatientSelect} onAddPatient={() => setCurrentView('addPatient')} />;
     }

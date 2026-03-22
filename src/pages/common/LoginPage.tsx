@@ -131,6 +131,13 @@ export default function LoginPage() {
           },
         });
         dispatch({ type: 'SET_ROLE', payload: dbRole });
+
+        // If a temp password was set by admin/caregiver, force them to change it
+        // App.tsx restoreSession will detect must_change_password and show ResetPasswordPage
+        if (profile.must_change_password) {
+          setTimeout(() => window.location.reload(), 200);
+          return;
+        }
       }
 
       dispatch({ type: 'SET_AUTHENTICATED', payload: true });
@@ -200,7 +207,7 @@ export default function LoginPage() {
     { id: 'patient'   as UserRole, label: 'I am a Patient',   icon: User,        description: 'Access your daily routine and memories', color: 'bg-soft-sage'   },
     { id: 'caregiver' as UserRole, label: 'I am a Caregiver', icon: UserCircle,   description: 'Manage care and monitor wellbeing',       color: 'bg-warm-bronze' },
     { id: 'therapist' as UserRole, label: 'I am a Therapist', icon: Stethoscope,  description: 'Clinical tools and patient insights',     color: 'bg-calm-blue'   },
-    { id: 'admin'     as UserRole, label: 'Admin',             icon: ShieldCheck,  description: 'System administration and oversight',    color: 'bg-deep-bronze' },
+   // { id: 'admin'     as UserRole, label: 'Admin',             icon: ShieldCheck,  description: 'System administration and oversight',    color: 'bg-deep-bronze' },
   ];
 
   const roleLabel = selectedRole === 'patient' ? 'Patient' : selectedRole === 'caregiver' ? 'Caregiver' : selectedRole === 'therapist' ? 'Therapist' : 'Admin';
