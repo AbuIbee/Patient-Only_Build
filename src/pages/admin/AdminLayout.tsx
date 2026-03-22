@@ -8,7 +8,7 @@ import { AdminAudit } from './AdminAudit';
 import { AdminPendingApprovals } from './AdminPendingApprovals';
 import {
   LayoutDashboard, Users, UserCheck, FileText,
-  Bell, LogOut, Heart, Clock, Stethoscope, ShieldCheck,
+  Bell, LogOut, Heart, Clock, Stethoscope, ShieldCheck, Plus, Eye, EyeOff,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -59,10 +59,114 @@ function UserDetailPanel({ user, onClose }: { user: any; onClose: () => void }) 
   );
 }
 
+function AddUserModal({ role, onClose, onAdded }: { role: string; onClose: () => void; onAdded: () => void }) {
+  const [form, setForm]       = useState({ firstName: '', lastName: '', email: '', password: '' });
+  const [saving, setSaving]   = useState(false);
+  const [showPass, setShowPass] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.firstName || !form.lastName || !form.email || !form.password) {
+      alert('All fields are required'); return;
+    }
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: form.email.trim().toLowerCase(),
+        password: form.password,
+        options: { data: { first_name: form.firstName, last_name: form.lastName, role } },
+      });
+      if (error) throw error;
+      if (!data.user) throw new Error('No user returned');
+      await supabase.from('profiles').upsert({
+        id: data.user.id,
+        email: form.email.trim().toLowerCase(),
+        first_name: form.firstName.trim(),
+        last_name: form.lastName.trim(),
+        role,
+        must_change_password: true,
+      });
+      onAdded();
+      onClose();
+    } catch (err: any) {
+      alert('Failed: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const roleName = role.charAt(0).toUpperCase() + role.slice(1);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-charcoal text-lg">Add {roleName}</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-soft-taupe text-medium-gray text-xl font-bold transition-colors">×</button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-charcoal mb-1 block">First Name *</label>
+              <input value={form.firstName} onChange={e => setForm(p => ({...p, firstName: e.target.value}))}
+                placeholder="Jane"
+                className="w-full px-3 py-2.5 border border-soft-taupe rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-charcoal mb-1 block">Last Name *</label>
+              <input value={form.lastName} onChange={e => setForm(p => ({...p, lastName: e.target.value}))}
+                placeholder="Smith"
+                className="w-full px-3 py-2.5 border border-soft-taupe rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-charcoal mb-1 block">Email *</label>
+            <input type="email" value={form.email} onChange={e => setForm(p => ({...p, email: e.target.value}))}
+              placeholder="jane@example.com"
+              className="w-full px-3 py-2.5 border border-soft-taupe rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-charcoal mb-1 block">Temporary Password *</label>
+            <div className="relative">
+              <input type={showPass ? 'text' : 'password'} value={form.password}
+                onChange={e => setForm(p => ({...p, password: e.target.value}))}
+                placeholder="Min 8 characters"
+                className="w-full px-3 py-2.5 pr-10 border border-soft-taupe rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze" />
+              <button type="button" onClick={() => setShowPass(!showPass)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-medium-gray hover:text-charcoal">
+                {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-xs text-medium-gray mt-1">User will be required to change this on first login.</p>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 px-4 py-2.5 border border-soft-taupe rounded-xl text-sm font-medium text-charcoal hover:bg-soft-taupe/30 transition-colors">Cancel</button>
+            <button type="submit" disabled={saving}
+              className="flex-1 px-4 py-2.5 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl text-sm font-medium disabled:opacity-60 transition-colors">
+              {saving ? 'Adding...' : `Add ${roleName}`}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function RoleUserList({ role, title }: { role: string; title: string }) {
-  const [users,    setUsers]   = useState<any[]>([]);
-  const [loading,  setLoading] = useState(true);
-  const [selected, setSelected] = useState<any | null>(null);
+  const [users,      setUsers]   = useState<any[]>([]);
+  const [loading,    setLoading] = useState(true);
+  const [selected,   setSelected]   = useState<any | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  const reloadUsers = () => {
+    setLoading(true);
+    supabase.from('profiles')
+      .select('id, email, first_name, last_name, role, phone, created_at')
+      .eq('role', role)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => { setUsers(data || []); setLoading(false); });
+  };
 
   useEffect(() => {
     supabase.from('profiles')
@@ -84,8 +188,14 @@ function RoleUserList({ role, title }: { role: string; title: string }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-charcoal">{title}</h2>
-        <span className="text-sm text-medium-gray bg-soft-taupe/30 px-3 py-1 rounded-full">{users.length} total</span>
+        <div>
+          <h2 className="text-2xl font-bold text-charcoal">{title}</h2>
+          <span className="text-sm text-medium-gray">{users.length} total</span>
+        </div>
+        <button onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl text-sm font-medium transition-colors">
+          <Plus className="w-4 h-4" />Add {title.replace(/s$/, '')}
+        </button>
       </div>
       <div className="bg-white rounded-2xl border border-soft-taupe shadow-sm overflow-hidden">
         {users.length === 0 ? (
@@ -128,6 +238,7 @@ function RoleUserList({ role, title }: { role: string; title: string }) {
         )}
       </div>
       {selected && <UserDetailPanel user={selected} onClose={() => setSelected(null)} />}
+      {showAddModal && <AddUserModal role={role} onClose={() => setShowAddModal(false)} onAdded={reloadUsers} />}
     </div>
   );
 }

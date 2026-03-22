@@ -139,6 +139,27 @@ function AppContent() {
     );
   }
 
+  // Push history entry when role changes so browser back button works
+  useEffect(() => {
+    if (state.isAuthenticated && state.selectedRole) {
+      window.history.pushState({ role: state.selectedRole }, '', '/' + state.selectedRole);
+    } else if (!state.isAuthenticated) {
+      window.history.replaceState({}, '', '/');
+    }
+  }, [state.isAuthenticated, state.selectedRole]);
+
+  // Handle browser back button — log out and return to landing
+  useEffect(() => {
+    const handlePop = () => {
+      if (!window.history.state?.role) {
+        supabase.auth.signOut();
+        dispatch({ type: 'LOGOUT' });
+      }
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, [dispatch]);
+
   const renderContent = () => {
     if (!state.isAuthenticated) {
       return state.currentView === 'login' ? <LoginPage /> : <LandingPage />;

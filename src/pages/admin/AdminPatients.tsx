@@ -50,33 +50,43 @@ export function AdminPatients() {
             .eq('is_primary', true)
         : { data: [] };
 
-      const caregiverIds = [...new Set((links || []).map((l: any) => l.caregiver_id))];
-      const { data: caregivers } = caregiverIds.length > 0
-        ? await supabase.from('profiles')
-            .select('id, first_name, last_name, email')
-            .in('id', caregiverIds)
+      // Step 4: Get therapist links
+      const { data: thLinks } = patientIds.length > 0
+        ? await supabase.from('therapist_relationships')
+            .select('patient_id, therapist_id')
+            .in('patient_id', patientIds)
+            .eq('is_active', true)
         : { data: [] };
 
-      const caregiverMap: Record<string, any> = {};
-      (caregivers || []).forEach((c: any) => { caregiverMap[c.id] = c; });
+      const caregiverIds  = [...new Set((links   || []).map((l: any) => l.caregiver_id))];
+      const therapistIds  = [...new Set((thLinks || []).map((l: any) => l.therapist_id))];
+      const allRelatedIds = [...new Set([...caregiverIds, ...therapistIds])];
 
-      const linkMap: Record<string, string> = {};
-      (links || []).forEach((l: any) => { linkMap[l.patient_id] = l.caregiver_id; });
+      const { data: relatedProfiles } = allRelatedIds.length > 0
+        ? await supabase.from('profiles')
+            .select('id, first_name, last_name, email')
+            .in('id', allRelatedIds)
+        : { data: [] };
+
+      const relMap: Record<string, any> = {};
+      (relatedProfiles || []).forEach((c: any) => { relMap[c.id] = c; });
+
+      const cgMap: Record<string, string> = {};
+      const thMap: Record<string, string> = {};
+      (links   || []).forEach((l: any) => { cgMap[l.patient_id] = l.caregiver_id; });
+      (thLinks || []).forEach((l: any) => { thMap[l.patient_id] = l.therapist_id; });
 
       const rows: PatientRow[] = (profiles || []).map((p: any) => {
-        const caregiverId = linkMap[p.id];
-        const caregiver   = caregiverId ? caregiverMap[caregiverId] : null;
-        const patRow      = patientMap[p.id];
+        const cg = relMap[cgMap[p.id]];
+        const th = relMap[thMap[p.id]];
         return {
-          id:             p.id,
-          email:          p.email,
-          first_name:     p.first_name,
-          last_name:      p.last_name,
-          preferred_name: patRow?.preferred_name || null,
-          dementia_stage: patRow?.dementia_stage || null,
-          created_at:     p.created_at,
-          caregiver_email: caregiver?.email,
-          caregiver_name:  caregiver ? `${caregiver.first_name} ${caregiver.last_name}` : undefined,
+          id: p.id, email: p.email,
+          first_name: p.first_name, last_name: p.last_name,
+          created_at: p.created_at,
+          caregiver_name:  cg ? `${cg.first_name} ${cg.last_name}` : undefined,
+          caregiver_email: cg?.email,
+          therapist_name:  th ? `${th.first_name} ${th.last_name}` : undefined,
+          therapist_email: th?.email,
         };
       });
 
@@ -91,13 +101,6 @@ export function AdminPatients() {
   const filtered = patients.filter(p =>
     `${p.first_name} ${p.last_name} ${p.email}`.toLowerCase().includes(search.toLowerCase())
   );
-
-  const stageColor = (stage: string | null) => {
-    if (stage === 'early')  return 'bg-green-100 text-green-700';
-    if (stage === 'middle') return 'bg-amber-100 text-amber-700';
-    if (stage === 'late')   return 'bg-gentle-coral/10 text-gentle-coral';
-    return 'bg-soft-taupe text-medium-gray';
-  };
 
   if (loading) return (
     <div className="flex justify-center py-20">
@@ -133,7 +136,7 @@ export function AdminPatients() {
             <table className="w-full">
               <thead className="bg-soft-taupe/20">
                 <tr>
-                  {['Patient', 'Email', 'Preferred Name', 'Stage', 'Assigned Caregiver', 'Created', 'Actions'].map(h => (
+                  {['Patient', 'Email', 'Assigned Caregiver', 'Assigned Therapist', 'Created'].map(h => (
                     <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-medium-gray uppercase tracking-wide whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
