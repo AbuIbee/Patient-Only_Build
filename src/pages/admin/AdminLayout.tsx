@@ -24,8 +24,8 @@ function UserDetailPanel({ user, onClose }: { user: any; onClose: () => void }) 
     superadmin: 'bg-purple-100 text-purple-700',
   };
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl border border-soft-taupe w-full max-w-md">
         <div className="flex items-center justify-between px-6 py-4 border-b border-soft-taupe">
           <h3 className="font-semibold text-charcoal text-lg">User Profile</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-soft-taupe transition-colors text-medium-gray text-xl font-bold">×</button>
@@ -98,8 +98,8 @@ function AddUserModal({ role, onClose, onAdded }: { role: string; onClose: () =>
   const roleName = role.charAt(0).toUpperCase() + role.slice(1);
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl border border-soft-taupe w-full max-w-md p-6 space-y-4 relative">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-charcoal text-lg">Add {roleName}</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-soft-taupe text-medium-gray text-xl font-bold transition-colors">×</button>

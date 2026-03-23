@@ -46,7 +46,7 @@
   /* Semantic Colors */
   --background: var(--warm-ivory);
   --foreground: var(--charcoal);
-  --card: var(--soft-white);
+  --card: #FFFFFF;
   --card-foreground: var(--charcoal);
   --popover: var(--soft-white);
   --popover-foreground: var(--charcoal);
@@ -308,4 +308,23 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+/* ── Modal / Dialog panels — always solid white, always on top ─────────────── */
+[data-slot="dialog-content"],
+[data-slot="alert-dialog-content"] {
+  background-color: #FFFFFF !important;
+  box-shadow: 0 25px 50px -12px rgba(0,0,0,0.35) !important;
+}
+
+[data-slot="dialog-overlay"],
+[data-slot="alert-dialog-overlay"] {
+  background-color: rgba(0,0,0,0.55) !important;
+}
+
+/* Popover / Select / Dropdown — solid white */
+[data-slot="select-content"],
+[data-slot="popover-content"],
+[data-slot="dropdown-menu-content"] {
+  background-color: #FFFFFF !important;
+  border: 1px solid var(--soft-taupe) !important;
 }

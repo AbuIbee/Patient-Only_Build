@@ -167,14 +167,13 @@ export default function PatientLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-warm-ivory flex">
+    <div className="h-screen bg-warm-ivory flex overflow-hidden">
 
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
-      {!simplifiedMode && (
-        <aside className={`fixed left-0 top-0 bottom-0 ${getSidebarBg()} border-r border-soft-taupe z-40 transition-all duration-300 ${sidebarCollapsed ? 'w-20' : 'w-64'} flex flex-col`}>
+      <aside className={`fixed left-0 top-0 bottom-0 ${getSidebarBg()} border-r border-soft-taupe z-40 transition-all duration-300 ${sidebarCollapsed || simplifiedMode ? 'w-20' : 'w-64'} flex flex-col`}>
 
           {/* Logo */}
-          <div className="h-16 flex items-center px-4 border-b border-soft-taupe flex-shrink-0">
+          <div className="h-14 flex items-center px-4 border-b border-soft-taupe flex-shrink-0">
             <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center flex-shrink-0">
               <Heart className="w-6 h-6 text-white" />
             </div>
@@ -183,13 +182,13 @@ export default function PatientLayout() {
 
           {/* Patient info */}
           {!sidebarCollapsed && (
-            <div className="p-4 border-b border-soft-taupe flex-shrink-0">
+            <div className="px-4 py-2 border-b border-soft-taupe flex-shrink-0">
               <div className="flex items-center gap-3">
                 {patient?.photoUrl ? (
-                  <img src={patient.photoUrl} alt={patient.preferredName} className="w-12 h-12 rounded-full object-cover border-2 border-warm-bronze" />
+                  <img src={patient.photoUrl} alt={patient.preferredName} className="w-9 h-9 rounded-full object-cover border-2 border-warm-bronze" />
                 ) : (
-                  <div className="w-12 h-12 bg-warm-bronze rounded-full flex items-center justify-center">
-                    <span className="text-white font-medium text-lg">{patient?.preferredName?.[0] || patient?.firstName?.[0] || '?'}</span>
+                  <div className="w-9 h-9 bg-warm-bronze rounded-full flex items-center justify-center">
+                    <span className="text-white font-medium text-sm">{patient?.preferredName?.[0] || patient?.firstName?.[0] || '?'}</span>
                   </div>
                 )}
                 <div>
@@ -201,26 +200,26 @@ export default function PatientLayout() {
           )}
 
           {/* Navigation */}
-          <nav className="p-3 space-y-2 flex-1 overflow-y-auto">
+          <nav className="p-2 space-y-0.5 flex-1 overflow-y-auto min-h-0">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentView === item.id;
               return (
                 <button key={item.id} onClick={() => setCurrentView(item.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-4 rounded-xl transition-all ${isActive ? 'bg-warm-bronze text-white shadow-soft' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}>
-                  <Icon className={`w-6 h-6 flex-shrink-0 ${isActive ? 'text-white' : ''}`} />
-                  {!sidebarCollapsed && <span className="font-semibold text-base">{item.label}</span>}
-                  {isActive && !sidebarCollapsed && <motion.div layoutId="activeIndicator" className="ml-auto w-2 h-2 bg-white rounded-full" />}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isActive ? 'bg-warm-bronze text-white shadow-soft' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}>
+                  <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-white' : ''}`} />
+                  {!sidebarCollapsed && !simplifiedMode && <span className="font-medium text-sm">{item.label}</span>}
+                  {isActive && !sidebarCollapsed && !simplifiedMode && <motion.div layoutId="activeIndicator" className="ml-auto w-2 h-2 bg-white rounded-full" />}
                 </button>
               );
             })}
 
             {/* More menu */}
             <button onClick={() => setShowMoreMenu(!showMoreMenu)}
-              className={`w-full flex items-center gap-3 px-3 py-4 rounded-xl transition-all ${showMoreMenu ? 'bg-calm-blue/20 text-calm-blue' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}>
-              <MoreHorizontal className="w-6 h-6 flex-shrink-0" />
-              {!sidebarCollapsed && <span className="font-semibold text-base">More</span>}
-              {!sidebarCollapsed && <motion.div animate={{ rotate: showMoreMenu ? 180 : 0 }} className="ml-auto"><ChevronRight className="w-4 h-4" /></motion.div>}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${showMoreMenu ? 'bg-calm-blue/20 text-calm-blue' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}>
+              <MoreHorizontal className="w-5 h-5 flex-shrink-0" />
+              {!sidebarCollapsed && !simplifiedMode && <span className="font-medium text-sm">More</span>}
+              {!sidebarCollapsed && !simplifiedMode && <motion.div animate={{ rotate: showMoreMenu ? 180 : 0 }} className="ml-auto"><ChevronRight className="w-4 h-4" /></motion.div>}
             </button>
 
             <AnimatePresence>
@@ -262,14 +261,13 @@ export default function PatientLayout() {
               {!sidebarCollapsed && <span className="font-medium text-sm">Logout</span>}
             </button>
           </div>
-        </aside>
-      )}
+      </aside>
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
-      <main className={`flex-1 transition-all duration-300 ${simplifiedMode ? '' : sidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
+      <main className={`flex-1 overflow-y-auto transition-all duration-300 ${sidebarCollapsed || simplifiedMode ? 'ml-20' : 'ml-64'}`}>
 
         {/* Header — always shows page title + back-to-home + logout */}
-        <header className={`bg-white border-b border-soft-taupe flex items-center justify-between px-6 sticky top-0 z-30 transition-all ${simplifiedMode ? 'h-14' : 'h-16'}`}>
+        <header className="bg-white border-b border-soft-taupe flex items-center justify-between px-4 sticky top-0 z-30 h-14">
           <div className="flex items-center gap-3">
             {/* Back to Home — shown on all pages except dashboard */}
             {currentView !== 'dashboard' && (
@@ -334,7 +332,7 @@ export default function PatientLayout() {
         </header>
 
         {/* Page content */}
-        <div className={simplifiedMode ? 'p-4' : 'p-6'}>
+        <div className='p-4 sm:p-6 pb-10'>
           <AnimatePresence mode="wait">
             <motion.div key={currentView} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
               {renderView()}

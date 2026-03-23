@@ -263,8 +263,8 @@ export default function SuperAdminLayout() {
 
             {/* Add Admin Modal */}
             {showAddAdmin && (
-              <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+              <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4">
+                <div className="bg-white rounded-2xl shadow-2xl border border-soft-taupe w-full max-w-md p-6 space-y-4 relative">
                   <h3 className="text-lg font-semibold text-charcoal flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5 text-deep-bronze" />Create Admin Account
                   </h3>

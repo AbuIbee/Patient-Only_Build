@@ -145,7 +145,7 @@ function AddUserModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =
   );
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg my-4">
         <div className="flex items-center justify-between px-6 py-4 border-b border-soft-taupe">
           <h2 className="text-lg font-semibold text-charcoal flex items-center gap-2">
