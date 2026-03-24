@@ -285,8 +285,6 @@ export default function TherapistLayout() {
           </AnimatePresence>
         </div>
       </main>
-    </div>
-
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-soft-taupe z-50 flex justify-around py-2 px-2">
         {[
@@ -303,5 +301,6 @@ export default function TherapistLayout() {
           </button>
         ))}
       </nav>
+    </div>
   );
 }
