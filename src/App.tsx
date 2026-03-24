@@ -153,6 +153,35 @@ function AppContent() {
     );
   }
 
+
+  // ── Session timeout — auto-logout after 15 min inactivity ───────────────
+  useEffect(() => {
+    const TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+    let timer: ReturnType<typeof setTimeout>;
+
+    const resetTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        if (state.isAuthenticated) {
+          await supabase.auth.signOut();
+          dispatch({ type: 'LOGOUT' });
+          // Show a brief message via session storage so landing page can display it
+          sessionStorage.setItem('session_expired', '1');
+        }
+      }, TIMEOUT_MS);
+    };
+
+    // Track any user activity
+    const events = ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll', 'click'];
+    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
+    resetTimer(); // Start timer on mount
+
+    return () => {
+      clearTimeout(timer);
+      events.forEach(e => window.removeEventListener(e, resetTimer));
+    };
+  }, [state.isAuthenticated, dispatch]);
+
   const renderContent = () => {
     if (!state.isAuthenticated) {
       return state.currentView === 'login' ? <LoginPage /> : <LandingPage />;

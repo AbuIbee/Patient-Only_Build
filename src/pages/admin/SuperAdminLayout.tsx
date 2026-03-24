@@ -4,8 +4,10 @@ import { supabase } from '@/lib/supabase';
 import {
   ShieldCheck, Users, UserCheck, Stethoscope, Heart,
   LogOut, Plus, Trash2, Loader2, AlertCircle, Crown,
-  LayoutDashboard, Settings,
+  LayoutDashboard, Settings, FileText,
 } from 'lucide-react';
+import HIPAACompliancePage from '@/components/HIPAACompliancePage';
+import MFASettings from '@/components/MFASettings';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
@@ -29,7 +31,7 @@ interface SystemStats {
   pending: number;
 }
 
-type SAView = 'dashboard' | 'superadmins' | 'admins' | 'settings';
+type SAView = 'dashboard' | 'superadmins' | 'admins' | 'hipaa' | 'settings';
 
 export default function SuperAdminLayout() {
   const { state, dispatch }  = useApp();
@@ -141,6 +143,7 @@ export default function SuperAdminLayout() {
     { id: 'dashboard'   as SAView, label: 'Dashboard',    icon: LayoutDashboard },
     { id: 'superadmins' as SAView, label: 'SuperAdmins',  icon: Crown },
     { id: 'admins'      as SAView, label: 'Manage Admins',icon: ShieldCheck },
+    { id: 'hipaa'       as SAView, label: 'HIPAA & BAA',  icon: FileText },
     { id: 'settings'    as SAView, label: 'Settings',     icon: Settings },
   ];
 
@@ -306,11 +309,14 @@ export default function SuperAdminLayout() {
           </div>
         );
 
+      case 'hipaa':      return <HIPAACompliancePage />;
       case 'settings':
         return (
           <div className="space-y-5">
             <h2 className="text-2xl font-bold text-charcoal">System Settings</h2>
             <div className="bg-white rounded-2xl border border-soft-taupe p-6 space-y-4">
+              <MFASettings />
+              <div className="border-t border-soft-taupe pt-4">
               <div className="flex items-center gap-3 p-4 bg-purple-50 border border-purple-200 rounded-xl">
                 <Crown className="w-6 h-6 text-purple-700 flex-shrink-0" />
                 <div>
@@ -323,6 +329,7 @@ export default function SuperAdminLayout() {
                 <p className="text-sm text-amber-800">
                   Only SuperAdmins can create Admin accounts. Admins cannot elevate their own permissions or create other Admins.
                 </p>
+              </div>
               </div>
             </div>
           </div>
