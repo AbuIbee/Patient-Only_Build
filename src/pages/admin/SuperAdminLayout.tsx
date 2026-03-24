@@ -6,7 +6,7 @@ import {
   LogOut, Plus, Trash2, Loader2, AlertCircle, Crown,
   LayoutDashboard, Settings, FileText,
 } from 'lucide-react';
-import HIPAACompliancePage from '@/components/HIPAACompliancePage';
+import HIPAACompliancePage from '@/components/Hipaacompliancepage';
 import MFASettings from '@/components/MFASettings';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
