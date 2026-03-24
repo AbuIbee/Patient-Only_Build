@@ -340,9 +340,9 @@ export default function SuperAdminLayout() {
   );
 
   return (
-    <div className="min-h-screen bg-warm-ivory flex">
+    <div className="h-screen bg-warm-ivory flex overflow-hidden">
       {/* Sidebar */}
-      <aside className="fixed left-0 top-0 bottom-0 w-16 sm:w-64 bg-white border-r border-soft-taupe z-40 flex flex-col">
+      <aside className="fixed left-0 top-0 bottom-0 w-64 bg-white border-r border-soft-taupe z-40 hidden md:flex flex-col">
         <div className="h-16 flex items-center px-3 sm:px-6 border-b border-soft-taupe gap-3">
           <div className="w-10 h-10 bg-deep-bronze rounded-xl flex items-center justify-center flex-shrink-0">
             <Crown className="w-5 h-5 text-white" />
@@ -389,7 +389,7 @@ export default function SuperAdminLayout() {
       </aside>
 
       {/* Main */}
-      <main className="ml-16 sm:ml-64 flex-1">
+      <main className="flex-1 overflow-y-auto ml-0 md:ml-64">
         <header className="h-16 bg-white border-b border-soft-taupe flex items-center px-4 sm:px-8 sticky top-0 z-30">
           <h1 className="text-lg sm:text-xl font-semibold text-charcoal">
             {navItems.find(n => n.id === view)?.label}

@@ -86,9 +86,9 @@ export default function TherapistLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-warm-ivory flex">
+    <div className="h-screen bg-warm-ivory flex overflow-hidden">
       {/* Sidebar */}
-      <aside className={`fixed left-0 top-0 bottom-0 bg-white border-r border-soft-taupe z-40 transition-all duration-300 ${sidebarCollapsed ? 'w-20' : 'w-64'}`}>
+      <aside className={`fixed left-0 top-0 bottom-0 bg-white border-r border-soft-taupe z-40 transition-all duration-300 hidden md:flex flex-col ${sidebarCollapsed ? 'w-20' : 'w-64'}`}>
 
         {/* Logo */}
         <div className="h-16 flex items-center px-4 border-b border-soft-taupe">
@@ -176,7 +176,7 @@ export default function TherapistLayout() {
       </aside>
 
       {/* Main content */}
-      <main className={`flex-1 transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
+      <main className={`flex-1 overflow-y-auto transition-all duration-300 ml-0 md:${sidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
 
         {/* Header */}
         <header className="h-16 bg-white border-b border-soft-taupe flex items-center justify-between px-6 sticky top-0 z-30">
@@ -286,5 +286,22 @@ export default function TherapistLayout() {
         </div>
       </main>
     </div>
+
+      {/* Mobile bottom nav */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-soft-taupe z-50 flex justify-around py-2 px-2">
+        {[
+          { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
+          { id: 'tools',     label: 'Tools',     Icon: Stethoscope },
+          { id: 'goals',     label: 'Goals',     Icon: Target },
+          { id: 'analysis',  label: 'Analysis',  Icon: BarChart3 },
+          { id: 'media',     label: 'Media',     Icon: Film },
+        ].map(({ id, label, Icon }) => (
+          <button key={id} onClick={() => setCurrentView(id as TherapistView)}
+            className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl transition-colors ${currentView === id ? 'text-warm-bronze' : 'text-medium-gray'}`}>
+            <Icon className="w-5 h-5" />
+            <span className="text-xs font-medium">{label}</span>
+          </button>
+        ))}
+      </nav>
   );
 }

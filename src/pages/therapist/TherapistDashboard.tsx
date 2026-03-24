@@ -1,4 +1,6 @@
 import { useApp } from '@/store/AppContext';
+import CarePartnerCheckinSummary from '@/pages/caregiver/CarePartnerCheckinSummary';
+import { useSelectedPatient } from '@/hooks/useSelectedPatient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -50,6 +52,7 @@ const mockSleepData = [
 
 export default function TherapistDashboard() {
   const { state } = useApp();
+  const selectedPatient = useSelectedPatient();
   const patient = state.patient;
   const moodEntries = state.moodEntries;
   const behaviorLogs = state.behaviorLogs;
@@ -104,6 +107,14 @@ export default function TherapistDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Care Partner Check-In Summary */}
+      {selectedPatient && (
+        <CarePartnerCheckinSummary
+          patientId={selectedPatient.patient.id}
+          patientName={`${selectedPatient.patient.firstName} ${selectedPatient.patient.lastName}`}
+        />
+      )}
+
       {/* Welcome */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}

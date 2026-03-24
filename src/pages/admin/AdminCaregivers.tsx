@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import {
   Search, CheckCircle, Loader2, UserPlus, X,
   Eye, EyeOff, Building2, Phone, Mail, Shield,
-  User, AlertCircle, Pencil, Save, RotateCcw,
+  User, AlertCircle, Pencil, Save, RotateCcw, KeyRound,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -217,6 +217,28 @@ export function AdminCaregivers() {
 
   useEffect(() => { loadUsers(); }, []);
 
+  const handleResetPassword = async (email: string) => {
+    try {
+      const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: siteUrl });
+      if (error) throw error;
+      toast.success(`Password reset email sent to ${email}`);
+    } catch (err: any) {
+      toast.error('Failed: ' + err.message);
+    }
+  };
+
+  const handleForcePasswordChange = async (userId: string, name: string) => {
+    try {
+      const { error } = await supabase.from('profiles')
+        .update({ must_change_password: true }).eq('id', userId);
+      if (error) throw error;
+      toast.success(`${name} will be required to set a new password on next login`);
+    } catch (err: any) {
+      toast.error('Failed: ' + err.message);
+    }
+  };
+
   const loadUsers = async () => {
     setLoading(true);
     try {
@@ -365,13 +387,19 @@ export function AdminCaregivers() {
                           {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                           {isSaving ? 'Saving' : 'Save'}
                         </button>
-                        {/* Reset */}
+                        {/* Reset edits */}
                         {dirty && (
                           <button onClick={() => resetUser(user)}
                             className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs text-medium-gray hover:bg-soft-taupe transition-colors">
                             <RotateCcw className="w-3 h-3" />
                           </button>
                         )}
+                        {/* Password reset */}
+                        <button onClick={() => handleResetPassword(user.email)}
+                          title="Send password reset email"
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-calm-blue/10 text-blue-700 hover:bg-calm-blue/20 transition-colors border border-calm-blue/20">
+                          <KeyRound className="w-3 h-3" />Reset PW
+                        </button>
                       </div>
                     </td>
                   </tr>

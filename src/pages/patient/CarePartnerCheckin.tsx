@@ -278,7 +278,7 @@ export default function CarePartnerCheckin() {
         ...data,
       });
       if (error) throw error;
-      toast.success('Check-in submitted! Your care team has been notified.');
+      toast.success('Care Partner report submitted! Your caregiver and therapist can now view it.');
       setData({ ...EMPTY });
       setOpenSections({ A: true, B: false, C: false, D: false, E: false, F: false, G: false });
     } catch (err: any) {
@@ -294,7 +294,7 @@ export default function CarePartnerCheckin() {
       <div className="bg-gradient-to-r from-warm-bronze to-warm-bronze/80 rounded-2xl p-6 text-white">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Care Partner Daily Check-In</h1>
+            <h1 className="text-2xl font-bold">Care Partner</h1>
             <p className="text-white/80 mt-1 text-sm">
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
             </p>

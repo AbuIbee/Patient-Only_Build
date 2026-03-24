@@ -111,7 +111,7 @@ export default function PatientLayout() {
     { id: 'memories'  as PatientView, label: 'Family',     icon: Users },
     { id: 'mood'      as PatientView, label: 'How I Feel', icon: Smile },
     { id: 'reminders' as PatientView, label: 'Reminders',   icon: Bell },
-    { id: 'checkin'   as PatientView, label: 'Daily Check-In', icon: ClipboardList },
+    { id: 'checkin'   as PatientView, label: 'Care Partner',   icon: ClipboardList },
     { id: 'careteam'  as PatientView, label: 'My Care Team',    icon: UserCheck },
   ];
 
@@ -170,7 +170,7 @@ export default function PatientLayout() {
     <div className="h-screen bg-warm-ivory flex overflow-hidden">
 
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
-      <aside className={`fixed left-0 top-0 bottom-0 ${getSidebarBg()} border-r border-soft-taupe z-40 transition-all duration-300 ${sidebarCollapsed || simplifiedMode ? 'w-20' : 'w-64'} flex flex-col`}>
+      <aside className={`fixed left-0 top-0 bottom-0 ${getSidebarBg()} border-r border-soft-taupe z-40 transition-all duration-300 hidden md:flex flex-col ${sidebarCollapsed || simplifiedMode ? 'w-20' : 'w-64'}`}>
 
           {/* Logo */}
           <div className="h-14 flex items-center px-4 border-b border-soft-taupe flex-shrink-0">
@@ -264,7 +264,7 @@ export default function PatientLayout() {
       </aside>
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
-      <main className={`flex-1 overflow-y-auto transition-all duration-300 ${sidebarCollapsed || simplifiedMode ? 'ml-20' : 'ml-64'}`}>
+      <main className={`flex-1 overflow-y-auto transition-all duration-300 ml-0 md:${sidebarCollapsed || simplifiedMode ? 'ml-20' : 'ml-64'} pb-16 md:pb-0`}>
 
         {/* Header — always shows page title + back-to-home + logout */}
         <header className="bg-white border-b border-soft-taupe flex items-center justify-between px-4 sticky top-0 z-30 h-14">
@@ -362,6 +362,48 @@ export default function PatientLayout() {
           </div>
         </motion.div>
       )}
+
+      {/* ── Mobile bottom navigation ──────────────────────────────────── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-soft-taupe z-50 flex justify-around py-2 px-1 safe-bottom">
+        {[
+          { id: 'dashboard', icon: LayoutDashboard, label: 'Home'    },
+          { id: 'memories',  icon: Users,           label: 'Family'  },
+          { id: 'mood',      icon: Smile,           label: 'Mood'    },
+          { id: 'checkin',   icon: ClipboardList,   label: 'Care'    },
+          { id: 'reminders', icon: Bell,            label: 'Remind'  },
+        ].map(({ id, icon: Icon, label }) => {
+          const isActive = currentView === id;
+          return (
+            <button key={id}
+              onClick={() => setCurrentView(id as PatientView)}
+              className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-colors min-w-0 flex-1 ${isActive ? 'text-warm-bronze' : 'text-medium-gray'}`}>
+              <Icon className="w-5 h-5 flex-shrink-0" />
+              <span className="text-xs font-medium truncate">{label}</span>
+            </button>
+          );
+        })}
+        <button onClick={() => setShowMoreMenu(!showMoreMenu)}
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-colors flex-1 ${showMoreMenu ? 'text-warm-bronze' : 'text-medium-gray'}`}>
+          <MoreHorizontal className="w-5 h-5" />
+          <span className="text-xs font-medium">More</span>
+        </button>
+        {/* More drawer on mobile */}
+        {showMoreMenu && (
+          <div className="absolute bottom-full left-0 right-0 bg-white border-t border-soft-taupe shadow-lg px-4 py-3 grid grid-cols-4 gap-3">
+            {moreNavItems.map(({ id, icon: Icon, label }) => {
+              const isActive = currentView === id;
+              return (
+                <button key={id}
+                  onClick={() => { setCurrentView(id as PatientView); setShowMoreMenu(false); }}
+                  className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-colors ${isActive ? 'bg-warm-bronze/10 text-warm-bronze' : 'text-medium-gray hover:bg-soft-taupe'}`}>
+                  <Icon className="w-5 h-5" />
+                  <span className="text-xs font-medium text-center leading-tight">{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </nav>
     </div>
   );
 }

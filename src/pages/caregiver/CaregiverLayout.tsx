@@ -97,6 +97,25 @@ function EmptyState({ onAddPatient, onEnterDemo, onLogout, onRefresh }: {
           </p>
         </motion.div>
       </div>
+    {/* ── Mobile bottom navigation (visible only on small screens) ── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-soft-taupe z-50 flex justify-around py-2 px-2">
+        {[
+          { id: 'dashboard',  icon: LayoutDashboard, label: 'Home' },
+          { id: 'medications', icon: Pill,            label: 'Meds' },
+          { id: 'reminders',   icon: Bell,            label: 'Alerts' },
+          { id: 'addPatient',  icon: UserPlus,        label: 'Add' },
+          { id: 'myportal',    icon: User,            label: 'Me' },
+        ].map(({ id, icon: Icon, label }) => {
+          const isActive = currentView === id;
+          return (
+            <button key={id} onClick={() => setCurrentView(id as CaregiverView)}
+              className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-colors ${isActive ? 'text-warm-bronze' : 'text-medium-gray'}`}>
+              <Icon className="w-5 h-5" />
+              <span className="text-xs font-medium">{label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }
@@ -268,7 +287,7 @@ export default function CaregiverLayout() {
       <AnimatePresence>{isDemoMode && <DemoModeBanner onExitDemo={handleExitDemo} />}</AnimatePresence>
 
       {/* Sidebar */}
-      <aside className={`fixed left-0 bottom-0 bg-white border-r border-soft-taupe z-40 transition-all duration-300 ${sidebarCollapsed ? 'w-20' : 'w-64'} ${isDemoMode ? 'top-10' : 'top-0'}`}>
+      <aside className={`fixed left-0 bottom-0 bg-white border-r border-soft-taupe z-40 transition-all duration-300 hidden md:flex flex-col ${sidebarCollapsed ? 'w-20' : 'w-64'} ${isDemoMode ? 'top-10' : 'top-0'}`}>
         <div className="h-16 flex items-center px-4 border-b border-soft-taupe">
           <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center flex-shrink-0">
             <Heart className="w-6 h-6 text-white" />
@@ -332,7 +351,7 @@ export default function CaregiverLayout() {
       </aside>
 
       {/* Main */}
-      <main className={`flex-1 transition-all duration-300 ${sidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
+      <main className={`flex-1 overflow-y-auto transition-all duration-300 ml-0 md:${sidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
         <header className={`h-16 bg-white border-b border-soft-taupe flex items-center justify-between px-6 sticky z-30 ${isDemoMode ? 'top-10' : 'top-0'}`}>
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-semibold text-charcoal">{navItems.find(n => n.id === currentView)?.label || 'Dashboard'}</h1>
