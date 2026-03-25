@@ -124,30 +124,22 @@ function AppContent() {
   };
 
 
-  // ── Session timeout — auto-logout after 15 min inactivity ───────────────
+  // ── Session timeout: auto-logout after 15 min inactivity ─────────────────
   useEffect(() => {
-    const TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
-    let timer: ReturnType<typeof setTimeout>;
-
-    const resetTimer = () => {
-      clearTimeout(timer);
-      timer = setTimeout(async () => {
-        if (state.isAuthenticated) {
-          await supabase.auth.signOut();
-          dispatch({ type: 'LOGOUT' });
-          sessionStorage.setItem('session_expired', '1');
-        }
-      }, TIMEOUT_MS);
+    if (!state.isAuthenticated) return;
+    const TIMEOUT = 15 * 60 * 1000;
+    let t: ReturnType<typeof setTimeout>;
+    const reset = () => {
+      clearTimeout(t);
+      t = setTimeout(async () => {
+        await supabase.auth.signOut();
+        dispatch({ type: 'LOGOUT' });
+      }, TIMEOUT);
     };
-
-    const events = ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll', 'click'];
-    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }));
-    resetTimer();
-
-    return () => {
-      clearTimeout(timer);
-      events.forEach(e => window.removeEventListener(e, resetTimer));
-    };
+    const events = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach(e => window.addEventListener(e, reset, { passive: true }));
+    reset();
+    return () => { clearTimeout(t); events.forEach(e => window.removeEventListener(e, reset)); };
   }, [state.isAuthenticated, dispatch]);
 
   // ── Render ────────────────────────────────────────────────────────────────

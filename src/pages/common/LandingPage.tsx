@@ -518,7 +518,6 @@ export default function LandingPage() {
                   </button>
                 )}
               </div>
-            
             </motion.div>
           </motion.div>
         )}
