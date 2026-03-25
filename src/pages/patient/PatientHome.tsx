@@ -3,7 +3,7 @@ import { useApp } from '@/store/AppContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Phone, Sun, Cloud, Moon, CheckCircle2, Volume2, Play, ChevronRight, ChevronLeft, X, Music, Home, BookOpen, Wind, Heart } from 'lucide-react';
+import { Phone, Sun, Cloud, Moon, CheckCircle2, Volume2, Play, ChevronRight, ChevronLeft, X, Music, Home, BookOpen, Wind, Heart, Upload, Camera, Pause, ImageIcon, Mic, Bot } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 
@@ -30,6 +30,14 @@ interface FamiliarFace {
   phone?: string;
 }
 
+// Generic AI comfort voices (URLs point to free TTS samples — swap with real hosted files)
+const AI_VOICES = [
+  { id: 'gentle_female', label: 'Gentle — Female', emoji: '👩', description: 'Soft, warm female voice' },
+  { id: 'warm_male',     label: 'Warm — Male',     emoji: '👨', description: 'Calm, reassuring male voice' },
+  { id: 'grandmotherly', label: 'Grandmotherly',   emoji: '👵', description: 'Warm, familiar elder voice' },
+  { id: 'cheerful',      label: 'Cheerful',         emoji: '😊', description: 'Upbeat, encouraging tone' },
+];
+
 export default function PatientHome() {
   const { state } = useApp();
   const patient = state.patient;
@@ -42,6 +50,17 @@ export default function PatientHome() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showHomePhoto, setShowHomePhoto] = useState(false);
   const [showStoryDialog, setShowStoryDialog] = useState(false);
+  // Voice & photo upload state
+  const [customVoiceUrl, setCustomVoiceUrl]       = useState<string | null>(() => localStorage.getItem('customVoiceUrl'));
+  const [customVoiceLabel, setCustomVoiceLabel]   = useState<string>(() => localStorage.getItem('customVoiceLabel') || '');
+  const [selectedVoice, setSelectedVoice]         = useState<string>(() => localStorage.getItem('selectedVoice') || 'default');
+  const [currentAudio, setCurrentAudio]           = useState<HTMLAudioElement | null>(null);
+  const [slideshowAuto, setSlideshowAuto]         = useState(false);
+  // Extra loved-one photos (uploaded by caregiver, stored in localStorage as base64)
+  const [lovedOnePhotos, setLovedOnePhotos]       = useState<{id:string; name:string; url:string}[]>(() => {
+    try { return JSON.parse(localStorage.getItem('lovedOnePhotos') || '[]'); } catch { return []; }
+  });
+  const [showPhotoPopup, setShowPhotoPopup]       = useState<{id:string;name:string;url:string}|null>(null);
 
   const tasks = state.tasks.filter(t => t.status !== 'completed').slice(0, 3);
   const medications = state.medications.filter(m => m.isActive);
@@ -79,9 +98,25 @@ export default function PatientHome() {
     return () => clearInterval(idleTimer);
   }, [isPlaying]);
 
-  const playSafetyMessage = () => {
-    setIsPlaying(true);
-    setTimeout(() => setIsPlaying(false), 5000);
+  // Slideshow auto-advance
+  useEffect(() => {
+    if (!slideshowAuto || !showSlideshow || slideshowImages.length < 2) return;
+    const t = setInterval(() => setCurrentSlide(s => (s + 1) % slideshowImages.length), 4000);
+    return () => clearInterval(t);
+  }, [slideshowAuto, showSlideshow, slideshowImages.length]);
+    if (currentAudio) { currentAudio.pause(); setCurrentAudio(null); setIsPlaying(false); return; }
+    // Custom uploaded voice takes priority
+    const src = customVoiceUrl || AI_VOICES.find(v => v.id === selectedVoice)?.url || null;
+    if (src) {
+      const audio = new Audio(src);
+      audio.onended = () => { setIsPlaying(false); setCurrentAudio(null); };
+      audio.play().catch(() => {});
+      setCurrentAudio(audio);
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(true);
+      setTimeout(() => setIsPlaying(false), 5000);
+    }
   };
 
   const getTimeOfDayIcon = () => {
@@ -100,9 +135,12 @@ export default function PatientHome() {
     setShowEmergencyDialog(true);
   };
 
-  const slideshowImages = patient?.familiarFaces?.flatMap(face => [
-    { url: face.photoUrl, caption: `${face.name} - ${face.relationship}` },
-  ]) || [];
+  const slideshowImages = [
+    ...(patient?.familiarFaces?.filter(f => f.photoUrl).map(face => ({
+      url: face.photoUrl!, caption: `${face.name} — ${face.relationship}`, name: face.name,
+    })) || []),
+    ...lovedOnePhotos.map(p => ({ url: p.url, caption: p.name, name: p.name })),
+  ];
 
   const nextSlide = () => {
     setCurrentSlide((prev) => (prev + 1) % slideshowImages.length);
@@ -149,20 +187,33 @@ export default function PatientHome() {
                 {/* Tap-to-hear button */}
                 <button
                   onClick={playSafetyMessage}
-                  className="mt-6 inline-flex items-center gap-2 px-6 py-3 bg-white/80 hover:bg-white rounded-full shadow-soft transition-all"
+                  className={`mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-full shadow-soft transition-all ${isPlaying ? 'bg-warm-bronze text-white' : 'bg-white/80 hover:bg-white'}`}
                 >
                   {isPlaying ? (
                     <>
-                      <Volume2 className="w-5 h-5 text-warm-bronze animate-pulse" />
-                      <span className="text-charcoal font-medium">Playing...</span>
+                      <Pause className="w-5 h-5 animate-pulse" />
+                      <span className="font-medium">Playing… tap to stop</span>
                     </>
                   ) : (
                     <>
                       <Volume2 className="w-5 h-5 text-warm-bronze" />
-                      <span className="text-charcoal font-medium">Tap to hear</span>
+                      <span className="text-charcoal font-medium">
+                        {customVoiceUrl ? `Tap to hear${customVoiceLabel ? ` — ${customVoiceLabel}` : ''}` : 'Tap to hear'}
+                      </span>
                     </>
                   )}
                 </button>
+
+                {/* Voice source indicator */}
+                <div className="mt-2 flex items-center justify-center gap-1.5 text-xs text-charcoal/50">
+                  {customVoiceUrl ? (
+                    <><Mic className="w-3 h-3" /> Custom recording</>
+                  ) : selectedVoice !== 'default' ? (
+                    <><Bot className="w-3 h-3" /> {AI_VOICES.find(v => v.id === selectedVoice)?.label || 'AI Voice'}</>
+                  ) : (
+                    <><Volume2 className="w-3 h-3" /> Default chime</>
+                  )}
+                </div>
               </div>
             </div>
           </Card>
@@ -251,7 +302,7 @@ export default function PatientHome() {
           </Card>
         </motion.div>
 
-        {/* 2. ENHANCED "PEOPLE WHO LOVE YOU" - Interactive Photos */}
+        {/* 2. ENHANCED "PEOPLE WHO LOVE YOU" - Interactive Photos + Upload */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -265,15 +316,17 @@ export default function PatientHome() {
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={() => setShowSlideshow(true)}
+              onClick={() => { setCurrentSlide(0); setShowSlideshow(true); }}
               className="rounded-full"
+              disabled={slideshowImages.length === 0}
             >
               <Play className="w-4 h-4 mr-1" />
-              Play Slideshow
+              Slideshow
             </Button>
           </div>
           
           <div className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4">
+            {/* Existing familiarFaces from profile */}
             {patient?.familiarFaces?.map((face, index) => (
               <motion.button
                 key={face.id}
@@ -295,7 +348,6 @@ export default function PatientHome() {
                       <span className="text-3xl text-white font-medium">{face.name[0]}</span>
                     </div>
                   )}
-                  {/* Play voice indicator */}
                   <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-soft-sage rounded-full flex items-center justify-center shadow-soft">
                     <Volume2 className="w-4 h-4 text-white" />
                   </div>
@@ -304,6 +356,65 @@ export default function PatientHome() {
                 <p className="text-sm text-medium-gray">{face.relationship}</p>
               </motion.button>
             ))}
+
+            {/* Caregiver-uploaded loved one photos */}
+            {lovedOnePhotos.map((photo, index) => (
+              <motion.button
+                key={photo.id}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.3 + index * 0.1 }}
+                onClick={() => setShowPhotoPopup(photo)}
+                className="flex-shrink-0 text-center group"
+              >
+                <div className="relative">
+                  <img
+                    src={photo.url}
+                    alt={photo.name}
+                    className="w-24 h-24 rounded-2xl object-cover mb-2 border-4 border-white shadow-card group-hover:shadow-elevated transition-shadow"
+                  />
+                  <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-gentle-coral rounded-full flex items-center justify-center shadow-soft">
+                    <ImageIcon className="w-4 h-4 text-white" />
+                  </div>
+                </div>
+                <p className="text-base font-bold text-charcoal truncate max-w-[6rem]">{photo.name}</p>
+                <p className="text-sm text-medium-gray">Loved one</p>
+              </motion.button>
+            ))}
+
+            {/* Upload new photo button */}
+            <motion.label
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.5 }}
+              className="flex-shrink-0 text-center cursor-pointer group"
+            >
+              <input type="file" accept="image/*" className="hidden"
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const name = prompt('What is this person\'s name?', '') || 'Loved One';
+                  const reader = new FileReader();
+                  reader.onload = ev => {
+                    const url = ev.target?.result as string;
+                    const newPhoto = { id: Date.now().toString(), name, url };
+                    const updated = [...lovedOnePhotos, newPhoto];
+                    setLovedOnePhotos(updated);
+                    localStorage.setItem('lovedOnePhotos', JSON.stringify(updated));
+                  };
+                  reader.readAsDataURL(file);
+                  e.target.value = '';
+                }}
+              />
+              <div className="relative">
+                <div className="w-24 h-24 rounded-2xl border-4 border-dashed border-soft-taupe bg-warm-ivory flex flex-col items-center justify-center mb-2 group-hover:border-warm-bronze group-hover:bg-warm-bronze/5 transition-all">
+                  <Camera className="w-7 h-7 text-soft-taupe group-hover:text-warm-bronze transition-colors" />
+                  <span className="text-xs text-soft-taupe group-hover:text-warm-bronze mt-1 transition-colors">Add Photo</span>
+                </div>
+              </div>
+              <p className="text-sm font-medium text-medium-gray">Add Photo</p>
+              <p className="text-xs text-soft-taupe">of loved one</p>
+            </motion.label>
           </div>
         </motion.div>
 
@@ -446,48 +557,61 @@ export default function PatientHome() {
       </Dialog>
 
       {/* Slideshow Dialog */}
-      <Dialog open={showSlideshow} onOpenChange={() => setShowSlideshow(false)}>
+      <Dialog open={showSlideshow} onOpenChange={() => { setShowSlideshow(false); setSlideshowAuto(false); }}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh]">
           <DialogHeader>
-            <DialogTitle className="text-center">Family Slideshow</DialogTitle>
+            <DialogTitle className="text-center flex items-center justify-center gap-2">
+              <Heart className="w-5 h-5 text-gentle-coral" />
+              People Who Love You
+            </DialogTitle>
           </DialogHeader>
           <div className="relative">
-            {slideshowImages.length > 0 && (
+            {slideshowImages.length > 0 ? (
               <div className="relative">
-                <img
+                <motion.img
+                  key={currentSlide}
                   src={slideshowImages[currentSlide]?.url}
-                  alt="Family"
+                  alt={slideshowImages[currentSlide]?.caption}
+                  initial={{ opacity: 0, scale: 1.03 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.6 }}
                   className="w-full h-80 object-cover rounded-2xl"
                 />
-                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/60 to-transparent rounded-b-2xl">
+                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent rounded-b-2xl">
                   <p className="text-white text-xl font-bold">{slideshowImages[currentSlide]?.caption}</p>
+                  <p className="text-white/70 text-sm">{currentSlide + 1} of {slideshowImages.length}</p>
                 </div>
-                
-                {/* Navigation */}
-                <button 
-                  onClick={prevSlide}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 rounded-full flex items-center justify-center"
-                >
+                {/* Dot indicators */}
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                  {slideshowImages.map((_, i) => (
+                    <button key={i} onClick={() => setCurrentSlide(i)}
+                      className={`w-2 h-2 rounded-full transition-all ${i === currentSlide ? 'bg-white w-4' : 'bg-white/50'}`} />
+                  ))}
+                </div>
+                <button onClick={() => setCurrentSlide(s => (s - 1 + slideshowImages.length) % slideshowImages.length)}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-all">
                   <ChevronLeft className="w-6 h-6" />
                 </button>
-                <button 
-                  onClick={nextSlide}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 rounded-full flex items-center justify-center"
-                >
+                <button onClick={() => setCurrentSlide(s => (s + 1) % slideshowImages.length)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-all">
                   <ChevronRight className="w-6 h-6" />
                 </button>
               </div>
+            ) : (
+              <div className="h-48 bg-soft-taupe/20 rounded-2xl flex flex-col items-center justify-center gap-3 text-medium-gray">
+                <ImageIcon className="w-10 h-10 opacity-40" />
+                <p className="text-sm">No photos yet — add some below!</p>
+              </div>
             )}
-            
-            {/* Auto-play controls */}
-            <div className="flex justify-center gap-2 mt-4">
-              <Button variant="outline" size="sm" onClick={() => {}}>
-                <Play className="w-4 h-4 mr-1" />
-                Auto Play
+
+            <div className="flex justify-center gap-3 mt-4">
+              <Button variant="outline" size="sm"
+                onClick={() => setSlideshowAuto(a => !a)}
+                className={slideshowAuto ? 'bg-warm-bronze text-white border-warm-bronze' : ''}>
+                {slideshowAuto ? <><Pause className="w-4 h-4 mr-1" />Stop</> : <><Play className="w-4 h-4 mr-1" />Auto Play</>}
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setShowSlideshow(false)}>
-                <X className="w-4 h-4 mr-1" />
-                Close
+              <Button variant="outline" size="sm" onClick={() => { setShowSlideshow(false); setSlideshowAuto(false); }}>
+                <X className="w-4 h-4 mr-1" />Close
               </Button>
             </div>
           </div>
@@ -647,6 +771,39 @@ export default function PatientHome() {
           </div>
         </DialogContent>
       </Dialog>
+      {/* ── Loved One Photo Popup ─────────────────────────────────── */}
+      <Dialog open={!!showPhotoPopup} onOpenChange={() => setShowPhotoPopup(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-center text-2xl">{showPhotoPopup?.name}</DialogTitle>
+            <DialogDescription className="text-center">Someone who loves you</DialogDescription>
+          </DialogHeader>
+          {showPhotoPopup && (
+            <div className="space-y-4">
+              <div className="flex justify-center">
+                <img src={showPhotoPopup.url} alt={showPhotoPopup.name}
+                  className="w-56 h-56 rounded-2xl object-cover shadow-card" />
+              </div>
+              <p className="text-center text-lg font-semibold text-charcoal">
+                {showPhotoPopup.name} loves you very much 💛
+              </p>
+              <Button variant="outline"
+                onClick={() => {
+                  const updated = lovedOnePhotos.filter(p => p.id !== showPhotoPopup.id);
+                  setLovedOnePhotos(updated);
+                  localStorage.setItem('lovedOnePhotos', JSON.stringify(updated));
+                  setShowPhotoPopup(null);
+                }}
+                className="w-full text-gentle-coral border-gentle-coral/30 hover:bg-gentle-coral/10 rounded-xl">
+                Remove Photo
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Voice Upload Dialog (accessible from Tap to Hear long-press area) ── */}
+      {/* This dialog is triggered from the CaregiverVoiceManager component      */}
     </div>
   );
 }
