@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useApp } from '@/store/AppContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -69,6 +69,14 @@ export default function PatientHome() {
   const todaysMedsTaken = medicationLogs.filter(l => l.date === today && l.status === 'taken').length;
   const weather = getWeatherContext();
 
+  // useMemo ensures this is always initialized before any other hook references it
+  const slideshowImages = useMemo(() => [
+    ...(patient?.familiarFaces?.filter(f => f.photoUrl).map(face => ({
+      url: face.photoUrl!, caption: `${face.name} — ${face.relationship}`, name: face.name,
+    })) || []),
+    ...lovedOnePhotos.map(p => ({ url: p.url, caption: p.name, name: p.name })),
+  ], [patient?.familiarFaces, lovedOnePhotos]);
+
   // Time-based adaptations
   const hour = currentTime.getHours();
   const isSundowningTime = hour >= 16 && hour <= 19;
@@ -88,6 +96,21 @@ export default function PatientHome() {
     return () => clearInterval(timer);
   }, []);
 
+  const playSafetyMessage = () => {
+    if (currentAudio) { currentAudio.pause(); setCurrentAudio(null); setIsPlaying(false); return; }
+    const src = customVoiceUrl || AI_VOICES.find(v => v.id === selectedVoice)?.url || null;
+    if (src) {
+      const audio = new Audio(src);
+      audio.onended = () => { setIsPlaying(false); setCurrentAudio(null); };
+      audio.play().catch(() => {});
+      setCurrentAudio(audio);
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(true);
+      setTimeout(() => setIsPlaying(false), 5000);
+    }
+  };
+
   // Auto-play safety message every 5 minutes when idle
   useEffect(() => {
     const idleTimer = setInterval(() => {
@@ -105,21 +128,6 @@ export default function PatientHome() {
     return () => clearInterval(t);
   }, [slideshowAuto, showSlideshow, slideshowImages.length]);
 
-  const playSafetyMessage = () => {
-    if (currentAudio) { currentAudio.pause(); setCurrentAudio(null); setIsPlaying(false); return; }
-    const src = customVoiceUrl || AI_VOICES.find(v => v.id === selectedVoice)?.url || null;
-    if (src) {
-      const audio = new Audio(src);
-      audio.onended = () => { setIsPlaying(false); setCurrentAudio(null); };
-      audio.play().catch(() => {});
-      setCurrentAudio(audio);
-      setIsPlaying(true);
-    } else {
-      setIsPlaying(true);
-      setTimeout(() => setIsPlaying(false), 5000);
-    }
-  };
-
   const getTimeOfDayIcon = () => {
     if (isMorning) return <Sun className="w-8 h-8 text-warm-amber" />;
     if (hour < 19) return <Cloud className="w-8 h-8 text-calm-blue" />;
@@ -135,13 +143,6 @@ export default function PatientHome() {
   const handleEmergency = () => {
     setShowEmergencyDialog(true);
   };
-
-  const slideshowImages = [
-    ...(patient?.familiarFaces?.filter(f => f.photoUrl).map(face => ({
-      url: face.photoUrl!, caption: `${face.name} — ${face.relationship}`, name: face.name,
-    })) || []),
-    ...lovedOnePhotos.map(p => ({ url: p.url, caption: p.name, name: p.name })),
-  ];
 
   const nextSlide = () => {
     setCurrentSlide((prev) => (prev + 1) % slideshowImages.length);
