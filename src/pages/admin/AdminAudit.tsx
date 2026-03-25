@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Download, Search, Filter, Shield, AlertTriangle, Info, RefreshCw } from 'lucide-react';
 
@@ -189,8 +189,8 @@ export function AdminAudit() {
                   const isOpen = expanded === log.id;
                   const hasChanges = log.before_state || log.after_state;
                   return (
-                    <>
-                      <tr key={log.id} className={`hover:bg-soft-taupe/10 transition-colors ${log.severity === 'critical' ? 'bg-gentle-coral/5' : ''}`}>
+                    <Fragment key={log.id}>
+                      <tr className={`hover:bg-soft-taupe/10 transition-colors ${log.severity === 'critical' ? 'bg-gentle-coral/5' : ''}`}>
                         <td className="px-4 py-3 text-medium-gray whitespace-nowrap font-mono text-xs">
                           {new Date(log.created_at).toLocaleString()}
                         </td>
@@ -244,7 +244,7 @@ export function AdminAudit() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>
