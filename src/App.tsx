@@ -177,11 +177,11 @@ function AppContent() {
       return state.currentView === 'login' ? <LoginPage /> : <LandingPage />;
     }
     switch (state.selectedRole) {
-      case 'patient':    return <PatientLayout />;
-      case 'caregiver':  return <CaregiverLayout />;
-      case 'therapist':  return <TherapistLayout />;
-      case 'admin':      return <AdminLayout />;
-      case 'superadmin': return <SuperAdminLayout />;
+      case 'patient':    console.log('[MemoriaHelps] Rendering PatientLayout'); return <PatientLayout />;
+      case 'caregiver':  console.log('[MemoriaHelps] Rendering CaregiverLayout'); return <CaregiverLayout />;
+      case 'therapist':  console.log('[MemoriaHelps] Rendering TherapistLayout'); return <TherapistLayout />;
+      case 'admin':      console.log('[MemoriaHelps] Rendering AdminLayout'); return <AdminLayout />;
+      case 'superadmin': console.log('[MemoriaHelps] Rendering SuperAdminLayout'); return <SuperAdminLayout />;
       default:           return <LandingPage />;
     }
   };

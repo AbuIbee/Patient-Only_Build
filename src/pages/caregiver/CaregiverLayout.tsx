@@ -20,7 +20,7 @@ import {
   LayoutDashboard, Pill, Calendar, Heart, BookOpen, FileText,
   Bell, AlertTriangle, User, LogOut, ChevronLeft, ChevronRight,
   ChevronDown, Users, Plus, Clock, FlaskConical, UserPlus,
-  Sparkles, X, Film,
+  Sparkles, X, Film, RefreshCw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -30,11 +30,13 @@ type CaregiverView =
   | 'documents' | 'reminders' | 'crisis' | 'timeline' | 'addPatient' | 'myportal' | 'media';
 
 // ── Empty State ──────────────────────────────────────────────────────────────
-function EmptyState({ onAddPatient, onEnterDemo, onLogout, onRefresh }: {
+function EmptyState({ onAddPatient, onEnterDemo, onLogout, onRefresh, currentView, setCurrentView }: {
   onAddPatient: () => void;
   onEnterDemo: () => void;
   onLogout: () => void;
   onRefresh: () => void;
+  currentView: CaregiverView;
+  setCurrentView: (v: CaregiverView) => void;
 }) {
   return (
     <div className="min-h-screen bg-warm-ivory flex flex-col">
@@ -246,7 +248,7 @@ export default function CaregiverLayout() {
 
   // ── Empty State ──
   if (allPatients.length === 0 && !isDemoMode && currentView !== 'addPatient') {
-    return <EmptyState onAddPatient={() => setCurrentView('addPatient')} onEnterDemo={handleEnterDemo} onLogout={handleLogout} onRefresh={loadPatients} />;
+    return <EmptyState onAddPatient={() => setCurrentView('addPatient')} onEnterDemo={handleEnterDemo} onLogout={handleLogout} onRefresh={loadPatients} currentView={currentView} setCurrentView={setCurrentView} />;
   }
 
   // ── Add Patient from empty state (no sidebar yet) ──
