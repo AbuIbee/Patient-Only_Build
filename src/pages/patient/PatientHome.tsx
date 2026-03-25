@@ -104,8 +104,9 @@ export default function PatientHome() {
     const t = setInterval(() => setCurrentSlide(s => (s + 1) % slideshowImages.length), 4000);
     return () => clearInterval(t);
   }, [slideshowAuto, showSlideshow, slideshowImages.length]);
+
+  const playSafetyMessage = () => {
     if (currentAudio) { currentAudio.pause(); setCurrentAudio(null); setIsPlaying(false); return; }
-    // Custom uploaded voice takes priority
     const src = customVoiceUrl || AI_VOICES.find(v => v.id === selectedVoice)?.url || null;
     if (src) {
       const audio = new Audio(src);
