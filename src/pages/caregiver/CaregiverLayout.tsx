@@ -140,48 +140,96 @@ function DemoModeBanner({ onExitDemo }: { onExitDemo: () => void }) {
 
 // ── Main Layout ──────────────────────────────────────────────────────────────
 export default function CaregiverLayout() {
+  // 🐛 DEBUG: Component render start
+  console.log('🎬 [CaregiverLayout] Component render START');
+
+  // ✅ CRITICAL: ALL HOOKS MUST BE CALLED FIRST, BEFORE ANY CONDITIONAL RETURNS
+  // This is the #1 cause of React Error #310
+  
+  // All useState hooks first
   const [currentView, setCurrentView] = useState<CaregiverView>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
   const [isLoadingPatients, setIsLoadingPatients] = useState(true);
   const [hasRealPatients, setHasRealPatients] = useState(false);
+  console.log('🪝 [CaregiverLayout] All useState hooks called');
 
+  // Context and custom hooks
   const { state, dispatch } = useApp();
+  console.log('🪝 [CaregiverLayout] useApp() called', {
+    user: state.currentUser?.id,
+    patientsCount: state.patients.length,
+    isDemoMode: state.isDemoMode,
+    isAuthenticated: state.isAuthenticated
+  });
+
   const allPatients = useAllPatients();
+  console.log('🪝 [CaregiverLayout] useAllPatients() called', { count: allPatients.length });
+
   const selectedPatient = useSelectedPatient();
+  console.log('🪝 [CaregiverLayout] useSelectedPatient() called', { 
+    patientId: selectedPatient?.patient.id || 'none' 
+  });
+
   const isDemoMode = state.isDemoMode;
 
-  useEffect(() => { loadPatients(); }, []);
+  // All useEffect hooks
+  useEffect(() => {
+    console.log('🪝 [CaregiverLayout] useEffect[loadPatients] - STARTING');
+    loadPatients();
+  }, []);
+  
+  console.log('✅ [CaregiverLayout] All hooks complete, proceeding to logic');
 
+  // ✅ NOW it's safe to define functions and do conditional logic
+  
   const loadPatients = async () => {
+    console.log('📡 [loadPatients] Starting to load patients...');
     setIsLoadingPatients(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      console.log('📡 [loadPatients] Session check:', { hasSession: !!session?.user });
+      
       if (session?.user) {
+        console.log('📡 [loadPatients] Fetching caregiver patients...');
         const patients = await getCaregiverPatients();
-        if (patients.length > 0) {
+        console.log('📡 [loadPatients] Patients fetched:', { count: patients?.length || 0 });
+        
+        if (patients && patients.length > 0) {
           dispatch({ type: 'SET_PATIENTS', payload: patients });
           // Do NOT auto-select a patient — open on All Patients dashboard
           dispatch({ type: 'SELECT_PATIENT', payload: null });
           setHasRealPatients(true);
+          console.log('✅ [loadPatients] Patients loaded successfully');
+        } else {
+          console.log('📭 [loadPatients] No patients found');
+          // Ensure empty array is dispatched
+          dispatch({ type: 'SET_PATIENTS', payload: [] });
+          dispatch({ type: 'SELECT_PATIENT', payload: null });
         }
-        // else: stay on empty state, user chooses demo or add patient
+      } else {
+        console.log('🔒 [loadPatients] No session, staying on empty state');
       }
-      // no session = mock login, stay on empty state
     } catch (error) {
-      console.error('Error loading patients:', error);
+      console.error('❌ [loadPatients] Error loading patients:', error);
+      // Even on error, dispatch empty array to keep state consistent
+      dispatch({ type: 'SET_PATIENTS', payload: [] });
+      dispatch({ type: 'SELECT_PATIENT', payload: null });
     } finally {
       setIsLoadingPatients(false);
+      console.log('📡 [loadPatients] Complete');
     }
   };
 
   const handleEnterDemo = () => {
+    console.log('🎭 [handleEnterDemo] Entering demo mode');
     initializeMockData(dispatch);
     dispatch({ type: 'SET_DEMO_MODE', payload: true });
     toast.success('Demo mode enabled — showing 3 sample patients');
   };
 
   const handleExitDemo = () => {
+    console.log('🚪 [handleExitDemo] Exiting demo mode');
     dispatch({ type: 'SET_PATIENTS', payload: [] });
     dispatch({ type: 'SELECT_PATIENT', payload: null });
     dispatch({ type: 'SET_DEMO_MODE', payload: false });
@@ -190,20 +238,23 @@ export default function CaregiverLayout() {
   };
 
   const handlePatientAdded = async (patientProfileId?: string) => {
+    console.log('➕ [handlePatientAdded] Patient added, reloading...', { patientProfileId });
     if (isDemoMode) dispatch({ type: 'SET_DEMO_MODE', payload: false });
     setIsLoadingPatients(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const patients = await getCaregiverPatients();
-        if (patients.length > 0) {
+        if (patients && patients.length > 0) {
           dispatch({ type: 'SET_PATIENTS', payload: patients });
           const targetId = patientProfileId || patients[patients.length - 1].patient.id;
           dispatch({ type: 'SELECT_PATIENT', payload: targetId });
           setHasRealPatients(true);
+          console.log('✅ [handlePatientAdded] Patient added successfully');
         }
       }
     } catch (err) {
+      console.error('❌ [handlePatientAdded] Error:', err);
       toast.error('Patient saved — please refresh to see them.');
     } finally {
       setIsLoadingPatients(false);
@@ -226,16 +277,25 @@ export default function CaregiverLayout() {
   ];
 
   const handlePatientSelect = (patientId: string | null) => {
+    console.log('👤 [handlePatientSelect] Patient selected:', patientId);
     dispatch({ type: 'SELECT_PATIENT', payload: patientId });
     setShowPatientDropdown(false);
     setCurrentView('dashboard');
   };
 
-  const handleLogout = async () => { await supabase.auth.signOut(); dispatch({ type: 'LOGOUT' }); };
+  const handleLogout = async () => { 
+    console.log('🚪 [handleLogout] Logging out...');
+    await supabase.auth.signOut(); 
+    dispatch({ type: 'LOGOUT' }); 
+  };
+  
   const selectedPatientAlerts = selectedPatient?.alerts.filter(a => !a.isRead).length || 0;
 
+  // ── NOW it's safe to have conditional returns ──────────────────────────────
+  
   // ── Loading ──
   if (isLoadingPatients) {
+    console.log('🔄 [CaregiverLayout] Rendering: LOADING STATE');
     return (
       <div className="min-h-screen bg-warm-ivory flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -248,11 +308,20 @@ export default function CaregiverLayout() {
 
   // ── Empty State ──
   if (allPatients.length === 0 && !isDemoMode && currentView !== 'addPatient') {
-    return <EmptyState onAddPatient={() => setCurrentView('addPatient')} onEnterDemo={handleEnterDemo} onLogout={handleLogout} onRefresh={loadPatients} currentView={currentView} setCurrentView={setCurrentView} />;
+    console.log('📭 [CaregiverLayout] Rendering: EMPTY STATE');
+    return <EmptyState 
+      onAddPatient={() => setCurrentView('addPatient')} 
+      onEnterDemo={handleEnterDemo} 
+      onLogout={handleLogout} 
+      onRefresh={loadPatients} 
+      currentView={currentView} 
+      setCurrentView={setCurrentView} 
+    />;
   }
 
   // ── Add Patient from empty state (no sidebar yet) ──
   if (currentView === 'addPatient' && allPatients.length === 0 && !isDemoMode) {
+    console.log('➕ [CaregiverLayout] Rendering: ADD PATIENT (empty state)');
     return (
       <div className="min-h-screen bg-warm-ivory p-6">
         <AddPatientPage onBack={() => setCurrentView('dashboard')} onPatientAdded={handlePatientAdded} />
@@ -283,6 +352,8 @@ export default function CaregiverLayout() {
       default:            return <MultiPatientDashboard onSelectPatient={handlePatientSelect} onAddPatient={() => setCurrentView('addPatient')} />;
     }
   };
+
+  console.log('✨ [CaregiverLayout] Rendering: FULL LAYOUT');
 
   return (
     <div className={`min-h-screen bg-warm-ivory flex ${isDemoMode ? 'pt-10' : ''}`}>
