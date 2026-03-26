@@ -1,126 +1,232 @@
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 import { useApp } from '@/store/AppContext';
-import { Card } from '@/components/ui/card';
-import { FileText, Image, File, ExternalLink } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { FileText, CalendarDays, CalendarRange, Calendar } from 'lucide-react';
+
+type LogRow = {
+  id: string;
+  patient_id: string;
+  report_date: string;
+  submitted_at: string;
+  mood: string | null;
+  meals: string | null;
+  hydration: string | null;
+  medications: string | null;
+  mobility: string | null;
+  exercise: string | null;
+  sleep_quality: string | null;
+  pain_level: number | null;
+  notes: string | null;
+  answers: Record<string, unknown> | null;
+};
+
+type FilterMode = 'day' | 'week' | 'month';
+
+function getWeekStart(dateString: string) {
+  const date = new Date(dateString + 'T12:00:00');
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  return date.toISOString().slice(0, 10);
+}
+
+function getMonthKey(dateString: string) {
+  return dateString.slice(0, 7);
+}
 
 export default function PatientDocuments() {
   const { state } = useApp();
-  const documents = state.documents;
+  const patientId = state.currentUser?.id || state.patient?.id || '';
 
-  const getDocumentIcon = (fileType: string) => {
-    if (fileType.startsWith('image/')) {
-      return <Image className="w-8 h-8 text-warm-bronze" />;
-    } else if (fileType.includes('pdf')) {
-      return <FileText className="w-8 h-8 text-gentle-coral" />;
-    } else {
-      return <File className="w-8 h-8 text-deep-slate" />;
+  const [logs, setLogs] = useState<LogRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterMode, setFilterMode] = useState<FilterMode>('day');
+
+  useEffect(() => {
+    if (!patientId) return;
+    loadLogs();
+  }, [patientId]);
+
+  const loadLogs = async () => {
+    setLoading(true);
+
+    try {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+      const cutoffDate = cutoff.toISOString().slice(0, 10);
+
+      const { data, error } = await supabase
+        .from('care_partner_logs')
+        .select('*')
+        .eq('patient_id', patientId)
+        .gte('report_date', cutoffDate)
+        .order('report_date', { ascending: false });
+
+      if (error) {
+        console.error(error);
+        setLogs([]);
+        return;
+      }
+
+      setLogs((data || []) as LogRow[]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getCategoryLabel = (category: string) => {
-    const labels: Record<string, string> = {
-      medical: 'Medical',
-      legal: 'Legal',
-      insurance: 'Insurance',
-      care_plan: 'Care Plan',
-      other: 'Other',
-    };
-    return labels[category] || 'Other';
-  };
+  const groupedLogs = useMemo(() => {
+    if (filterMode === 'day') {
+      const groups: Record<string, LogRow[]> = {};
+      logs.forEach((log) => {
+        if (!groups[log.report_date]) groups[log.report_date] = [];
+        groups[log.report_date].push(log);
+      });
+      return Object.entries(groups);
+    }
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+    if (filterMode === 'week') {
+      const groups: Record<string, LogRow[]> = {};
+      logs.forEach((log) => {
+        const key = getWeekStart(log.report_date);
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(log);
+      });
+      return Object.entries(groups);
+    }
 
-  const documentsByCategory = documents.reduce((acc, doc) => {
-    if (!acc[doc.category]) acc[doc.category] = [];
-    acc[doc.category].push(doc);
-    return acc;
-  }, {} as Record<string, typeof documents>);
+    const groups: Record<string, LogRow[]> = {};
+    logs.forEach((log) => {
+      const key = getMonthKey(log.report_date);
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(log);
+    });
+    return Object.entries(groups);
+  }, [logs, filterMode]);
+
+  const filterButtons = [
+    { id: 'day' as FilterMode, label: 'Day', icon: CalendarDays },
+    { id: 'week' as FilterMode, label: 'Week', icon: CalendarRange },
+    { id: 'month' as FilterMode, label: 'Month', icon: Calendar },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <h2 className="text-2xl font-semibold text-charcoal mb-2">My Documents</h2>
-        <p className="text-medium-gray">Important papers and photos</p>
-      </div>
+    <div className="w-full max-w-6xl mx-auto space-y-6">
+      <div className="rounded-3xl bg-white shadow-card overflow-hidden">
+        <div className="border-b border-soft-taupe px-6 py-5 sm:px-8">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-warm-bronze/10 flex items-center justify-center">
+                <FileText className="w-6 h-6 text-warm-bronze" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-charcoal">Papers</h1>
+                <p className="text-medium-gray text-sm">
+                  Care partner logs saved from the last 30 days
+                </p>
+              </div>
+            </div>
 
-      {/* Document Categories */}
-      {Object.entries(documentsByCategory).length === 0 ? (
-        <Card className="p-8 text-center border-dashed border-2 border-soft-taupe">
-          <FileText className="w-12 h-12 text-soft-taupe mx-auto mb-3" />
-          <p className="text-medium-gray mb-2">No documents yet</p>
-          <p className="text-sm text-medium-gray">Your caregiver will add important documents here</p>
-        </Card>
-      ) : (
-        <div className="space-y-6">
-          {Object.entries(documentsByCategory).map(([category, docs], catIndex) => (
-            <motion.div
-              key={category}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: catIndex * 0.1 }}
-            >
-              <h3 className="text-lg font-semibold text-charcoal mb-3">
-                {getCategoryLabel(category)}
-              </h3>
-              <div className="space-y-3">
-                {docs.map((doc, docIndex) => (
-                  <motion.div
-                    key={doc.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: catIndex * 0.1 + docIndex * 0.05 }}
+            <div className="flex flex-wrap gap-2">
+              {filterButtons.map((button) => {
+                const Icon = button.icon;
+                const active = filterMode === button.id;
+                return (
+                  <button
+                    key={button.id}
+                    onClick={() => setFilterMode(button.id)}
+                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+                      active
+                        ? 'bg-warm-bronze text-white'
+                        : 'bg-soft-taupe/40 text-charcoal hover:bg-soft-taupe'
+                    }`}
                   >
-                    <Card className="p-4 bg-white border-0 shadow-soft hover:shadow-card transition-shadow">
-                      <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 bg-warm-ivory rounded-xl flex items-center justify-center flex-shrink-0">
-                          {getDocumentIcon(doc.fileType)}
+                    <Icon className="w-4 h-4" />
+                    {button.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 py-6 sm:px-8">
+          {loading ? (
+            <p className="text-medium-gray">Loading saved care partner logs...</p>
+          ) : logs.length === 0 ? (
+            <div className="rounded-2xl bg-warm-ivory p-6 text-medium-gray">
+              No saved care partner logs yet. Submit one from the Care Partner page.
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {groupedLogs.map(([groupKey, items]) => (
+                <section key={groupKey} className="rounded-2xl border border-soft-taupe overflow-hidden">
+                  <div className="bg-soft-taupe/25 px-5 py-4 border-b border-soft-taupe">
+                    <h2 className="text-lg font-bold text-charcoal">
+                      {filterMode === 'day' && `Day: ${new Date(groupKey).toLocaleDateString()}`}
+                      {filterMode === 'week' && `Week Starting: ${new Date(groupKey).toLocaleDateString()}`}
+                      {filterMode === 'month' &&
+                        `Month: ${new Date(groupKey + '-01').toLocaleDateString(undefined, {
+                          month: 'long',
+                          year: 'numeric',
+                        })}`}
+                    </h2>
+                    <p className="text-sm text-medium-gray">
+                      {items.length} saved log{items.length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+
+                  <div className="divide-y divide-soft-taupe">
+                    {items.map((log) => (
+                      <div key={log.id} className="p-5 space-y-4 bg-white">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="font-semibold text-charcoal">
+                              Report Date: {new Date(log.report_date).toLocaleDateString()}
+                            </p>
+                            <p className="text-sm text-medium-gray">
+                              Submitted: {new Date(log.submitted_at).toLocaleString()}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold text-charcoal truncate">{doc.title}</h4>
-                          {doc.description && (
-                            <p className="text-sm text-medium-gray line-clamp-1">{doc.description}</p>
-                          )}
-                          <p className="text-xs text-medium-gray mt-1">
-                            {formatFileSize(doc.fileSize)} • {new Date(doc.createdAt).toLocaleDateString()}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                          <InfoCard label="Mood" value={log.mood} />
+                          <InfoCard label="Meals" value={log.meals} />
+                          <InfoCard label="Hydration" value={log.hydration} />
+                          <InfoCard label="Medications" value={log.medications} />
+                          <InfoCard label="Mobility" value={log.mobility} />
+                          <InfoCard label="Exercise" value={log.exercise} />
+                          <InfoCard label="Sleep Quality" value={log.sleep_quality} />
+                          <InfoCard
+                            label="Pain Level"
+                            value={log.pain_level === null ? '' : String(log.pain_level)}
+                          />
+                        </div>
+
+                        <div className="rounded-2xl bg-warm-ivory p-4">
+                          <p className="text-sm font-semibold text-charcoal mb-2">Notes</p>
+                          <p className="text-sm text-medium-gray whitespace-pre-wrap">
+                            {log.notes?.trim() || 'No notes entered.'}
                           </p>
                         </div>
-                        <a
-                          href={doc.fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-10 h-10 bg-warm-bronze/10 rounded-xl flex items-center justify-center text-warm-bronze hover:bg-warm-bronze hover:text-white transition-colors flex-shrink-0"
-                        >
-                          <ExternalLink className="w-5 h-5" />
-                        </a>
                       </div>
-                    </Card>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-          ))}
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
 
-      {/* Help Text */}
-      <Card className="p-4 bg-soft-sage/20 border-0">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 bg-soft-sage/30 rounded-full flex items-center justify-center flex-shrink-0">
-            <FileText className="w-5 h-5 text-soft-sage" />
-          </div>
-          <div>
-            <h4 className="font-semibold text-charcoal mb-1">Need Help?</h4>
-            <p className="text-sm text-medium-gray">
-              Ask your caregiver if you need to see a specific document. They can add or remove documents from the caregiver portal.
-            </p>
-          </div>
-        </div>
-      </Card>
+function InfoCard({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="rounded-2xl border border-soft-taupe bg-white p-4">
+      <p className="text-xs uppercase tracking-wide text-medium-gray mb-1">{label}</p>
+      <p className="text-sm font-semibold text-charcoal">{value || '—'}</p>
     </div>
   );
 }
