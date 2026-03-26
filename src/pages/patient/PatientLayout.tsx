@@ -209,10 +209,10 @@ export default function PatientLayout() {
               const isActive = currentView === item.id;
               return (
                 <button key={item.id} onClick={() => setCurrentView(item.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isActive ? 'bg-warm-bronze text-white shadow-soft' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}>
-                  <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-white' : ''}`} />
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isActive ? 'bg-yellow-400 text-charcoal shadow-soft' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}>
+                  <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-charcoal' : ''}`} />
                   {!sidebarCollapsed && !simplifiedMode && <span className="font-medium text-sm">{item.label}</span>}
-                  {isActive && !sidebarCollapsed && !simplifiedMode && <motion.div layoutId="activeIndicator" className="ml-auto w-2 h-2 bg-white rounded-full" />}
+                  {isActive && !sidebarCollapsed && !simplifiedMode && <motion.div layoutId="activeIndicator" className="ml-auto w-2 h-2 bg-charcoal rounded-full" />}
                 </button>
               );
             })}
@@ -234,8 +234,8 @@ export default function PatientLayout() {
                       const isActive = currentView === item.id;
                       return (
                         <button key={item.id} onClick={() => setCurrentView(item.id)}
-                          className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${isActive ? 'bg-warm-bronze/80 text-white' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}>
-                          <Icon className="w-5 h-5 flex-shrink-0" />
+                          className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${isActive ? 'bg-yellow-400 text-charcoal font-bold' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}>
+                          <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-charcoal' : ''}`} />
                           {!sidebarCollapsed && <span className="font-medium text-sm">{item.label}</span>}
                         </button>
                       );
@@ -289,7 +289,7 @@ export default function PatientLayout() {
                   const isActive = currentView === item.id;
                   return (
                     <button key={item.id} onClick={() => setCurrentView(item.id)}
-                      className={`p-2 rounded-xl transition-all ${isActive ? 'bg-warm-bronze text-white' : 'bg-soft-taupe/30 text-medium-gray'}`}>
+                      className={`p-2 rounded-xl transition-all ${isActive ? 'bg-yellow-400 text-charcoal' : 'bg-soft-taupe/30 text-medium-gray'}`}>
                       <Icon className="w-5 h-5" />
                     </button>
                   );
@@ -346,22 +346,42 @@ export default function PatientLayout() {
 
       {/* Sundowning indicator */}
       {isSundowningTime && (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
-          <div className="bg-warm-amber/90 text-white px-6 py-3 rounded-full shadow-elevated flex items-center gap-3">
-            <Sun className="w-5 h-5" />
-            <span className="font-medium">Evening Mode — Extra Calm</span>
-            <button onClick={() => setSimplifiedMode(!simplifiedMode)} className="ml-2 text-sm underline">
-              {simplifiedMode ? 'Show More' : 'Simplify'}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+          className="fixed bottom-20 md:bottom-6 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 z-50 md:min-w-[360px]">
+          <div className="bg-amber-500 border-2 border-amber-600 text-white rounded-2xl shadow-2xl px-5 py-4 flex items-center gap-4" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.35)' }}>
+            <div className="w-10 h-10 bg-white/30 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Sun className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-white text-base leading-tight drop-shadow">Evening Mode — Extra Calm</p>
+              <p className="text-white text-sm mt-0.5 font-medium drop-shadow">Softer lighting is on</p>
+            </div>
+            <button
+              onClick={() => setSimplifiedMode(!simplifiedMode)}
+              className="flex-shrink-0 bg-white text-amber-600 text-sm font-bold px-3 py-1.5 rounded-xl transition-colors hover:bg-amber-50 border border-white shadow-sm">
+              {simplifiedMode ? 'Full View' : 'Simplify'}
             </button>
           </div>
         </motion.div>
       )}
 
       {isEvening && !isSundowningTime && (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
-          <div className="bg-deep-slate/80 text-white px-6 py-3 rounded-full shadow-elevated flex items-center gap-3">
-            <Moon className="w-5 h-5" />
-            <span className="font-medium">Good Evening — Time to Relax</span>
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+          className="fixed bottom-20 md:bottom-6 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 z-50 md:min-w-[360px]">
+          <div className="bg-slate-700 border-2 border-slate-600 text-white rounded-2xl shadow-2xl px-5 py-4 flex items-center gap-4" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.40)' }}>
+            <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Moon className="w-6 h-6 text-yellow-300" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-white text-base leading-tight drop-shadow">Good Evening</p>
+              <p className="text-slate-200 text-sm mt-0.5 font-medium">Time to wind down and relax</p>
+            </div>
           </div>
         </motion.div>
       )}
@@ -379,14 +399,14 @@ export default function PatientLayout() {
           return (
             <button key={id}
               onClick={() => setCurrentView(id as PatientView)}
-              className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-colors min-w-0 flex-1 ${isActive ? 'text-warm-bronze' : 'text-medium-gray'}`}>
+              className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-colors min-w-0 flex-1 ${isActive ? 'text-yellow-500' : 'text-medium-gray'}`}>
               <Icon className="w-5 h-5 flex-shrink-0" />
               <span className="text-xs font-medium truncate">{label}</span>
             </button>
           );
         })}
         <button onClick={() => setShowMoreMenu(!showMoreMenu)}
-          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-colors flex-1 ${showMoreMenu ? 'text-warm-bronze' : 'text-medium-gray'}`}>
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-colors flex-1 ${showMoreMenu ? 'text-yellow-500' : 'text-medium-gray'}`}>
           <MoreHorizontal className="w-5 h-5" />
           <span className="text-xs font-medium">More</span>
         </button>
@@ -398,7 +418,7 @@ export default function PatientLayout() {
               return (
                 <button key={id}
                   onClick={() => { setCurrentView(id as PatientView); setShowMoreMenu(false); }}
-                  className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-colors ${isActive ? 'bg-warm-bronze/10 text-warm-bronze' : 'text-medium-gray hover:bg-soft-taupe'}`}>
+                  className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-colors ${isActive ? 'bg-yellow-400/20 text-yellow-600' : 'text-medium-gray hover:bg-soft-taupe'}`}>
                   <Icon className="w-5 h-5" />
                   <span className="text-xs font-medium text-center leading-tight">{label}</span>
                 </button>
