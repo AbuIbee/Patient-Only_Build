@@ -3,5 +3,5 @@ dist
 .vite
 .env
 .env.*
-02-26NewCareCompanion/
+Patient-Only_Build/
 .vercel/"dist/" 
