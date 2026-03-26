@@ -58,7 +58,11 @@ function MatchingGame({ onBack }: { onBack: () => void }) {
   };
 
   const fmt = (s: number) => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
-  const cols = difficulty === 'hard' ? 'grid-cols-6' : 'grid-cols-4';
+  // Grid layout: all cards must fit on screen without scrolling
+  // easy=12 cards (3 rows × 4), medium=16 cards (4 rows × 4), hard=24 cards (4 rows × 6)
+  const gridCols  = difficulty === 'hard' ? 'grid-cols-6' : 'grid-cols-4';
+  const cardSize  = difficulty === 'easy' ? 'w-16 h-16 sm:w-20 sm:h-20' : difficulty === 'medium' ? 'w-14 h-14 sm:w-18 sm:h-18' : 'w-11 h-11 sm:w-14 sm:h-14';
+  const textSize  = difficulty === 'hard' ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl';
 
   return (
     <div className="space-y-4">
@@ -77,15 +81,15 @@ function MatchingGame({ onBack }: { onBack: () => void }) {
         </div>
         <button onClick={initGame} className="flex items-center gap-1.5 px-3 py-1.5 bg-soft-taupe/40 hover:bg-soft-taupe rounded-xl text-sm text-medium-gray transition-colors"><RotateCcw className="w-4 h-4" /> Reset</button>
       </div>
-      <div className={`grid ${cols} gap-3`}>
+      <div className={`grid ${gridCols} gap-2`}>
         {cards.map(card => (
           <motion.button key={card.id} onClick={() => flip(card.id)}
             whileHover={!card.flipped && !card.matched ? { scale: 1.05 } : {}}
             whileTap={!card.flipped && !card.matched ? { scale: 0.95 } : {}}
-            className={`aspect-square rounded-2xl text-3xl flex items-center justify-center shadow-sm transition-all duration-300 ${card.matched ? 'bg-soft-sage/30 border-2 border-soft-sage cursor-default' : card.flipped ? 'bg-warm-ivory border-2 border-warm-bronze cursor-default' : 'bg-gradient-to-br from-warm-bronze to-warm-amber text-white cursor-pointer hover:shadow-md'}`}>
+            className={`${cardSize} rounded-2xl flex items-center justify-center shadow-sm transition-all duration-300 ${card.matched ? 'bg-soft-sage/30 border-2 border-soft-sage cursor-default' : card.flipped ? 'bg-warm-ivory border-2 border-warm-bronze cursor-default' : 'bg-gradient-to-br from-warm-bronze to-warm-amber text-white cursor-pointer hover:shadow-md'}`}>
             <AnimatePresence mode="wait">
               {card.flipped || card.matched
-                ? <motion.span key="e" initial={{ rotateY: 90, opacity: 0 }} animate={{ rotateY: 0, opacity: 1 }} className="text-2xl sm:text-3xl">{card.emoji}</motion.span>
+                ? <motion.span key="e" initial={{ rotateY: 90, opacity: 0 }} animate={{ rotateY: 0, opacity: 1 }} className={textSize}>{card.emoji}</motion.span>
                 : <motion.span key="b" className="text-xl text-white/80 font-bold">?</motion.span>}
             </AnimatePresence>
           </motion.button>

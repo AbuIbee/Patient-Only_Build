@@ -15,7 +15,7 @@ import PatientGames from './PatientGames';
 import {
   LayoutDashboard, Calendar, Pill, FileText, Bell,
   Heart, Smile, Users, MoreHorizontal, ChevronLeft,
-  ChevronRight, Volume2, VolumeX, Sun, Moon, LogOut, ClipboardList, UserCheck, Film, Gamepad2,
+  ChevronRight, Volume2, VolumeX, Sun, Moon, LogOut, ClipboardList, UserCheck, Film, Gamepad2, X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -28,15 +28,30 @@ export default function PatientLayout() {
   const [showMoreMenu, setShowMoreMenu]         = useState(false);
   const [isPlaying, setIsPlaying]               = useState(false);
   const [isLoading, setIsLoading]               = useState(true);
+  const [showSundownBanner, setShowSundownBanner] = useState(true);
+  const [showEveningBanner, setShowEveningBanner] = useState(true);
   const { state, dispatch } = useApp();
   const patient = state.patient;
 
   const hour = new Date().getHours();
   const isSundowningTime = hour >= 16 && hour <= 19;
   const isEvening = hour >= 19;
-  const [simplifiedMode, setSimplifiedMode] = useState(false); // Never auto-hide sidebar
+  const [simplifiedMode, setSimplifiedMode] = useState(false);
 
-  // Simplified mode is only activated manually via the sundowning banner button
+  // Auto-close banners after 8 seconds
+  useEffect(() => {
+    if (!isSundowningTime) return;
+    setShowSundownBanner(true);
+    const t = setTimeout(() => setShowSundownBanner(false), 8000);
+    return () => clearTimeout(t);
+  }, [isSundowningTime]);
+
+  useEffect(() => {
+    if (!isEvening) return;
+    setShowEveningBanner(true);
+    const t = setTimeout(() => setShowEveningBanner(false), 8000);
+    return () => clearTimeout(t);
+  }, [isEvening]);
 
   // ── Load real patient data from Supabase ────────────────────────────────────
   useEffect(() => { loadPatientData(); }, []);
@@ -345,46 +360,64 @@ export default function PatientLayout() {
       </main>
 
       {/* Sundowning indicator */}
-      {isSundowningTime && (
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-          className="fixed bottom-20 md:bottom-6 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 z-50 md:min-w-[360px]">
-          <div className="bg-amber-500 border-2 border-amber-600 text-white rounded-2xl shadow-2xl px-5 py-4 flex items-center gap-4" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.35)' }}>
-            <div className="w-10 h-10 bg-white/30 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Sun className="w-6 h-6 text-white" />
+      <AnimatePresence>
+        {isSundowningTime && showSundownBanner && (
+          <motion.div
+            key="sundown-banner"
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+            className="fixed bottom-20 md:bottom-6 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 z-50 md:min-w-[360px]">
+            <div className="bg-amber-500 border-2 border-amber-600 text-white rounded-2xl shadow-2xl px-5 py-4 flex items-center gap-4" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.35)' }}>
+              <div className="w-10 h-10 bg-white/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Sun className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-white text-base leading-tight drop-shadow">Evening Mode — Extra Calm</p>
+                <p className="text-white text-sm mt-0.5 font-medium drop-shadow">Softer lighting is on</p>
+              </div>
+              <button
+                onClick={() => setSimplifiedMode(!simplifiedMode)}
+                className="flex-shrink-0 bg-white text-amber-600 text-sm font-bold px-3 py-1.5 rounded-xl transition-colors hover:bg-amber-50 border border-white shadow-sm">
+                {simplifiedMode ? 'Full View' : 'Simplify'}
+              </button>
+              <button onClick={() => setShowSundownBanner(false)}
+                className="flex-shrink-0 w-8 h-8 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center transition-colors"
+                aria-label="Dismiss">
+                <X className="w-4 h-4 text-white" />
+              </button>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-white text-base leading-tight drop-shadow">Evening Mode — Extra Calm</p>
-              <p className="text-white text-sm mt-0.5 font-medium drop-shadow">Softer lighting is on</p>
-            </div>
-            <button
-              onClick={() => setSimplifiedMode(!simplifiedMode)}
-              className="flex-shrink-0 bg-white text-amber-600 text-sm font-bold px-3 py-1.5 rounded-xl transition-colors hover:bg-amber-50 border border-white shadow-sm">
-              {simplifiedMode ? 'Full View' : 'Simplify'}
-            </button>
-          </div>
-        </motion.div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {isEvening && !isSundowningTime && (
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-          className="fixed bottom-20 md:bottom-6 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 z-50 md:min-w-[360px]">
-          <div className="bg-slate-700 border-2 border-slate-600 text-white rounded-2xl shadow-2xl px-5 py-4 flex items-center gap-4" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.40)' }}>
-            <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Moon className="w-6 h-6 text-yellow-300" />
+      <AnimatePresence>
+        {isEvening && !isSundowningTime && showEveningBanner && (
+          <motion.div
+            key="evening-banner"
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+            className="fixed bottom-20 md:bottom-6 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 z-50 md:min-w-[360px]">
+            <div className="bg-slate-700 border-2 border-slate-600 text-white rounded-2xl shadow-2xl px-5 py-4 flex items-center gap-4" style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.40)' }}>
+              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Moon className="w-6 h-6 text-yellow-300" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-white text-base leading-tight drop-shadow">Good Evening</p>
+                <p className="text-slate-200 text-sm mt-0.5 font-medium">Time to wind down and relax</p>
+              </div>
+              <button onClick={() => setShowEveningBanner(false)}
+                className="flex-shrink-0 w-8 h-8 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center transition-colors"
+                aria-label="Dismiss">
+                <X className="w-4 h-4 text-white" />
+              </button>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-white text-base leading-tight drop-shadow">Good Evening</p>
-              <p className="text-slate-200 text-sm mt-0.5 font-medium">Time to wind down and relax</p>
-            </div>
-          </div>
-        </motion.div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Mobile bottom navigation ──────────────────────────────────── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-soft-taupe z-50 flex justify-around py-2 px-1 safe-bottom">
