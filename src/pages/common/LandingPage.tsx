@@ -11,84 +11,67 @@ import {
   X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import PricingPage from './PricingPage';
 
 export default function LandingPage() {
   const { dispatch } = useApp();
 
-  const handleGetStarted = () => {
+  const [showPricing, setShowPricing]     = useState(false);
+  const [showLearnMore, setShowLearnMore] = useState(false);
+
+  const handleGetStarted = () => setShowPricing(true);
+
+  const handleGoToLogin = () => {
+    setShowPricing(false);
     dispatch({ type: 'SET_VIEW', payload: 'login' });
   };
 
-  const [showLearnMore, setShowLearnMore] = useState(false);
-
   const features = [
-    {
-      icon: Brain,
-      title: 'Daily Orientation',
-      description: 'Gentle reminders of time, place, and important details',
-    },
-    {
-      icon: Clock,
-      title: 'Routine Support',
-      description: 'Simple step-by-step guidance for daily activities',
-    },
-    {
-      icon: BookOpen,
-      title: 'Memory Support',
-      description: 'Keep important people, moments, and memories close',
-    },
-    {
-      icon: Activity,
-      title: 'Mental Engagement',
-      description: 'Activities designed to keep the mind active',
-    },
-    {
-      icon: Heart,
-      title: 'Emotional Check-ins',
-      description: 'Track feelings and maintain emotional balance',
-    },
-    {
-      icon: Shield,
-      title: 'Peace of Mind',
-      description: 'A calm, structured experience for daily living',
-    },
+    { icon: Brain,    title: 'Daily Orientation', description: 'Gentle reminders of time, place, and important details' },
+    { icon: Clock,    title: 'Routine Support',   description: 'Simple step-by-step guidance for daily activities' },
+    { icon: BookOpen, title: 'Memory Support',    description: 'Keep important people, moments, and memories close' },
+    { icon: Activity, title: 'Mental Engagement', description: 'Activities designed to keep the mind active' },
+    { icon: Heart,    title: 'Emotional Check-ins', description: 'Track feelings and maintain emotional balance' },
+    { icon: Shield,   title: 'Peace of Mind',     description: 'A calm, structured experience for daily living' },
   ];
 
   return (
     <div className="min-h-screen bg-warm-ivory">
-      {/* Header */}
+
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="bg-white border-b border-soft-taupe">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center">
               <Heart className="w-6 h-6 text-white" />
             </div>
-            <span className="text-xl font-semibold text-charcoal">
-              MemoriaHelps
-            </span>
+            <span className="text-xl font-semibold text-charcoal">MemoriaHelps</span>
           </div>
 
-          <Button
-            onClick={handleGetStarted}
-            className="bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl px-6"
-          >
-            Get Started
-          </Button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleGoToLogin}
+              className="text-sm text-medium-gray hover:text-charcoal transition-colors font-medium px-3 py-2"
+            >
+              Sign In
+            </button>
+            <Button
+              onClick={handleGetStarted}
+              className="bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl px-6 h-10"
+            >
+              Get Started
+            </Button>
+          </div>
         </div>
       </header>
 
-      {/* Hero */}
+      {/* ── Hero ───────────────────────────────────────────────────────────── */}
       <section className="py-20 lg:py-32">
         <div className="max-w-6xl mx-auto px-4 grid lg:grid-cols-2 gap-12 items-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <h1 className="text-4xl lg:text-6xl font-bold text-charcoal mb-6">
               Stay on track, feel supported,
-              <span className="text-warm-bronze block">
-                every single day
-              </span>
+              <span className="text-warm-bronze block">every single day</span>
             </h1>
 
             <p className="text-lg text-medium-gray mb-8">
@@ -102,9 +85,8 @@ export default function LandingPage() {
                 onClick={handleGetStarted}
                 className="bg-warm-bronze text-white rounded-xl px-8"
               >
-                Start Now
+                Get Started Free
               </Button>
-
               <Button
                 variant="outline"
                 size="lg"
@@ -114,9 +96,19 @@ export default function LandingPage() {
                 Learn More
               </Button>
             </div>
+
+            <p className="mt-5 text-sm text-medium-gray">
+              Already have an account?{' '}
+              <button
+                onClick={handleGoToLogin}
+                className="text-warm-bronze hover:text-deep-bronze font-medium underline"
+              >
+                Sign in here
+              </button>
+            </p>
           </motion.div>
 
-          {/* Visual */}
+          {/* Visual card */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -127,33 +119,24 @@ export default function LandingPage() {
                 <p className="text-xl font-bold">10:30 AM</p>
                 <p className="text-sm text-medium-gray">Monday</p>
               </div>
-
               <div className="bg-white p-6 rounded-xl">
                 <p className="text-xl font-bold">✔ On Track</p>
                 <p className="text-sm text-medium-gray">Daily progress</p>
               </div>
-
               <div className="bg-white p-6 rounded-xl col-span-2">
-                <p className="text-charcoal font-semibold">
-                  “You are safe. You are at home.”
-                </p>
+                <p className="text-charcoal font-semibold">"You are safe. You are at home."</p>
               </div>
             </div>
           </motion.div>
         </div>
       </section>
 
-      {/* Features */}
+      {/* ── Features ───────────────────────────────────────────────────────── */}
       <section className="py-20 bg-white">
         <div className="max-w-6xl mx-auto px-4 text-center mb-12">
-          <h2 className="text-3xl font-bold text-charcoal">
-            Built for everyday support
-          </h2>
-          <p className="text-medium-gray mt-2">
-            Everything you need to stay organized, calm, and supported
-          </p>
+          <h2 className="text-3xl font-bold text-charcoal">Built for everyday support</h2>
+          <p className="text-medium-gray mt-2">Everything you need to stay organized, calm, and supported</p>
         </div>
-
         <div className="max-w-6xl mx-auto px-4 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map((f, i) => (
             <motion.div
@@ -171,7 +154,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* CTA */}
+      {/* ── CTA strip ──────────────────────────────────────────────────────── */}
       <section className="py-20 bg-charcoal text-center">
         <h2 className="text-3xl font-bold text-white mb-4">
           Start your daily support system today
@@ -181,31 +164,41 @@ export default function LandingPage() {
           onClick={handleGetStarted}
           className="bg-warm-bronze text-white px-8 rounded-xl"
         >
-          Get Started Free
+          See Plans &amp; Pricing
         </Button>
       </section>
 
-      {/* Learn More Modal */}
+      {/* ── Pricing modal ──────────────────────────────────────────────────── */}
+      {showPricing && (
+        <PricingPage
+          modal
+          onClose={() => setShowPricing(false)}
+          onGoToLogin={handleGoToLogin}
+        />
+      )}
+
+      {/* ── Learn More modal ───────────────────────────────────────────────── */}
       <AnimatePresence>
         {showLearnMore && (
           <motion.div
-            className="fixed inset-0 bg-black/60 flex items-center justify-center p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setShowLearnMore(false);
-            }}
+            className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowLearnMore(false); }}
           >
-            <motion.div className="bg-white rounded-2xl p-6 max-w-xl w-full">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl p-6 max-w-xl w-full"
+            >
               <div className="flex justify-between mb-4">
                 <h2 className="text-xl font-bold">About MemoriaHelps</h2>
-                <button onClick={() => setShowLearnMore(false)}>
-                  <X />
+                <button onClick={() => setShowLearnMore(false)} className="text-medium-gray hover:text-charcoal">
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-
               <p className="text-medium-gray">
-                MemoriaHelps is a daily support system designed to help
-                individuals maintain structure, stay on track with routines,
-                and feel reassured throughout the day.
+                MemoriaHelps is a daily support system designed to help individuals maintain
+                structure, stay on track with routines, and feel reassured throughout the day.
               </p>
             </motion.div>
           </motion.div>

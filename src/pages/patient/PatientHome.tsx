@@ -1,10 +1,10 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useApp } from '@/store/AppContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Phone, Sun, Cloud, Moon, CheckCircle2, Volume2, Play, ChevronRight, ChevronLeft, X, Music, Home, BookOpen, Wind, Heart, Upload, Camera, Pause, ImageIcon, Mic, Bot } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Phone, Sun, Cloud, Moon, CheckCircle2, Volume2, Play, ChevronRight, ChevronLeft, X, Music, Home, BookOpen, Wind, Heart, Upload, Camera, Pause, ImageIcon, Mic, Bot, Leaf, Waves, Bird, Piano, Headphones, FileAudio, PlusCircle, Star } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 
 // Mock family stories
@@ -14,13 +14,325 @@ const familyStories = [
   { title: 'Sophie\'s First Steps', author: 'Mary', preview: 'You were so excited when Sophie...' },
 ];
 
-// Mock weather with emotional context
-const getWeatherContext = () => {
-  const hour = new Date().getHours();
-  if (hour < 12) return { temp: 72, condition: 'sunny', message: 'Beautiful sunny day! Perfect for a walk.' };
-  if (hour < 17) return { temp: 75, condition: 'partly-cloudy', message: 'Pleasant afternoon. Great day to be outside.' };
-  return { temp: 68, condition: 'clear', message: 'Lovely evening. Time to wind down.' };
+// ── Weather condition types ───────────────────────────────────────────────────
+type WeatherCondition =
+  | 'sunny' | 'partly-cloudy' | 'cloudy' | 'rainy' | 'stormy'
+  | 'snowy' | 'foggy' | 'clear-night' | 'autumn' | 'windy';
+
+interface WeatherData {
+  temp: number;
+  condition: WeatherCondition;
+  message: string;
+  isDay: boolean;
+}
+
+// Map Open-Meteo WMO weather codes → our condition types
+function wmoToCondition(code: number, isDay: boolean, month: number): WeatherCondition {
+  if (!isDay) return 'clear-night';
+  // Autumn months with overcast/mild = 'autumn' feel
+  const isAutumn = month >= 9 && month <= 11;
+  if (code === 0) return isDay ? 'sunny' : 'clear-night';
+  if (code <= 2)  return 'partly-cloudy';
+  if (code === 3) return isAutumn ? 'autumn' : 'cloudy';
+  if (code <= 49) return 'foggy';
+  if (code <= 57) return 'rainy';   // drizzle
+  if (code <= 67) return 'rainy';
+  if (code <= 77) return 'snowy';
+  if (code <= 82) return 'rainy';
+  if (code <= 86) return 'snowy';
+  return 'stormy';
+}
+
+function conditionToMessage(condition: WeatherCondition, temp: number): string {
+  switch (condition) {
+    case 'sunny':        return temp > 80 ? 'Hot and sunny — stay cool!' : 'Beautiful sunny day! Perfect for a walk.';
+    case 'partly-cloudy': return 'Some clouds but still nice out.';
+    case 'cloudy':       return 'A grey day — cosy inside.';
+    case 'rainy':        return 'Rainy day — perfect to stay cosy.';
+    case 'stormy':       return 'Stay safe and warm inside today.';
+    case 'snowy':        return 'It\'s snowing! Wrap up warm.';
+    case 'foggy':        return 'A misty morning. Take it easy.';
+    case 'clear-night':  return 'Clear night — a good time to rest.';
+    case 'autumn':       return 'Beautiful autumn day. Leaves are turning.';
+    case 'windy':        return 'A breezy day outside.';
+  }
+}
+
+// Fetch real weather from Open-Meteo (free, no API key)
+async function fetchWeather(lat: number, lon: number): Promise<WeatherData> {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,is_day,weather_code&temperature_unit=fahrenheit&timezone=auto`;
+  const res  = await fetch(url);
+  const json = await res.json();
+  const cur  = json.current;
+  const month = new Date().getMonth() + 1;
+  const condition = wmoToCondition(cur.weather_code, cur.is_day === 1, month);
+  return {
+    temp:      Math.round(cur.temperature_2m),
+    condition,
+    isDay:     cur.is_day === 1,
+    message:   conditionToMessage(condition, Math.round(cur.temperature_2m)),
+  };
+}
+
+// Fallback when location or fetch fails
+function getFallbackWeather(): WeatherData {
+  const hour  = new Date().getHours();
+  const month = new Date().getMonth() + 1;
+  const isAutumn = month >= 9 && month <= 11;
+  const isWinter = month === 12 || month <= 2;
+  let condition: WeatherCondition = 'sunny';
+  if (!( hour >= 6 && hour <= 20)) condition = 'clear-night';
+  else if (isWinter) condition = 'cloudy';
+  else if (isAutumn) condition = 'autumn';
+  return { temp: 68, condition, isDay: hour >= 6 && hour <= 20, message: conditionToMessage(condition, 68) };
+}
+
+// ── WeatherIcon — condition-aware icon ───────────────────────────────────────
+
+function WeatherIcon({ condition, className }: { condition: WeatherCondition; className?: string }) {
+  const base = className || 'w-6 h-6';
+  switch (condition) {
+    case 'sunny':         return <Sun className={`${base} text-yellow-500`} />;
+    case 'partly-cloudy': return <Cloud className={`${base} text-blue-400`} />;
+    case 'cloudy':        return <Cloud className={`${base} text-gray-400`} />;
+    case 'rainy':         return <Cloud className={`${base} text-blue-500`} />;
+    case 'stormy':        return <Cloud className={`${base} text-gray-600`} />;
+    case 'snowy':         return <Wind className={`${base} text-blue-200`} />;
+    case 'foggy':         return <Wind className={`${base} text-gray-400`} />;
+    case 'clear-night':   return <Moon className={`${base} text-indigo-300`} />;
+    case 'autumn':        return <Leaf className={`${base} text-orange-500`} />;
+    case 'windy':         return <Wind className={`${base} text-teal-400`} />;
+  }
+}
+
+// ── WeatherBackground — the animated scene behind the card ───────────────────
+
+const WEATHER_SCENES: Record<WeatherCondition, { bg: string; overlay: string; particles?: string }> = {
+  sunny: {
+    bg: 'bg-gradient-to-br from-sky-300 via-yellow-100 to-amber-200',
+    overlay: '',
+  },
+  'partly-cloudy': {
+    bg: 'bg-gradient-to-br from-sky-200 via-blue-100 to-slate-100',
+    overlay: '',
+  },
+  cloudy: {
+    bg: 'bg-gradient-to-br from-slate-300 via-gray-200 to-slate-200',
+    overlay: '',
+  },
+  rainy: {
+    bg: 'bg-gradient-to-br from-slate-400 via-blue-200 to-slate-300',
+    overlay: 'rain',
+  },
+  stormy: {
+    bg: 'bg-gradient-to-br from-gray-700 via-slate-600 to-gray-800',
+    overlay: 'storm',
+  },
+  snowy: {
+    bg: 'bg-gradient-to-br from-blue-100 via-white to-slate-100',
+    overlay: 'snow',
+  },
+  foggy: {
+    bg: 'bg-gradient-to-br from-gray-200 via-slate-100 to-gray-300',
+    overlay: 'fog',
+  },
+  'clear-night': {
+    bg: 'bg-gradient-to-br from-indigo-900 via-slate-800 to-blue-900',
+    overlay: 'stars',
+  },
+  autumn: {
+    bg: 'bg-gradient-to-br from-orange-200 via-amber-100 to-yellow-100',
+    overlay: 'leaves',
+  },
+  windy: {
+    bg: 'bg-gradient-to-br from-teal-100 via-sky-100 to-blue-100',
+    overlay: 'wind',
+  },
 };
+
+// Pre-generate deterministic random positions so particles don't jump on re-render
+const RAIN_DROPS  = Array.from({ length: 30 }, (_, i) => ({ left: (i * 3.4)  % 100, delay: (i * 0.11) % 1.5, dur: 0.6 + (i % 5) * 0.1 }));
+const SNOW_FLAKES = Array.from({ length: 24 }, (_, i) => ({ left: (i * 4.2)  % 100, delay: (i * 0.18) % 3,   dur: 2   + (i % 4) * 0.5, size: 4 + (i % 3) * 3 }));
+const LEAVES      = Array.from({ length: 14 }, (_, i) => ({ left: (i * 7.1)  % 95,  delay: (i * 0.3)  % 4,   dur: 3   + (i % 3) * 0.8 }));
+const STARS       = Array.from({ length: 30 }, (_, i) => ({ left: (i * 3.37) % 100, top: (i * 2.93) % 80,    delay: (i * 0.2) % 2 }));
+
+function WeatherBackground({ condition, isDay }: { condition: WeatherCondition; isDay: boolean }) {
+  const scene = WEATHER_SCENES[condition];
+
+  return (
+    <div className={`absolute inset-0 overflow-hidden ${scene.bg} transition-all duration-2000`}>
+
+      {/* ── Sunny: animated sun rays ──────────────────────────────────────── */}
+      {condition === 'sunny' && (
+        <>
+          <motion.div
+            className="absolute top-[-40px] right-[-40px] w-48 h-48 rounded-full bg-yellow-300/60"
+            animate={{ scale: [1, 1.08, 1], opacity: [0.6, 0.8, 0.6] }}
+            transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
+          />
+          <motion.div
+            className="absolute top-[-60px] right-[-60px] w-72 h-72 rounded-full bg-yellow-200/30"
+            animate={{ scale: [1, 1.05, 1], opacity: [0.3, 0.5, 0.3] }}
+            transition={{ repeat: Infinity, duration: 6, ease: 'easeInOut' }}
+          />
+          {/* Sun rays */}
+          {[0,30,60,90,120,150,180,210,240,270,300,330].map(deg => (
+            <motion.div key={deg}
+              className="absolute top-[20px] right-[20px] w-1 h-16 bg-yellow-300/20 origin-bottom"
+              style={{ rotate: deg, transformOrigin: '50% 100%' }}
+              animate={{ opacity: [0.2, 0.5, 0.2] }}
+              transition={{ repeat: Infinity, duration: 3, delay: deg / 360 }}
+            />
+          ))}
+        </>
+      )}
+
+      {/* ── Partly cloudy: drifting clouds ───────────────────────────────── */}
+      {condition === 'partly-cloudy' && (
+        <>
+          <motion.div
+            className="absolute top-4 right-4 w-32 h-16 bg-white/70 rounded-full blur-sm"
+            animate={{ x: [0, 12, 0] }}
+            transition={{ repeat: Infinity, duration: 8, ease: 'easeInOut' }}
+          />
+          <motion.div
+            className="absolute top-8 right-24 w-20 h-10 bg-white/50 rounded-full blur-sm"
+            animate={{ x: [0, -8, 0] }}
+            transition={{ repeat: Infinity, duration: 12, ease: 'easeInOut' }}
+          />
+          <motion.div
+            className="absolute top-2 left-8 w-24 h-12 bg-white/40 rounded-full blur-sm"
+            animate={{ x: [0, 10, 0] }}
+            transition={{ repeat: Infinity, duration: 10, ease: 'easeInOut' }}
+          />
+        </>
+      )}
+
+      {/* ── Cloudy: heavy cloud layer ─────────────────────────────────────── */}
+      {condition === 'cloudy' && (
+        <>
+          {[0, 1, 2, 3].map(i => (
+            <motion.div key={i}
+              className="absolute bg-white/40 rounded-full blur-md"
+              style={{ top: `${i * 15}px`, left: `${i * 22}%`, width: `${120 + i * 30}px`, height: `${40 + i * 8}px` }}
+              animate={{ x: [0, 15, 0] }}
+              transition={{ repeat: Infinity, duration: 10 + i * 2, ease: 'easeInOut' }}
+            />
+          ))}
+        </>
+      )}
+
+      {/* ── Rain: falling streaks ─────────────────────────────────────────── */}
+      {(condition === 'rainy' || condition === 'stormy') && (
+        <div className="absolute inset-0">
+          {RAIN_DROPS.map((drop, i) => (
+            <motion.div key={i}
+              className={`absolute w-0.5 rounded-full ${condition === 'stormy' ? 'bg-blue-200/60 h-5' : 'bg-blue-300/50 h-4'}`}
+              style={{ left: `${drop.left}%`, top: '-10px' }}
+              animate={{ y: ['0px', '110%'], opacity: [0, 0.8, 0] }}
+              transition={{ repeat: Infinity, duration: drop.dur, delay: drop.delay, ease: 'linear' }}
+            />
+          ))}
+          {/* Storm lightning flash */}
+          {condition === 'stormy' && (
+            <motion.div className="absolute inset-0 bg-white/5"
+              animate={{ opacity: [0, 0, 0.3, 0, 0, 0.1, 0] }}
+              transition={{ repeat: Infinity, duration: 6, delay: 2 }}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── Snow: falling flakes ──────────────────────────────────────────── */}
+      {condition === 'snowy' && (
+        <div className="absolute inset-0">
+          {SNOW_FLAKES.map((flake, i) => (
+            <motion.div key={i}
+              className="absolute rounded-full bg-white/80"
+              style={{ left: `${flake.left}%`, top: '-8px', width: `${flake.size}px`, height: `${flake.size}px` }}
+              animate={{ y: ['0px', '110%'], x: [0, 15, -10, 5, 0], opacity: [0, 1, 1, 0] }}
+              transition={{ repeat: Infinity, duration: flake.dur, delay: flake.delay, ease: 'linear' }}
+            />
+          ))}
+          {/* Snow ground accumulation */}
+          <div className="absolute bottom-0 left-0 right-0 h-8 bg-white/40 rounded-b-xl" />
+        </div>
+      )}
+
+      {/* ── Fog: rolling mist layers ──────────────────────────────────────── */}
+      {condition === 'foggy' && (
+        <>
+          {[0, 1, 2].map(i => (
+            <motion.div key={i}
+              className="absolute left-0 right-0 bg-white/30 blur-xl rounded-full"
+              style={{ top: `${20 + i * 30}%`, height: '60px' }}
+              animate={{ x: [0, 30, -20, 0], opacity: [0.3, 0.5, 0.3] }}
+              transition={{ repeat: Infinity, duration: 8 + i * 3, ease: 'easeInOut' }}
+            />
+          ))}
+        </>
+      )}
+
+      {/* ── Clear night: twinkling stars ──────────────────────────────────── */}
+      {condition === 'clear-night' && (
+        <>
+          {STARS.map((star, i) => (
+            <motion.div key={i}
+              className="absolute w-1 h-1 bg-white rounded-full"
+              style={{ left: `${star.left}%`, top: `${star.top}%` }}
+              animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }}
+              transition={{ repeat: Infinity, duration: 2 + (i % 3), delay: star.delay }}
+            />
+          ))}
+          {/* Moon */}
+          <motion.div
+            className="absolute top-3 right-6 w-12 h-12 rounded-full bg-yellow-100/80"
+            animate={{ opacity: [0.7, 0.9, 0.7] }}
+            transition={{ repeat: Infinity, duration: 5, ease: 'easeInOut' }}
+          />
+        </>
+      )}
+
+      {/* ── Autumn: falling leaves ────────────────────────────────────────── */}
+      {condition === 'autumn' && (
+        <div className="absolute inset-0">
+          {LEAVES.map((leaf, i) => (
+            <motion.div key={i}
+              className={`absolute text-lg select-none`}
+              style={{ left: `${leaf.left}%`, top: '-20px' }}
+              animate={{
+                y: ['0px', '110%'],
+                x: [0, 20, -15, 10, 0],
+                rotate: [0, 180, 360],
+                opacity: [0, 1, 1, 0],
+              }}
+              transition={{ repeat: Infinity, duration: leaf.dur, delay: leaf.delay, ease: 'linear' }}
+            >
+              {['🍂', '🍁', '🍃'][i % 3]}
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Windy: sweeping lines ─────────────────────────────────────────── */}
+      {condition === 'windy' && (
+        <div className="absolute inset-0">
+          {[0, 1, 2, 3, 4].map(i => (
+            <motion.div key={i}
+              className="absolute h-0.5 bg-teal-300/30 rounded-full"
+              style={{ top: `${15 + i * 18}%`, left: '-20%', width: '50%' }}
+              animate={{ x: ['0%', '300%'], opacity: [0, 0.6, 0] }}
+              transition={{ repeat: Infinity, duration: 1.5 + i * 0.3, delay: i * 0.4, ease: 'linear' }}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Frosted glass overlay so content stays readable */}
+      <div className="absolute inset-0 bg-white/55 backdrop-blur-[1px]" />
+    </div>
+  );
+}
 
 interface FamiliarFace {
   id: string;
@@ -37,6 +349,604 @@ const AI_VOICES = [
   { id: 'grandmotherly', label: 'Grandmotherly',   emoji: '👵', description: 'Warm, familiar elder voice' },
   { id: 'cheerful',      label: 'Cheerful',         emoji: '😊', description: 'Upbeat, encouraging tone' },
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUB-COMPONENT: CalmMeDialog
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CALM_TRACKS = {
+  melodies: [
+    { id: 'melody_1', label: 'Moonlight Sonata',       artist: 'Beethoven',       emoji: '🎹', color: 'bg-purple-100 text-purple-700' },
+    { id: 'melody_2', label: 'Clair de Lune',           artist: 'Debussy',         emoji: '🌙', color: 'bg-indigo-100 text-indigo-700' },
+    { id: 'melody_3', label: 'Canon in D',              artist: 'Pachelbel',       emoji: '🎵', color: 'bg-pink-100 text-pink-700' },
+    { id: 'melody_4', label: 'Air on the G String',     artist: 'Bach',            emoji: '🎻', color: 'bg-amber-100 text-amber-700' },
+  ],
+  nature: [
+    { id: 'nature_1', label: 'Gentle Rain',             artist: 'Nature',          emoji: '🌧️', color: 'bg-blue-100 text-blue-700' },
+    { id: 'nature_2', label: 'Ocean Waves',             artist: 'Nature',          emoji: '🌊', color: 'bg-cyan-100 text-cyan-700' },
+    { id: 'nature_3', label: 'Forest Birdsong',         artist: 'Nature',          emoji: '🐦', color: 'bg-green-100 text-green-700' },
+    { id: 'nature_4', label: 'Crackling Fireplace',     artist: 'Nature',          emoji: '🔥', color: 'bg-orange-100 text-orange-700' },
+  ],
+  classical: [
+    { id: 'class_1',  label: 'Four Seasons — Spring',   artist: 'Vivaldi',         emoji: '🌸', color: 'bg-rose-100 text-rose-700' },
+    { id: 'class_2',  label: 'Ave Maria',               artist: 'Schubert',        emoji: '✨', color: 'bg-yellow-100 text-yellow-700' },
+    { id: 'class_3',  label: 'Gymnopédie No. 1',        artist: 'Satie',           emoji: '🎹', color: 'bg-teal-100 text-teal-700' },
+    { id: 'class_4',  label: 'Pachelbel\'s Canon',      artist: 'Pachelbel',       emoji: '🎶', color: 'bg-violet-100 text-violet-700' },
+  ],
+};
+
+type CalmTab = 'melodies' | 'nature' | 'classical' | 'my-music';
+
+function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [tab, setTab]                     = useState<CalmTab>('melodies');
+  const [playing, setPlaying]             = useState<string | null>(null);
+  const [myTracks, setMyTracks]           = useState<{ id: string; label: string; url: string }[]>(() => {
+    try { return JSON.parse(localStorage.getItem('calmMyTracks') || '[]'); } catch { return []; }
+  });
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const stopAudio = () => {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setPlaying(null);
+  };
+
+  const playTrack = (id: string, url?: string) => {
+    stopAudio();
+    if (playing === id) return;   // toggle off
+    setPlaying(id);
+    if (url) {
+      const a = new Audio(url);
+      a.onended = () => setPlaying(null);
+      a.play().catch(() => {});
+      audioRef.current = a;
+    } else {
+      // No real URL — simulate playing for demo
+      setTimeout(() => setPlaying(null), 30000);
+    }
+  };
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const label = file.name.replace(/\.[^.]+$/, '');
+    const url   = URL.createObjectURL(file);
+    const newTrack = { id: Date.now().toString(), label, url };
+    const updated  = [...myTracks, newTrack];
+    setMyTracks(updated);
+    localStorage.setItem('calmMyTracks', JSON.stringify(updated.map(t => ({ ...t, url: '' }))));
+    e.target.value = '';
+  };
+
+  const removeMyTrack = (id: string) => {
+    const updated = myTracks.filter(t => t.id !== id);
+    setMyTracks(updated);
+    localStorage.setItem('calmMyTracks', JSON.stringify(updated));
+    if (playing === id) stopAudio();
+  };
+
+  const tabs: { id: CalmTab; label: string; emoji: string }[] = [
+    { id: 'melodies',  label: 'Melodies',  emoji: '🎹' },
+    { id: 'classical', label: 'Classical', emoji: '🎻' },
+    { id: 'nature',    label: 'Nature',    emoji: '🌿' },
+    { id: 'my-music',  label: 'My Music',  emoji: '⭐' },
+  ];
+
+  const tracks = tab !== 'my-music' ? CALM_TRACKS[tab] : [];
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
+            <Music className="w-6 h-6 text-soft-sage" />
+            Calm Me
+          </DialogTitle>
+          <DialogDescription className="text-center">
+            Choose something soothing to listen to
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Tabs */}
+        <div className="flex gap-1 bg-soft-taupe/20 rounded-xl p-1 flex-shrink-0">
+          {tabs.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex-1 flex flex-col items-center py-1.5 rounded-lg text-xs font-medium transition-all ${
+                tab === t.id ? 'bg-white shadow text-charcoal' : 'text-medium-gray hover:text-charcoal'
+              }`}
+            >
+              <span className="text-base">{t.emoji}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Track list */}
+        <div className="overflow-y-auto flex-1 space-y-2 pr-1">
+          <AnimatePresence mode="wait">
+            <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
+
+              {tab !== 'my-music' && tracks.map(track => (
+                <button
+                  key={track.id}
+                  onClick={() => playTrack(track.id)}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                    playing === track.id
+                      ? 'border-soft-sage bg-soft-sage/10'
+                      : 'border-transparent bg-warm-ivory hover:border-soft-taupe'
+                  }`}
+                >
+                  <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 ${track.color}`}>
+                    {track.emoji}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-charcoal text-sm truncate">{track.label}</p>
+                    <p className="text-xs text-medium-gray">{track.artist}</p>
+                  </div>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    playing === track.id ? 'bg-soft-sage text-white' : 'bg-soft-taupe/40 text-medium-gray'
+                  }`}>
+                    {playing === track.id
+                      ? <Pause className="w-3.5 h-3.5" />
+                      : <Play className="w-3.5 h-3.5 ml-0.5" />}
+                  </div>
+                </button>
+              ))}
+
+              {tab === 'my-music' && (
+                <>
+                  {myTracks.length === 0 && (
+                    <div className="py-6 text-center text-medium-gray">
+                      <Headphones className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">No music added yet</p>
+                      <p className="text-xs mt-1">Upload your favourite songs below</p>
+                    </div>
+                  )}
+                  {myTracks.map(track => (
+                    <div key={track.id} className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                      playing === track.id ? 'border-soft-sage bg-soft-sage/10' : 'border-transparent bg-warm-ivory'
+                    }`}>
+                      <span className="w-10 h-10 rounded-xl bg-warm-bronze/10 flex items-center justify-center text-lg flex-shrink-0">⭐</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-charcoal text-sm truncate">{track.label}</p>
+                        <p className="text-xs text-medium-gray">My music</p>
+                      </div>
+                      <button
+                        onClick={() => playTrack(track.id, track.url)}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          playing === track.id ? 'bg-soft-sage text-white' : 'bg-soft-taupe/40 text-medium-gray'
+                        }`}
+                      >
+                        {playing === track.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
+                      </button>
+                      <button onClick={() => removeMyTrack(track.id)} className="w-7 h-7 rounded-full flex items-center justify-center text-gentle-coral hover:bg-gentle-coral/10 flex-shrink-0">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* Upload button */}
+                  <label className="flex items-center gap-3 p-3 rounded-xl border-2 border-dashed border-soft-taupe hover:border-warm-bronze bg-warm-ivory hover:bg-warm-bronze/5 cursor-pointer transition-all">
+                    <input type="file" accept="audio/*" className="hidden" onChange={handleUpload} />
+                    <span className="w-10 h-10 rounded-xl bg-warm-bronze/10 flex items-center justify-center flex-shrink-0">
+                      <Upload className="w-5 h-5 text-warm-bronze" />
+                    </span>
+                    <div>
+                      <p className="font-medium text-warm-bronze text-sm">Upload My Own Music</p>
+                      <p className="text-xs text-medium-gray">MP3, WAV, M4A accepted</p>
+                    </div>
+                  </label>
+                </>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {playing && (
+          <div className="flex-shrink-0 flex items-center gap-3 p-3 bg-soft-sage/10 rounded-xl border border-soft-sage/20">
+            <div className="flex gap-1 items-end h-5">
+              {[0, 1, 2].map(i => (
+                <motion.div key={i} className="w-1.5 bg-soft-sage rounded-full"
+                  animate={{ height: ['8px', '20px', '8px'] }}
+                  transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.2 }} />
+              ))}
+            </div>
+            <p className="text-sm text-soft-sage font-medium flex-1">Now playing…</p>
+            <button onClick={stopAudio} className="text-xs text-medium-gray hover:text-charcoal underline">Stop</button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUB-COMPONENT: ShowMeHomeDialog
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClose: () => void; patientName: string }) {
+  const [homePhotos, setHomePhotos] = useState<{ id: string; label: string; url: string }[]>(() => {
+    try { return JSON.parse(localStorage.getItem('homePhotos') || '[]'); } catch { return []; }
+  });
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [isPlaying, setIsPlaying]   = useState(false);
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const label  = prompt('What does this remind you of? (e.g. "Our kitchen", "The back yard")', '') || 'Home';
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const url     = ev.target?.result as string;
+      const newPhoto = { id: Date.now().toString(), label, url };
+      const updated  = [...homePhotos, newPhoto];
+      setHomePhotos(updated);
+      localStorage.setItem('homePhotos', JSON.stringify(updated));
+      setCurrentIdx(updated.length - 1);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const removePhoto = (id: string) => {
+    const updated = homePhotos.filter(p => p.id !== id);
+    setHomePhotos(updated);
+    localStorage.setItem('homePhotos', JSON.stringify(updated));
+    setCurrentIdx(Math.max(0, currentIdx - 1));
+  };
+
+  const current = homePhotos[currentIdx];
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
+            <Home className="w-6 h-6 text-warm-bronze" />
+            Show Me Home
+          </DialogTitle>
+          <DialogDescription className="text-center">
+            Things that remind you of home
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {homePhotos.length > 0 ? (
+            <>
+              {/* Main photo */}
+              <div className="relative rounded-2xl overflow-hidden">
+                <motion.img
+                  key={currentIdx}
+                  src={current.url}
+                  alt={current.label}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="w-full h-60 object-cover"
+                />
+                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
+                  <p className="text-white font-bold text-lg">{current.label}</p>
+                  <p className="text-white/75 text-sm">This is your home, {patientName}. You are safe here.</p>
+                </div>
+                {homePhotos.length > 1 && (
+                  <>
+                    <button onClick={() => setCurrentIdx(i => (i - 1 + homePhotos.length) % homePhotos.length)}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-all">
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <button onClick={() => setCurrentIdx(i => (i + 1) % homePhotos.length)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-all">
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Dot nav */}
+              {homePhotos.length > 1 && (
+                <div className="flex justify-center gap-1.5">
+                  {homePhotos.map((_, i) => (
+                    <button key={i} onClick={() => setCurrentIdx(i)}
+                      className={`h-2 rounded-full transition-all ${i === currentIdx ? 'bg-warm-bronze w-5' : 'bg-soft-taupe w-2'}`} />
+                  ))}
+                </div>
+              )}
+
+              {/* Thumbnail strip */}
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {homePhotos.map((photo, i) => (
+                  <button key={photo.id} onClick={() => setCurrentIdx(i)}
+                    className={`relative flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all ${i === currentIdx ? 'border-warm-bronze' : 'border-transparent'}`}>
+                    <img src={photo.url} alt={photo.label} className="w-full h-full object-cover" />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removePhoto(photo.id); }}
+                      className="absolute top-0 right-0 w-5 h-5 bg-black/60 flex items-center justify-center rounded-bl-lg"
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </button>
+                ))}
+
+                {/* Add more */}
+                <label className="flex-shrink-0 w-16 h-16 rounded-xl border-2 border-dashed border-soft-taupe hover:border-warm-bronze bg-warm-ivory flex flex-col items-center justify-center cursor-pointer transition-all group">
+                  <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+                  <PlusCircle className="w-6 h-6 text-soft-taupe group-hover:text-warm-bronze transition-colors" />
+                </label>
+              </div>
+
+              <Button
+                onClick={() => { setIsPlaying(true); setTimeout(() => setIsPlaying(false), 5000); }}
+                className="w-full bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl py-4"
+              >
+                <Volume2 className={`w-5 h-5 mr-2 ${isPlaying ? 'animate-pulse' : ''}`} />
+                {isPlaying ? 'Playing…' : `Play "You Are Home, ${patientName}"`}
+              </Button>
+            </>
+          ) : (
+            /* Empty state */
+            <div className="py-4 space-y-4">
+              <div className="h-48 bg-warm-ivory rounded-2xl flex flex-col items-center justify-center gap-3 border-2 border-dashed border-soft-taupe">
+                <Home className="w-12 h-12 text-soft-taupe" />
+                <p className="text-medium-gray text-sm text-center px-4">
+                  Add photos of home — your front door, favourite room, back yard, or anything that feels familiar and safe.
+                </p>
+              </div>
+
+              <label className="flex items-center gap-3 p-4 rounded-xl border-2 border-dashed border-warm-bronze/40 hover:border-warm-bronze bg-warm-bronze/5 cursor-pointer transition-all">
+                <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+                <div className="w-11 h-11 bg-warm-bronze/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Upload className="w-5 h-5 text-warm-bronze" />
+                </div>
+                <div>
+                  <p className="font-semibold text-warm-bronze">Upload a Home Photo</p>
+                  <p className="text-xs text-medium-gray">JPG, PNG or any image file</p>
+                </div>
+              </label>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUB-COMPONENT: TellMeAStoryDialog
+// ─────────────────────────────────────────────────────────────────────────────
+
+const STORY_LIBRARY = [
+  {
+    genre: '🌿 Calming Nature',
+    color: 'bg-green-50 border-green-200',
+    badge: 'text-green-700 bg-green-100',
+    stories: [
+      { id: 'n1', title: 'A Walk Through the Forest',  duration: '8 min',  desc: 'A peaceful stroll among tall pines' },
+      { id: 'n2', title: 'Watching the River Flow',    duration: '6 min',  desc: 'A quiet afternoon by the water' },
+      { id: 'n3', title: 'The Garden at Sunrise',      duration: '7 min',  desc: 'Morning birdsong and blooming flowers' },
+    ],
+  },
+  {
+    genre: '📖 Classic Tales',
+    color: 'bg-amber-50 border-amber-200',
+    badge: 'text-amber-700 bg-amber-100',
+    stories: [
+      { id: 'c1', title: 'The Tortoise and the Hare',  duration: '5 min',  desc: 'Slow and steady wins the race' },
+      { id: 'c2', title: 'Goldilocks',                 duration: '6 min',  desc: 'A beloved childhood favourite' },
+      { id: 'c3', title: 'The Little Prince',          duration: '12 min', desc: 'A gentle tale of friendship and wonder' },
+    ],
+  },
+  {
+    genre: '🌙 Bedtime Stories',
+    color: 'bg-indigo-50 border-indigo-200',
+    badge: 'text-indigo-700 bg-indigo-100',
+    stories: [
+      { id: 'b1', title: 'Stars Above the Meadow',     duration: '7 min',  desc: 'A dreamy, peaceful night story' },
+      { id: 'b2', title: 'The Sleepy Little Cloud',    duration: '5 min',  desc: 'Floating softly off to sleep' },
+      { id: 'b3', title: 'Goodnight, Old Friend',      duration: '6 min',  desc: 'A warm evening farewell' },
+    ],
+  },
+  {
+    genre: '😄 Gentle Humour',
+    color: 'bg-yellow-50 border-yellow-200',
+    badge: 'text-yellow-700 bg-yellow-100',
+    stories: [
+      { id: 'h1', title: 'The Forgetful Postman',      duration: '8 min',  desc: 'A funny tale with a happy ending' },
+      { id: 'h2', title: 'Mrs. Brown\'s Cat',          duration: '6 min',  desc: 'Adventures of a very curious cat' },
+    ],
+  },
+];
+
+type StoryTab = 'library' | 'my-stories';
+
+function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [tab, setTab]             = useState<StoryTab>('library');
+  const [playing, setPlaying]     = useState<string | null>(null);
+  const [expanded, setExpanded]   = useState<string | null>(null);
+  const [myStories, setMyStories] = useState<{ id: string; label: string; url: string; size: string }[]>(() => {
+    try { return JSON.parse(localStorage.getItem('myStories') || '[]'); } catch { return []; }
+  });
+
+  const stopAudio = () => setPlaying(null);
+
+  const handlePlay = (id: string) => {
+    if (playing === id) { stopAudio(); return; }
+    setPlaying(id);
+    // In production, wire up real audio src here
+    setTimeout(() => setPlaying(null), 60000);
+  };
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const label = file.name.replace(/\.[^.]+$/, '');
+    const size  = (file.size / (1024 * 1024)).toFixed(1) + ' MB';
+    const url   = URL.createObjectURL(file);
+    const newStory = { id: Date.now().toString(), label, url, size };
+    const updated  = [...myStories, newStory];
+    setMyStories(updated);
+    localStorage.setItem('myStories', JSON.stringify(updated.map(s => ({ ...s, url: '' }))));
+    e.target.value = '';
+  };
+
+  const removeMyStory = (id: string) => {
+    const updated = myStories.filter(s => s.id !== id);
+    setMyStories(updated);
+    localStorage.setItem('myStories', JSON.stringify(updated));
+    if (playing === id) stopAudio();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
+            <BookOpen className="w-6 h-6 text-calm-blue" />
+            Tell Me a Story
+          </DialogTitle>
+          <DialogDescription className="text-center">
+            Sit back, relax, and listen
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Tab toggle */}
+        <div className="flex gap-1 bg-soft-taupe/20 rounded-xl p-1 flex-shrink-0">
+          <button
+            onClick={() => setTab('library')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'library' ? 'bg-white shadow text-charcoal' : 'text-medium-gray hover:text-charcoal'}`}
+          >
+            📚 Story Library
+          </button>
+          <button
+            onClick={() => setTab('my-stories')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'my-stories' ? 'bg-white shadow text-charcoal' : 'text-medium-gray hover:text-charcoal'}`}
+          >
+            ⭐ My Stories
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 space-y-3 pr-1">
+          <AnimatePresence mode="wait">
+
+            {tab === 'library' && (
+              <motion.div key="library" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+                {STORY_LIBRARY.map(group => (
+                  <div key={group.genre}>
+                    <button
+                      onClick={() => setExpanded(expanded === group.genre ? null : group.genre)}
+                      className="w-full flex items-center justify-between py-2 px-1"
+                    >
+                      <span className="font-semibold text-charcoal text-sm">{group.genre}</span>
+                      <ChevronRight className={`w-4 h-4 text-medium-gray transition-transform ${expanded === group.genre ? 'rotate-90' : ''}`} />
+                    </button>
+                    <AnimatePresence>
+                      {(expanded === group.genre || expanded === null) && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden space-y-2"
+                        >
+                          {group.stories.map(story => (
+                            <button
+                              key={story.id}
+                              onClick={() => handlePlay(story.id)}
+                              className={`w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
+                                playing === story.id ? 'border-calm-blue bg-calm-blue/10' : `${group.color} hover:shadow-sm`
+                              }`}
+                            >
+                              <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${group.badge}`}>
+                                {playing === story.id
+                                  ? <Pause className="w-4 h-4" />
+                                  : <Play className="w-4 h-4 ml-0.5" />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-charcoal text-sm truncate">{story.title}</p>
+                                <p className="text-xs text-medium-gray">{story.desc}</p>
+                              </div>
+                              <span className="text-xs text-medium-gray flex-shrink-0">{story.duration}</span>
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                ))}
+              </motion.div>
+            )}
+
+            {tab === 'my-stories' && (
+              <motion.div key="my" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+                {myStories.length === 0 && (
+                  <div className="py-6 text-center text-medium-gray">
+                    <FileAudio className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm font-medium">No stories uploaded yet</p>
+                    <p className="text-xs mt-1">Upload MP3 audiobooks or family recordings below</p>
+                  </div>
+                )}
+
+                {myStories.map(story => (
+                  <div key={story.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                    playing === story.id ? 'border-calm-blue bg-calm-blue/10' : 'border-soft-taupe bg-warm-ivory'
+                  }`}>
+                    <div className="w-10 h-10 rounded-xl bg-calm-blue/10 flex items-center justify-center flex-shrink-0">
+                      <Headphones className="w-5 h-5 text-calm-blue" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-charcoal text-sm truncate">{story.label}</p>
+                      <p className="text-xs text-medium-gray">{story.size}</p>
+                    </div>
+                    <button
+                      onClick={() => handlePlay(story.id)}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        playing === story.id ? 'bg-calm-blue text-white' : 'bg-soft-taupe/40 text-medium-gray'
+                      }`}
+                    >
+                      {playing === story.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
+                    </button>
+                    <button onClick={() => removeMyStory(story.id)} className="w-7 h-7 rounded-full flex items-center justify-center text-gentle-coral hover:bg-gentle-coral/10 flex-shrink-0">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+
+                {/* Upload */}
+                <label className="flex items-center gap-3 p-4 rounded-xl border-2 border-dashed border-calm-blue/30 hover:border-calm-blue bg-calm-blue/5 cursor-pointer transition-all group">
+                  <input type="file" accept="audio/*" className="hidden" onChange={handleUpload} />
+                  <div className="w-11 h-11 bg-calm-blue/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Upload className="w-5 h-5 text-calm-blue" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-calm-blue">Upload Audiobook or Story</p>
+                    <p className="text-xs text-medium-gray">MP3, WAV, M4A, AAC • Books on tape welcome</p>
+                  </div>
+                </label>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {playing && (
+          <div className="flex-shrink-0 flex items-center gap-3 p-3 bg-calm-blue/10 rounded-xl border border-calm-blue/20">
+            <div className="flex gap-1 items-end h-5">
+              {[0, 1, 2].map(i => (
+                <motion.div key={i} className="w-1.5 bg-calm-blue rounded-full"
+                  animate={{ height: ['8px', '20px', '8px'] }}
+                  transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.2 }} />
+              ))}
+            </div>
+            <p className="text-sm text-calm-blue font-medium flex-1">Now playing…</p>
+            <button onClick={stopAudio} className="text-xs text-medium-gray hover:text-charcoal underline">Stop</button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function PatientHome() {
   const { state } = useApp();
@@ -67,7 +977,35 @@ export default function PatientHome() {
   const medicationLogs = state.medicationLogs;
   const today = new Date().toISOString().split('T')[0];
   const todaysMedsTaken = medicationLogs.filter(l => l.date === today && l.status === 'taken').length;
-  const weather = getWeatherContext();
+
+  // Live weather state — fetched from Open-Meteo using browser geolocation
+  const [weather, setWeather] = useState<WeatherData>(getFallbackWeather());
+
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        try {
+          const w = await fetchWeather(coords.latitude, coords.longitude);
+          setWeather(w);
+        } catch {
+          // keep fallback
+        }
+      },
+      () => { /* permission denied — keep fallback */ },
+      { timeout: 8000 }
+    );
+    // Refresh every 30 minutes
+    const interval = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(
+        async ({ coords }) => {
+          try { setWeather(await fetchWeather(coords.latitude, coords.longitude)); } catch {}
+        },
+        () => {}
+      );
+    }, 30 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // useMemo ensures this is always initialized before any other hook references it
   const slideshowImages = useMemo(() => [
@@ -227,31 +1165,35 @@ export default function PatientHome() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
         >
-          <Card className="border-0 shadow-card overflow-hidden">
-            <div className="bg-white p-6">
+          <Card className="border-0 shadow-card overflow-hidden relative min-h-[280px]">
+            {/* ── Animated weather background ─────────────────────────────── */}
+            <WeatherBackground condition={weather.condition} isDay={weather.isDay} />
+
+            {/* Card content sits on top of the background */}
+            <div className="relative z-10 p-6">
               {/* Time and Weather */}
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-4">
                   {getTimeOfDayIcon()}
                   <div>
-                    <h2 className="digital-clock text-4xl">
+                    <h2 className="digital-clock text-4xl text-charcoal drop-shadow-sm">
                       {format(currentTime, 'h:mm')}
-                      <span className="text-xl text-medium-gray ml-2">{format(currentTime, 'a')}</span>
+                      <span className="text-xl text-charcoal/70 ml-2">{format(currentTime, 'a')}</span>
                     </h2>
-                    <p className="text-medium-gray">{format(currentTime, 'EEEE, MMMM do')}</p>
+                    <p className="text-charcoal/70 font-medium">{format(currentTime, 'EEEE, MMMM do')}</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="flex items-center gap-2 justify-end">
-                    <Sun className="w-5 h-5 text-warm-amber" />
-                    <span className="text-2xl font-bold text-charcoal">{weather.temp}°</span>
+                    <WeatherIcon condition={weather.condition} className="w-6 h-6" />
+                    <span className="text-2xl font-bold text-charcoal drop-shadow-sm">{weather.temp}°</span>
                   </div>
-                  <p className="text-sm text-medium-gray">{weather.message}</p>
+                  <p className="text-sm text-charcoal/70 font-medium max-w-[160px]">{weather.message}</p>
                 </div>
               </div>
 
               {/* Greeting */}
-              <p className="text-xl text-charcoal mb-4">
+              <p className="text-xl text-charcoal font-semibold mb-4 drop-shadow-sm">
                 {getTimeOfDayGreeting()}, {patient?.preferredName || 'Ellie'}!
               </p>
 
@@ -620,106 +1562,14 @@ export default function PatientHome() {
         </DialogContent>
       </Dialog>
 
-      {/* Comfort Menu Dialog */}
-      <Dialog open={showComfortMenu} onOpenChange={() => setShowComfortMenu(false)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-center flex items-center justify-center gap-2">
-              <Music className="w-6 h-6 text-soft-sage" />
-              Calm Me
-            </DialogTitle>
-            <DialogDescription className="text-center">
-              Choose something soothing
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Button className="w-full justify-start h-auto py-4 rounded-xl bg-soft-sage/10 hover:bg-soft-sage/20 text-charcoal">
-              <Music className="w-6 h-6 mr-3 text-soft-sage" />
-              <div className="text-left">
-                <p className="font-medium">Favorite Music</p>
-                <p className="text-sm text-medium-gray">Songs from your life</p>
-              </div>
-            </Button>
-            <Button className="w-full justify-start h-auto py-4 rounded-xl bg-calm-blue/10 hover:bg-calm-blue/20 text-charcoal">
-              <Wind className="w-6 h-6 mr-3 text-calm-blue" />
-              <div className="text-left">
-                <p className="font-medium">Nature Sounds</p>
-                <p className="text-sm text-medium-gray">Birds, ocean, rain</p>
-              </div>
-            </Button>
-            <Button className="w-full justify-start h-auto py-4 rounded-xl bg-warm-bronze/10 hover:bg-warm-bronze/20 text-charcoal">
-              <Heart className="w-6 h-6 mr-3 text-warm-bronze" />
-              <div className="text-left">
-                <p className="font-medium">Guided Breathing</p>
-                <p className="text-sm text-medium-gray">Slow, calming breaths</p>
-              </div>
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* ── Calm Me Dialog ────────────────────────────────────────────────── */}
+      <CalmMeDialog open={showComfortMenu} onClose={() => setShowComfortMenu(false)} />
 
-      {/* Show Me Home Dialog */}
-      <Dialog open={showHomePhoto} onOpenChange={() => setShowHomePhoto(false)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-center flex items-center justify-center gap-2">
-              <Home className="w-6 h-6 text-warm-bronze" />
-              Your Home
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="relative">
-              <img
-                src="/images/home_photo.jpg"
-                alt="Your Home"
-                className="w-full h-64 object-cover rounded-2xl"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="256" fill="%23F5F0EB"%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" fill="%236B6B6B"%3EYour Home Photo%3C/text%3E%3C/svg%3E';
-                }}
-              />
-              <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/60 to-transparent rounded-b-2xl">
-                <p className="text-white text-lg font-bold">{patient?.address || 'Your Home'}</p>
-                <p className="text-white/80 text-sm">This is your home. You are safe here.</p>
-              </div>
-            </div>
-            <Button 
-              onClick={() => alert('Playing: "You are home. This is your safe place."')}
-              className="w-full bg-warm-bronze hover:bg-warm-bronze/90 text-white rounded-xl py-4"
-            >
-              <Volume2 className="w-5 h-5 mr-2" />
-              Play "You Are Home" Message
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* ── Show Me Home Dialog ───────────────────────────────────────────── */}
+      <ShowMeHomeDialog open={showHomePhoto} onClose={() => setShowHomePhoto(false)} patientName={patient?.preferredName || patient?.firstName || 'you'} />
 
-      {/* Tell Me a Story Dialog */}
-      <Dialog open={showStoryDialog} onOpenChange={() => setShowStoryDialog(false)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-center flex items-center justify-center gap-2">
-              <BookOpen className="w-6 h-6 text-calm-blue" />
-              Family Stories
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            {familyStories.map((story, index) => (
-              <Button
-                key={index}
-                onClick={() => alert(`Playing story: ${story.title} by ${story.author}`)}
-                className="w-full justify-start h-auto py-4 rounded-xl bg-calm-blue/10 hover:bg-calm-blue/20 text-charcoal"
-              >
-                <BookOpen className="w-6 h-6 mr-3 text-calm-blue" />
-                <div className="text-left flex-1">
-                  <p className="font-medium">{story.title}</p>
-                  <p className="text-sm text-medium-gray">{story.preview}</p>
-                </div>
-                <Play className="w-5 h-5 text-calm-blue" />
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* ── Tell Me a Story Dialog ────────────────────────────────────────── */}
+      <TellMeAStoryDialog open={showStoryDialog} onClose={() => setShowStoryDialog(false)} />
 
       {/* Emergency Help Dialog */}
       <Dialog open={showEmergencyDialog} onOpenChange={() => setShowEmergencyDialog(false)}>

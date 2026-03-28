@@ -1,0 +1,482 @@
+import { useState } from 'react';
+import { Check, Star, Lock, RefreshCw, ShieldCheck, X, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+import { TIERS, type TierName } from '@/types/subscription';
+import { useApp } from '@/store/AppContext';
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+interface PricingPageProps {
+  /** Render as modal overlay */
+  modal?: boolean;
+  onClose?: () => void;
+  /** Pre-select a tier when opened from a feature gate */
+  preselectedTier?: TierName;
+  /** Called when the user wants to go to sign-in instead */
+  onGoToLogin?: () => void;
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Step = 'plans' | 'create-account' | 'payment';
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export default function PricingPage({
+  modal,
+  onClose,
+  preselectedTier,
+  onGoToLogin,
+}: PricingPageProps) {
+  const { dispatch } = useApp();
+
+  // Plan selection
+  const [step, setStep]                   = useState<Step>('plans');
+  const [selectedTier, setSelectedTier]   = useState<TierName>(preselectedTier ?? 'daily_care');
+  const [billingAnnual, setBillingAnnual] = useState(false);
+
+  // Account creation form
+  const [firstName, setFirstName]         = useState('');
+  const [lastName, setLastName]           = useState('');
+  const [email, setEmail]                 = useState('');
+  const [password, setPassword]           = useState('');
+  const [showPassword, setShowPassword]   = useState(false);
+  const [agreeTerms, setAgreeTerms]       = useState(false);
+  const [agreeComms, setAgreeComms]       = useState(false);
+
+  const [isLoading, setIsLoading]         = useState(false);
+
+  const tierOrder: TierName[] = ['companion', 'daily_care', 'full_support'];
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
+  /** Step 1 → 2: User clicks a plan card */
+  const handleSelectTier = (tierName: TierName) => {
+    setSelectedTier(tierName);
+    setStep('create-account');
+  };
+
+  /** Step 2 → 3 (or complete for free tier): Submit account details */
+  const handleAccountSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!firstName.trim()) { toast.error('Please enter your first name.'); return; }
+    if (!email.trim())      { toast.error('Please enter your email address.'); return; }
+    if (password.length < 6) { toast.error('Password must be at least 6 characters.'); return; }
+    if (!agreeTerms)        { toast.error('Please agree to the Terms of Service.'); return; }
+
+    if (selectedTier === 'companion') {
+      // Free tier — create account and log straight in
+      await createAccount();
+    } else {
+      // Paid tier — create account then redirect to Stripe
+      await createAccount();
+    }
+  };
+
+  const createAccount = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { first_name: firstName, last_name: lastName, role: 'patient' },
+        },
+      });
+
+      if (error) { toast.error(error.message); return; }
+      if (!data.user) { toast.error('Sign-up failed. Please try again.'); return; }
+
+      // Write profile row
+      await supabase.from('profiles').upsert({
+        id:         data.user.id,
+        email,
+        first_name: firstName,
+        last_name:  lastName,
+        role:       'patient',
+      });
+
+      // Write subscription row (trialing)
+      const trialStart = new Date();
+      const trialEnd   = new Date(trialStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      await supabase.from('subscriptions').upsert({
+        user_id:          data.user.id,
+        tier:             selectedTier,
+        status:           'trialing',
+        trial_started_at: trialStart.toISOString(),
+        trial_ends_at:    trialEnd.toISOString(),
+      }, { onConflict: 'user_id' });
+
+      if (selectedTier === 'companion') {
+        // Free — go straight into the app
+        toast.success('Welcome to MemoriaHelps! 🎉');
+        dispatch({ type: 'SET_USER', payload: { id: data.user.id, email, firstName, lastName, role: 'patient', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
+        dispatch({ type: 'SET_ROLE', payload: 'patient' });
+        dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+        onClose?.();
+      } else {
+        // Paid — redirect to Stripe Checkout
+        toast.success('Account created! Taking you to secure checkout…');
+
+        const tierConfig = TIERS[selectedTier];
+        const priceId    = billingAnnual && tierConfig.stripePriceIdAnnual
+          ? tierConfig.stripePriceIdAnnual
+          : tierConfig.stripePriceIdMonthly;
+
+        const { data: checkoutData, error: checkoutErr } = await supabase.functions.invoke('create-checkout-session', {
+          body: { priceId, tierName: selectedTier, userId: data.user.id, email, trialEnd: trialEnd.toISOString() },
+        });
+
+        if (checkoutErr || !checkoutData?.url) {
+          // Fallback: start them on trial, they can pay from inside the app
+          toast.error('Checkout unavailable — you are on a free 7-day trial. Upgrade from inside the app at any time.');
+          dispatch({ type: 'SET_USER', payload: { id: data.user.id, email, firstName, lastName, role: 'patient', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
+          dispatch({ type: 'SET_ROLE', payload: 'patient' });
+          dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+          onClose?.();
+        } else {
+          window.location.href = checkoutData.url;
+        }
+      }
+    } catch {
+      toast.error('Something went wrong. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ── Derived display values ───────────────────────────────────────────────────
+
+  const selectedTierConfig = TIERS[selectedTier];
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
+  const content = (
+    <div className="max-w-4xl mx-auto px-4 py-8">
+      <AnimatePresence mode="wait">
+
+        {/* ─── Step 1: Plans ────────────────────────────────────────────────── */}
+        {step === 'plans' && (
+          <motion.div key="plans" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+
+            {/* Header */}
+            <div className="text-center mb-8">
+              <h1 className="text-3xl font-bold text-charcoal mb-2">Choose Your Plan</h1>
+              <p className="text-medium-gray">
+                Start free — your first 7 days on any paid plan are always free.
+              </p>
+            </div>
+
+            {/* Annual toggle */}
+            <div className="flex items-center justify-center gap-3 mb-8">
+              <span className={`text-sm font-medium ${!billingAnnual ? 'text-charcoal' : 'text-medium-gray'}`}>Monthly</span>
+              <button
+                onClick={() => setBillingAnnual(!billingAnnual)}
+                className={`relative w-12 h-6 rounded-full transition-colors ${billingAnnual ? 'bg-warm-bronze' : 'bg-soft-taupe'}`}
+              >
+                <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${billingAnnual ? 'translate-x-6' : ''}`} />
+              </button>
+              <span className={`text-sm font-medium ${billingAnnual ? 'text-charcoal' : 'text-medium-gray'}`}>
+                Annual
+                <span className="ml-1 text-xs bg-soft-sage/20 text-soft-sage px-2 py-0.5 rounded-full">Save 15%</span>
+              </span>
+            </div>
+
+            {/* Tier cards */}
+            <div className="grid md:grid-cols-3 gap-6 mb-8">
+              {tierOrder.map((tierName, i) => {
+                const cfg = TIERS[tierName];
+                const isPopular = tierName === 'daily_care';
+                const displayPrice = billingAnnual && cfg.annualPrice
+                  ? (cfg.annualPrice / 12).toFixed(2)
+                  : cfg.price.toFixed(2);
+
+                return (
+                  <motion.div
+                    key={tierName}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.08 }}
+                    className={`relative rounded-2xl border-2 p-6 flex flex-col cursor-pointer transition-all hover:shadow-elevated ${
+                      isPopular ? 'border-warm-bronze shadow-elevated' : 'border-soft-taupe hover:border-warm-bronze/50'
+                    }`}
+                    onClick={() => handleSelectTier(tierName)}
+                  >
+                    {isPopular && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                        <span className="bg-warm-bronze text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
+                          <Star className="w-3 h-3" /> Most Popular
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="mb-4">
+                      <h3 className="text-xl font-bold text-charcoal">{cfg.label}</h3>
+                      <div className="mt-2 flex items-baseline gap-1">
+                        {cfg.price === 0 ? (
+                          <span className="text-3xl font-bold text-charcoal">Free</span>
+                        ) : (
+                          <>
+                            <span className="text-3xl font-bold text-charcoal">${displayPrice}</span>
+                            <span className="text-medium-gray text-sm">/mo</span>
+                          </>
+                        )}
+                      </div>
+                      {billingAnnual && cfg.annualPrice && (
+                        <p className="text-xs text-soft-sage mt-0.5">Billed as ${cfg.annualPrice}/yr</p>
+                      )}
+                      <p className="text-sm text-medium-gray mt-1">{cfg.tagline}</p>
+                    </div>
+
+                    <ul className="space-y-2 flex-1 mb-6">
+                      {cfg.features.map((feat) => (
+                        <li key={feat.label} className="flex items-start gap-2">
+                          {feat.included ? (
+                            <Check className={`w-4 h-4 mt-0.5 flex-shrink-0 ${feat.highlight ? 'text-warm-bronze' : 'text-soft-sage'}`} />
+                          ) : (
+                            <Lock className="w-4 h-4 mt-0.5 flex-shrink-0 text-soft-taupe" />
+                          )}
+                          <span className={`text-sm ${feat.included ? (feat.highlight ? 'text-charcoal font-medium' : 'text-charcoal') : 'text-soft-taupe'}`}>
+                            {feat.label}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <button
+                      className={`w-full py-3 rounded-xl font-semibold transition-colors text-sm ${
+                        isPopular
+                          ? 'bg-warm-bronze hover:bg-deep-bronze text-white'
+                          : tierName === 'companion'
+                          ? 'border-2 border-soft-taupe text-charcoal hover:bg-soft-taupe/20'
+                          : 'bg-charcoal hover:bg-charcoal/90 text-white'
+                      }`}
+                    >
+                      {tierName === 'companion' ? 'Start Free' : 'Start 7-Day Free Trial'}
+                    </button>
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            {/* Trust badges */}
+            <div className="flex flex-wrap justify-center gap-6 text-sm text-medium-gray">
+              <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-soft-sage" /> 7-day free trial on all paid plans</span>
+              <span className="flex items-center gap-1.5"><RefreshCw className="w-4 h-4 text-calm-blue" /> Money-back guarantee within 7 days</span>
+              <span className="flex items-center gap-1.5"><X className="w-4 h-4 text-gentle-coral" /> Cancel anytime</span>
+            </div>
+
+            {/* Sign-in link */}
+            {onGoToLogin && (
+              <p className="text-center text-sm text-medium-gray mt-6">
+                Already have an account?{' '}
+                <button onClick={onGoToLogin} className="text-warm-bronze hover:text-deep-bronze font-medium underline">
+                  Sign in here
+                </button>
+              </p>
+            )}
+          </motion.div>
+        )}
+
+        {/* ─── Step 2: Create Account ───────────────────────────────────────── */}
+        {step === 'create-account' && (
+          <motion.div key="create" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} className="max-w-md mx-auto">
+
+            {/* Back link */}
+            <button
+              onClick={() => setStep('plans')}
+              className="flex items-center gap-1.5 text-medium-gray hover:text-charcoal text-sm mb-6 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back to plans
+            </button>
+
+            {/* Selected plan badge */}
+            <div className="flex items-center justify-between bg-warm-bronze/10 border border-warm-bronze/20 rounded-xl px-4 py-3 mb-6">
+              <div>
+                <p className="text-xs text-medium-gray font-medium uppercase tracking-wide">Selected plan</p>
+                <p className="font-bold text-charcoal">{selectedTierConfig.label}</p>
+              </div>
+              <p className="text-warm-bronze font-bold text-lg">
+                {selectedTierConfig.price === 0 ? 'Free' : `$${selectedTierConfig.price}/mo`}
+              </p>
+            </div>
+
+            <h2 className="text-2xl font-bold text-charcoal mb-1">Create your account</h2>
+            <p className="text-medium-gray text-sm mb-6">
+              {selectedTier === 'companion'
+                ? 'Free forever — no credit card needed.'
+                : 'Your 7-day free trial starts now. You can cancel before it ends.'}
+            </p>
+
+            <form onSubmit={handleAccountSubmit} className="space-y-4">
+
+              {/* Name row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-medium text-charcoal">First Name</label>
+                  <input
+                    type="text"
+                    placeholder="Jane"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    required
+                    className="w-full h-12 px-3 rounded-xl border border-soft-taupe focus:border-warm-bronze focus:ring-1 focus:ring-warm-bronze outline-none text-sm"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-medium text-charcoal">Last Name</label>
+                  <input
+                    type="text"
+                    placeholder="Smith"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="w-full h-12 px-3 rounded-xl border border-soft-taupe focus:border-warm-bronze focus:ring-1 focus:ring-warm-bronze outline-none text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Email */}
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-charcoal">Email Address</label>
+                <input
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  className="w-full h-12 px-3 rounded-xl border border-soft-taupe focus:border-warm-bronze focus:ring-1 focus:ring-warm-bronze outline-none text-sm"
+                />
+              </div>
+
+              {/* Password */}
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-charcoal">Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="At least 6 characters"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete="new-password"
+                    className="w-full h-12 px-3 pr-11 rounded-xl border border-soft-taupe focus:border-warm-bronze focus:ring-1 focus:ring-warm-bronze outline-none text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-medium-gray hover:text-charcoal"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Legal agreements */}
+              <div className="space-y-3 pt-1">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={agreeTerms}
+                    onChange={(e) => setAgreeTerms(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-warm-bronze flex-shrink-0"
+                  />
+                  <span className="text-xs text-medium-gray leading-relaxed">
+                    I agree to the{' '}
+                    <a href="/terms" target="_blank" className="text-warm-bronze underline hover:no-underline">Terms of Service</a>
+                    {' '}and{' '}
+                    <a href="/privacy" target="_blank" className="text-warm-bronze underline hover:no-underline">Privacy Policy</a>.
+                    {' '}I understand that subscriptions auto-renew monthly and all charges are non-refundable after the 7-day money-back window. We do not sell your personal information.
+                  </span>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={agreeComms}
+                    onChange={(e) => setAgreeComms(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-warm-bronze flex-shrink-0"
+                  />
+                  <span className="text-xs text-medium-gray leading-relaxed">
+                    I consent to receive emails and SMS messages about my account, billing, and service updates.
+                    Message and data rates may apply. Reply STOP to opt out of SMS at any time.
+                    Payment data is processed securely by Stripe and is never stored on our servers.
+                  </span>
+                </label>
+              </div>
+
+              {/* Submit */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full h-12 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl font-semibold text-base transition-colors disabled:opacity-60 flex items-center justify-center gap-2 mt-2"
+              >
+                {isLoading ? (
+                  <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : selectedTier === 'companion' ? (
+                  'Create Free Account'
+                ) : (
+                  `Continue to Payment →`
+                )}
+              </button>
+
+              {selectedTier !== 'companion' && (
+                <p className="text-xs text-center text-medium-gray">
+                  Your card will not be charged until after your 7-day free trial ends.
+                  Cancel anytime before then at no cost.
+                </p>
+              )}
+            </form>
+
+            {onGoToLogin && (
+              <p className="text-center text-sm text-medium-gray mt-5">
+                Already have an account?{' '}
+                <button onClick={onGoToLogin} className="text-warm-bronze hover:text-deep-bronze font-medium underline">
+                  Sign in here
+                </button>
+              </p>
+            )}
+          </motion.div>
+        )}
+
+      </AnimatePresence>
+    </div>
+  );
+
+  // ── Modal vs full-page wrapper ──────────────────────────────────────────────
+
+  if (!modal) return <div className="min-h-screen bg-warm-ivory">{content}</div>;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center overflow-y-auto py-8"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+      >
+        <motion.div
+          className="relative bg-warm-ivory rounded-3xl w-full max-w-4xl mx-4 shadow-2xl"
+          initial={{ opacity: 0, y: 32 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 16 }}
+        >
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 z-10 w-8 h-8 bg-soft-taupe/30 hover:bg-soft-taupe rounded-full flex items-center justify-center"
+            >
+              <X className="w-4 h-4 text-charcoal" />
+            </button>
+          )}
+          {content}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}

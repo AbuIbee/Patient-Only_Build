@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/store/AppContext';
 import { supabase } from '@/lib/supabase';
+import { SubscriptionProvider, useSubscription } from '@/store/SubscriptionContext';
+import TrialBanner from '@/components/TrialBanner';
+import FeatureGate from '@/components/FeatureGate';
+import PricingPage from '@/pages/common/PricingPage';
 import PatientHome from './PatientHome';
 import PatientRoutine from './PatientRoutine';
 import PatientMemories from './PatientMemories';
@@ -12,56 +16,43 @@ import CarePartnerCheckin from './CarePartnerCheckin';
 import MediaUploader from '@/components/MediaUploader';
 import PatientGames from './PatientGames';
 import {
-  LayoutDashboard,
-  Calendar,
-  Pill,
-  FileText,
-  Bell,
-  Heart,
-  Smile,
-  Users,
-  MoreHorizontal,
-  ChevronLeft,
-  ChevronRight,
-  Volume2,
-  VolumeX,
-  Sun,
-  Moon,
-  LogOut,
-  ClipboardList,
-  UserCheck,
-  Film,
-  Gamepad2,
-  X,
-  Menu,
+  LayoutDashboard, Calendar, Pill, FileText, Bell, Heart,
+  Smile, Users, MoreHorizontal, ChevronLeft, ChevronRight,
+  Volume2, LogOut, ClipboardList, Film, Gamepad2, X, Lock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import type { FeatureKey, TierName } from '@/types/subscription';
 
 type PatientView =
-  | 'dashboard'
-  | 'medications'
-  | 'routines'
-  | 'memories'
-  | 'mood'
-  | 'documents'
-  | 'reminders'
-  | 'checkin'
-  | 'media'
-  | 'games';
+  | 'dashboard' | 'medications' | 'routines' | 'memories'
+  | 'mood' | 'documents' | 'reminders' | 'checkin' | 'media' | 'games';
 
-export default function PatientLayout() {
-  const [currentView, setCurrentView] = useState<PatientView>('dashboard');
+// Map each nav view to the feature key that gates it (null = always accessible)
+const VIEW_FEATURE_MAP: Partial<Record<PatientView, { feature: FeatureKey; tier: TierName; label: string }>> = {
+  medications: { feature: 'medications',          tier: 'daily_care',    label: 'Medication tracking' },
+  checkin:     { feature: 'care_partner_checkin', tier: 'daily_care',    label: 'Care Partner check-in' },
+  memories:    { feature: 'memories_unlimited',   tier: 'daily_care',    label: 'Family memories vault' },
+  media:       { feature: 'media',                tier: 'daily_care',    label: 'Videos & media' },
+  games:       { feature: 'games',                tier: 'daily_care',    label: 'Games & brain training' },
+  documents:   { feature: 'documents',            tier: 'full_support',  label: 'Document vault' },
+};
+
+// ─── Inner layout — has access to SubscriptionContext ────────────────────────
+function PatientLayoutInner() {
+  const [currentView, setCurrentView]         = useState<PatientView>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu]        = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isPlaying, setIsPlaying]             = useState(false);
+  const [isLoading, setIsLoading]             = useState(true);
   const [showSundownBanner, setShowSundownBanner] = useState(true);
-  const [showEveningBanner, setShowEveningBanner] = useState(true);
-  const [simplifiedMode, setSimplifiedMode] = useState(false);
+  const [simplifiedMode, setSimplifiedMode]   = useState(false);
+  const [showPricing, setShowPricing]         = useState(false);
+  const [pricingPreselect, setPricingPreselect] = useState<TierName>('daily_care');
 
   const { state, dispatch } = useApp();
+  const { can, subscription, isActive } = useSubscription();
   const patient = state.patient;
 
   const hour = new Date().getHours();
@@ -75,228 +66,81 @@ export default function PatientLayout() {
     return () => clearTimeout(t);
   }, [isSundowningTime]);
 
+  // Load patient data
   useEffect(() => {
-    if (!isEvening) return;
-    setShowEveningBanner(true);
-    const t = setTimeout(() => setShowEveningBanner(false), 8000);
-    return () => clearTimeout(t);
-  }, [isEvening]);
+    const loadPatient = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-  useEffect(() => {
-    loadPatientData();
-  }, []);
+        const { data: patientData } = await supabase
+          .from('patients')
+          .select('*, familiar_faces(*)')
+          .eq('user_id', user.id)
+          .maybeSingle();
 
-  const loadPatientData = async () => {
-    setIsLoading(true);
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.user) {
-        setIsLoading(false);
-        return;
-      }
-
-      if (state.patient) {
-        setIsLoading(false);
-        return;
-      }
-
-      const patientId = session.user.id;
-
-      const [{ data: patientRow }, { data: profile }] = await Promise.all([
-        supabase.from('patients').select('*').eq('id', patientId).maybeSingle(),
-        supabase.from('profiles').select('*').eq('id', patientId).maybeSingle(),
-      ]);
-
-      if (patientRow && profile) {
-        dispatch({
-          type: 'SET_PATIENT',
-          payload: {
-            id: patientId,
-            userId: patientId,
-            firstName: profile.first_name || '',
-            lastName: profile.last_name || '',
-            email: profile.email || '',
-            preferredName: patientRow.preferred_name || profile.first_name || '',
-            photoUrl: profile.photo_url || undefined,
-            location: patientRow.location || 'Unknown',
-            affirmation:
-              patientRow.affirmation ||
-              'You are safe. You are loved. You are at home.',
-            emergencyContact: {
-              name: patientRow.emergency_contact_name || '',
-              relationship: patientRow.emergency_contact_relationship || '',
-              phone: patientRow.emergency_contact_phone || '',
-              email: patientRow.emergency_contact_email || undefined,
+        if (patientData) {
+          dispatch({
+            type: 'SET_PATIENT',
+            payload: {
+              id: patientData.id,
+              userId: user.id,
+              email: user.email,
+              firstName: patientData.first_name ?? '',
+              lastName: patientData.last_name ?? '',
+              preferredName: patientData.preferred_name ?? patientData.first_name ?? '',
+              photoUrl: patientData.photo_url ?? undefined,
+              location: patientData.location ?? '',
+              affirmation: patientData.affirmation ?? 'You are safe. You are loved. You are at home.',
+              emergencyContact: {
+                name: patientData.emergency_contact_name ?? '',
+                relationship: patientData.emergency_contact_relationship ?? '',
+                phone: patientData.emergency_contact_phone ?? '',
+                email: patientData.emergency_contact_email ?? undefined,
+              },
+              familiarFaces: patientData.familiar_faces ?? [],
+              preferences: {
+                language: patientData.preferences_language ?? 'en',
+                fontSize: (patientData.preferences_font_size ?? 'large') as 'normal' | 'large' | 'extra-large',
+                highContrast: patientData.preferences_high_contrast ?? false,
+                audioEnabled: patientData.preferences_audio_enabled ?? true,
+                notificationsEnabled: patientData.preferences_notifications_enabled ?? true,
+                tone: (patientData.preferences_tone ?? 'gentle') as 'gentle' | 'professional' | 'friendly',
+              },
+              createdAt: patientData.created_at,
+              updatedAt: patientData.updated_at,
             },
-            familiarFaces: [],
-            preferences: {
-              language: 'en',
-              fontSize: 'large',
-              highContrast: false,
-              audioEnabled: true,
-              notificationsEnabled: true,
-              tone: 'gentle',
-            },
-            createdAt: patientRow.created_at || new Date().toISOString(),
-            updatedAt: patientRow.updated_at || new Date().toISOString(),
-          },
-        });
-
-        const [{ data: meds }, { data: tasks }, { data: reminders }, { data: memories }, { data: moods }] =
-          await Promise.all([
-            supabase
-              .from('medications')
-              .select('*')
-              .eq('patient_id', patientId)
-              .eq('is_active', true),
-            supabase
-              .from('tasks')
-              .select('*')
-              .eq('patient_id', patientId)
-              .eq('is_active', true),
-            supabase
-              .from('reminders')
-              .select('*')
-              .eq('patient_id', patientId)
-              .eq('is_active', true),
-            supabase.from('memories').select('*').eq('patient_id', patientId).limit(20),
-            supabase
-              .from('mood_entries')
-              .select('*')
-              .eq('patient_id', patientId)
-              .order('timestamp', { ascending: false })
-              .limit(10),
-          ]);
-
-        dispatch({
-          type: 'SET_MEDICATIONS',
-          payload: (meds || []).map((m: any) => ({
-            id: m.id,
-            patientId: m.patient_id,
-            name: m.name,
-            dosage: m.dosage,
-            form: m.form,
-            instructions: m.instructions,
-            schedule: m.schedule || [],
-            isActive: m.is_active,
-            createdAt: m.created_at,
-            updatedAt: m.updated_at,
-          })),
-        });
-
-        dispatch({
-          type: 'SET_TASKS',
-          payload: (tasks || []).map((t: any) => ({
-            id: t.id,
-            patientId: t.patient_id,
-            title: t.title,
-            description: t.description,
-            icon: t.icon,
-            scheduledTime: t.scheduled_time,
-            status: t.status,
-            isActive: t.is_active,
-          })),
-        });
-
-        dispatch({
-          type: 'SET_REMINDERS',
-          payload: (reminders || []).map((r: any) => ({
-            id: r.id,
-            patientId: r.patient_id,
-            title: r.title,
-            message: r.message,
-            type: r.type,
-            time: r.time,
-            isActive: r.is_active,
-            createdAt: r.created_at,
-          })),
-        });
-
-        dispatch({
-          type: 'SET_MEMORIES',
-          payload: (memories || []).map((m: any) => ({
-            id: m.id,
-            patientId: m.patient_id,
-            title: m.title,
-            description: m.description,
-            photoUrl: m.photo_url,
-            date: m.date,
-            isFavorite: m.is_favorite,
-            createdAt: m.created_at,
-          })),
-        });
-
-        dispatch({
-          type: 'SET_MOOD_ENTRIES',
-          payload: (moods || []).map((m: any) => ({
-            id: m.id,
-            patientId: m.patient_id,
-            mood: m.mood,
-            intensity: m.intensity,
-            note: m.note,
-            timestamp: m.timestamp,
-          })),
-        });
+          });
+        }
+      } catch (err) {
+        console.error('[PatientLayout] Load error:', err);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err) {
-      console.error('Error loading patient data:', err);
-    } finally {
-      setIsLoading(false);
+    };
+
+    loadPatient();
+  }, [dispatch]);
+
+  const openUpgrade = (tier: TierName = 'daily_care') => {
+    setPricingPreselect(tier);
+    setShowPricing(true);
+  };
+
+  const handleNavClick = (view: PatientView) => {
+    const gate = VIEW_FEATURE_MAP[view];
+    if (gate && !can(gate.feature)) {
+      // Show pricing modal pre-selecting the required tier
+      openUpgrade(gate.tier);
+      return;
     }
+    setCurrentView(view);
+    setShowMobileSidebar(false);
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     dispatch({ type: 'LOGOUT' });
-    toast('You have been logged out');
-  };
-
-  const navItems = [
-    { id: 'dashboard' as PatientView, label: 'Home', icon: LayoutDashboard },
-    { id: 'memories' as PatientView, label: 'Family', icon: Users },
-    { id: 'mood' as PatientView, label: 'How I Feel', icon: Smile },
-    { id: 'reminders' as PatientView, label: 'Reminders', icon: Bell },
-    { id: 'checkin' as PatientView, label: 'Care Partner Log', icon: ClipboardList },
-  ];
-
-  const moreNavItems = [
-    { id: 'medications' as PatientView, label: 'Medications', icon: Pill },
-    { id: 'routines' as PatientView, label: 'My Day', icon: Calendar },
-    { id: 'documents' as PatientView, label: 'Papers', icon: FileText },
-    { id: 'media' as PatientView, label: 'Videos & Media', icon: Film },
-    { id: 'games' as PatientView, label: 'Games', icon: Gamepad2 },
-  ];
-
-  const allNavItems = [...navItems, ...moreNavItems];
-
-  const renderView = () => {
-    switch (currentView) {
-      case 'dashboard':
-        return <PatientHome />;
-      case 'medications':
-        return <PatientMedications />;
-      case 'routines':
-        return <PatientRoutine />;
-      case 'memories':
-        return <PatientMemories />;
-      case 'mood':
-        return <PatientMoodTracker />;
-      case 'documents':
-        return <PatientDocuments />;
-      case 'reminders':
-        return <PatientReminders />;
-      case 'checkin':
-        return <CarePartnerCheckin />;
-      case 'media':
-        return <MediaUploader readOnly={false} patientId={state.currentUser?.id} />;
-      case 'games':
-        return <PatientGames />;
-      default:
-        return <PatientHome />;
-    }
   };
 
   const playSafetyMessage = () => {
@@ -304,472 +148,286 @@ export default function PatientLayout() {
     setTimeout(() => setIsPlaying(false), 5000);
   };
 
+  const renderView = () => {
+    const gate = VIEW_FEATURE_MAP[currentView];
+
+    if (gate && !can(gate.feature)) {
+      return (
+        <div className="p-6">
+          <FeatureGate
+            feature={gate.feature}
+            requiredTier={gate.tier}
+            featureLabel={gate.label}
+            onUpgrade={() => openUpgrade(gate.tier)}
+          >
+            {/* Blurred preview placeholder */}
+            <div className="h-64 bg-soft-taupe/20 rounded-2xl" />
+          </FeatureGate>
+        </div>
+      );
+    }
+
+    switch (currentView) {
+      case 'dashboard':    return <PatientHome />;
+      case 'medications':  return <PatientMedications />;
+      case 'routines':     return <PatientRoutine />;
+      case 'memories':     return <PatientMemories />;
+      case 'mood':         return <PatientMoodTracker />;
+      case 'documents':    return <PatientDocuments />;
+      case 'reminders':    return <PatientReminders />;
+      case 'checkin':      return <CarePartnerCheckin />;
+      case 'media':        return <MediaUploader readOnly={false} patientId={state.currentUser?.id} />;
+      case 'games':        return <PatientGames />;
+      default:             return <PatientHome />;
+    }
+  };
+
   const getSidebarBg = () => {
     if (isSundowningTime) return 'bg-gradient-to-b from-warm-amber/20 to-white';
-    if (isEvening) return 'bg-gradient-to-b from-deep-slate/10 to-white';
+    if (isEvening)        return 'bg-gradient-to-b from-deep-slate/10 to-white';
     return 'bg-white';
   };
 
-  const sidebarWidthClass =
-    sidebarCollapsed || simplifiedMode ? 'md:w-20' : 'md:w-64';
+  const sidebarWidthClass = sidebarCollapsed || simplifiedMode ? 'md:w-20' : 'md:w-64';
 
-  const desktopSidebarContent = (
-    <>
-      <div className="h-14 flex items-center px-4 border-b border-soft-taupe flex-shrink-0">
-        <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center flex-shrink-0">
-          <Heart className="w-6 h-6 text-white" />
-        </div>
-        {!sidebarCollapsed && !simplifiedMode && (
-          <span className="ml-3 font-semibold text-charcoal">MemoriaHelps</span>
-        )}
-      </div>
+  const navItems = [
+    { id: 'dashboard' as PatientView, label: 'Home',           icon: LayoutDashboard, gate: null },
+    { id: 'memories'  as PatientView, label: 'Family',         icon: Users,           gate: VIEW_FEATURE_MAP.memories },
+    { id: 'mood'      as PatientView, label: 'How I Feel',     icon: Smile,           gate: null },
+    { id: 'reminders' as PatientView, label: 'Reminders',      icon: Bell,            gate: null },
+    { id: 'checkin'   as PatientView, label: 'Care Partner',   icon: ClipboardList,   gate: VIEW_FEATURE_MAP.checkin },
+  ];
 
-      {!sidebarCollapsed && !simplifiedMode && (
-        <div className="px-4 py-3 border-b border-soft-taupe flex-shrink-0">
-          <div className="flex items-center gap-3">
-            {patient?.photoUrl ? (
-              <img
-                src={patient.photoUrl}
-                alt={patient.preferredName}
-                className="w-10 h-10 rounded-full object-cover border-2 border-warm-bronze"
-              />
-            ) : (
-              <div className="w-10 h-10 bg-warm-bronze rounded-full flex items-center justify-center">
-                <span className="text-white font-medium text-sm">
-                  {patient?.preferredName?.[0] || patient?.firstName?.[0] || '?'}
-                </span>
-              </div>
-            )}
+  const moreNavItems = [
+    { id: 'medications' as PatientView, label: 'Medications',    icon: Pill,      gate: VIEW_FEATURE_MAP.medications },
+    { id: 'routines'    as PatientView, label: 'My Day',         icon: Calendar,  gate: null },
+    { id: 'documents'   as PatientView, label: 'My Documents',   icon: FileText,  gate: VIEW_FEATURE_MAP.documents },
+    { id: 'media'       as PatientView, label: 'Videos & Media', icon: Film,      gate: VIEW_FEATURE_MAP.media },
+    { id: 'games'       as PatientView, label: 'Memory Games',   icon: Gamepad2,  gate: VIEW_FEATURE_MAP.games },
+  ];
 
-            <div className="min-w-0">
-              <p className="font-semibold text-charcoal truncate">
-                {patient?.preferredName || patient?.firstName || 'Welcome'}
-              </p>
-              <p className="text-xs text-medium-gray">
-                {isEvening ? 'Good Evening' : hour < 12 ? 'Good Morning' : 'Good Afternoon'}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+  const renderNavButton = (item: typeof navItems[0], isActive: boolean) => {
+    const Icon = item.icon;
+    const isLocked = item.gate && !can(item.gate.feature);
 
-      <nav className="p-2 space-y-1 flex-1 overflow-y-auto min-h-0">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = currentView === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => {
-                setCurrentView(item.id);
-                setShowMobileSidebar(false);
-              }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                isActive
-                  ? 'bg-yellow-400 text-charcoal shadow-soft'
-                  : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'
-              }`}
-            >
-              <Icon className="w-5 h-5 flex-shrink-0" />
-              {!sidebarCollapsed && !simplifiedMode && (
-                <span className="font-medium text-sm">{item.label}</span>
-              )}
-              {isActive && !sidebarCollapsed && !simplifiedMode && (
-                <motion.div
-                  layoutId="patientActiveIndicator"
-                  className="ml-auto w-2 h-2 bg-charcoal rounded-full"
-                />
-              )}
-            </button>
-          );
-        })}
-
-        <button
-          onClick={() => setShowMoreMenu(!showMoreMenu)}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-            showMoreMenu
-              ? 'bg-calm-blue/20 text-calm-blue'
-              : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'
-          }`}
-        >
-          <MoreHorizontal className="w-5 h-5 flex-shrink-0" />
-          {!sidebarCollapsed && !simplifiedMode && (
-            <span className="font-medium text-sm">More</span>
-          )}
-          {!sidebarCollapsed && !simplifiedMode && (
-            <motion.div animate={{ rotate: showMoreMenu ? 180 : 0 }} className="ml-auto">
-              <ChevronRight className="w-4 h-4" />
-            </motion.div>
-          )}
-        </button>
-
-        <AnimatePresence initial={false}>
-          {showMoreMenu && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden"
-            >
-              <div className="pl-4 space-y-1 border-l-2 border-soft-taupe ml-4">
-                {moreNavItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = currentView === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => {
-                        setCurrentView(item.id);
-                        setShowMobileSidebar(false);
-                      }}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                        isActive
-                          ? 'bg-yellow-400 text-charcoal font-bold'
-                          : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'
-                      }`}
-                    >
-                      <Icon className="w-5 h-5 flex-shrink-0" />
-                      {!sidebarCollapsed && !simplifiedMode && (
-                        <span className="font-medium text-sm">{item.label}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </nav>
-
-      <div className="p-3 border-t border-soft-taupe space-y-2 flex-shrink-0">
-        <button
-          onClick={playSafetyMessage}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-soft-sage/10 text-soft-sage hover:bg-soft-sage/20 transition-colors"
-        >
-          <Volume2 className={`w-5 h-5 flex-shrink-0 ${isPlaying ? 'animate-pulse' : ''}`} />
-          {!sidebarCollapsed && !simplifiedMode && (
-            <span className="font-medium text-sm">
-              {isPlaying ? 'Playing...' : `Hear "You're Safe"`}
+    return (
+      <button
+        key={item.id}
+        onClick={() => handleNavClick(item.id)}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+          isActive
+            ? 'bg-yellow-400 text-charcoal shadow-soft'
+            : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'
+        }`}
+      >
+        <div className="relative flex-shrink-0">
+          <Icon className="w-5 h-5" />
+          {isLocked && (
+            <span className="absolute -top-1 -right-1 w-3 h-3 bg-warm-bronze rounded-full flex items-center justify-center">
+              <Lock className="w-1.5 h-1.5 text-white" />
             </span>
           )}
-        </button>
-
-        <button
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="hidden md:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-xl text-medium-gray hover:bg-soft-taupe transition-colors"
-        >
-          {sidebarCollapsed || simplifiedMode ? (
-            <ChevronRight className="w-5 h-5" />
-          ) : (
-            <>
-              <ChevronLeft className="w-5 h-5" />
-              <span className="text-sm">Collapse</span>
-            </>
-          )}
-        </button>
-
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-medium-gray hover:bg-gentle-coral/10 hover:text-gentle-coral transition-colors"
-        >
-          <LogOut className="w-5 h-5 flex-shrink-0" />
-          {!sidebarCollapsed && !simplifiedMode && (
-            <span className="font-medium text-sm">Logout</span>
-          )}
-        </button>
-      </div>
-    </>
-  );
+        </div>
+        {!sidebarCollapsed && !simplifiedMode && (
+          <span className={`font-medium text-sm ${isLocked ? 'opacity-60' : ''}`}>
+            {item.label}
+          </span>
+        )}
+        {isActive && !sidebarCollapsed && !simplifiedMode && (
+          <motion.div
+            layoutId="patientActiveIndicator"
+            className="ml-auto w-2 h-2 bg-charcoal rounded-full"
+          />
+        )}
+      </button>
+    );
+  };
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-warm-ivory flex items-center justify-center">
-        <div className="text-center space-y-6">
-          <div className="w-20 h-20 bg-warm-bronze rounded-full flex items-center justify-center mx-auto">
-            <Heart className="w-10 h-10 text-white animate-pulse" />
-          </div>
-          <div>
-            <p className="text-2xl font-semibold text-charcoal">
-              {hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening'}
-            </p>
-            <p className="text-medium-gray mt-1">Loading your portal...</p>
-          </div>
-        </div>
+        <div className="w-12 h-12 border-4 border-warm-bronze border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-warm-ivory">
-      <div className="flex min-h-screen">
-        <aside
-          className={`hidden md:flex md:flex-col md:shrink-0 ${sidebarWidthClass} ${getSidebarBg()} border-r border-soft-taupe transition-all duration-300`}
-        >
-          {desktopSidebarContent}
-        </aside>
+    <div className="flex flex-col h-screen overflow-hidden">
+      {/* Trial / status banner at the very top */}
+      <TrialBanner onUpgrade={() => openUpgrade()} />
 
-        <AnimatePresence>
-          {showMobileSidebar && (
-            <motion.div
-              className="fixed inset-0 z-50 md:hidden"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <div
-                className="absolute inset-0 bg-black/40"
-                onClick={() => setShowMobileSidebar(false)}
-              />
-              <motion.aside
-                initial={{ x: -320 }}
-                animate={{ x: 0 }}
-                exit={{ x: -320 }}
-                transition={{ duration: 0.2 }}
-                className={`absolute left-0 top-0 bottom-0 w-80 max-w-[85vw] ${getSidebarBg()} border-r border-soft-taupe flex flex-col`}
-              >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-soft-taupe">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center">
-                      <Heart className="w-6 h-6 text-white" />
-                    </div>
-                    <span className="font-semibold text-charcoal">MemoriaHelps</span>
-                  </div>
-                  <button
-                    onClick={() => setShowMobileSidebar(false)}
-                    className="w-10 h-10 rounded-xl hover:bg-soft-taupe flex items-center justify-center"
-                  >
-                    <X className="w-5 h-5 text-charcoal" />
-                  </button>
-                </div>
-                {desktopSidebarContent}
-              </motion.aside>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <div className="flex-1 min-w-0 flex flex-col">
-          <header className="bg-white border-b border-soft-taupe sticky top-0 z-30 h-14">
-            <div className="h-full px-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <button
-                  onClick={() => setShowMobileSidebar(true)}
-                  className="md:hidden w-10 h-10 rounded-xl hover:bg-soft-taupe flex items-center justify-center flex-shrink-0"
-                >
-                  <Menu className="w-5 h-5 text-charcoal" />
-                </button>
-
-                {currentView !== 'dashboard' && (
-                  <button
-                    onClick={() => setCurrentView('dashboard')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-soft-taupe/30 hover:bg-soft-taupe/60 rounded-xl transition-colors text-charcoal text-sm font-medium flex-shrink-0"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                    <span className="hidden sm:inline">Home</span>
-                  </button>
-                )}
-
-                {simplifiedMode ? (
-                  <div className="flex gap-2">
-                    {navItems.slice(0, 3).map((item) => {
-                      const Icon = item.icon;
-                      const isActive = currentView === item.id;
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={() => setCurrentView(item.id)}
-                          className={`p-2 rounded-xl transition-all ${
-                            isActive
-                              ? 'bg-yellow-400 text-charcoal'
-                              : 'bg-soft-taupe/30 text-medium-gray'
-                          }`}
-                        >
-                          <Icon className="w-5 h-5" />
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <h1 className="text-lg sm:text-xl font-semibold text-charcoal truncate">
-                    {allNavItems.find((n) => n.id === currentView)?.label || 'Home'}
-                  </h1>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                <p className="hidden sm:block text-lg font-bold text-charcoal">
-                  {new Date().toLocaleTimeString([], {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}
-                </p>
-
-                {!simplifiedMode && (
-                  <button
-                    onClick={playSafetyMessage}
-                    className="w-10 h-10 bg-soft-sage/10 rounded-full flex items-center justify-center text-soft-sage hover:bg-soft-sage hover:text-white transition-colors"
-                  >
-                    {isPlaying ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-                  </button>
-                )}
-
-                <button
-                  onClick={() => setSimplifiedMode(!simplifiedMode)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-colors text-sm font-medium ${
-                    simplifiedMode
-                      ? 'bg-warm-bronze text-white'
-                      : 'bg-soft-taupe/30 hover:bg-soft-taupe text-charcoal'
-                  }`}
-                >
-                  <span className="text-base">{simplifiedMode ? '⊞' : '⊟'}</span>
-                  <span className="hidden lg:inline">
-                    {simplifiedMode ? 'Full View' : 'Simple View'}
-                  </span>
-                </button>
-
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gentle-coral/10 hover:bg-gentle-coral hover:text-white text-gentle-coral rounded-xl transition-colors text-sm font-medium"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span className="hidden lg:inline">Logout</span>
-                </button>
-              </div>
-            </div>
-          </header>
-
-          <main className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
-            <div className="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={currentView}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                  className="min-w-0"
-                >
-                  {renderView()}
-                </motion.div>
-              </AnimatePresence>
-            </div>
-          </main>
-        </div>
-      </div>
-
+      {/* Sundowning banner */}
       <AnimatePresence>
         {isSundowningTime && showSundownBanner && (
           <motion.div
-            key="sundown-banner"
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-            className="fixed bottom-20 md:bottom-6 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 z-50 md:min-w-[360px]"
+            initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }}
+            className="bg-warm-amber/20 border-b border-warm-amber/30 px-4 py-2 flex items-center justify-between"
           >
-            <div
-              className="bg-amber-500 border-2 border-amber-600 text-white rounded-2xl shadow-2xl px-5 py-4 flex items-center gap-4"
-              style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.35)' }}
-            >
-              <div className="w-10 h-10 bg-white/30 rounded-xl flex items-center justify-center flex-shrink-0">
-                <Sun className="w-6 h-6 text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-white text-base leading-tight drop-shadow">
-                  Evening Mode — Extra Calm
-                </p>
-                <p className="text-white text-sm mt-0.5 font-medium drop-shadow">
-                  Softer lighting is on
-                </p>
-              </div>
-              <button
-                onClick={() => setSimplifiedMode(!simplifiedMode)}
-                className="flex-shrink-0 bg-white text-amber-600 text-sm font-bold px-3 py-1.5 rounded-xl transition-colors hover:bg-amber-50 border border-white shadow-sm"
-              >
-                {simplifiedMode ? 'Full View' : 'Simplify'}
-              </button>
-              <button
-                onClick={() => setShowSundownBanner(false)}
-                className="flex-shrink-0 w-8 h-8 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center transition-colors"
-                aria-label="Dismiss"
-              >
-                <X className="w-4 h-4 text-white" />
-              </button>
-            </div>
+            <p className="text-sm text-amber-900 font-medium">
+              It's evening time — you are safe and at home.
+            </p>
+            <button onClick={() => setShowSundownBanner(false)}>
+              <X className="w-4 h-4 text-amber-700" />
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {isEvening && !isSundowningTime && showEveningBanner && (
-          <motion.div
-            key="evening-banner"
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-            className="fixed bottom-20 md:bottom-6 left-4 right-4 md:left-1/2 md:right-auto md:-translate-x-1/2 z-50 md:min-w-[360px]"
-          >
-            <div
-              className="bg-slate-700 border-2 border-slate-600 text-white rounded-2xl shadow-2xl px-5 py-4 flex items-center gap-4"
-              style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.40)' }}
-            >
-              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                <Moon className="w-6 h-6 text-yellow-300" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-white text-base leading-tight drop-shadow">
-                  Good Evening
-                </p>
-                <p className="text-slate-200 text-sm mt-0.5 font-medium">
-                  Time to wind down and relax
-                </p>
-              </div>
-              <button
-                onClick={() => setShowEveningBanner(false)}
-                className="flex-shrink-0 w-8 h-8 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center transition-colors"
-                aria-label="Dismiss"
-              >
-                <X className="w-4 h-4 text-white" />
-              </button>
+      {/* Main layout */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Desktop sidebar */}
+        <aside className={`hidden md:flex flex-col flex-shrink-0 transition-all duration-300 ${sidebarWidthClass} ${getSidebarBg()} border-r border-soft-taupe`}>
+          <div className="h-14 flex items-center px-4 border-b border-soft-taupe flex-shrink-0">
+            <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center flex-shrink-0">
+              <Heart className="w-6 h-6 text-white" />
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {!sidebarCollapsed && !simplifiedMode && (
+              <span className="ml-3 font-semibold text-charcoal">MemoriaHelps</span>
+            )}
+          </div>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-soft-taupe z-40 flex justify-around py-2 px-1 safe-bottom">
-        {[
-          { id: 'dashboard', icon: LayoutDashboard, label: 'Home' },
-          { id: 'memories', icon: Users, label: 'Family' },
-          { id: 'mood', icon: Smile, label: 'Mood' },
-          { id: 'checkin', icon: ClipboardList, label: 'Care' },
-          { id: 'reminders', icon: Bell, label: 'Remind' },
-        ].map(({ id, icon: Icon, label }) => {
-          const isActive = currentView === id;
+          {!sidebarCollapsed && !simplifiedMode && patient && (
+            <div className="px-4 py-3 border-b border-soft-taupe flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-warm-bronze rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-white font-medium text-sm">
+                    {patient.preferredName?.[0] || patient.firstName?.[0] || '?'}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-charcoal truncate">
+                    {patient.preferredName || patient.firstName || 'Welcome'}
+                  </p>
+                  <p className="text-xs text-medium-gray">
+                    {isEvening ? 'Good Evening' : hour < 12 ? 'Good Morning' : 'Good Afternoon'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <nav className="p-2 space-y-1 flex-1 overflow-y-auto min-h-0">
+            {navItems.map((item) => renderNavButton(item, currentView === item.id))}
+
+            <button
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-medium-gray hover:bg-soft-taupe hover:text-charcoal"
+            >
+              <MoreHorizontal className="w-5 h-5 flex-shrink-0" />
+              {!sidebarCollapsed && !simplifiedMode && (
+                <>
+                  <span className="font-medium text-sm">More</span>
+                  <motion.div animate={{ rotate: showMoreMenu ? 180 : 0 }} className="ml-auto">
+                    <ChevronRight className="w-4 h-4" />
+                  </motion.div>
+                </>
+              )}
+            </button>
+
+            <AnimatePresence initial={false}>
+              {showMoreMenu && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pl-4 space-y-1 border-l-2 border-soft-taupe ml-4">
+                    {moreNavItems.map((item) => renderNavButton(item, currentView === item.id))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </nav>
+
+          <div className="p-3 border-t border-soft-taupe space-y-2 flex-shrink-0">
+            <button
+              onClick={playSafetyMessage}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-soft-sage/10 text-soft-sage hover:bg-soft-sage/20 transition-colors"
+            >
+              <Volume2 className={`w-5 h-5 flex-shrink-0 ${isPlaying ? 'animate-pulse' : ''}`} />
+              {!sidebarCollapsed && !simplifiedMode && (
+                <span className="font-medium text-sm">
+                  {isPlaying ? 'Playing...' : 'Hear "You\'re Safe"'}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-medium-gray hover:bg-red-50 hover:text-red-600 transition-colors"
+            >
+              <LogOut className="w-5 h-5 flex-shrink-0" />
+              {!sidebarCollapsed && !simplifiedMode && (
+                <span className="font-medium text-sm">Sign Out</span>
+              )}
+            </button>
+          </div>
+        </aside>
+
+        {/* Main content */}
+        <main className="flex-1 overflow-y-auto">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentView}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              {renderView()}
+            </motion.div>
+          </AnimatePresence>
+        </main>
+      </div>
+
+      {/* Mobile bottom nav */}
+      <nav className="md:hidden flex-shrink-0 bg-white border-t border-soft-taupe px-2 py-2 flex items-center justify-around">
+        {[...navItems.slice(0, 4), { id: 'more' as PatientView, label: 'More', icon: MoreHorizontal, gate: null }].map((item) => {
+          const Icon = item.icon;
+          const isActive = currentView === item.id;
+          const gate = 'gate' in item ? item.gate : null;
+          const isLocked = gate && !can(gate.feature);
+
           return (
             <button
-              key={id}
-              onClick={() => {
-                setCurrentView(id as PatientView);
-                setShowMobileSidebar(false);
-              }}
-              className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-colors min-w-0 flex-1 ${
-                isActive ? 'text-yellow-500' : 'text-medium-gray'
+              key={item.id}
+              onClick={() => item.id === 'more' ? setShowMobileSidebar(true) : handleNavClick(item.id as PatientView)}
+              className={`flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-colors ${
+                isActive ? 'text-warm-bronze' : 'text-medium-gray'
               }`}
             >
-              <Icon className="w-5 h-5 flex-shrink-0" />
-              <span className="text-xs font-medium truncate">{label}</span>
+              <div className="relative">
+                <Icon className="w-5 h-5" />
+                {isLocked && (
+                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-warm-bronze rounded-full flex items-center justify-center">
+                    <Lock className="w-1.5 h-1.5 text-white" />
+                  </span>
+                )}
+              </div>
+              <span className="text-xs font-medium">{item.label}</span>
             </button>
           );
         })}
-
-        <button
-          onClick={() => setShowMobileSidebar(true)}
-          className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-colors flex-1 text-medium-gray"
-        >
-          <MoreHorizontal className="w-5 h-5" />
-          <span className="text-xs font-medium">More</span>
-        </button>
       </nav>
+
+      {/* Pricing modal */}
+      {showPricing && (
+        <PricingPage
+          modal
+          preselectedTier={pricingPreselect}
+          onClose={() => setShowPricing(false)}
+        />
+      )}
     </div>
+  );
+}
+
+// ─── Outer wrapper — provides SubscriptionContext ────────────────────────────
+export default function PatientLayout() {
+  return (
+    <SubscriptionProvider>
+      <PatientLayoutInner />
+    </SubscriptionProvider>
   );
 }
