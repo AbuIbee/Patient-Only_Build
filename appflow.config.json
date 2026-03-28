@@ -1,0 +1,7 @@
+{
+  "platform": "android",
+  "android": {
+    "flavor": ""
+  },
+  "rootDir": "android"
+}
