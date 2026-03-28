@@ -1,7 +1,6 @@
 {
-  "platform": "android",
-  "android": {
-    "flavor": ""
+  "pro": {
+    "id": "d92870ab"
   },
-  "rootDir": "android"
+  "packagePath": "android"
 }
