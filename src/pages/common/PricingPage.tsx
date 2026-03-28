@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Check, Star, Lock, RefreshCw, ShieldCheck, X, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Check, Star, Lock, RefreshCw, ShieldCheck, X, ArrowLeft, Eye, EyeOff, Tag, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
-import { TIERS, type TierName } from '@/types/subscription';
+import { TIERS, type TierName, validatePromoCode, FREE_TRIAL_DAYS, PROMO_TOTAL_DAYS } from '@/types/subscription';
 import { useApp } from '@/store/AppContext';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -46,7 +46,41 @@ export default function PricingPage({
   const [agreeTerms, setAgreeTerms]       = useState(false);
   const [agreeComms, setAgreeComms]       = useState(false);
 
+  // Promo code
+  const [promoInput, setPromoInput]         = useState('');
+  const [promoApplied, setPromoApplied]     = useState<{ code: string; days: number } | null>(null);
+  const [promoError, setPromoError]         = useState('');
+
   const [isLoading, setIsLoading]         = useState(false);
+
+  const handlePromoCheck = async () => {
+    setPromoError('');
+    if (!promoInput.trim()) return;
+
+    const promo = validatePromoCode(promoInput);
+    if (!promo) {
+      setPromoError('Invalid or expired promotional code.');
+      return;
+    }
+
+    // If the user has already entered an email, check the DB right away
+    if (email.trim()) {
+      const { data: existing } = await supabase
+        .from('promo_redemptions')
+        .select('id')
+        .eq('email', email.toLowerCase().trim())
+        .eq('promo_code', promo.code)
+        .maybeSingle();
+
+      if (existing) {
+        setPromoError('This code has already been used with this email address.');
+        return;
+      }
+    }
+
+    setPromoApplied({ code: promo.code, days: promo.days });
+    toast.success(`Promo code applied — ${promo.days} days free!`);
+  };
 
   const tierOrder: TierName[] = ['companion', 'daily_care', 'full_support'];
 
@@ -79,8 +113,47 @@ export default function PricingPage({
   const createAccount = async () => {
     setIsLoading(true);
     try {
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // ── Check if this email has already used a free trial ─────────────────
+      const { data: existingTrial } = await supabase
+        .from('trial_registrations')
+        .select('id')
+        .eq('email', normalizedEmail)
+        .maybeSingle();
+
+      if (existingTrial && selectedTier === 'companion' && !promoApplied) {
+        toast.error(
+          'This email address has already used the free trial. Please choose a paid plan to continue.',
+          { duration: 6000 }
+        );
+        // Redirect them back to plan selection
+        setStep('plans');
+        setIsLoading(false);
+        return;
+      }
+
+      // ── If a promo code is applied, verify it hasn't been used with this email ──
+      if (promoApplied) {
+        const { data: existingPromo } = await supabase
+          .from('promo_redemptions')
+          .select('id')
+          .eq('email', normalizedEmail)
+          .eq('promo_code', promoApplied.code)
+          .maybeSingle();
+
+        if (existingPromo) {
+          toast.error('This promotional code has already been used with this email address.');
+          setPromoApplied(null);
+          setPromoInput('');
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // ── Create the Supabase Auth account ──────────────────────────────────
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
         options: {
           data: { first_name: firstName, last_name: lastName, role: 'patient' },
@@ -90,36 +163,87 @@ export default function PricingPage({
       if (error) { toast.error(error.message); return; }
       if (!data.user) { toast.error('Sign-up failed. Please try again.'); return; }
 
-      // Write profile row
+      // ── Write profile row ─────────────────────────────────────────────────
       await supabase.from('profiles').upsert({
         id:         data.user.id,
-        email,
+        email:      normalizedEmail,
         first_name: firstName,
         last_name:  lastName,
         role:       'patient',
       });
 
-      // Write subscription row (trialing)
+      // ── Register trial ownership (email → userId, one-time) ──────────────
+      // This INSERT will silently fail if a race condition occurred — in that
+      // case we still let the account creation complete but mark the
+      // subscription as expired so they see the upgrade wall.
+      const { error: trialRegError } = await supabase
+        .from('trial_registrations')
+        .insert({ email: normalizedEmail, user_id: data.user.id });
+
+      const trialAlreadyUsed = !!trialRegError;
+
+      // ── Register promo code redemption (before writing subscription) ──────
+      if (promoApplied && !trialAlreadyUsed) {
+        await supabase.from('promo_redemptions').insert({
+          email:      normalizedEmail,
+          user_id:    data.user.id,
+          promo_code: promoApplied.code,
+        });
+      }
+
+      // ── Determine trial / promo duration ──────────────────────────────────
       const trialStart = new Date();
-      const trialEnd   = new Date(trialStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+      let effectiveDays = FREE_TRIAL_DAYS;
+      let subStatus: string = 'trialing';
+      let promoFields: Record<string, unknown> = {};
+
+      if (trialAlreadyUsed) {
+        // Email already registered — no free trial, expire immediately
+        effectiveDays = 0;
+        subStatus = 'expired';
+      } else if (promoApplied) {
+        effectiveDays = promoApplied.days;
+        subStatus = 'promo';
+        promoFields = {
+          promo_code:       promoApplied.code,
+          promo_expires_at: new Date(trialStart.getTime() + effectiveDays * 24 * 60 * 60 * 1000).toISOString(),
+        };
+      }
+
+      const trialEnd = new Date(trialStart.getTime() + effectiveDays * 24 * 60 * 60 * 1000);
 
       await supabase.from('subscriptions').upsert({
         user_id:          data.user.id,
         tier:             selectedTier,
-        status:           'trialing',
+        status:           subStatus,
         trial_started_at: trialStart.toISOString(),
         trial_ends_at:    trialEnd.toISOString(),
+        ...promoFields,
       }, { onConflict: 'user_id' });
 
-      if (selectedTier === 'companion') {
-        // Free — go straight into the app
-        toast.success('Welcome to MemoriaHelps! 🎉');
-        dispatch({ type: 'SET_USER', payload: { id: data.user.id, email, firstName, lastName, role: 'patient', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
-        dispatch({ type: 'SET_ROLE', payload: 'patient' });
+      // ── Route to app or Stripe ────────────────────────────────────────────
+      if (subStatus === 'expired') {
+        // No trial available — must pay
+        toast.error('This email has already used the free trial. Taking you to checkout…', { duration: 5000 });
+        if (selectedTier === 'companion') {
+          setStep('plans');
+          setIsLoading(false);
+          return;
+        }
+        // Fall through to Stripe below
+      }
+
+      if (selectedTier === 'companion' || subStatus === 'promo') {
+        const msg = promoApplied
+          ? `Welcome to MemoriaHelps! Your promo gives you free access until ${trialEnd.toLocaleDateString()}. 🎉`
+          : `Welcome to MemoriaHelps! Enjoy ${FREE_TRIAL_DAYS} days free. 🎉`;
+        toast.success(msg);
+        dispatch({ type: 'SET_USER', payload: { id: data.user.id, email: normalizedEmail, firstName, lastName, role: 'patient', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
+        dispatch({ type: 'SET_ROLE',          payload: 'patient' });
         dispatch({ type: 'SET_AUTHENTICATED', payload: true });
         onClose?.();
       } else {
-        // Paid — redirect to Stripe Checkout
+        // Paid tier — redirect to Stripe Checkout
         toast.success('Account created! Taking you to secure checkout…');
 
         const tierConfig = TIERS[selectedTier];
@@ -128,14 +252,13 @@ export default function PricingPage({
           : tierConfig.stripePriceIdMonthly;
 
         const { data: checkoutData, error: checkoutErr } = await supabase.functions.invoke('create-checkout-session', {
-          body: { priceId, tierName: selectedTier, userId: data.user.id, email, trialEnd: trialEnd.toISOString() },
+          body: { priceId, tierName: selectedTier, userId: data.user.id, email: normalizedEmail, trialEnd: trialEnd.toISOString() },
         });
 
         if (checkoutErr || !checkoutData?.url) {
-          // Fallback: start them on trial, they can pay from inside the app
-          toast.error('Checkout unavailable — you are on a free 7-day trial. Upgrade from inside the app at any time.');
-          dispatch({ type: 'SET_USER', payload: { id: data.user.id, email, firstName, lastName, role: 'patient', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
-          dispatch({ type: 'SET_ROLE', payload: 'patient' });
+          toast.error(`Checkout unavailable — you are on a ${FREE_TRIAL_DAYS}-day free trial. Upgrade from inside the app at any time.`);
+          dispatch({ type: 'SET_USER', payload: { id: data.user.id, email: normalizedEmail, firstName, lastName, role: 'patient', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
+          dispatch({ type: 'SET_ROLE',          payload: 'patient' });
           dispatch({ type: 'SET_AUTHENTICATED', payload: true });
           onClose?.();
         } else {
@@ -167,7 +290,7 @@ export default function PricingPage({
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-charcoal mb-2">Choose Your Plan</h1>
               <p className="text-medium-gray">
-                Start free — your first 7 days on any paid plan are always free.
+                Try free for 45 days — no credit card needed. Paid plans include a 7-day money-back guarantee.
               </p>
             </div>
 
@@ -256,7 +379,7 @@ export default function PricingPage({
                           : 'bg-charcoal hover:bg-charcoal/90 text-white'
                       }`}
                     >
-                      {tierName === 'companion' ? 'Start Free' : 'Start 7-Day Free Trial'}
+                      {tierName === 'companion' ? `Start Free — ${FREE_TRIAL_DAYS} Days` : 'Start 7-Day Free Trial'}
                     </button>
                   </motion.div>
                 );
@@ -265,8 +388,8 @@ export default function PricingPage({
 
             {/* Trust badges */}
             <div className="flex flex-wrap justify-center gap-6 text-sm text-medium-gray">
-              <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-soft-sage" /> 7-day free trial on all paid plans</span>
-              <span className="flex items-center gap-1.5"><RefreshCw className="w-4 h-4 text-calm-blue" /> Money-back guarantee within 7 days</span>
+              <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-soft-sage" /> 45 days free on Companion plan</span>
+              <span className="flex items-center gap-1.5"><RefreshCw className="w-4 h-4 text-calm-blue" /> 7-day money-back on paid plans</span>
               <span className="flex items-center gap-1.5"><X className="w-4 h-4 text-gentle-coral" /> Cancel anytime</span>
             </div>
 
@@ -308,8 +431,8 @@ export default function PricingPage({
             <h2 className="text-2xl font-bold text-charcoal mb-1">Create your account</h2>
             <p className="text-medium-gray text-sm mb-6">
               {selectedTier === 'companion'
-                ? 'Free forever — no credit card needed.'
-                : 'Your 7-day free trial starts now. You can cancel before it ends.'}
+                ? `Free for ${FREE_TRIAL_DAYS} days — no credit card needed.`
+                : 'Your 7-day money-back guarantee starts now. You can cancel before it ends.'}
             </p>
 
             <form onSubmit={handleAccountSubmit} className="space-y-4">
@@ -374,6 +497,44 @@ export default function PricingPage({
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+              </div>
+
+              {/* Promo code */}
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-charcoal">
+                  Promotional Code <span className="text-medium-gray font-normal">(optional)</span>
+                </label>
+                {promoApplied ? (
+                  <div className="flex items-center gap-2 h-12 px-3 rounded-xl border-2 border-soft-sage bg-soft-sage/10">
+                    <CheckCircle2 className="w-4 h-4 text-soft-sage flex-shrink-0" />
+                    <span className="text-sm font-medium text-soft-sage flex-1">{promoApplied.code} applied — {promoApplied.days} days free!</span>
+                    <button type="button" onClick={() => { setPromoApplied(null); setPromoInput(''); }} className="text-medium-gray hover:text-charcoal">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-medium-gray" />
+                      <input
+                        type="text"
+                        placeholder="Enter code"
+                        value={promoInput}
+                        onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoError(''); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handlePromoCheck(); } }}
+                        className="w-full h-12 pl-9 pr-3 rounded-xl border border-soft-taupe focus:border-warm-bronze focus:ring-1 focus:ring-warm-bronze outline-none text-sm uppercase tracking-wider"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handlePromoCheck}
+                      className="h-12 px-4 rounded-xl border-2 border-warm-bronze text-warm-bronze text-sm font-medium hover:bg-warm-bronze hover:text-white transition-colors flex-shrink-0"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                )}
+                {promoError && <p className="text-xs text-gentle-coral">{promoError}</p>}
               </div>
 
               {/* Legal agreements */}

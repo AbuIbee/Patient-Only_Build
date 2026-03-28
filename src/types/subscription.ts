@@ -1,13 +1,14 @@
 // ─── Subscription tier definitions ───────────────────────────────────────────
 
-export type TierName = 'companion' | 'daily_care' | 'full_support';
+export type TierName = 'companion' | 'daily_care' | 'full_support' | 'master';
 
 export type SubscriptionStatus =
-  | 'trialing'     // within the 7-day trial window
-  | 'active'       // paid and current
+  | 'trialing'     // within the free trial window
+  | 'active'       // paid and current (or master/promo)
   | 'past_due'     // payment failed, grace period
   | 'canceled'     // explicitly canceled
-  | 'expired';     // trial ended, never paid
+  | 'expired'      // trial ended, never paid
+  | 'promo';       // active via promotional code
 
 export interface Subscription {
   id: string;
@@ -15,14 +16,85 @@ export interface Subscription {
   tier: TierName;
   status: SubscriptionStatus;
   trialStartedAt: string;        // ISO date — when they first signed up
-  trialEndsAt: string;           // ISO date — trialStartedAt + 7 days
+  trialEndsAt: string;           // ISO date — trialStartedAt + FREE_TRIAL_DAYS
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
+  promoCode: string | null;      // promo code that was redeemed
+  promoExpiresAt: string | null; // ISO date — when promo free access ends
   canceledAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── Free trial duration ─────────────────────────────────────────────────────
+
+/** Days of free access for the Companion (free) tier before requiring upgrade */
+export const FREE_TRIAL_DAYS = 45;
+
+/** Days of free access granted by a promotional code (includes the 45-day free period) */
+export const PROMO_TOTAL_DAYS = 61; // ~2 months; first 45 are the standard free tier
+
+// ─── Master account ───────────────────────────────────────────────────────────
+
+/**
+ * Email addresses that are treated as master accounts.
+ * Master accounts have full_support access, bypass all payment walls,
+ * and never expire. Add your admin email(s) here AND set role = 'admin'
+ * in the profiles table.
+ *
+ * For production you should store these in an env variable or DB table
+ * rather than hardcoding — this is kept here for simplicity.
+ */
+export const MASTER_EMAILS: string[] = [
+  // TODO: replace with your actual master account email(s)
+  'master@memoriahelps.com',
+  'admin@memoriahelps.com',
+];
+
+export function isMasterEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return MASTER_EMAILS.map(e => e.toLowerCase()).includes(email.toLowerCase());
+}
+
+// ─── Promo codes ─────────────────────────────────────────────────────────────
+
+/**
+ * Active promotional codes.
+ * Each code grants PROMO_TOTAL_DAYS (~2 months) of free Companion access,
+ * which counts toward — not in addition to — the 45-day free tier.
+ *
+ * tier: which tier the promo unlocks ('companion' = free basics extended,
+ *       'daily_care' = mid-tier free for promo window)
+ */
+export interface PromoCode {
+  code: string;
+  tier: TierName;
+  days: number;
+  maxUses: number | null;   // null = unlimited
+  expiresAt: string | null; // ISO date, null = no expiry
+  description: string;
+}
+
+export const PROMO_CODES: PromoCode[] = [
+  {
+    code: 'WELCOME2MO',
+    tier: 'companion',
+    days: PROMO_TOTAL_DAYS,
+    maxUses: null,
+    expiresAt: null,
+    description: '2 months free (includes 45-day free tier)',
+  },
+  // Add more codes here as needed, e.g.:
+  // { code: 'CAREGIVER50', tier: 'daily_care', days: 61, maxUses: 100, expiresAt: null, description: '2 months Daily Care free' },
+];
+
+export function validatePromoCode(code: string): PromoCode | null {
+  const promo = PROMO_CODES.find(p => p.code.toUpperCase() === code.toUpperCase().trim());
+  if (!promo) return null;
+  if (promo.expiresAt && new Date(promo.expiresAt) < new Date()) return null;
+  return promo;
 }
 
 // ─── Tier metadata ─────────────────────────────────────────────────────────
@@ -51,8 +123,8 @@ export const TIERS: Record<TierName, TierConfig> = {
     label: 'Companion',
     price: 0,
     annualPrice: null,
-    description: 'Free forever',
-    tagline: 'Get started with the basics',
+    description: 'Free for 45 days',
+    tagline: 'Try free for 45 days — no credit card needed',
     stripePriceIdMonthly: '',   // free — no Stripe price needed
     stripePriceIdAnnual: null,
     features: [
@@ -116,6 +188,19 @@ export const TIERS: Record<TierName, TierConfig> = {
       { label: 'Priority support', included: true },
     ],
   },
+
+  // Master tier — internal use only, never shown in pricing UI
+  master: {
+    name: 'master',
+    label: 'Master',
+    price: 0,
+    annualPrice: null,
+    description: 'Internal master account',
+    tagline: 'Full access — no payment required',
+    stripePriceIdMonthly: '',
+    stripePriceIdAnnual: null,
+    features: [],  // inherits all features via hasFeatureAccess override
+  },
 };
 
 // ─── Feature access checks ─────────────────────────────────────────────────
@@ -136,44 +221,70 @@ export type FeatureKey =
   | 'mood_email';
 
 const FEATURE_ACCESS: Record<FeatureKey, TierName[]> = {
-  reminders_unlimited:  ['daily_care', 'full_support'],
-  medications:          ['daily_care', 'full_support'],
-  care_partner_checkin: ['daily_care', 'full_support'],
-  memories_unlimited:   ['daily_care', 'full_support'],
-  mood_history:         ['daily_care', 'full_support'],
-  games:                ['daily_care', 'full_support'],
-  media:                ['daily_care', 'full_support'],
-  voice_messages:       ['full_support'],
-  ai_voices:            ['full_support'],
-  documents:            ['full_support'],
-  sms_alerts:           ['full_support'],
-  mood_email:           ['full_support'],
+  reminders_unlimited:  ['daily_care', 'full_support', 'master'],
+  medications:          ['daily_care', 'full_support', 'master'],
+  care_partner_checkin: ['daily_care', 'full_support', 'master'],
+  memories_unlimited:   ['daily_care', 'full_support', 'master'],
+  mood_history:         ['daily_care', 'full_support', 'master'],
+  games:                ['daily_care', 'full_support', 'master'],
+  media:                ['daily_care', 'full_support', 'master'],
+  voice_messages:       ['full_support', 'master'],
+  ai_voices:            ['full_support', 'master'],
+  documents:            ['full_support', 'master'],
+  sms_alerts:           ['full_support', 'master'],
+  mood_email:           ['full_support', 'master'],
 };
 
 /** Returns true if the given tier has access to the feature. */
 export function hasFeatureAccess(tier: TierName, feature: FeatureKey): boolean {
+  if (tier === 'master') return true;  // master bypasses all gates
   return FEATURE_ACCESS[feature].includes(tier);
 }
 
 /** Returns true if the subscription is currently in an active or trialing state. */
 export function isSubscriptionActive(sub: Subscription | null): boolean {
   if (!sub) return false;
+  if (sub.tier === 'master') return true;  // master is always active
+  if (sub.status === 'promo') {
+    // Promo is active as long as promoExpiresAt is in the future
+    if (!sub.promoExpiresAt) return true;
+    return new Date(sub.promoExpiresAt) > new Date();
+  }
   return sub.status === 'active' || sub.status === 'trialing';
 }
 
-/** Returns days remaining in the trial (0 if expired or not trialing). */
+/** Returns days remaining in the trial or promo window (0 if expired). */
 export function trialDaysRemaining(sub: Subscription | null): number {
-  if (!sub || sub.status !== 'trialing') return 0;
+  if (!sub) return 0;
+  if (sub.tier === 'master') return 0;  // master never expires
+
+  if (sub.status === 'promo' && sub.promoExpiresAt) {
+    const end = new Date(sub.promoExpiresAt).getTime();
+    return Math.max(0, Math.ceil((end - Date.now()) / (1000 * 60 * 60 * 24)));
+  }
+
+  if (sub.status !== 'trialing') return 0;
   const end = new Date(sub.trialEndsAt).getTime();
-  const now = Date.now();
-  return Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
+  return Math.max(0, Math.ceil((end - Date.now()) / (1000 * 60 * 60 * 24)));
 }
 
-/** Returns true if still within the 7-day money-back window. */
+/** Returns true if still within the 7-day money-back window (not applicable to master/promo). */
 export function isWithinRefundWindow(sub: Subscription | null): boolean {
   if (!sub) return false;
+  if (sub.tier === 'master' || sub.status === 'promo') return false;
   const start = new Date(sub.trialStartedAt).getTime();
-  const now = Date.now();
-  const daysSinceStart = (now - start) / (1000 * 60 * 60 * 24);
+  const daysSinceStart = (Date.now() - start) / (1000 * 60 * 60 * 24);
   return daysSinceStart <= 7;
+}
+
+/** Returns true if the free trial has genuinely expired and user needs to upgrade. */
+export function isTrialExpired(sub: Subscription | null): boolean {
+  if (!sub) return false;
+  if (sub.tier === 'master') return false;
+  if (sub.status === 'promo') {
+    if (!sub.promoExpiresAt) return false;
+    return new Date(sub.promoExpiresAt) <= new Date();
+  }
+  if (sub.status !== 'trialing') return sub.status === 'expired';
+  return new Date(sub.trialEndsAt) <= new Date();
 }

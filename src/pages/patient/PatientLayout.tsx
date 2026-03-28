@@ -52,7 +52,7 @@ function PatientLayoutInner() {
   const [pricingPreselect, setPricingPreselect] = useState<TierName>('daily_care');
 
   const { state, dispatch } = useApp();
-  const { can, subscription, isActive } = useSubscription();
+  const { can, subscription, isActive, isMaster } = useSubscription();
   const patient = state.patient;
 
   const hour = new Date().getHours();
@@ -129,8 +129,7 @@ function PatientLayoutInner() {
 
   const handleNavClick = (view: PatientView) => {
     const gate = VIEW_FEATURE_MAP[view];
-    if (gate && !can(gate.feature)) {
-      // Show pricing modal pre-selecting the required tier
+    if (gate && !isMaster && !can(gate.feature)) {
       openUpgrade(gate.tier);
       return;
     }
@@ -151,7 +150,8 @@ function PatientLayoutInner() {
   const renderView = () => {
     const gate = VIEW_FEATURE_MAP[currentView];
 
-    if (gate && !can(gate.feature)) {
+    // Master accounts bypass all feature gates completely
+    if (gate && !isMaster && !can(gate.feature)) {
       return (
         <div className="p-6">
           <FeatureGate
@@ -208,7 +208,7 @@ function PatientLayoutInner() {
 
   const renderNavButton = (item: typeof navItems[0], isActive: boolean) => {
     const Icon = item.icon;
-    const isLocked = item.gate && !can(item.gate.feature);
+    const isLocked = !isMaster && item.gate && !can(item.gate.feature);
 
     return (
       <button

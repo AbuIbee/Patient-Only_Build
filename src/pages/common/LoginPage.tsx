@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useApp } from '@/store/AppContext';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
-import { Heart, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Heart, ArrowLeft, Eye, EyeOff, Tag } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import type { UserRole } from '@/types';
+import { FREE_TRIAL_DAYS, PROMO_TOTAL_DAYS, validatePromoCode } from '@/types/subscription';
 
 export default function LoginPage() {
   const { dispatch } = useApp();

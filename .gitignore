@@ -5,3 +5,5 @@ dist
 .env.*
 Patient-Only_Build/
 .vercel/"dist/" 
+.vercel
+.env*.local
