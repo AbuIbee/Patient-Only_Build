@@ -291,20 +291,20 @@ export default function CarePartnerCheckin() {
   return (
     <div className="max-w-2xl mx-auto space-y-5">
       {/* Header */}
-      <div className="bg-gradient-to-r from-warm-bronze to-warm-bronze/80 rounded-2xl p-6 text-white">
+      <div className="bg-gradient-to-r from-warm-bronze via-warm-bronze to-deep-bronze rounded-2xl p-6 text-white">
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold">Care Partner</h1>
-            <p className="text-white/80 mt-1 text-sm">
+            <p className="text-white/95 mt-1 text-sm font-medium">
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
             </p>
-            <p className="text-white/70 text-xs mt-1">
+            <p className="text-white/90 text-xs mt-1">
               Your observations help the care team provide better support
             </p>
           </div>
           <div className="text-right flex-shrink-0">
             <p className="text-3xl font-bold">{completedCount}/7</p>
-            <p className="text-white/70 text-xs">sections filled</p>
+            <p className="text-white/90 text-xs font-medium">sections filled</p>
           </div>
         </div>
         {/* Progress bar */}

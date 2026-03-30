@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trophy, Star, RotateCcw, ChevronLeft, Gamepad2, ExternalLink, Clock } from 'lucide-react';
 
-type GameId = 'menu' | 'matching' | 'crossword' | 'checkers' | 'chess' | 'brainlinks';
+type GameId = 'menu' | 'matching' | 'crossword' | 'checkers' | 'chess' | 'brainlinks' | 'wordsearch';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MATCHING PAIRS
@@ -616,6 +616,241 @@ function BrainLinks({ onBack }: { onBack: () => void }) {
   );
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WORD SEARCH GAME
+// ══════════════════════════════════════════════════════════════════════════════
+
+const WS_WORD_SETS = [
+  {
+    label: 'Nature',
+    words: ['FLOWER', 'GARDEN', 'RIVER', 'CLOUD', 'BREEZE', 'MEADOW', 'FOREST', 'SUNSET'],
+  },
+  {
+    label: 'Family',
+    words: ['MOTHER', 'FATHER', 'SISTER', 'BROTHER', 'GRANDMA', 'GRANDPA', 'COUSIN', 'FAMILY'],
+  },
+  {
+    label: 'Seasons',
+    words: ['SPRING', 'SUMMER', 'AUTUMN', 'WINTER', 'LEAVES', 'SNOW', 'RAIN', 'SUNSHINE'],
+  },
+];
+
+type WSCell = { letter: string; highlighted: boolean; found: boolean; selecting: boolean };
+type WSDir = [number, number];
+
+const DIRECTIONS: WSDir[] = [
+  [0,1],[1,0],[1,1],[-1,1],[0,-1],[-1,0],[-1,-1],[1,-1]
+];
+
+function buildGrid(words: string[], size: number): { grid: string[][]; placements: Map<string, number[][]> } {
+  const grid: string[][] = Array.from({ length: size }, () => Array(size).fill(''));
+  const placements = new Map<string, number[][]>();
+
+  for (const word of words) {
+    let placed = false;
+    for (let attempt = 0; attempt < 200 && !placed; attempt++) {
+      const [dr, dc] = DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)];
+      const r = Math.floor(Math.random() * size);
+      const c = Math.floor(Math.random() * size);
+      const cells: number[][] = [];
+      let ok = true;
+      for (let i = 0; i < word.length; i++) {
+        const nr = r + dr * i, nc = c + dc * i;
+        if (nr < 0 || nr >= size || nc < 0 || nc >= size) { ok = false; break; }
+        if (grid[nr][nc] !== '' && grid[nr][nc] !== word[i]) { ok = false; break; }
+        cells.push([nr, nc]);
+      }
+      if (ok) {
+        cells.forEach(([nr, nc], i) => { grid[nr][nc] = word[i]; });
+        placements.set(word, cells);
+        placed = true;
+      }
+    }
+  }
+
+  const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  for (let r = 0; r < size; r++)
+    for (let c = 0; c < size; c++)
+      if (!grid[r][c]) grid[r][c] = ALPHA[Math.floor(Math.random() * ALPHA.length)];
+
+  return { grid, placements };
+}
+
+function WordSearchGame({ onBack }: { onBack: () => void }) {
+  const [setIdx,    setSetIdx]    = useState(0);
+  const [size,      setSize]      = useState(12);
+  const [gameKey,   setGameKey]   = useState(0);
+  const [foundWords,setFoundWords]= useState<Set<string>>(new Set());
+  const [elapsed,   setElapsed]   = useState(0);
+  const [running,   setRunning]   = useState(false);
+  const [won,       setWon]       = useState(false);
+  const [dragging,  setDragging]  = useState(false);
+  const [startCell, setStartCell] = useState<[number,number]|null>(null);
+  const [hoverCell, setHoverCell] = useState<[number,number]|null>(null);
+
+  const wordSet  = WS_WORD_SETS[setIdx];
+  const { grid, placements } = useMemo(() => buildGrid(wordSet.words, size), [setIdx, size, gameKey]);
+
+  useEffect(() => { setFoundWords(new Set()); setElapsed(0); setRunning(false); setWon(false); setDragging(false); setStartCell(null); setHoverCell(null); }, [setIdx, size, gameKey]);
+  useEffect(() => { if (!running || won) return; const t = setInterval(() => setElapsed(e => e + 1), 1000); return () => clearInterval(t); }, [running, won]);
+
+  const fmt = (s: number) => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+
+  // Build set of currently-selecting cells
+  const selectingCells = useMemo((): Set<string> => {
+    if (!dragging || !startCell || !hoverCell) return new Set();
+    const [sr, sc] = startCell;
+    const [er, ec] = hoverCell;
+    const dr = er - sr, dc = ec - sc;
+    const len = Math.max(Math.abs(dr), Math.abs(dc));
+    if (len === 0) return new Set([`${sr},${sc}`]);
+    // Check if it's a valid direction (straight or diagonal)
+    const stepR = dr === 0 ? 0 : dr / Math.abs(dr);
+    const stepC = dc === 0 ? 0 : dc / Math.abs(dc);
+    if (Math.abs(dr) !== 0 && Math.abs(dc) !== 0 && Math.abs(dr) !== Math.abs(dc)) return new Set([`${sr},${sc}`]);
+    const cells = new Set<string>();
+    for (let i = 0; i <= len; i++) cells.add(`${sr + stepR * i},${sc + stepC * i}`);
+    return cells;
+  }, [dragging, startCell, hoverCell]);
+
+  // Found-word cells
+  const foundCells = useMemo((): Set<string> => {
+    const s = new Set<string>();
+    foundWords.forEach(w => placements.get(w)?.forEach(([r,c]) => s.add(`${r},${c}`)));
+    return s;
+  }, [foundWords, placements]);
+
+  const tryComplete = (endCell: [number,number]) => {
+    if (!startCell) return;
+    const [sr, sc] = startCell;
+    const [er, ec] = endCell;
+    const dr = er - sr, dc = ec - sc;
+    const len = Math.max(Math.abs(dr), Math.abs(dc));
+    if (len === 0) return;
+    const stepR = dr === 0 ? 0 : dr / Math.abs(dr);
+    const stepC = dc === 0 ? 0 : dc / Math.abs(dc);
+    if (Math.abs(dr) !== 0 && Math.abs(dc) !== 0 && Math.abs(dr) !== Math.abs(dc)) return;
+    let word = '';
+    for (let i = 0; i <= len; i++) word += grid[sr + stepR * i]?.[sc + stepC * i] || '';
+    const rev = word.split('').reverse().join('');
+    const match = wordSet.words.find(w => w === word || w === rev);
+    if (match && !foundWords.has(match)) {
+      const next = new Set(foundWords); next.add(match);
+      setFoundWords(next);
+      if (next.size === wordSet.words.length) { setWon(true); setRunning(false); }
+    }
+  };
+
+  const cellSize = size <= 10 ? 'w-9 h-9 text-sm' : size <= 12 ? 'w-8 h-8 text-xs' : 'w-6 h-6 text-[10px]';
+
+  return (
+    <div className="space-y-4 select-none">
+      <div className="flex items-center gap-3">
+        <button onClick={onBack} className="p-2 rounded-xl bg-soft-taupe/30 hover:bg-soft-taupe text-charcoal transition-colors"><ChevronLeft className="w-5 h-5" /></button>
+        <h2 className="text-xl font-bold text-charcoal">Word Search</h2>
+        <div className="ml-auto flex items-center gap-2 text-sm text-medium-gray"><Clock className="w-4 h-4" />{fmt(elapsed)}</div>
+      </div>
+
+      {/* Controls */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <span className="text-xs font-semibold text-medium-gray uppercase tracking-wide">Theme:</span>
+        {WS_WORD_SETS.map((ws, i) => (
+          <button key={i} onClick={() => { setSetIdx(i); setGameKey(k => k + 1); }}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${setIdx === i ? 'bg-teal-500 text-white' : 'bg-soft-taupe/40 text-medium-gray hover:bg-soft-taupe'}`}>
+            {ws.label}
+          </button>
+        ))}
+        <span className="text-xs font-semibold text-medium-gray uppercase tracking-wide ml-2">Size:</span>
+        {([10,12,15] as const).map(s => (
+          <button key={s} onClick={() => { setSize(s); setGameKey(k => k + 1); }}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${size === s ? 'bg-teal-500 text-white' : 'bg-soft-taupe/40 text-medium-gray hover:bg-soft-taupe'}`}>
+            {s}×{s}
+          </button>
+        ))}
+        <button onClick={() => setGameKey(k => k + 1)}
+          className="ml-auto p-2 rounded-xl bg-soft-taupe/30 hover:bg-soft-taupe text-charcoal transition-colors" title="New puzzle">
+          <RotateCcw className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-4">
+        {/* Grid */}
+        <div
+          className="bg-white rounded-2xl p-3 shadow-soft overflow-auto"
+          onMouseLeave={() => { if (dragging) { setDragging(false); setStartCell(null); setHoverCell(null); } }}
+        >
+          {won ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <span className="text-6xl">🎉</span>
+              <p className="text-2xl font-bold text-charcoal">You found them all!</p>
+              <p className="text-medium-gray">Time: {fmt(elapsed)}</p>
+              <button onClick={() => setGameKey(k => k + 1)}
+                className="px-6 py-3 bg-teal-500 text-white rounded-xl font-semibold hover:bg-teal-600 transition-colors">
+                Play Again
+              </button>
+            </div>
+          ) : (
+            <div
+              style={{ display: 'grid', gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}
+              className="gap-0.5"
+            >
+              {grid.map((row, r) =>
+                row.map((letter, c) => {
+                  const key = `${r},${c}`;
+                  const isFound     = foundCells.has(key);
+                  const isSelecting = selectingCells.has(key);
+                  return (
+                    <button
+                      key={key}
+                      className={`${cellSize} rounded font-bold flex items-center justify-center transition-colors cursor-pointer
+                        ${isFound     ? 'bg-teal-400 text-white'         : ''}
+                        ${isSelecting && !isFound ? 'bg-yellow-300 text-charcoal' : ''}
+                        ${!isFound && !isSelecting ? 'bg-warm-ivory text-charcoal hover:bg-soft-taupe/50' : ''}
+                      `}
+                      onMouseDown={() => {
+                        if (!running) setRunning(true);
+                        setDragging(true);
+                        setStartCell([r, c]);
+                        setHoverCell([r, c]);
+                      }}
+                      onMouseEnter={() => { if (dragging) setHoverCell([r, c]); }}
+                      onMouseUp={() => {
+                        tryComplete([r, c]);
+                        setDragging(false);
+                        setStartCell(null);
+                        setHoverCell(null);
+                      }}
+                    >
+                      {letter}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Word list */}
+        <div className="bg-white rounded-2xl p-4 shadow-soft min-w-[160px]">
+          <p className="text-xs font-semibold uppercase tracking-wide text-medium-gray mb-3">Find these words</p>
+          <div className="space-y-2">
+            {wordSet.words.map(w => (
+              <div key={w} className={`flex items-center gap-2 text-sm font-semibold transition-all ${foundWords.has(w) ? 'line-through text-teal-500' : 'text-charcoal'}`}>
+                {foundWords.has(w) ? <Star className="w-3.5 h-3.5 text-teal-400 flex-shrink-0" /> : <div className="w-3.5 h-3.5 rounded-full border-2 border-soft-taupe flex-shrink-0" />}
+                {w}
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 pt-3 border-t border-soft-taupe text-xs text-medium-gray">
+            <p>{foundWords.size}/{wordSet.words.length} found</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN HUB
 // ══════════════════════════════════════════════════════════════════════════════
@@ -624,6 +859,7 @@ const GAMES = [
   { id:'crossword' as GameId, title:'Crossword Puzzle',    desc:'Fill in the grid using the given clues',   emoji:'📰', color:'from-calm-blue to-blue-500',     tag:'Language', tagColor:'bg-blue-100 text-blue-600'          },
   { id:'checkers'  as GameId, title:'Checkers',            desc:'Classic board game — you play red vs AI',  emoji:'🔴', color:'from-red-400 to-orange-500',     tag:'Strategy', tagColor:'bg-orange-100 text-orange-600'      },
   { id:'chess'     as GameId, title:'Chess',               desc:'Play white pieces against the AI',         emoji:'♟️', color:'from-slate-500 to-gray-700',     tag:'Strategy', tagColor:'bg-gray-100 text-gray-600'          },
+  { id:'wordsearch' as GameId, title:'Word Search',          desc:'Find hidden words in the letter grid',     emoji:'🔤', color:'from-teal-400 to-cyan-500',      tag:'Language', tagColor:'bg-teal-100 text-teal-600'           },
   { id:'brainlinks'as GameId, title:'Brain Training Apps', desc:'Lumosity, BrainHQ & more',                emoji:'🧠', color:'from-purple-400 to-violet-500',  tag:'External', tagColor:'bg-purple-100 text-purple-600'      },
 ];
 
@@ -636,6 +872,7 @@ export default function PatientGames() {
       case 'crossword':  return <CrosswordGame onBack={() => setActiveGame('menu')} />;
       case 'checkers':   return <CheckersGame  onBack={() => setActiveGame('menu')} />;
       case 'chess':      return <ChessGame     onBack={() => setActiveGame('menu')} />;
+      case 'wordsearch':  return <WordSearchGame onBack={() => setActiveGame('menu')} />;
       case 'brainlinks': return <BrainLinks    onBack={() => setActiveGame('menu')} />;
       default:           return null;
     }

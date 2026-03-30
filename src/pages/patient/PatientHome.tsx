@@ -973,10 +973,41 @@ export default function PatientHome() {
   const [showPhotoPopup, setShowPhotoPopup]       = useState<{id:string;name:string;url:string}|null>(null);
 
   const tasks = state.tasks.filter(t => t.status !== 'completed').slice(0, 3);
+
+  // ── Medication sync: read from the same localStorage the Medications page writes ──
+  const localMeds: Array<{ id: string; times: string[]; daysOfWeek: number[]; isActive: boolean }> = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('patientLocalMeds') || '[]'); } catch { return []; }
+  }, []);
+  const localLogs: Array<{ medId: string; date: string; scheduledTime: string; status: string }> = useMemo(() => {
+    try { return JSON.parse(localStorage.getItem('patientLocalLogs') || '[]'); } catch { return []; }
+  }, []);
+
+  const today = new Date().toISOString().split('T')[0];
+  const todayDow = new Date().getDay();
+
+  // Compute today's doses from local meds
+  const todayLocalDoses = localMeds
+    .filter(m => m.isActive && (m.daysOfWeek.length === 0 || m.daysOfWeek.includes(todayDow)))
+    .flatMap(m => m.times.map(t => ({ medId: m.id, time: t })));
+
+  const getLocalStatus = (medId: string, time: string): 'taken' | 'missed' | 'pending' => {
+    const log = localLogs.find(l => l.medId === medId && l.date === today && l.scheduledTime === time);
+    if (log) return log.status === 'taken' ? 'taken' : 'missed';
+    const [h, min] = time.split(':').map(Number);
+    const schedDt = new Date(); schedDt.setHours(h, min, 0, 0);
+    return schedDt < new Date() ? 'missed' : 'pending';
+  };
+
+  const localTaken = todayLocalDoses.filter(d => getLocalStatus(d.medId, d.time) === 'taken').length;
+  const localTotal = todayLocalDoses.length;
+
+  // Fall back to AppContext meds if no local meds exist
   const medications = state.medications.filter(m => m.isActive);
   const medicationLogs = state.medicationLogs;
-  const today = new Date().toISOString().split('T')[0];
-  const todaysMedsTaken = medicationLogs.filter(l => l.date === today && l.status === 'taken').length;
+  const appTodaysTaken = medicationLogs.filter(l => l.date === today && l.status === 'taken').length;
+
+  const todaysMedsTaken = localTotal > 0 ? localTaken : appTodaysTaken;
+  const totalMedsToday  = localTotal > 0 ? localTotal : medications.length;
 
   // Live weather state — fetched from Open-Meteo using browser geolocation
   const [weather, setWeather] = useState<WeatherData>(getFallbackWeather());
@@ -1034,18 +1065,46 @@ export default function PatientHome() {
     return () => clearInterval(timer);
   }, []);
 
+  // ── Play a calming chime via Web Audio API (no file needed) ──────────────
+  const playChime = () => {
+    try {
+      const ctx = new AudioContext();
+      // Pentatonic ascending chord: C5 E5 G5 C6
+      const freqs = [523.25, 659.25, 783.99, 1046.50];
+      freqs.forEach((freq, i) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const t = ctx.currentTime + i * 0.38;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.28, t + 0.06);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
+        osc.start(t);
+        osc.stop(t + 1.4);
+      });
+      setIsPlaying(true);
+      setTimeout(() => setIsPlaying(false), 2200);
+    } catch {
+      setIsPlaying(true);
+      setTimeout(() => setIsPlaying(false), 2200);
+    }
+  };
+
   const playSafetyMessage = () => {
     if (currentAudio) { currentAudio.pause(); setCurrentAudio(null); setIsPlaying(false); return; }
-    const src = customVoiceUrl || AI_VOICES.find(v => v.id === selectedVoice)?.url || null;
+    const src = customVoiceUrl || null;
     if (src) {
       const audio = new Audio(src);
       audio.onended = () => { setIsPlaying(false); setCurrentAudio(null); };
-      audio.play().catch(() => {});
+      audio.play().catch(() => playChime());
       setCurrentAudio(audio);
       setIsPlaying(true);
     } else {
-      setIsPlaying(true);
-      setTimeout(() => setIsPlaying(false), 5000);
+      // No custom recording — play the Web Audio chime immediately
+      playChime();
     }
   };
 
@@ -1093,37 +1152,35 @@ export default function PatientHome() {
   return (
     <div className={`min-h-screen transition-all duration-1000 ${getBackgroundClass()}`}>
       <div className="space-y-6 p-6">
-        {/* 1. ENHANCED SAFETY MESSAGE - Multi-sensory and prominent */}
+        {/* ── UNIFIED HERO: Safety message + Weather/Dashboard share one animated background ── */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
+          initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6 }}
         >
-          <Card className={`border-0 shadow-elevated overflow-hidden ${isSundowningTime ? 'ring-4 ring-warm-amber/50' : ''}`}>
-            <div className={`relative p-8 text-center ${
-              isSundowningTime ? 'bg-gradient-to-br from-warm-amber/40 to-gentle-coral/30' :
-              isEvening ? 'bg-gradient-to-br from-deep-slate/30 to-calm-blue/20' :
-              'bg-gradient-to-br from-soft-sage/30 to-warm-bronze/20'
-            }`}>
-              {/* Optional background pattern */}
-              <div className="absolute inset-0 opacity-10">
+          <Card className={`border-0 shadow-elevated overflow-hidden relative ${isSundowningTime ? 'ring-4 ring-warm-amber/50' : ''}`}>
+            {/* Shared animated weather background covers the entire card */}
+            <WeatherBackground condition={weather.condition} isDay={weather.isDay} />
+
+            {/* ── Safety Section ── */}
+            <div className="relative z-10 p-8 text-center border-b border-white/20">
+              <div className="absolute inset-0 opacity-10 pointer-events-none">
                 <div className="absolute top-4 left-4 w-20 h-20 rounded-full bg-white/30" />
                 <div className="absolute bottom-4 right-4 w-32 h-32 rounded-full bg-white/20" />
               </div>
-              
               <div className="relative z-10">
-                <motion.div 
+                <motion.div
                   animate={{ scale: [1, 1.02, 1] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
                 >
-                  <h1 className="text-3xl md:text-4xl font-bold text-charcoal mb-2">
+                  <h1 className="text-3xl md:text-4xl font-bold text-charcoal mb-2 drop-shadow-sm">
                     {patient?.affirmation?.split('.')[0] || 'You are safe'}
                   </h1>
                   <p className="text-xl text-charcoal/80">
                     {patient?.affirmation?.split('.').slice(1).join('. ') || 'You are loved. You are at home.'}
                   </p>
                 </motion.div>
-                
+
                 {/* Tap-to-hear button */}
                 <button
                   onClick={playSafetyMessage}
@@ -1156,20 +1213,8 @@ export default function PatientHome() {
                 </div>
               </div>
             </div>
-          </Card>
-        </motion.div>
 
-        {/* 5. ENHANCED DASHBOARD - What's Next Today */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-        >
-          <Card className="border-0 shadow-card overflow-hidden relative min-h-[280px]">
-            {/* ── Animated weather background ─────────────────────────────── */}
-            <WeatherBackground condition={weather.condition} isDay={weather.isDay} />
-
-            {/* Card content sits on top of the background */}
+            {/* ── Weather / Dashboard Section (same card, continuous background) ── */}
             <div className="relative z-10 p-6">
               {/* Time and Weather */}
               <div className="flex items-center justify-between mb-6">
@@ -1198,7 +1243,7 @@ export default function PatientHome() {
               </p>
 
               {/* What's Next Section */}
-              <div className="border-t border-soft-taupe pt-4">
+              <div className="border-t border-white/30 pt-4">
                 <h3 className="text-lg font-semibold text-charcoal mb-3 flex items-center gap-2">
                   <ChevronRight className="w-5 h-5 text-warm-bronze" />
                   What's Next Today
@@ -1206,7 +1251,7 @@ export default function PatientHome() {
                 {tasks.length > 0 ? (
                   <div className="space-y-2">
                     {tasks.slice(0, 2).map((task) => (
-                      <div key={task.id} className="flex items-center gap-3 p-3 bg-warm-ivory rounded-xl">
+                      <div key={task.id} className="flex items-center gap-3 p-3 bg-white/60 backdrop-blur-sm rounded-xl">
                         <div className="w-10 h-10 bg-warm-bronze/20 rounded-lg flex items-center justify-center">
                           <span className="text-xl">
                             {task.icon === 'utensils' && '🍽️'}
@@ -1224,21 +1269,23 @@ export default function PatientHome() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-medium-gray">All done for today! Great job!</p>
+                  <p className="text-charcoal/70 font-medium">All done for today! Great job!</p>
                 )}
               </div>
 
               {/* Medication Status */}
-              <div className="mt-4 p-4 bg-soft-sage/10 rounded-xl flex items-center gap-3">
+              <div className="mt-4 p-4 bg-white/60 backdrop-blur-sm rounded-xl flex items-center gap-3">
                 <span className="text-2xl">💊</span>
                 <div className="flex-1">
                   <p className="font-medium text-charcoal">
-                    {todaysMedsTaken === medications.length 
-                      ? 'All medications taken today!' 
-                      : `${todaysMedsTaken} of ${medications.length} medications taken`}
+                    {todaysMedsTaken === totalMedsToday && totalMedsToday > 0
+                      ? 'All medications taken today!'
+                      : totalMedsToday === 0
+                      ? 'No medications scheduled today'
+                      : `${todaysMedsTaken} of ${totalMedsToday} medications taken`}
                   </p>
                 </div>
-                {todaysMedsTaken === medications.length && (
+                {todaysMedsTaken === totalMedsToday && totalMedsToday > 0 && (
                   <CheckCircle2 className="w-6 h-6 text-soft-sage" />
                 )}
               </div>

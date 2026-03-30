@@ -191,11 +191,11 @@ function PatientLayoutInner() {
   const sidebarWidthClass = sidebarCollapsed || simplifiedMode ? 'md:w-20' : 'md:w-64';
 
   const navItems = [
+    { id: 'checkin'   as PatientView, label: 'Care Partner',   icon: ClipboardList,   gate: VIEW_FEATURE_MAP.checkin },
     { id: 'dashboard' as PatientView, label: 'Home',           icon: LayoutDashboard, gate: null },
     { id: 'memories'  as PatientView, label: 'Family',         icon: Users,           gate: VIEW_FEATURE_MAP.memories },
     { id: 'mood'      as PatientView, label: 'How I Feel',     icon: Smile,           gate: null },
     { id: 'reminders' as PatientView, label: 'Reminders',      icon: Bell,            gate: null },
-    { id: 'checkin'   as PatientView, label: 'Care Partner',   icon: ClipboardList,   gate: VIEW_FEATURE_MAP.checkin },
   ];
 
   const moreNavItems = [
