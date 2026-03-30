@@ -1173,28 +1173,6 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
       </DialogContent>
     </Dialog>
   );
-}
-
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const label = file.name.replace(/\.[^.]+$/, '');
-    const size  = (file.size / (1024 * 1024)).toFixed(1) + ' MB';
-    const url   = URL.createObjectURL(file);
-    const newStory = { id: Date.now().toString(), label, url, size };
-    const updated  = [...myStories, newStory];
-    setMyStories(updated);
-    localStorage.setItem('myStories', JSON.stringify(updated.map(s => ({ ...s, url: '' }))));
-    e.target.value = '';
-  };
-
-  const removeMyStory = (id: string) => {
-    const updated = myStories.filter(s => s.id !== id);
-    setMyStories(updated);
-    localStorage.setItem('myStories', JSON.stringify(updated));
-    if (playing === id) stopAudio();
-  };
-
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
