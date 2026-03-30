@@ -14,8 +14,6 @@ export default function LoginPage() {
   const [email, setEmail]               = useState('');
   const [password, setPassword]         = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const revealPassword  = () => setShowPassword(true);
-  const concealPassword = () => setShowPassword(false);
   const [isLoading, setIsLoading]       = useState(false);
 
   const handleBack = () => {
@@ -149,19 +147,14 @@ export default function LoginPage() {
                   />
                   <button
                     type="button"
-                    onMouseDown={revealPassword}
-                    onMouseUp={concealPassword}
-                    onMouseLeave={concealPassword}
-                    onTouchStart={revealPassword}
-                    onTouchEnd={concealPassword}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-medium-gray hover:text-charcoal select-none"
+                    onClick={() => setShowPassword(p => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-medium-gray hover:text-charcoal transition-colors"
                     tabIndex={-1}
-                    aria-label={showPassword ? 'Hide password' : 'Hold to reveal password'}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <p className="text-xs text-medium-gray/60 text-right mt-1">Hold 👁 to reveal</p>
               </div>
 
               {/* Submit */}

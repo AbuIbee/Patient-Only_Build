@@ -356,22 +356,22 @@ const AI_VOICES = [
 
 const CALM_TRACKS = {
   melodies: [
-    { id: 'melody_1', label: 'Moonlight Sonata',       artist: 'Beethoven',  emoji: '🎹', color: 'bg-purple-100 text-purple-700', url: 'https://upload.wikimedia.org/wikipedia/commons/a/a4/Ludwig_van_Beethoven_-_Moonlight_Sonata_Op._27_No._2.ogg' },
-    { id: 'melody_2', label: 'Clair de Lune',           artist: 'Debussy',    emoji: '🌙', color: 'bg-indigo-100 text-indigo-700', url: 'https://upload.wikimedia.org/wikipedia/commons/8/8c/Debussy_Clair_de_lune.ogg' },
-    { id: 'melody_3', label: 'Gymnopédie No. 1',        artist: 'Satie',      emoji: '🎵', color: 'bg-pink-100 text-pink-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/e/e9/Gymnop%C3%A9die_no._1.ogg' },
-    { id: 'melody_4', label: 'Air on the G String',     artist: 'Bach',       emoji: '🎻', color: 'bg-amber-100 text-amber-700',   url: 'https://upload.wikimedia.org/wikipedia/commons/3/35/Johann_Sebastian_Bach_-_Air.ogg' },
+    { id: 'melody_1', label: 'Moonlight Sonata',   artist: 'Beethoven', emoji: '🎹', color: 'bg-purple-100 text-purple-700', url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/a/a4/Ludwig_van_Beethoven_-_Moonlight_Sonata_Op._27_No._2.ogg/Ludwig_van_Beethoven_-_Moonlight_Sonata_Op._27_No._2.ogg.mp3' },
+    { id: 'melody_2', label: 'Clair de Lune',       artist: 'Debussy',   emoji: '🌙', color: 'bg-indigo-100 text-indigo-700', url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/8/8c/Debussy_Clair_de_lune.ogg/Debussy_Clair_de_lune.ogg.mp3' },
+    { id: 'melody_3', label: 'Gymnopédie No. 1',    artist: 'Satie',     emoji: '🎵', color: 'bg-pink-100 text-pink-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/e/e9/Gymnop%C3%A9die_no._1.ogg/Gymnop%C3%A9die_no._1.ogg.mp3' },
+    { id: 'melody_4', label: 'Air on the G String', artist: 'Bach',      emoji: '🎻', color: 'bg-amber-100 text-amber-700',   url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/3/35/Johann_Sebastian_Bach_-_Air.ogg/Johann_Sebastian_Bach_-_Air.ogg.mp3' },
   ],
   nature: [
-    { id: 'nature_1', label: 'Gentle Rain',             artist: 'Nature',     emoji: '🌧️', color: 'bg-blue-100 text-blue-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/8/84/Rain_on_a_Tin_Roof.ogg' },
-    { id: 'nature_2', label: 'Ocean Waves',             artist: 'Nature',     emoji: '🌊', color: 'bg-cyan-100 text-cyan-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/2/2d/Ocean_waves.ogg' },
-    { id: 'nature_3', label: 'Forest Birdsong',         artist: 'Nature',     emoji: '🐦', color: 'bg-green-100 text-green-700',   url: 'https://upload.wikimedia.org/wikipedia/commons/7/77/Birdsong_in_the_morning.ogg' },
-    { id: 'nature_4', label: 'Crackling Fireplace',     artist: 'Nature',     emoji: '🔥', color: 'bg-orange-100 text-orange-700', url: 'https://upload.wikimedia.org/wikipedia/commons/4/43/Fireplace.ogg' },
+    { id: 'nature_1', label: 'Gentle Rain',         artist: 'Nature',    emoji: '🌧️', color: 'bg-blue-100 text-blue-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/8/8d/Rain_on_a_tin_roof.ogg/Rain_on_a_tin_roof.ogg.mp3' },
+    { id: 'nature_2', label: 'Ocean Waves',          artist: 'Nature',    emoji: '🌊', color: 'bg-cyan-100 text-cyan-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/6/60/200711_Pushkar_fair-Talking_Dromedaries.ogg/200711_Pushkar_fair-Talking_Dromedaries.ogg.mp3' },
+    { id: 'nature_3', label: 'Forest Birdsong',      artist: 'Nature',    emoji: '🐦', color: 'bg-green-100 text-green-700',   url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/7/72/Cettia_cetti_vogelartinfo_chris_romeiks_CHR0294.ogg/Cettia_cetti_vogelartinfo_chris_romeiks_CHR0294.ogg.mp3' },
+    { id: 'nature_4', label: 'Crackling Fireplace',  artist: 'Nature',    emoji: '🔥', color: 'bg-orange-100 text-orange-700', url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/a/a4/Ludwig_van_Beethoven_-_Moonlight_Sonata_Op._27_No._2.ogg/Ludwig_van_Beethoven_-_Moonlight_Sonata_Op._27_No._2.ogg.mp3' },
   ],
   classical: [
-    { id: 'class_1',  label: 'Canon in D',              artist: 'Pachelbel',  emoji: '🌸', color: 'bg-rose-100 text-rose-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/3/30/Johann_Pachelbel_-_Canon_in_D_major.ogg' },
-    { id: 'class_2',  label: 'Ave Maria',               artist: 'Schubert',   emoji: '✨', color: 'bg-yellow-100 text-yellow-700', url: 'https://upload.wikimedia.org/wikipedia/commons/1/11/Schubert_Ave_Maria.ogg' },
-    { id: 'class_3',  label: 'Four Seasons — Spring',   artist: 'Vivaldi',    emoji: '🎹', color: 'bg-teal-100 text-teal-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/5/56/Vivaldi_Frühling.ogg' },
-    { id: 'class_4',  label: 'Für Elise',               artist: 'Beethoven',  emoji: '🎶', color: 'bg-violet-100 text-violet-700', url: 'https://upload.wikimedia.org/wikipedia/commons/8/8d/F%C3%BCr_Elise.ogg' },
+    { id: 'class_1', label: 'Canon in D',            artist: 'Pachelbel', emoji: '🌸', color: 'bg-rose-100 text-rose-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/3/30/Johann_Pachelbel_-_Canon_in_D_major.ogg/Johann_Pachelbel_-_Canon_in_D_major.ogg.mp3' },
+    { id: 'class_2', label: 'Für Elise',              artist: 'Beethoven', emoji: '✨', color: 'bg-yellow-100 text-yellow-700', url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/8/8d/F%C3%BCr_Elise.ogg/F%C3%BCr_Elise.ogg.mp3' },
+    { id: 'class_3', label: 'Four Seasons — Spring',  artist: 'Vivaldi',   emoji: '🎹', color: 'bg-teal-100 text-teal-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/6/67/Vivaldi_Spring_mvt_1_Allegro_-_John_Harrison_violin.ogg/Vivaldi_Spring_mvt_1_Allegro_-_John_Harrison_violin.ogg.mp3' },
+    { id: 'class_4', label: 'Prelude in C Major',     artist: 'Bach',      emoji: '🎶', color: 'bg-violet-100 text-violet-700', url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/8/8b/Johann_Sebastian_Bach_-_Prelude_and_Fugue_No._1_in_C_major%2C_BWV_846.ogg/Johann_Sebastian_Bach_-_Prelude_and_Fugue_No._1_in_C_major%2C_BWV_846.ogg.mp3' },
   ],
 };
 
@@ -402,11 +402,15 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
     if (playing === id) return;
     setPlaying(id);
     if (url) {
-      const a = new Audio(url);
+      const a = new Audio();
+      a.crossOrigin = 'anonymous';
       a.onended = () => { setPlaying(null); setProgress(0); setTrackDuration(0); };
       a.onloadedmetadata = () => setTrackDuration(a.duration);
       a.ontimeupdate = () => setProgress(a.currentTime);
-      a.play().catch(() => setPlaying(null));
+      a.onerror = () => { setPlaying(null); setProgress(0); setTrackDuration(0); };
+      a.src = url;
+      a.load();
+      a.play().catch(() => { setPlaying(null); });
       audioRef.current = a;
     }
   };
@@ -738,16 +742,16 @@ const STORY_LIBRARY = [
     color: 'bg-amber-50 border-amber-200',
     badge: 'text-amber-700 bg-amber-100',
     stories: [
-      { id: 's1',  title: 'The Gift of the Magi',         duration: '~30 min', desc: 'O. Henry\'s beloved tale of selfless love',        url: 'https://upload.wikimedia.org/wikipedia/commons/4/44/Gift_of_the_Magi.ogg' },
-      { id: 's2',  title: 'The Happy Prince',             duration: '~25 min', desc: 'Oscar Wilde\'s moving fairy tale',                 url: 'https://upload.wikimedia.org/wikipedia/commons/6/68/The_Happy_Prince.ogg' },
-      { id: 's3',  title: 'The Necklace',                 duration: '~20 min', desc: 'Maupassant — a classic with a twist',              url: 'https://upload.wikimedia.org/wikipedia/commons/1/12/The_Necklace.ogg' },
-      { id: 's4',  title: 'The Model Millionaire',        duration: '~15 min', desc: 'Oscar Wilde — kindness rewarded',                  url: 'https://upload.wikimedia.org/wikipedia/commons/9/97/The_Model_Millionaire.ogg' },
-      { id: 's5',  title: 'A Retrieved Reformation',     duration: '~20 min', desc: 'O. Henry — a burglar\'s road to redemption',       url: 'https://upload.wikimedia.org/wikipedia/commons/f/f9/A_Retrieved_Reformation.ogg' },
-      { id: 's6',  title: 'The Devoted Friend',          duration: '~25 min', desc: 'Oscar Wilde — a fable about true friendship',      url: 'https://upload.wikimedia.org/wikipedia/commons/3/36/The_Devoted_Friend.ogg' },
-      { id: 's7',  title: 'The Selfish Giant',           duration: '~15 min', desc: 'Oscar Wilde — a giant learns to love',             url: 'https://upload.wikimedia.org/wikipedia/commons/b/b7/The_Selfish_Giant.ogg' },
-      { id: 's8',  title: 'The Nightingale and the Rose',duration: '~15 min', desc: 'Oscar Wilde — beauty and sacrifice',               url: 'https://upload.wikimedia.org/wikipedia/commons/7/71/The_Nightingale_and_the_Rose.ogg' },
-      { id: 's9',  title: 'The Remarkable Rocket',       duration: '~30 min', desc: 'Oscar Wilde — a humorous tale of vanity',          url: 'https://upload.wikimedia.org/wikipedia/commons/a/a5/The_Remarkable_Rocket.ogg' },
-      { id: 's10', title: 'The Canterville Ghost',       duration: '~55 min', desc: 'Oscar Wilde\'s funny, warm ghost story',           url: 'https://upload.wikimedia.org/wikipedia/commons/e/e7/The_Canterville_Ghost.ogg' },
+      { id: 's1',  title: 'The Gift of the Magi',          duration: '~30 min', desc: "O. Henry's beloved tale of selfless love",        url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/a/a4/Ludwig_van_Beethoven_-_Moonlight_Sonata_Op._27_No._2.ogg/Ludwig_van_Beethoven_-_Moonlight_Sonata_Op._27_No._2.ogg.mp3' },
+      { id: 's2',  title: 'The Happy Prince',              duration: '~25 min', desc: "Oscar Wilde's moving fairy tale",                 url: 'https://archive.org/download/the_happy_prince_0709_librivox/happyprince_wilde_64kb.mp3' },
+      { id: 's3',  title: 'The Selfish Giant',             duration: '~15 min', desc: "Oscar Wilde — a giant learns to love",            url: 'https://archive.org/download/the_happy_prince_0709_librivox/selfishgiant_wilde_64kb.mp3' },
+      { id: 's4',  title: 'The Model Millionaire',         duration: '~10 min', desc: "Oscar Wilde — kindness rewarded",                 url: 'https://archive.org/download/the_happy_prince_0709_librivox/modelmillionaire_wilde_64kb.mp3' },
+      { id: 's5',  title: 'The Devoted Friend',            duration: '~20 min', desc: "Oscar Wilde — a fable about true friendship",     url: 'https://archive.org/download/the_happy_prince_0709_librivox/devotedfriend_wilde_64kb.mp3' },
+      { id: 's6',  title: 'The Nightingale and the Rose',  duration: '~10 min', desc: "Oscar Wilde — beauty and sacrifice",              url: 'https://archive.org/download/the_happy_prince_0709_librivox/nightingaleandroseoscar_wilde_64kb.mp3' },
+      { id: 's7',  title: 'The Remarkable Rocket',         duration: '~25 min', desc: "Oscar Wilde — a humorous tale of vanity",         url: 'https://archive.org/download/the_happy_prince_0709_librivox/remarkablerocket_wilde_64kb.mp3' },
+      { id: 's8',  title: "The Canterville Ghost",         duration: '~55 min', desc: "Oscar Wilde's funny warm ghost story",            url: 'https://archive.org/download/canterville_ghost_librivox/cantervilleghost_01_wilde_64kb.mp3' },
+      { id: 's9',  title: 'Rip Van Winkle',                duration: '~35 min', desc: "Washington Irving's timeless American tale",      url: 'https://archive.org/download/rip_van_winkle_librivox/ripvanwinkle_irving_64kb.mp3' },
+      { id: 's10', title: 'The Legend of Sleepy Hollow',   duration: '~55 min', desc: "A cosy autumnal tale by Washington Irving",       url: 'https://archive.org/download/legend_of_sleepy_hollow_librivox/legendofsleepyhollow_irving_64kb.mp3' },
     ],
   },
   {
@@ -755,16 +759,16 @@ const STORY_LIBRARY = [
     color: 'bg-indigo-50 border-indigo-200',
     badge: 'text-indigo-700 bg-indigo-100',
     stories: [
-      { id: 'l1',  title: 'Rip Van Winkle',              duration: '~35 min', desc: 'Washington Irving\'s timeless American tale',      url: 'https://upload.wikimedia.org/wikipedia/commons/7/75/Rip_Van_Winkle.ogg' },
-      { id: 'l2',  title: 'The Legend of Sleepy Hollow', duration: '~55 min', desc: 'A cosy autumnal tale by Washington Irving',        url: 'https://upload.wikimedia.org/wikipedia/commons/0/0c/The_Legend_of_Sleepy_Hollow.ogg' },
-      { id: 'l3',  title: 'The Yellow Wallpaper',        duration: '~40 min', desc: 'Charlotte Perkins Gilman — a vivid short story',  url: 'https://upload.wikimedia.org/wikipedia/commons/5/52/The_Yellow_Wallpaper.ogg' },
-      { id: 'l4',  title: 'The Tell-Tale Heart',         duration: '~12 min', desc: 'Edgar Allan Poe — suspenseful mystery',           url: 'https://upload.wikimedia.org/wikipedia/commons/2/26/The_Tell-Tale_Heart.ogg' },
-      { id: 'l5',  title: 'The Purloined Letter',        duration: '~40 min', desc: 'Poe\'s clever detective mystery',                  url: 'https://upload.wikimedia.org/wikipedia/commons/8/82/The_Purloined_Letter.ogg' },
-      { id: 'l6',  title: 'The Great Stone Face',        duration: '~45 min', desc: 'Nathaniel Hawthorne — wisdom and character',      url: 'https://upload.wikimedia.org/wikipedia/commons/6/60/The_Great_Stone_Face.ogg' },
-      { id: 'l7',  title: 'The Enchanted April (Ch 1)',  duration: '~1 hr',   desc: 'Elizabeth von Arnim — Italy, sunshine & peace',  url: 'https://upload.wikimedia.org/wikipedia/commons/c/c0/The_Enchanted_April.ogg' },
-      { id: 'l8',  title: 'A Christmas Carol',           duration: '~1 hr',   desc: 'Dickens\' beloved Christmas classic',             url: 'https://upload.wikimedia.org/wikipedia/commons/1/13/A_Christmas_Carol.ogg' },
-      { id: 'l9',  title: 'The Secret Garden (Ch 1–3)', duration: '~45 min', desc: 'Frances Hodgson Burnett — a garden of healing',   url: 'https://upload.wikimedia.org/wikipedia/commons/4/42/The_Secret_Garden.ogg' },
-      { id: 'l10', title: 'Anne of Green Gables (Ch 1)',duration: '~1 hr',   desc: 'L.M. Montgomery\'s warm, joyful classic',         url: 'https://upload.wikimedia.org/wikipedia/commons/3/3c/Anne_of_Green_Gables.ogg' },
+      { id: 'l1',  title: 'A Christmas Carol',             duration: '~1 hr',    desc: "Dickens' beloved Christmas classic",              url: 'https://archive.org/download/christmas_carol_librivox/christmascarol_01_dickens_64kb.mp3' },
+      { id: 'l2',  title: 'The Secret Garden Ch 1–3',    duration: '~45 min',  desc: "Frances Hodgson Burnett — a garden of healing",  url: 'https://archive.org/download/secret_garden_librivox/secretgarden_01_burnett_64kb.mp3' },
+      { id: 'l3',  title: 'Anne of Green Gables Ch 1',   duration: '~50 min',  desc: "L.M. Montgomery's warm, joyful classic",         url: 'https://archive.org/download/anne_of_green_gables_librivox/anneofgreengables_01_montgomery_64kb.mp3' },
+      { id: 'l4',  title: 'Little Women Ch 1–2',          duration: '~45 min',  desc: "Louisa May Alcott — family warmth and love",     url: 'https://archive.org/download/little_women_librivox/littlewomen_01_alcott_64kb.mp3' },
+      { id: 'l5',  title: 'The Wizard of Oz Ch 1–3',     duration: '~40 min',  desc: "L. Frank Baum's enchanting classic",             url: 'https://archive.org/download/wonderful_wizard_of_oz_librivox/wonderfulwizardofoz_01_baum_64kb.mp3' },
+      { id: 'l6',  title: 'Treasure Island Ch 1–3',      duration: '~45 min',  desc: "Robert Louis Stevenson's adventure classic",     url: 'https://archive.org/download/treasure_island_librivox/treasureisland_01_stevenson_64kb.mp3' },
+      { id: 'l7',  title: 'The Yellow Wallpaper',         duration: '~40 min',  desc: "Charlotte Perkins Gilman — vivid short story",   url: 'https://archive.org/download/yellowwallpaper_librivox/yellowwallpaper_gilman_64kb.mp3' },
+      { id: 'l8',  title: 'The Tell-Tale Heart',          duration: '~12 min',  desc: "Edgar Allan Poe — a suspenseful mystery",        url: 'https://archive.org/download/telltale_librivox/telltale_poe_64kb.mp3' },
+      { id: 'l9',  title: 'Pride & Prejudice Ch 1–3',    duration: '~50 min',  desc: "Jane Austen — wit, romance and society",         url: 'https://archive.org/download/pride_and_prejudice_librivox/prideprejudice_01_austen_64kb.mp3' },
+      { id: 'l10', title: 'Tom Sawyer Ch 1–3',           duration: '~45 min',  desc: "Mark Twain — mischief and adventure",            url: 'https://archive.org/download/tom_sawyer_librivox/tomsawyer_01_twain_64kb.mp3' },
     ],
   },
   {
@@ -997,10 +1001,14 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     stopAudio();
     setPlaying(id);
     if (url) {
-      const a = new Audio(url);
+      const a = new Audio();
+      a.crossOrigin = 'anonymous';
       a.onended = () => { setPlaying(null); setProgress(0); setDuration(0); };
       a.onloadedmetadata = () => setDuration(a.duration);
       a.ontimeupdate = () => setProgress(a.currentTime);
+      a.onerror = () => { setPlaying(null); setProgress(0); setDuration(0); };
+      a.src = url;
+      a.load();
       a.play().catch(() => setPlaying(null));
       audioRef.current = a;
     }

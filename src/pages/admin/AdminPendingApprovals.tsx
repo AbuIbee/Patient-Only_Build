@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Clock, CheckCircle, XCircle, Mail, User, Calendar } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface PendingUser {
   id: string;
@@ -8,24 +9,18 @@ interface PendingUser {
   first_name: string;
   last_name: string;
   created_at: string;
-  requested_role?: string; // role they signed up as, stored in auth metadata
 }
-
-type ApproveRole = 'caregiver' | 'therapist' | 'patient';
 
 interface AdminPendingApprovalsProps {
   onCountChange: (count: number) => void;
 }
 
 export function AdminPendingApprovals({ onCountChange }: AdminPendingApprovalsProps) {
-  const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [processingId, setProcessingId] = useState<string | null>(null);
-  const [selectedRoles, setSelectedRoles] = useState<Record<string, ApproveRole>>({});
+  const [pendingUsers,  setPendingUsers]  = useState<PendingUser[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [processingId,  setProcessingId]  = useState<string | null>(null);
 
-  useEffect(() => {
-    loadPendingUsers();
-  }, []);
+  useEffect(() => { loadPendingUsers(); }, []);
 
   const loadPendingUsers = async () => {
     setLoading(true);
@@ -34,56 +29,36 @@ export function AdminPendingApprovals({ onCountChange }: AdminPendingApprovalsPr
         .from('profiles')
         .select('id, email, first_name, last_name, created_at')
         .eq('role', 'pending')
-        .order('created_at', { ascending: true }); // oldest first
-
+        .order('created_at', { ascending: true });
       if (error) throw error;
-
       const users = data || [];
       setPendingUsers(users);
       onCountChange(users.length);
-
-      // Default each user's approval role to 'caregiver'
-      const defaults: Record<string, ApproveRole> = {};
-      users.forEach(u => { defaults[u.id] = 'caregiver'; });
-      setSelectedRoles(defaults);
-    } catch (err) {
-      console.error('Error loading pending users:', err);
+    } catch (err: any) {
+      toast.error('Error loading pending users: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleApprove = async (user: PendingUser) => {
-    const approvedRole = selectedRoles[user.id] || 'caregiver';
     setProcessingId(user.id);
     try {
-      // 1 — Update their role in profiles
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ role: approvedRole })
-        .eq('id', user.id);
+      // Approve as patient — the only role managed through this portal
+      const { error } = await supabase.from('profiles')
+        .update({ role: 'patient' }).eq('id', user.id);
+      if (error) throw error;
 
-      if (updateError) throw updateError;
-
-      // 2 — Send approval email via Supabase Auth password reset
-      //     (reuses Supabase's built-in email system — arrives as "You can now log in")
-      //     For a proper custom email, you'd use an Edge Function or Resend/SendGrid.
-      //     This approach sends a "reset password" email which is the easiest built-in option.
+      // Send notification email via Supabase Auth
       const { error: emailError } = await supabase.auth.resetPasswordForEmail(user.email, {
-        redirectTo: `${window.location.origin}`,
+        redirectTo: window.location.origin,
       });
+      if (emailError) console.warn('Approval email failed:', emailError.message);
 
-      // Email error is non-fatal — account is still approved
-      if (emailError) {
-        console.warn('Approval email failed to send:', emailError.message);
-      }
-
+      toast.success(`${user.first_name} ${user.last_name} approved as a patient`);
       await loadPendingUsers();
-      alert(`✅ ${user.first_name} ${user.last_name} approved as ${approvedRole}. A notification email has been sent to ${user.email}.`);
-
     } catch (err: any) {
-      console.error('Approve error:', err);
-      alert('Error approving user: ' + err.message);
+      toast.error('Error approving user: ' + err.message);
     } finally {
       setProcessingId(null);
     }
@@ -91,45 +66,35 @@ export function AdminPendingApprovals({ onCountChange }: AdminPendingApprovalsPr
 
   const handleReject = async (user: PendingUser) => {
     if (!confirm(`Reject and delete the account for ${user.first_name} ${user.last_name} (${user.email})?\n\nThis cannot be undone.`)) return;
-
     setProcessingId(user.id);
     try {
-      // Delete their profile row
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', user.id);
-
-      if (profileError) throw profileError;
-
+      const { error } = await supabase.from('profiles').delete().eq('id', user.id);
+      if (error) throw error;
+      toast.success(`Account for ${user.email} rejected and removed`);
       await loadPendingUsers();
-      alert(`Account for ${user.email} has been rejected and removed.`);
     } catch (err: any) {
-      console.error('Reject error:', err);
-      alert('Error rejecting user: ' + err.message);
+      toast.error('Error rejecting user: ' + err.message);
     } finally {
       setProcessingId(null);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-center space-y-3">
-          <div className="w-10 h-10 border-4 border-warm-bronze border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-medium-gray">Loading pending approvals...</p>
-        </div>
+  if (loading) return (
+    <div className="flex items-center justify-center py-20">
+      <div className="text-center space-y-3">
+        <div className="w-10 h-10 border-4 border-warm-bronze border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-medium-gray">Loading pending approvals...</p>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-charcoal">Pending Approvals</h2>
         <p className="text-medium-gray mt-1">
-          Review and approve or reject new account requests.
-          Approved users will receive an email notification.
+          Review new patient account requests. Approved accounts are set to the <strong>patient</strong> role
+          and the user receives an email notification.
         </p>
       </div>
 
@@ -143,7 +108,7 @@ export function AdminPendingApprovals({ onCountChange }: AdminPendingApprovalsPr
         </div>
       ) : (
         <div className="space-y-4">
-          {pendingUsers.map((user) => (
+          {pendingUsers.map(user => (
             <div key={user.id} className="bg-white rounded-2xl border border-soft-taupe p-6 shadow-sm">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 {/* User info */}
@@ -152,12 +117,9 @@ export function AdminPendingApprovals({ onCountChange }: AdminPendingApprovalsPr
                     <User className="w-6 h-6 text-warm-bronze" />
                   </div>
                   <div className="space-y-1">
-                    <p className="font-semibold text-charcoal text-lg">
-                      {user.first_name} {user.last_name}
-                    </p>
+                    <p className="font-semibold text-charcoal text-lg">{user.first_name} {user.last_name}</p>
                     <div className="flex items-center gap-2 text-medium-gray text-sm">
-                      <Mail className="w-4 h-4" />
-                      <span>{user.email}</span>
+                      <Mail className="w-4 h-4" /><span>{user.email}</span>
                     </div>
                     <div className="flex items-center gap-2 text-medium-gray text-sm">
                       <Calendar className="w-4 h-4" />
@@ -165,52 +127,23 @@ export function AdminPendingApprovals({ onCountChange }: AdminPendingApprovalsPr
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       <Clock className="w-4 h-4 text-amber-500" />
-                      <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
-                        Pending Review
-                      </span>
+                      <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Pending Review</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Approve / Reject controls */}
-                <div className="flex items-center gap-3 flex-wrap">
-                  {/* Role selector */}
-                  <div className="space-y-1">
-                    <label className="text-xs text-medium-gray font-medium">Approve as:</label>
-                    <select
-                      value={selectedRoles[user.id] || 'caregiver'}
-                      onChange={e => setSelectedRoles(prev => ({ ...prev, [user.id]: e.target.value as ApproveRole }))}
-                      disabled={processingId === user.id}
-                      className="px-3 py-2 border border-soft-taupe rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze bg-white"
-                    >
-                      <option value="caregiver">Caregiver</option>
-                      <option value="therapist">Therapist</option>
-                      <option value="patient">Patient</option>
-                    </select>
-                  </div>
-
-                  {/* Approve button */}
-                  <button
-                    onClick={() => handleApprove(user)}
-                    disabled={processingId === user.id}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {processingId === user.id ? (
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <CheckCircle className="w-4 h-4" />
-                    )}
-                    Approve & Notify
+                {/* Actions */}
+                <div className="flex items-center gap-3">
+                  <button onClick={() => handleApprove(user)} disabled={processingId === user.id}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                    {processingId === user.id
+                      ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      : <CheckCircle className="w-4 h-4" />}
+                    Approve as Patient
                   </button>
-
-                  {/* Reject button */}
-                  <button
-                    onClick={() => handleReject(user)}
-                    disabled={processingId === user.id}
-                    className="flex items-center gap-2 px-4 py-2 bg-gentle-coral/10 text-gentle-coral rounded-xl hover:bg-gentle-coral/20 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    Reject
+                  <button onClick={() => handleReject(user)} disabled={processingId === user.id}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-gentle-coral/10 text-gentle-coral rounded-xl hover:bg-gentle-coral/20 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                    <XCircle className="w-4 h-4" />Reject
                   </button>
                 </div>
               </div>
