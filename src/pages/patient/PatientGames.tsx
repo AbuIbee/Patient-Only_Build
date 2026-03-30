@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trophy, Star, RotateCcw, ChevronLeft, Gamepad2, ExternalLink, Clock } from 'lucide-react';
 
-type GameId = 'menu' | 'matching' | 'crossword' | 'checkers' | 'chess' | 'brainlinks' | 'wordsearch';
+type GameId = 'menu' | 'matching' | 'crossword' | 'checkers' | 'chess' | 'brainlinks' | 'wordsearch' | 'solitaire' | 'hangman';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MATCHING PAIRS
@@ -852,15 +852,396 @@ function WordSearchGame({ onBack }: { onBack: () => void }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// HANGMAN
+// ══════════════════════════════════════════════════════════════════════════════
+
+const HM_WORDS = [
+  { word: 'BUTTERFLY',   hint: 'A colourful flying insect' },
+  { word: 'SUNSHINE',    hint: 'Bright light from the sky' },
+  { word: 'GARDEN',      hint: 'Where flowers grow' },
+  { word: 'UMBRELLA',    hint: 'Keeps you dry in the rain' },
+  { word: 'RAINBOW',     hint: 'Colourful arch after rain' },
+  { word: 'BIRDHOUSE',   hint: 'A home for our feathered friends' },
+  { word: 'TEAPOT',      hint: 'Used to brew a warm drink' },
+  { word: 'BLANKET',     hint: 'Cosy cover for a cold night' },
+  { word: 'HARVEST',     hint: 'Gathering crops in autumn' },
+  { word: 'FIREPLACE',   hint: 'Warm and crackling on winter nights' },
+  { word: 'KITTEN',      hint: 'A baby cat' },
+  { word: 'BLOSSOM',     hint: 'Spring flowers on a tree' },
+  { word: 'PANCAKES',    hint: 'A favourite breakfast treat' },
+  { word: 'LIBRARY',     hint: 'A place full of books' },
+  { word: 'SEASIDE',     hint: 'Where the land meets the ocean' },
+];
+
+const MAX_WRONG = 6;
+
+function HangmanFigure({ wrong }: { wrong: number }) {
+  const s = 'stroke-charcoal stroke-[3] stroke-linecap-round fill-none';
+  return (
+    <svg viewBox="0 0 120 140" className="w-36 h-40 mx-auto">
+      {/* Gallows */}
+      <line x1="10" y1="135" x2="110" y2="135" className={s} />
+      <line x1="30"  y1="135" x2="30"  y2="10"  className={s} />
+      <line x1="30"  y1="10"  x2="75"  y2="10"  className={s} />
+      <line x1="75"  y1="10"  x2="75"  y2="28"  className={s} />
+      {/* Head */}
+      {wrong >= 1 && <circle cx="75" cy="38" r="10" className={s} />}
+      {/* Body */}
+      {wrong >= 2 && <line x1="75" y1="48" x2="75" y2="90" className={s} />}
+      {/* Left arm */}
+      {wrong >= 3 && <line x1="75" y1="60" x2="52" y2="78" className={s} />}
+      {/* Right arm */}
+      {wrong >= 4 && <line x1="75" y1="60" x2="98" y2="78" className={s} />}
+      {/* Left leg */}
+      {wrong >= 5 && <line x1="75" y1="90" x2="55" y2="115" className={s} />}
+      {/* Right leg */}
+      {wrong >= 6 && <line x1="75" y1="90" x2="95" y2="115" className={s} />}
+    </svg>
+  );
+}
+
+function HangmanGame({ onBack }: { onBack: () => void }) {
+  const newWord = () => HM_WORDS[Math.floor(Math.random() * HM_WORDS.length)];
+  const [entry,    setEntry]    = useState(newWord);
+  const [guessed,  setGuessed]  = useState<Set<string>>(new Set());
+  const [gameKey,  setGameKey]  = useState(0);
+
+  const wrong   = [...guessed].filter(l => !entry.word.includes(l)).length;
+  const won     = [...entry.word].every(l => guessed.has(l));
+  const lost    = wrong >= MAX_WRONG;
+  const over    = won || lost;
+
+  const guess = (letter: string) => {
+    if (over || guessed.has(letter)) return;
+    setGuessed(prev => new Set([...prev, letter]));
+  };
+
+  const restart = () => { setEntry(newWord()); setGuessed(new Set()); setGameKey(k => k + 1); };
+
+  const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button onClick={onBack} className="w-10 h-10 rounded-2xl bg-soft-taupe/30 flex items-center justify-center hover:bg-soft-taupe/50 transition-colors">
+          <ChevronLeft className="w-5 h-5 text-charcoal" />
+        </button>
+        <div className="flex-1">
+          <h2 className="text-xl font-bold text-charcoal">Hangman</h2>
+          <p className="text-sm text-medium-gray">{MAX_WRONG - wrong} guesses left</p>
+        </div>
+        <button onClick={restart} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-soft-taupe/30 hover:bg-soft-taupe/50 text-charcoal text-sm font-medium transition-colors">
+          <RotateCcw className="w-4 h-4" /> New Word
+        </button>
+      </div>
+
+      <div className="bg-white rounded-3xl border border-soft-taupe shadow-sm p-6 space-y-5">
+        {/* Figure */}
+        <HangmanFigure wrong={wrong} />
+
+        {/* Hint */}
+        <div className="text-center">
+          <p className="text-xs text-medium-gray uppercase tracking-wide font-semibold">Hint</p>
+          <p className="text-base text-charcoal font-medium mt-0.5">{entry.hint}</p>
+        </div>
+
+        {/* Word blanks */}
+        <div className="flex justify-center gap-2 flex-wrap">
+          {entry.word.split('').map((letter, i) => (
+            <div key={i} className="flex flex-col items-center gap-1">
+              <span className={`text-2xl font-bold w-8 text-center transition-all ${guessed.has(letter) ? 'text-charcoal' : lost ? 'text-gentle-coral' : 'text-transparent'}`}>
+                {letter}
+              </span>
+              <div className={`h-0.5 w-8 rounded-full ${guessed.has(letter) ? 'bg-warm-bronze' : 'bg-soft-taupe'}`} />
+            </div>
+          ))}
+        </div>
+
+        {/* Result banner */}
+        {over && (
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+            className={`text-center py-3 rounded-2xl font-semibold text-lg ${won ? 'bg-soft-sage/20 text-soft-sage' : 'bg-gentle-coral/20 text-gentle-coral'}`}>
+            {won ? '🎉 Well done! You got it!' : `😔 The word was: ${entry.word}`}
+          </motion.div>
+        )}
+      </div>
+
+      {/* Keyboard */}
+      <div className="bg-white rounded-3xl border border-soft-taupe shadow-sm p-4">
+        <div className="flex flex-wrap gap-2 justify-center">
+          {ALPHA.map(letter => {
+            const isGuessed = guessed.has(letter);
+            const isCorrect = isGuessed && entry.word.includes(letter);
+            const isWrong   = isGuessed && !entry.word.includes(letter);
+            return (
+              <button
+                key={letter}
+                onClick={() => guess(letter)}
+                disabled={isGuessed || over}
+                className={`w-10 h-10 rounded-xl text-sm font-bold transition-all ${
+                  isCorrect ? 'bg-soft-sage text-white shadow-sm' :
+                  isWrong   ? 'bg-gentle-coral/30 text-gentle-coral line-through' :
+                  over      ? 'bg-soft-taupe/20 text-soft-taupe cursor-not-allowed' :
+                              'bg-warm-ivory border border-soft-taupe text-charcoal hover:bg-warm-bronze/10 hover:border-warm-bronze active:scale-95'
+                }`}
+              >
+                {letter}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {over && (
+        <button onClick={restart}
+          className="w-full py-3 bg-warm-bronze hover:bg-deep-bronze text-white rounded-2xl font-semibold text-base transition-colors">
+          Play Again
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SOLITAIRE (Klondike)
+// ══════════════════════════════════════════════════════════════════════════════
+
+type Suit = '♠' | '♥' | '♦' | '♣';
+type SCard = { suit: Suit; rank: number; faceUp: boolean };
+
+const SUITS: Suit[]  = ['♠', '♥', '♦', '♣'];
+const RED: Suit[]    = ['♥', '♦'];
+const RANKS          = [1,2,3,4,5,6,7,8,9,10,11,12,13];
+const RANK_LABEL     = (r: number) => ['','A','2','3','4','5','6','7','8','9','10','J','Q','K'][r];
+
+function buildDeck(): SCard[] {
+  const deck: SCard[] = [];
+  for (const suit of SUITS) for (const rank of RANKS) deck.push({ suit, rank, faceUp: false });
+  for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i+1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+  return deck;
+}
+
+function dealKlondike(deck: SCard[]) {
+  const tableau: SCard[][] = Array.from({ length: 7 }, () => []);
+  let idx = 0;
+  for (let col = 0; col < 7; col++) {
+    for (let row = 0; row <= col; row++) {
+      tableau[col].push({ ...deck[idx++], faceUp: row === col });
+    }
+  }
+  const stock = deck.slice(idx).map(c => ({ ...c, faceUp: false }));
+  return { tableau, stock, waste: [] as SCard[], foundations: [[], [], [], []] as SCard[][] };
+}
+
+function canPlaceOnTableau(card: SCard, target: SCard | undefined): boolean {
+  if (!target) return card.rank === 13; // K on empty
+  const targetIsRed = RED.includes(target.suit);
+  const cardIsRed   = RED.includes(card.suit);
+  return target.faceUp && card.rank === target.rank - 1 && targetIsRed !== cardIsRed;
+}
+
+function canPlaceOnFoundation(card: SCard, pile: SCard[]): boolean {
+  if (pile.length === 0) return card.rank === 1;
+  const top = pile[pile.length - 1];
+  return card.suit === top.suit && card.rank === top.rank + 1;
+}
+
+function SolitaireGame({ onBack }: { onBack: () => void }) {
+  const fresh = () => dealKlondike(buildDeck());
+  type State = ReturnType<typeof fresh>;
+  const [state, setState] = useState<State>(fresh);
+  const [selected, setSelected]   = useState<{ from: 'waste'|'tableau'|'foundation'; col?: number; cardIdx?: number } | null>(null);
+  const [won, setWon]             = useState(false);
+  const [moves, setMoves]         = useState(0);
+
+  const checkWin = (s: State) => s.foundations.every(f => f.length === 13);
+
+  const applyMove = (fn: (s: State) => State) => {
+    setState(prev => {
+      const next = fn(JSON.parse(JSON.stringify(prev)));
+      // Flip top tableau cards
+      next.tableau.forEach(col => { if (col.length > 0 && !col[col.length-1].faceUp) col[col.length-1].faceUp = true; });
+      if (checkWin(next)) setWon(true);
+      return next;
+    });
+    setMoves(m => m + 1);
+    setSelected(null);
+  };
+
+  const drawFromStock = () => {
+    applyMove(s => {
+      if (s.stock.length === 0) { s.stock = [...s.waste].reverse().map(c => ({ ...c, faceUp: false })); s.waste = []; return s; }
+      const card = { ...s.stock.pop()!, faceUp: true };
+      s.waste.push(card);
+      return s;
+    });
+  };
+
+  const getCards = (sel: typeof selected, s: State): SCard[] => {
+    if (!sel) return [];
+    if (sel.from === 'waste')  return [s.waste[s.waste.length-1]];
+    if (sel.from === 'tableau' && sel.col !== undefined && sel.cardIdx !== undefined) return s.tableau[sel.col].slice(sel.cardIdx);
+    if (sel.from === 'foundation' && sel.col !== undefined) { const top = s.foundations[sel.col][s.foundations[sel.col].length-1]; return top ? [top] : []; }
+    return [];
+  };
+
+  const handleTableauClick = (col: number, cardIdx: number) => {
+    const card = state.tableau[col][cardIdx];
+    if (!card.faceUp) return;
+
+    if (!selected) { setSelected({ from: 'tableau', col, cardIdx }); return; }
+
+    const movingCards = getCards(selected, state);
+    if (movingCards.length === 0) { setSelected({ from: 'tableau', col, cardIdx }); return; }
+
+    const target = state.tableau[col][state.tableau[col].length - 1];
+    if (canPlaceOnTableau(movingCards[0], target === movingCards[0] ? undefined : target)) {
+      applyMove(s => {
+        if (selected.from === 'waste') { s.waste.pop(); }
+        else if (selected.from === 'tableau' && selected.col !== undefined && selected.cardIdx !== undefined) { s.tableau[selected.col].splice(selected.cardIdx); }
+        else if (selected.from === 'foundation' && selected.col !== undefined) { s.foundations[selected.col].pop(); }
+        s.tableau[col].push(...movingCards);
+        return s;
+      });
+    } else { setSelected({ from: 'tableau', col, cardIdx }); }
+  };
+
+  const handleFoundationClick = (fCol: number) => {
+    if (!selected) return;
+    const movingCards = getCards(selected, state);
+    if (movingCards.length !== 1) return;
+    if (canPlaceOnFoundation(movingCards[0], state.foundations[fCol])) {
+      applyMove(s => {
+        if (selected.from === 'waste') { s.waste.pop(); }
+        else if (selected.from === 'tableau' && selected.col !== undefined && selected.cardIdx !== undefined) { s.tableau[selected.col].splice(selected.cardIdx); }
+        s.foundations[fCol].push(movingCards[0]);
+        return s;
+      });
+    }
+  };
+
+  const cardColor = (suit: Suit) => RED.includes(suit) ? 'text-red-600' : 'text-charcoal';
+  const isSelected = (from: string, col?: number, idx?: number) =>
+    selected?.from === from && selected?.col === col && selected?.cardIdx === idx;
+
+  const CardFace = ({ card, small = false }: { card: SCard; small?: boolean }) => (
+    <div className={`${small ? 'text-xs' : 'text-sm'} font-bold leading-none ${cardColor(card.suit)}`}>
+      <div>{RANK_LABEL(card.rank)}</div>
+      <div>{card.suit}</div>
+    </div>
+  );
+
+  const restart = () => { setState(fresh()); setSelected(null); setWon(false); setMoves(0); };
+
+  return (
+    <div className="space-y-3">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button onClick={onBack} className="w-10 h-10 rounded-2xl bg-soft-taupe/30 flex items-center justify-center hover:bg-soft-taupe/50 transition-colors">
+          <ChevronLeft className="w-5 h-5 text-charcoal" />
+        </button>
+        <div className="flex-1">
+          <h2 className="text-xl font-bold text-charcoal">Solitaire</h2>
+          <p className="text-sm text-medium-gray">{moves} moves</p>
+        </div>
+        <button onClick={restart} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-soft-taupe/30 hover:bg-soft-taupe/50 text-charcoal text-sm font-medium transition-colors">
+          <RotateCcw className="w-4 h-4" /> New Game
+        </button>
+      </div>
+
+      {won && (
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+          className="text-center py-4 bg-soft-sage/20 rounded-2xl border border-soft-sage/30">
+          <p className="text-2xl font-bold text-soft-sage">🎉 You won!</p>
+          <p className="text-medium-gray text-sm mt-1">Completed in {moves} moves</p>
+          <button onClick={restart} className="mt-3 px-6 py-2 bg-warm-bronze text-white rounded-xl font-semibold text-sm hover:bg-deep-bronze transition-colors">Play Again</button>
+        </motion.div>
+      )}
+
+      <div className="bg-gradient-to-br from-emerald-700 to-green-800 rounded-3xl p-3 space-y-3 shadow-elevated">
+
+        {/* Top row: Stock + Waste + Foundations */}
+        <div className="flex gap-2 justify-between">
+          {/* Stock */}
+          <button onClick={drawFromStock}
+            className="w-12 h-16 rounded-xl border-2 border-white/30 flex items-center justify-center bg-white/10 hover:bg-white/20 transition-colors flex-shrink-0">
+            {state.stock.length > 0 ? <span className="text-white text-2xl">🂠</span> : <RotateCcw className="w-5 h-5 text-white/60" />}
+          </button>
+
+          {/* Waste */}
+          <button
+            onClick={() => state.waste.length > 0 && setSelected(s => s?.from === 'waste' ? null : { from: 'waste' })}
+            className={`w-12 h-16 rounded-xl border-2 flex items-center justify-center bg-white flex-shrink-0 transition-all ${selected?.from === 'waste' ? 'border-warm-bronze shadow-lg scale-105' : 'border-white/30'}`}>
+            {state.waste.length > 0 ? (
+              <CardFace card={state.waste[state.waste.length-1]} />
+            ) : <span className="text-white/40 text-xs">Empty</span>}
+          </button>
+
+          <div className="flex-1" />
+
+          {/* Foundations */}
+          {state.foundations.map((pile, fi) => (
+            <button key={fi} onClick={() => handleFoundationClick(fi)}
+              className={`w-12 h-16 rounded-xl border-2 flex items-center justify-center bg-white/90 flex-shrink-0 transition-all ${selected ? 'border-warm-bronze/60 hover:border-warm-bronze hover:scale-105' : 'border-white/30'}`}>
+              {pile.length > 0
+                ? <CardFace card={pile[pile.length-1]} />
+                : <span className="text-white/50 text-sm">{SUITS[fi]}</span>}
+            </button>
+          ))}
+        </div>
+
+        {/* Tableau */}
+        <div className="flex gap-1.5 justify-between">
+          {state.tableau.map((col, ci) => (
+            <div key={ci} className="flex-1 min-w-0">
+              <div className="relative" style={{ minHeight: '4rem' }}>
+                {col.length === 0 ? (
+                  <button onClick={() => handleTableauClick(ci, 0)}
+                    className="w-full h-16 rounded-xl border-2 border-dashed border-white/20 hover:border-white/40 transition-colors" />
+                ) : col.map((card, ci2) => (
+                  <div key={ci2} onClick={() => handleTableauClick(ci, ci2)}
+                    style={{ position: (ci2 === 0 ? 'relative' : 'absolute') as React.CSSProperties['position'], top: ci2 === 0 ? 0 : `${ci2 * 18}px`, zIndex: ci2, width: '100%' }}
+                    className={`rounded-lg border-2 transition-all cursor-pointer select-none ${
+                      card.faceUp
+                        ? isSelected('tableau', ci, ci2) ? 'bg-warm-bronze/20 border-warm-bronze shadow-lg' : 'bg-white border-white/80 hover:border-warm-bronze/50'
+                        : 'bg-gradient-to-br from-warm-bronze to-deep-bronze border-warm-bronze/50'
+                    }`}
+                    
+                  >
+                    {card.faceUp ? (
+                      <div className="p-1"><CardFace card={card} small /></div>
+                    ) : (
+                      <div className="h-8 w-full flex items-center justify-center opacity-40">
+                        <Star className="w-3 h-3 text-white" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div style={{ height: `${Math.max(64, col.length * 18 + 32)}px` }} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <p className="text-center text-xs text-medium-gray">Tap a card to select it, then tap where to move it</p>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN HUB
 // ══════════════════════════════════════════════════════════════════════════════
 const GAMES = [
-  { id:'matching'  as GameId, title:'Matching Pairs',      desc:'Flip cards and find matching emoji pairs',  emoji:'🃏', color:'from-warm-bronze to-warm-amber', tag:'Memory',   tagColor:'bg-warm-amber/20 text-warm-bronze'  },
-  { id:'crossword' as GameId, title:'Crossword Puzzle',    desc:'Fill in the grid using the given clues',   emoji:'📰', color:'from-calm-blue to-blue-500',     tag:'Language', tagColor:'bg-blue-100 text-blue-600'          },
-  { id:'checkers'  as GameId, title:'Checkers',            desc:'Classic board game — you play red vs AI',  emoji:'🔴', color:'from-red-400 to-orange-500',     tag:'Strategy', tagColor:'bg-orange-100 text-orange-600'      },
-  { id:'chess'     as GameId, title:'Chess',               desc:'Play white pieces against the AI',         emoji:'♟️', color:'from-slate-500 to-gray-700',     tag:'Strategy', tagColor:'bg-gray-100 text-gray-600'          },
-  { id:'wordsearch' as GameId, title:'Word Search',          desc:'Find hidden words in the letter grid',     emoji:'🔤', color:'from-teal-400 to-cyan-500',      tag:'Language', tagColor:'bg-teal-100 text-teal-600'           },
-  { id:'brainlinks'as GameId, title:'Brain Training Apps', desc:'Lumosity, BrainHQ & more',                emoji:'🧠', color:'from-purple-400 to-violet-500',  tag:'External', tagColor:'bg-purple-100 text-purple-600'      },
+  { id:'matching'   as GameId, title:'Matching Pairs',      desc:'Flip cards and find matching emoji pairs',  emoji:'🃏', color:'from-warm-bronze to-warm-amber', tag:'Memory',   tagColor:'bg-warm-amber/20 text-warm-bronze'  },
+  { id:'crossword'  as GameId, title:'Crossword Puzzle',    desc:'Fill in the grid using the given clues',   emoji:'📰', color:'from-calm-blue to-blue-500',     tag:'Language', tagColor:'bg-blue-100 text-blue-600'          },
+  { id:'checkers'   as GameId, title:'Checkers',            desc:'Classic board game — you play red vs AI',  emoji:'🔴', color:'from-red-400 to-orange-500',     tag:'Strategy', tagColor:'bg-orange-100 text-orange-600'      },
+  { id:'chess'      as GameId, title:'Chess',               desc:'Play white pieces against the AI',         emoji:'♟️', color:'from-slate-500 to-gray-700',     tag:'Strategy', tagColor:'bg-gray-100 text-gray-600'          },
+  { id:'wordsearch' as GameId, title:'Word Search',         desc:'Find hidden words in the letter grid',     emoji:'🔤', color:'from-teal-400 to-cyan-500',      tag:'Language', tagColor:'bg-teal-100 text-teal-600'           },
+  { id:'solitaire'  as GameId, title:'Solitaire',           desc:'Classic Klondike card game — relax & win', emoji:'🂡', color:'from-emerald-400 to-green-500',   tag:'Cards',    tagColor:'bg-green-100 text-green-600'         },
+  { id:'hangman'    as GameId, title:'Hangman',             desc:'Guess the word one letter at a time',      emoji:'🔤', color:'from-rose-400 to-pink-500',      tag:'Language', tagColor:'bg-pink-100 text-pink-600'           },
+  { id:'brainlinks' as GameId, title:'Brain Training Apps', desc:'Lumosity, BrainHQ & more',                emoji:'🧠', color:'from-purple-400 to-violet-500',  tag:'External', tagColor:'bg-purple-100 text-purple-600'      },
 ];
 
 export default function PatientGames() {
@@ -868,12 +1249,14 @@ export default function PatientGames() {
 
   const renderGame = () => {
     switch (activeGame) {
-      case 'matching':   return <MatchingGame  onBack={() => setActiveGame('menu')} />;
-      case 'crossword':  return <CrosswordGame onBack={() => setActiveGame('menu')} />;
-      case 'checkers':   return <CheckersGame  onBack={() => setActiveGame('menu')} />;
-      case 'chess':      return <ChessGame     onBack={() => setActiveGame('menu')} />;
-      case 'wordsearch':  return <WordSearchGame onBack={() => setActiveGame('menu')} />;
-      case 'brainlinks': return <BrainLinks    onBack={() => setActiveGame('menu')} />;
+      case 'matching':    return <MatchingGame   onBack={() => setActiveGame('menu')} />;
+      case 'crossword':   return <CrosswordGame  onBack={() => setActiveGame('menu')} />;
+      case 'checkers':    return <CheckersGame   onBack={() => setActiveGame('menu')} />;
+      case 'chess':       return <ChessGame      onBack={() => setActiveGame('menu')} />;
+      case 'wordsearch':  return <WordSearchGame  onBack={() => setActiveGame('menu')} />;
+      case 'solitaire':   return <SolitaireGame  onBack={() => setActiveGame('menu')} />;
+      case 'hangman':     return <HangmanGame    onBack={() => setActiveGame('menu')} />;
+      case 'brainlinks':  return <BrainLinks     onBack={() => setActiveGame('menu')} />;
       default:           return null;
     }
   };

@@ -356,22 +356,22 @@ const AI_VOICES = [
 
 const CALM_TRACKS = {
   melodies: [
-    { id: 'melody_1', label: 'Moonlight Sonata',       artist: 'Beethoven',       emoji: '🎹', color: 'bg-purple-100 text-purple-700' },
-    { id: 'melody_2', label: 'Clair de Lune',           artist: 'Debussy',         emoji: '🌙', color: 'bg-indigo-100 text-indigo-700' },
-    { id: 'melody_3', label: 'Canon in D',              artist: 'Pachelbel',       emoji: '🎵', color: 'bg-pink-100 text-pink-700' },
-    { id: 'melody_4', label: 'Air on the G String',     artist: 'Bach',            emoji: '🎻', color: 'bg-amber-100 text-amber-700' },
+    { id: 'melody_1', label: 'Moonlight Sonata',       artist: 'Beethoven',  emoji: '🎹', color: 'bg-purple-100 text-purple-700', url: 'https://ia800201.us.archive.org/23/items/moonlight_sonata/moonlightsonata_beethoven.mp3' },
+    { id: 'melody_2', label: 'Clair de Lune',           artist: 'Debussy',    emoji: '🌙', color: 'bg-indigo-100 text-indigo-700', url: 'https://ia800505.us.archive.org/4/items/ClairDeLune_585/ClairDeLune.mp3' },
+    { id: 'melody_3', label: 'Canon in D',              artist: 'Pachelbel',  emoji: '🎵', color: 'bg-pink-100 text-pink-700',     url: 'https://ia800504.us.archive.org/7/items/PachelbelCanonInD/PachelbelCanonInD.mp3' },
+    { id: 'melody_4', label: 'Air on the G String',     artist: 'Bach',       emoji: '🎻', color: 'bg-amber-100 text-amber-700',   url: 'https://ia600209.us.archive.org/12/items/AirOnTheGString_201407/AirOnTheGString.mp3' },
   ],
   nature: [
-    { id: 'nature_1', label: 'Gentle Rain',             artist: 'Nature',          emoji: '🌧️', color: 'bg-blue-100 text-blue-700' },
-    { id: 'nature_2', label: 'Ocean Waves',             artist: 'Nature',          emoji: '🌊', color: 'bg-cyan-100 text-cyan-700' },
-    { id: 'nature_3', label: 'Forest Birdsong',         artist: 'Nature',          emoji: '🐦', color: 'bg-green-100 text-green-700' },
-    { id: 'nature_4', label: 'Crackling Fireplace',     artist: 'Nature',          emoji: '🔥', color: 'bg-orange-100 text-orange-700' },
+    { id: 'nature_1', label: 'Gentle Rain',             artist: 'Nature',     emoji: '🌧️', color: 'bg-blue-100 text-blue-700',     url: 'https://ia800201.us.archive.org/15/items/rain-sounds/gentle-rain.mp3' },
+    { id: 'nature_2', label: 'Ocean Waves',             artist: 'Nature',     emoji: '🌊', color: 'bg-cyan-100 text-cyan-700',     url: 'https://ia800209.us.archive.org/3/items/ocean-waves-sounds/ocean-waves.mp3' },
+    { id: 'nature_3', label: 'Forest Birdsong',         artist: 'Nature',     emoji: '🐦', color: 'bg-green-100 text-green-700',   url: 'https://ia800504.us.archive.org/11/items/birdsong-forest/birdsong.mp3' },
+    { id: 'nature_4', label: 'Crackling Fireplace',     artist: 'Nature',     emoji: '🔥', color: 'bg-orange-100 text-orange-700', url: 'https://ia800201.us.archive.org/20/items/fireplace-sounds/fireplace.mp3' },
   ],
   classical: [
-    { id: 'class_1',  label: 'Four Seasons — Spring',   artist: 'Vivaldi',         emoji: '🌸', color: 'bg-rose-100 text-rose-700' },
-    { id: 'class_2',  label: 'Ave Maria',               artist: 'Schubert',        emoji: '✨', color: 'bg-yellow-100 text-yellow-700' },
-    { id: 'class_3',  label: 'Gymnopédie No. 1',        artist: 'Satie',           emoji: '🎹', color: 'bg-teal-100 text-teal-700' },
-    { id: 'class_4',  label: 'Pachelbel\'s Canon',      artist: 'Pachelbel',       emoji: '🎶', color: 'bg-violet-100 text-violet-700' },
+    { id: 'class_1',  label: 'Four Seasons — Spring',   artist: 'Vivaldi',    emoji: '🌸', color: 'bg-rose-100 text-rose-700',     url: 'https://ia800201.us.archive.org/3/items/VivaldiTheFourSeasonsSpring/spring.mp3' },
+    { id: 'class_2',  label: 'Ave Maria',               artist: 'Schubert',   emoji: '✨', color: 'bg-yellow-100 text-yellow-700', url: 'https://ia800504.us.archive.org/9/items/AveMariaSchubert/avemaria_schubert.mp3' },
+    { id: 'class_3',  label: 'Gymnopédie No. 1',        artist: 'Satie',      emoji: '🎹', color: 'bg-teal-100 text-teal-700',     url: 'https://ia800201.us.archive.org/17/items/gymnopedie/gymnopedie_no1_satie.mp3' },
+    { id: 'class_4',  label: 'Pachelbel\'s Canon',      artist: 'Pachelbel',  emoji: '🎶', color: 'bg-violet-100 text-violet-700', url: 'https://ia800504.us.archive.org/7/items/PachelbelCanonInD/PachelbelCanonInD.mp3' },
   ],
 };
 
@@ -380,6 +380,8 @@ type CalmTab = 'melodies' | 'nature' | 'classical' | 'my-music';
 function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab]                     = useState<CalmTab>('melodies');
   const [playing, setPlaying]             = useState<string | null>(null);
+  const [progress, setProgress]           = useState(0);
+  const [trackDuration, setTrackDuration] = useState(0);
   const [myTracks, setMyTracks]           = useState<{ id: string; label: string; url: string }[]>(() => {
     try { return JSON.parse(localStorage.getItem('calmMyTracks') || '[]'); } catch { return []; }
   });
@@ -389,20 +391,23 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
     audioRef.current?.pause();
     audioRef.current = null;
     setPlaying(null);
+    setProgress(0);
+    setTrackDuration(0);
   };
+
+  useEffect(() => { if (!open) stopAudio(); }, [open]);
 
   const playTrack = (id: string, url?: string) => {
     stopAudio();
-    if (playing === id) return;   // toggle off
+    if (playing === id) return;
     setPlaying(id);
     if (url) {
       const a = new Audio(url);
-      a.onended = () => setPlaying(null);
-      a.play().catch(() => {});
+      a.onended = () => { setPlaying(null); setProgress(0); setTrackDuration(0); };
+      a.onloadedmetadata = () => setTrackDuration(a.duration);
+      a.ontimeupdate = () => setProgress(a.currentTime);
+      a.play().catch(() => setPlaying(null));
       audioRef.current = a;
-    } else {
-      // No real URL — simulate playing for demo
-      setTimeout(() => setPlaying(null), 30000);
     }
   };
 
@@ -424,6 +429,8 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
     localStorage.setItem('calmMyTracks', JSON.stringify(updated));
     if (playing === id) stopAudio();
   };
+
+  const fmtTime = (s: number) => isNaN(s) ? '0:00' : `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 
   const tabs: { id: CalmTab; label: string; emoji: string }[] = [
     { id: 'melodies',  label: 'Melodies',  emoji: '🎹' },
@@ -471,7 +478,7 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
               {tab !== 'my-music' && tracks.map(track => (
                 <button
                   key={track.id}
-                  onClick={() => playTrack(track.id)}
+                  onClick={() => playTrack(track.id, track.url)}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
                     playing === track.id
                       ? 'border-soft-sage bg-soft-sage/10'
@@ -484,6 +491,16 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-charcoal text-sm truncate">{track.label}</p>
                     <p className="text-xs text-medium-gray">{track.artist}</p>
+                    {playing === track.id && trackDuration > 0 && (
+                      <div className="mt-1.5 space-y-0.5">
+                        <div className="h-1 bg-soft-sage/20 rounded-full overflow-hidden">
+                          <div className="h-full bg-soft-sage rounded-full transition-all" style={{ width: `${(progress/trackDuration)*100}%` }} />
+                        </div>
+                        <div className="flex justify-between text-xs text-medium-gray">
+                          <span>{fmtTime(progress)}</span><span>{fmtTime(trackDuration)}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                     playing === track.id ? 'bg-soft-sage text-white' : 'bg-soft-taupe/40 text-medium-gray'
@@ -717,45 +734,239 @@ function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClo
 
 const STORY_LIBRARY = [
   {
-    genre: '🌿 Calming Nature',
-    color: 'bg-green-50 border-green-200',
-    badge: 'text-green-700 bg-green-100',
-    stories: [
-      { id: 'n1', title: 'A Walk Through the Forest',  duration: '8 min',  desc: 'A peaceful stroll among tall pines' },
-      { id: 'n2', title: 'Watching the River Flow',    duration: '6 min',  desc: 'A quiet afternoon by the water' },
-      { id: 'n3', title: 'The Garden at Sunrise',      duration: '7 min',  desc: 'Morning birdsong and blooming flowers' },
-    ],
-  },
-  {
-    genre: '📖 Classic Tales',
+    genre: '⏱ 30-Minute Stories',
     color: 'bg-amber-50 border-amber-200',
     badge: 'text-amber-700 bg-amber-100',
     stories: [
-      { id: 'c1', title: 'The Tortoise and the Hare',  duration: '5 min',  desc: 'Slow and steady wins the race' },
-      { id: 'c2', title: 'Goldilocks',                 duration: '6 min',  desc: 'A beloved childhood favourite' },
-      { id: 'c3', title: 'The Little Prince',          duration: '12 min', desc: 'A gentle tale of friendship and wonder' },
+      { id: 's1',  title: 'The Gift of the Magi',          duration: '30 min', desc: 'O. Henry\'s beloved tale of selfless love',         url: 'https://ia800905.us.archive.org/18/items/gift_of_the_magi_librivox/giftofthemagi_02_henry.mp3' },
+      { id: 's2',  title: 'The Necklace',                  duration: '28 min', desc: 'A Maupassant classic with a twist ending',         url: 'https://ia600209.us.archive.org/22/items/short_story_collection_vol_001_librivox/shortstorycollection001_04_maupassant.mp3' },
+      { id: 's3',  title: 'The Happy Prince',              duration: '25 min', desc: 'Oscar Wilde\'s moving fairy tale',                  url: 'https://ia800303.us.archive.org/18/items/happy_prince_librivox/happyprince_wilde.mp3' },
+      { id: 's4',  title: 'The Tell-Tale Heart',           duration: '12 min', desc: 'A gentle Poe mystery — suspenseful but mild',      url: 'https://ia600209.us.archive.org/22/items/short_story_collection_vol_001_librivox/shortstorycollection001_06_poe.mp3' },
+      { id: 's5',  title: 'Rip Van Winkle',               duration: '35 min', desc: 'Washington Irving\'s timeless American tale',       url: 'https://ia800201.us.archive.org/15/items/rip_van_winkle_librivox/ripvanwinkle_irving_jc_128kb.mp3' },
+      { id: 's6',  title: 'The Legend of Sleepy Hollow',  duration: '55 min', desc: 'A cosy autumnal tale by Washington Irving',        url: 'https://ia800604.us.archive.org/35/items/legend_sleepy_hollow_librivox/legendofsleepyhollow_irving.mp3' },
+      { id: 's7',  title: 'A Retrieved Reformation',      duration: '20 min', desc: 'O. Henry — a burglar\'s road to redemption',       url: 'https://ia600209.us.archive.org/22/items/short_story_collection_vol_001_librivox/shortstorycollection001_01_henry.mp3' },
+      { id: 's8',  title: 'The Yellow Wallpaper',         duration: '40 min', desc: 'Charlotte Perkins Gilman — a vivid short story',  url: 'https://ia800203.us.archive.org/15/items/yellow_wallpaper_librivox/yellowwallpaper_gilman.mp3' },
+      { id: 's9',  title: 'The Canterville Ghost',        duration: '55 min', desc: 'Oscar Wilde\'s funny, warm ghost story',            url: 'https://ia800603.us.archive.org/29/items/canterville_ghost_librivox/cantervilleghost_wilde.mp3' },
+      { id: 's10', title: 'The Model Millionaire',        duration: '15 min', desc: 'Oscar Wilde — kindness rewarded',                  url: 'https://ia600209.us.archive.org/22/items/short_story_collection_vol_001_librivox/shortstorycollection001_08_wilde.mp3' },
     ],
   },
   {
-    genre: '🌙 Bedtime Stories',
+    genre: '🕐 1-Hour Stories',
     color: 'bg-indigo-50 border-indigo-200',
     badge: 'text-indigo-700 bg-indigo-100',
     stories: [
-      { id: 'b1', title: 'Stars Above the Meadow',     duration: '7 min',  desc: 'A dreamy, peaceful night story' },
-      { id: 'b2', title: 'The Sleepy Little Cloud',    duration: '5 min',  desc: 'Floating softly off to sleep' },
-      { id: 'b3', title: 'Goodnight, Old Friend',      duration: '6 min',  desc: 'A warm evening farewell' },
+      { id: 'l1',  title: 'The Selfish Giant',             duration: '1 hr',    desc: 'Oscar Wilde — a giant learns to love',           url: 'https://ia800303.us.archive.org/18/items/happy_prince_librivox/happyprince_wilde.mp3' },
+      { id: 'l2',  title: 'A Christmas Carol — Act I',    duration: '1 hr',    desc: 'Dickens\' beloved Christmas classic, part 1',    url: 'https://ia800501.us.archive.org/14/items/christmas_carol_librivox/christmascarol_dickens.mp3' },
+      { id: 'l3',  title: 'Anne of Green Gables Ch 1–5', duration: '1 hr',    desc: 'L.M. Montgomery\'s warm, joyful classic',         url: 'https://ia800203.us.archive.org/31/items/anne_of_green_gables_librivox/anneofgreengables_montgomery.mp3' },
+      { id: 'l4',  title: 'Little Women Ch 1–4',          duration: '1 hr',    desc: 'Louisa May Alcott — family warmth and love',     url: 'https://ia800207.us.archive.org/27/items/little_women_librivox/littlewomen_alcott.mp3' },
+      { id: 'l5',  title: 'The Wonderful Wizard of Oz',  duration: '1 hr',    desc: 'First 5 chapters of L. Frank Baum\'s classic',   url: 'https://ia800202.us.archive.org/19/items/wizard_of_oz_librivox/wizardofoz_baum.mp3' },
+      { id: 'l6',  title: 'Treasure Island Ch 1–6',      duration: '1 hr',    desc: 'Robert Louis Stevenson\'s high-seas adventure',  url: 'https://ia800203.us.archive.org/16/items/treasure_island_librivox/treasureisland_stevenson.mp3' },
+      { id: 'l7',  title: 'The Secret Garden Ch 1–4',    duration: '1 hr',    desc: 'Frances Hodgson Burnett — a garden of healing',  url: 'https://ia800203.us.archive.org/24/items/secret_garden_librivox/secretgarden_burnett.mp3' },
+      { id: 'l8',  title: 'Pride & Prejudice Ch 1–5',    duration: '1 hr',    desc: 'Jane Austen — wit, romance and society',         url: 'https://ia800203.us.archive.org/28/items/pride_and_prejudice_librivox/prideandprejudice_austen.mp3' },
+      { id: 'l9',  title: 'Adventures of Tom Sawyer',    duration: '1 hr',    desc: 'Mark Twain — the first 4 chapters',             url: 'https://ia800203.us.archive.org/17/items/tom_sawyer_librivox/tomsawyer_twain.mp3' },
+      { id: 'l10', title: 'Swiss Family Robinson Ch 1–3',duration: '1 hr',    desc: 'Johann Wyss — shipwreck survival and adventure', url: 'https://ia800207.us.archive.org/20/items/swiss_family_robinson_librivox/swissfamilyrobinson_wyss.mp3' },
     ],
   },
   {
-    genre: '😄 Gentle Humour',
-    color: 'bg-yellow-50 border-yellow-200',
-    badge: 'text-yellow-700 bg-yellow-100',
+    genre: '🌿 Nature & Calm',
+    color: 'bg-green-50 border-green-200',
+    badge: 'text-green-700 bg-green-100',
     stories: [
-      { id: 'h1', title: 'The Forgetful Postman',      duration: '8 min',  desc: 'A funny tale with a happy ending' },
-      { id: 'h2', title: 'Mrs. Brown\'s Cat',          duration: '6 min',  desc: 'Adventures of a very curious cat' },
+      { id: 'n1', title: 'A Walk Through the Forest',   duration: '8 min',  desc: 'A peaceful stroll among tall pines',             url: '' },
+      { id: 'n2', title: 'The Garden at Sunrise',       duration: '7 min',  desc: 'Morning birdsong and blooming flowers',          url: '' },
     ],
   },
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUB-COMPONENT: VoiceRecorderDialog
+// ─────────────────────────────────────────────────────────────────────────────
+
+function VoiceRecorderDialog({
+  open, onClose, existingUrl,
+  onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  existingUrl: string | null;
+  onSave: (url: string, label: string) => void;
+}) {
+  const [phase, setPhase]           = useState<'idle' | 'recording' | 'review' | 'confirm'>('idle');
+  const [blob, setBlob]             = useState<Blob | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [elapsed, setElapsed]       = useState(0);
+  const mediaRef  = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioRef  = useRef<HTMLAudioElement | null>(null);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
+
+  // Reset on open
+  useEffect(() => {
+    if (open) { setPhase('idle'); setBlob(null); setPreviewUrl(null); setElapsed(0); setPreviewPlaying(false); }
+  }, [open]);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        const b = new Blob(chunksRef.current, { type: 'audio/webm' });
+        setBlob(b);
+        setPreviewUrl(URL.createObjectURL(b));
+        setPhase('review');
+        stream.getTracks().forEach(t => t.stop());
+      };
+      mr.start();
+      mediaRef.current = mr;
+      setElapsed(0);
+      timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
+      setPhase('recording');
+    } catch {
+      alert('Microphone access is needed to record. Please allow it in your browser settings.');
+    }
+  };
+
+  const stopRecording = () => {
+    mediaRef.current?.stop();
+    if (timerRef.current) clearInterval(timerRef.current);
+  };
+
+  const handlePreviewPlay = () => {
+    if (!previewUrl) return;
+    if (previewPlaying) { audioRef.current?.pause(); setPreviewPlaying(false); return; }
+    const a = new Audio(previewUrl);
+    a.onended = () => setPreviewPlaying(false);
+    a.play();
+    audioRef.current = a;
+    setPreviewPlaying(true);
+  };
+
+  const handleSave = () => {
+    if (existingUrl) { setPhase('confirm'); return; }
+    doSave();
+  };
+
+  const doSave = () => {
+    if (!previewUrl) return;
+    onSave(previewUrl, 'Your voice');
+    onClose();
+  };
+
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
+            <Mic className="w-6 h-6 text-warm-bronze" /> Record Your Voice
+          </DialogTitle>
+          <DialogDescription className="text-center text-sm">
+            Record a personal message to play on the home screen
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+
+          {/* Instructions */}
+          {phase === 'idle' && (
+            <div className="bg-warm-bronze/5 border border-warm-bronze/20 rounded-xl p-4 space-y-2">
+              <p className="text-sm font-semibold text-charcoal text-center">📋 What to say:</p>
+              <div className="space-y-1 text-center">
+                {['You are safe.', 'You are loved.', 'You are at home.'].map(line => (
+                  <p key={line} className="text-base font-medium text-warm-bronze italic">"{line}"</p>
+                ))}
+              </div>
+              <p className="text-xs text-medium-gray text-center mt-2">
+                Speak slowly and warmly. The patient will hear your voice when they tap the button.
+              </p>
+            </div>
+          )}
+
+          {/* Recording phase */}
+          {phase === 'recording' && (
+            <div className="text-center space-y-4">
+              <div className="flex justify-center gap-1 items-end h-10">
+                {[0,1,2,3,4].map(i => (
+                  <motion.div key={i} className="w-2 bg-gentle-coral rounded-full"
+                    animate={{ height: ['12px','32px','12px'] }}
+                    transition={{ repeat: Infinity, duration: 0.6, delay: i * 0.12 }} />
+                ))}
+              </div>
+              <p className="text-2xl font-mono font-bold text-charcoal">{fmt(elapsed)}</p>
+              <p className="text-sm text-medium-gray">Recording… say the phrases slowly</p>
+              <div className="bg-warm-bronze/5 border border-warm-bronze/20 rounded-xl p-3 space-y-1">
+                {['You are safe.', 'You are loved.', 'You are at home.'].map(line => (
+                  <p key={line} className="text-sm font-medium text-warm-bronze text-center italic">"{line}"</p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Review phase */}
+          {phase === 'review' && (
+            <div className="space-y-3">
+              <p className="text-sm text-center text-charcoal font-medium">✅ Recording complete! Preview it:</p>
+              <button
+                onClick={handlePreviewPlay}
+                className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all ${previewPlaying ? 'bg-warm-bronze text-white' : 'bg-warm-bronze/10 text-warm-bronze border border-warm-bronze/30 hover:bg-warm-bronze/20'}`}
+              >
+                {previewPlaying ? <><Pause className="w-4 h-4" /> Pause</> : <><Play className="w-4 h-4 ml-0.5" /> Play Preview</>}
+              </button>
+              <button
+                onClick={() => { setPhase('idle'); setBlob(null); setPreviewUrl(null); setPreviewPlaying(false); audioRef.current?.pause(); }}
+                className="w-full py-2 text-sm text-medium-gray hover:text-charcoal underline"
+              >
+                Record again
+              </button>
+            </div>
+          )}
+
+          {/* Overwrite confirm */}
+          {phase === 'confirm' && (
+            <div className="space-y-3 text-center">
+              <p className="text-sm text-charcoal font-medium">You already have a recording saved.</p>
+              <p className="text-sm text-medium-gray">Replace it with this new one?</p>
+              <div className="flex gap-2">
+                <button onClick={() => setPhase('review')} className="flex-1 py-2.5 rounded-xl border border-soft-taupe text-charcoal text-sm font-medium hover:bg-soft-taupe/20">Keep old</button>
+                <button onClick={doSave} className="flex-1 py-2.5 rounded-xl bg-warm-bronze text-white text-sm font-medium hover:bg-deep-bronze">Replace</button>
+              </div>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          {phase === 'idle' && (
+            <button
+              onClick={startRecording}
+              className="w-full py-3 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-all"
+            >
+              <Mic className="w-5 h-5" /> Start Recording
+            </button>
+          )}
+          {phase === 'recording' && (
+            <button
+              onClick={stopRecording}
+              className="w-full py-3 bg-gentle-coral hover:bg-red-400 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-all animate-pulse"
+            >
+              <span className="w-3 h-3 bg-white rounded-sm" /> Stop Recording
+            </button>
+          )}
+          {phase === 'review' && (
+            <button
+              onClick={handleSave}
+              className="w-full py-3 bg-soft-sage hover:bg-green-500 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-all"
+            >
+              <CheckCircle2 className="w-5 h-5" /> Save Recording
+            </button>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 type StoryTab = 'library' | 'my-stories';
 
@@ -763,18 +974,206 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
   const [tab, setTab]             = useState<StoryTab>('library');
   const [playing, setPlaying]     = useState<string | null>(null);
   const [expanded, setExpanded]   = useState<string | null>(null);
+  const [progress, setProgress]   = useState(0);
+  const [duration, setDuration]   = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [myStories, setMyStories] = useState<{ id: string; label: string; url: string; size: string }[]>(() => {
     try { return JSON.parse(localStorage.getItem('myStories') || '[]'); } catch { return []; }
   });
 
-  const stopAudio = () => setPlaying(null);
-
-  const handlePlay = (id: string) => {
-    if (playing === id) { stopAudio(); return; }
-    setPlaying(id);
-    // In production, wire up real audio src here
-    setTimeout(() => setPlaying(null), 60000);
+  const stopAudio = () => {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setPlaying(null);
+    setProgress(0);
+    setDuration(0);
   };
+
+  // Stop when dialog closes
+  useEffect(() => { if (!open) stopAudio(); }, [open]);
+
+  const handlePlay = (id: string, url?: string) => {
+    if (playing === id) { stopAudio(); return; }
+    stopAudio();
+    setPlaying(id);
+    if (url) {
+      const a = new Audio(url);
+      a.onended = () => { setPlaying(null); setProgress(0); setDuration(0); };
+      a.onloadedmetadata = () => setDuration(a.duration);
+      a.ontimeupdate = () => setProgress(a.currentTime);
+      a.play().catch(() => setPlaying(null));
+      audioRef.current = a;
+    }
+  };
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const label = file.name.replace(/\.[^.]+$/, '');
+    const size  = (file.size / (1024 * 1024)).toFixed(1) + ' MB';
+    const url   = URL.createObjectURL(file);
+    const newStory = { id: Date.now().toString(), label, url, size };
+    const updated  = [...myStories, newStory];
+    setMyStories(updated);
+    localStorage.setItem('myStories', JSON.stringify(updated.map(s => ({ ...s, url: '' }))));
+    e.target.value = '';
+  };
+
+  const removeMyStory = (id: string) => {
+    const updated = myStories.filter(s => s.id !== id);
+    setMyStories(updated);
+    localStorage.setItem('myStories', JSON.stringify(updated));
+    if (playing === id) stopAudio();
+  };
+
+  const fmtTime = (s: number) => isNaN(s) ? '0:00' : `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
+            <BookOpen className="w-6 h-6 text-calm-blue" />
+            Tell Me a Story
+          </DialogTitle>
+          <DialogDescription className="text-center">
+            Sit back, relax, and listen — real audiobooks, free to enjoy
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Tab toggle */}
+        <div className="flex gap-1 bg-soft-taupe/20 rounded-xl p-1 flex-shrink-0">
+          <button
+            onClick={() => setTab('library')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'library' ? 'bg-white shadow text-charcoal' : 'text-medium-gray hover:text-charcoal'}`}
+          >
+            📚 Story Library
+          </button>
+          <button
+            onClick={() => setTab('my-stories')}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'my-stories' ? 'bg-white shadow text-charcoal' : 'text-medium-gray hover:text-charcoal'}`}
+          >
+            ⭐ My Stories
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 space-y-3 pr-1">
+          <AnimatePresence mode="wait">
+
+            {tab === 'library' && (
+              <motion.div key="library" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+                {STORY_LIBRARY.map(group => (
+                  <div key={group.genre} className={`rounded-xl border ${group.color} overflow-hidden`}>
+                    <button
+                      onClick={() => setExpanded(expanded === group.genre ? null : group.genre)}
+                      className="w-full flex items-center justify-between p-3 hover:bg-black/5 transition-colors"
+                    >
+                      <span className="font-semibold text-charcoal text-sm">{group.genre}</span>
+                      <ChevronRight className={`w-4 h-4 text-medium-gray transition-transform ${expanded === group.genre ? 'rotate-90' : ''}`} />
+                    </button>
+                    {expanded === group.genre && (
+                      <div className="border-t border-black/10 divide-y divide-black/5">
+                        {group.stories.map(story => (
+                          <div key={story.id} className="p-3">
+                            <div className="flex items-start gap-3">
+                              <button
+                                onClick={() => handlePlay(story.id, story.url)}
+                                className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${playing === story.id ? 'bg-calm-blue text-white shadow-md' : 'bg-white border border-calm-blue/30 text-calm-blue hover:bg-calm-blue/10'}`}
+                              >
+                                {playing === story.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
+                              </button>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="font-medium text-charcoal text-sm">{story.title}</p>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${group.badge}`}>{story.duration}</span>
+                                  {story.url && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">▶ Audio</span>}
+                                </div>
+                                <p className="text-xs text-medium-gray mt-0.5">{story.desc}</p>
+                                {/* Progress bar shown while playing */}
+                                {playing === story.id && duration > 0 && (
+                                  <div className="mt-2 space-y-1">
+                                    <div className="h-1.5 bg-calm-blue/20 rounded-full overflow-hidden">
+                                      <div className="h-full bg-calm-blue rounded-full transition-all" style={{ width: `${(progress/duration)*100}%` }} />
+                                    </div>
+                                    <div className="flex justify-between text-xs text-medium-gray">
+                                      <span>{fmtTime(progress)}</span><span>{fmtTime(duration)}</span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <p className="text-xs text-center text-medium-gray/60 pb-2">Audiobooks via LibriVox — public domain, free forever 📖</p>
+              </motion.div>
+            )}
+
+            {tab === 'my-stories' && (
+              <motion.div key="my-stories" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
+                {myStories.length === 0 && (
+                  <div className="text-center py-8 text-medium-gray">
+                    <FileAudio className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No stories uploaded yet</p>
+                  </div>
+                )}
+                {myStories.map(story => (
+                  <div key={story.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-soft-taupe">
+                    <div className="w-10 h-10 bg-calm-blue/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <FileAudio className="w-5 h-5 text-calm-blue" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-charcoal text-sm truncate">{story.label}</p>
+                      <p className="text-xs text-medium-gray">{story.size}</p>
+                    </div>
+                    <button
+                      onClick={() => handlePlay(story.id, story.url)}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${playing === story.id ? 'bg-calm-blue text-white' : 'bg-soft-taupe/40 text-medium-gray'}`}
+                    >
+                      {playing === story.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
+                    </button>
+                    <button onClick={() => removeMyStory(story.id)} className="w-7 h-7 rounded-full flex items-center justify-center text-gentle-coral hover:bg-gentle-coral/10 flex-shrink-0">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+
+                {/* Upload */}
+                <label className="flex items-center gap-3 p-4 rounded-xl border-2 border-dashed border-calm-blue/30 hover:border-calm-blue bg-calm-blue/5 cursor-pointer transition-all group">
+                  <input type="file" accept="audio/*" className="hidden" onChange={handleUpload} />
+                  <div className="w-11 h-11 bg-calm-blue/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Upload className="w-5 h-5 text-calm-blue" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-calm-blue">Upload Audiobook or Story</p>
+                    <p className="text-xs text-medium-gray">MP3, WAV, M4A, AAC • Books on tape welcome</p>
+                  </div>
+                </label>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {playing && (
+          <div className="flex-shrink-0 flex items-center gap-3 p-3 bg-calm-blue/10 rounded-xl border border-calm-blue/20">
+            <div className="flex gap-1 items-end h-5">
+              {[0, 1, 2].map(i => (
+                <motion.div key={i} className="w-1.5 bg-calm-blue rounded-full"
+                  animate={{ height: ['8px', '20px', '8px'] }}
+                  transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.2 }} />
+              ))}
+            </div>
+            <p className="text-sm text-calm-blue font-medium flex-1">Now playing…</p>
+            <button onClick={stopAudio} className="text-xs text-medium-gray hover:text-charcoal underline">Stop</button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -966,6 +1365,8 @@ export default function PatientHome() {
   const [selectedVoice, setSelectedVoice]         = useState<string>(() => localStorage.getItem('selectedVoice') || 'default');
   const [currentAudio, setCurrentAudio]           = useState<HTMLAudioElement | null>(null);
   const [slideshowAuto, setSlideshowAuto]         = useState(false);
+  // Voice recorder state
+  const [showRecorder, setShowRecorder]           = useState(false);
   // Extra loved-one photos (uploaded by caregiver, stored in localStorage as base64)
   const [lovedOnePhotos, setLovedOnePhotos]       = useState<{id:string; name:string; url:string}[]>(() => {
     try { return JSON.parse(localStorage.getItem('lovedOnePhotos') || '[]'); } catch { return []; }
@@ -1094,7 +1495,8 @@ export default function PatientHome() {
   };
 
   const playSafetyMessage = () => {
-    if (currentAudio) { currentAudio.pause(); setCurrentAudio(null); setIsPlaying(false); return; }
+    // If already playing, do nothing — plays once per click only
+    if (isPlaying) return;
     const src = customVoiceUrl || null;
     if (src) {
       const audio = new Audio(src);
@@ -1103,7 +1505,6 @@ export default function PatientHome() {
       setCurrentAudio(audio);
       setIsPlaying(true);
     } else {
-      // No custom recording — play the Web Audio chime immediately
       playChime();
     }
   };
@@ -1210,6 +1611,17 @@ export default function PatientHome() {
                   ) : (
                     <><Volume2 className="w-3 h-3" /> Default chime</>
                   )}
+                </div>
+
+                {/* Record your own voice button */}
+                <div className="mt-3 flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => setShowRecorder(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/60 hover:bg-white border border-white/80 text-charcoal/70 hover:text-charcoal text-xs font-medium transition-all shadow-sm"
+                  >
+                    <Mic className="w-3.5 h-3.5 text-warm-bronze" />
+                    {customVoiceUrl ? 'Change recording' : 'Record your voice'}
+                  </button>
                 </div>
               </div>
             </div>
@@ -1417,35 +1829,43 @@ export default function PatientHome() {
         >
           <h3 className="text-lg font-semibold text-charcoal mb-4">Things to Help You Feel Better</h3>
           <div className="grid grid-cols-3 gap-3">
-            <Button 
+
+            {/* Calm Me */}
+            <button
               onClick={() => setShowComfortMenu(true)}
-              className="h-auto py-4 flex flex-col items-center gap-2 rounded-2xl bg-gradient-to-br from-soft-sage/30 to-soft-sage/10 hover:from-soft-sage/40 hover:to-soft-sage/20 border-0"
+              className="group h-auto py-4 px-2 flex flex-col items-center gap-2 rounded-2xl bg-white border border-soft-taupe shadow-sm hover:shadow-md hover:-translate-y-1 transition-all"
             >
-              <div className="w-16 h-16 bg-soft-sage rounded-2xl flex items-center justify-center">
-                <Music className="w-8 h-8 text-white" />
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-300 to-teal-400 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                <span className="text-3xl">🎵</span>
               </div>
-              <span className="text-sm font-medium text-charcoal">Calm Me</span>
-            </Button>
-            
-            <Button 
+              <span className="text-sm font-semibold text-charcoal">Calm Me</span>
+              <span className="text-xs text-medium-gray text-center leading-tight">Music &amp; sounds</span>
+            </button>
+
+            {/* Show Me Home */}
+            <button
               onClick={() => setShowHomePhoto(true)}
-              className="h-auto py-4 flex flex-col items-center gap-2 rounded-2xl bg-gradient-to-br from-warm-bronze/30 to-warm-bronze/10 hover:from-warm-bronze/40 hover:to-warm-bronze/20 border-0"
+              className="group h-auto py-4 px-2 flex flex-col items-center gap-2 rounded-2xl bg-white border border-soft-taupe shadow-sm hover:shadow-md hover:-translate-y-1 transition-all"
             >
-              <div className="w-16 h-16 bg-warm-bronze rounded-2xl flex items-center justify-center">
-                <Home className="w-8 h-8 text-white" />
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-300 to-warm-bronze flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                <span className="text-3xl">🏡</span>
               </div>
-              <span className="text-sm font-medium text-charcoal">Show Me Home</span>
-            </Button>
-            
-            <Button 
+              <span className="text-sm font-semibold text-charcoal">Show Me Home</span>
+              <span className="text-xs text-medium-gray text-center leading-tight">Your safe place</span>
+            </button>
+
+            {/* Tell Me a Story */}
+            <button
               onClick={() => setShowStoryDialog(true)}
-              className="h-auto py-4 flex flex-col items-center gap-2 rounded-2xl bg-gradient-to-br from-calm-blue/30 to-calm-blue/10 hover:from-calm-blue/40 hover:to-calm-blue/20 border-0"
+              className="group h-auto py-4 px-2 flex flex-col items-center gap-2 rounded-2xl bg-white border border-soft-taupe shadow-sm hover:shadow-md hover:-translate-y-1 transition-all"
             >
-              <div className="w-16 h-16 bg-calm-blue rounded-2xl flex items-center justify-center">
-                <BookOpen className="w-8 h-8 text-white" />
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-300 to-calm-blue flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                <span className="text-3xl">📖</span>
               </div>
-              <span className="text-sm font-medium text-charcoal">Tell Me a Story</span>
-            </Button>
+              <span className="text-sm font-semibold text-charcoal">Tell Me a Story</span>
+              <span className="text-xs text-medium-gray text-center leading-tight">Relax &amp; listen</span>
+            </button>
+
           </div>
         </motion.div>
 
@@ -1617,6 +2037,19 @@ export default function PatientHome() {
 
       {/* ── Tell Me a Story Dialog ────────────────────────────────────────── */}
       <TellMeAStoryDialog open={showStoryDialog} onClose={() => setShowStoryDialog(false)} />
+
+      {/* ── Voice Recorder Dialog ─────────────────────────────────────────── */}
+      <VoiceRecorderDialog
+        open={showRecorder}
+        onClose={() => setShowRecorder(false)}
+        existingUrl={customVoiceUrl}
+        onSave={(url, label) => {
+          setCustomVoiceUrl(url);
+          setCustomVoiceLabel(label);
+          localStorage.setItem('customVoiceUrl', url);
+          localStorage.setItem('customVoiceLabel', label);
+        }}
+      />
 
       {/* Emergency Help Dialog */}
       <Dialog open={showEmergencyDialog} onOpenChange={() => setShowEmergencyDialog(false)}>
