@@ -153,23 +153,22 @@ function AppContent() {
 
   useEffect(() => {
     if (state.isAuthenticated && state.selectedRole) {
-      window.history.pushState(
+      // Use replaceState so refresh reloads the same URL without pushing duplicate entries
+      window.history.replaceState(
         { role: state.selectedRole },
         '',
         '/' + state.selectedRole
       );
-      console.log('🔗 [App] Updated browser history:', state.selectedRole);
     } else if (!state.isAuthenticated) {
       window.history.replaceState({}, '', '/');
     }
   }, [state.isAuthenticated, state.selectedRole]);
 
   useEffect(() => {
-    const handlePop = () => {
-      console.log('⬅️ [App] Back button pressed');
-
-      if (!window.history.state?.role) {
-        console.log('🚪 [App] No role in history, logging out');
+    const handlePop = (e: PopStateEvent) => {
+      // Only log out if the user navigated back to a state with no role
+      // AND they are currently authenticated — genuine back-button logout
+      if (state.isAuthenticated && !e.state?.role) {
         supabase.auth.signOut();
         dispatch({ type: 'LOGOUT' });
       }
@@ -177,7 +176,7 @@ function AppContent() {
 
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
-  }, [dispatch]);
+  }, [dispatch, state.isAuthenticated]);
 
   const handlePasswordSet = async () => {
     console.log('🔑 [App] Password reset completed');

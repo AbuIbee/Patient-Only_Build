@@ -40,7 +40,10 @@ const VIEW_FEATURE_MAP: Partial<Record<PatientView, { feature: FeatureKey; tier:
 
 // ─── Inner layout — has access to SubscriptionContext ────────────────────────
 function PatientLayoutInner() {
-  const [currentView, setCurrentView]         = useState<PatientView>('dashboard');
+  const [currentView, setCurrentView]         = useState<PatientView>(() => {
+    const saved = sessionStorage.getItem('patientView') as PatientView | null;
+    return saved || 'dashboard';
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMoreMenu, setShowMoreMenu]        = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
@@ -134,10 +137,12 @@ function PatientLayoutInner() {
       return;
     }
     setCurrentView(view);
+    sessionStorage.setItem('patientView', view);
     setShowMobileSidebar(false);
   };
 
   const handleLogout = async () => {
+    sessionStorage.removeItem('patientView');
     await supabase.auth.signOut();
     dispatch({ type: 'LOGOUT' });
   };
