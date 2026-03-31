@@ -14,9 +14,9 @@ import { toast } from 'sonner';
 
 type AdminView = 'overview' | 'pending' | 'patients' | 'audit';
 
-// ─── User Detail Panel (Profile Info / Edit / Password) ───────────────────────
+// ─── User Detail Panel ────────────────────────────────────────────────────────
 function UserDetailPanel({ user, onClose, onRefresh }: { user: any; onClose: () => void; onRefresh?: () => void }) {
-  const [tab,         setTab]         = useState<'info' | 'edit' | 'password'>('info');
+  const [tab,         setTab]         = useState<'info' | 'edit' | 'password' | 'account'>('info');
   const [saving,      setSaving]      = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
   const [form, setForm] = useState({
@@ -26,7 +26,23 @@ function UserDetailPanel({ user, onClose, onRefresh }: { user: any; onClose: () 
     phone:       user.phone       || '',
     newPassword: '',
   });
+  // Subscription state
+  const [subTier,    setSubTier]    = useState<'patient_free' | 'master' | 'promo'>('patient_free');
+  const [subLoading, setSubLoading] = useState(true);
+  const [subSaving,  setSubSaving]  = useState(false);
   const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Load current subscription on mount
+  useEffect(() => {
+    supabase.from('subscriptions').select('tier, status, trial_ends_at, promo_expires_at')
+      .eq('user_id', user.id).maybeSingle()
+      .then(({ data }) => {
+        if (data?.tier === 'master') setSubTier('master');
+        else if (data?.status === 'promo') setSubTier('promo');
+        else setSubTier('patient_free');
+        setSubLoading(false);
+      });
+  }, [user.id]);
 
   const saveProfile = async () => {
     if (!form.first_name.trim() || !form.last_name.trim() || !form.email.trim()) {
@@ -65,7 +81,7 @@ function UserDetailPanel({ user, onClose, onRefresh }: { user: any; onClose: () 
     try {
       const { error } = await supabase.from('profiles').update({ must_change_password: true }).eq('id', user.id);
       if (error) throw error;
-      setMsg({ text: 'User will be required to set a new password on next login', type: 'success' });
+      setMsg({ text: 'Patient will be required to set a new password on next login', type: 'success' });
     } catch (e: any) { setMsg({ text: 'Failed: ' + e.message, type: 'error' }); }
     finally { setSaving(false); }
   };
@@ -80,11 +96,80 @@ function UserDetailPanel({ user, onClose, onRefresh }: { user: any; onClose: () 
       await supabase.auth.resetPasswordForEmail(user.email, {
         redirectTo: import.meta.env.VITE_SITE_URL || window.location.origin,
       });
-      setMsg({ text: 'Password reset email sent. User must change password on next login.', type: 'success' });
+      setMsg({ text: 'Password reset email sent. Patient must change password on next login.', type: 'success' });
       setForm(p => ({ ...p, newPassword: '' }));
     } catch (e: any) { setMsg({ text: 'Failed: ' + e.message, type: 'error' }); }
     finally { setSaving(false); }
   };
+
+  const saveAccountType = async () => {
+    setSubSaving(true);
+    try {
+      const now      = new Date().toISOString();
+      const never    = '2099-12-31T00:00:00Z';
+      // 45-day promo window from today
+      const promoEnd = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString();
+
+      let upsertData: Record<string, any> = {
+        user_id:          user.id,
+        updated_at:       now,
+      };
+
+      if (subTier === 'master') {
+        upsertData = { ...upsertData, tier: 'master', status: 'active',
+          trial_started_at: now, trial_ends_at: never };
+      } else if (subTier === 'promo') {
+        upsertData = { ...upsertData, tier: 'companion', status: 'promo',
+          trial_started_at: now, trial_ends_at: promoEnd,
+          promo_expires_at: promoEnd };
+      } else {
+        // patient_free — standard 45-day companion trial
+        upsertData = { ...upsertData, tier: 'companion', status: 'trialing',
+          trial_started_at: now, trial_ends_at: promoEnd };
+      }
+
+      const { error } = await supabase.from('subscriptions')
+        .upsert(upsertData, { onConflict: 'user_id' });
+      if (error) throw error;
+
+      // Also register email to prevent double free-trial
+      await supabase.from('trial_registrations')
+        .insert({ email: user.email?.toLowerCase(), user_id: user.id, created_at: now })
+        .select().maybeSingle();
+
+      const labels: Record<string, string> = {
+        master:       'Master (free forever)',
+        promo:        'Promo (45-day free from today)',
+        patient_free: 'Standard patient (45-day trial)',
+      };
+      setMsg({ text: `Account type set to: ${labels[subTier]}`, type: 'success' });
+    } catch (e: any) { setMsg({ text: 'Failed: ' + e.message, type: 'error' }); }
+    finally { setSubSaving(false); }
+  };
+
+  const ACCOUNT_TYPES = [
+    {
+      value: 'patient_free',
+      label: 'Standard Patient',
+      desc:  '45-day free trial, then requires subscription',
+      color: 'border-soft-taupe bg-white',
+      badge: 'bg-soft-taupe/40 text-medium-gray',
+    },
+    {
+      value: 'master',
+      label: 'Master Account',
+      desc:  'Free forever — full access, never expires, no payment',
+      color: 'border-deep-bronze/40 bg-deep-bronze/5',
+      badge: 'bg-deep-bronze/10 text-deep-bronze',
+    },
+    {
+      value: 'promo',
+      label: 'Promo Account',
+      desc:  '45 days free from today (Day 1 → Day 45), then standard trial',
+      color: 'border-soft-sage/40 bg-soft-sage/5',
+      badge: 'bg-soft-sage/20 text-green-700',
+    },
+  ] as const;
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4">
@@ -107,12 +192,13 @@ function UserDetailPanel({ user, onClose, onRefresh }: { user: any; onClose: () 
         {/* Tabs */}
         <div className="flex border-b border-soft-taupe flex-shrink-0">
           {[
-            { id: 'info',     label: 'Profile Info' },
-            { id: 'edit',     label: 'Edit Details' },
+            { id: 'info',     label: 'Profile' },
+            { id: 'edit',     label: 'Edit' },
+            { id: 'account',  label: 'Account Type' },
             { id: 'password', label: 'Password' },
           ].map(t => (
             <button key={t.id} onClick={() => { setTab(t.id as any); setMsg(null); }}
-              className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 ${tab === t.id ? 'border-warm-bronze text-warm-bronze' : 'border-transparent text-medium-gray hover:text-charcoal'}`}>
+              className={`flex-1 py-3 text-xs sm:text-sm font-medium transition-colors border-b-2 ${tab === t.id ? 'border-warm-bronze text-warm-bronze' : 'border-transparent text-medium-gray hover:text-charcoal'}`}>
               {t.label}
             </button>
           ))}
@@ -127,6 +213,7 @@ function UserDetailPanel({ user, onClose, onRefresh }: { user: any; onClose: () 
             </div>
           )}
 
+          {/* PROFILE INFO */}
           {tab === 'info' && (
             <div className="space-y-3">
               {[
@@ -143,6 +230,7 @@ function UserDetailPanel({ user, onClose, onRefresh }: { user: any; onClose: () 
             </div>
           )}
 
+          {/* EDIT */}
           {tab === 'edit' && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
@@ -174,35 +262,89 @@ function UserDetailPanel({ user, onClose, onRefresh }: { user: any; onClose: () 
             </div>
           )}
 
+          {/* ACCOUNT TYPE */}
+          {tab === 'account' && (
+            <div className="space-y-4">
+              <p className="text-sm text-medium-gray">
+                Set the account type for <strong className="text-charcoal">{user.first_name} {user.last_name}</strong>. This controls what features they can access and for how long.
+              </p>
+
+              {subLoading ? (
+                <div className="flex justify-center py-4">
+                  <div className="w-6 h-6 border-2 border-warm-bronze border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {ACCOUNT_TYPES.map(type => (
+                    <button key={type.value} onClick={() => setSubTier(type.value)}
+                      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
+                        subTier === type.value ? type.color + ' ring-2 ring-warm-bronze ring-offset-1' : 'border-soft-taupe bg-white hover:border-warm-bronze/30'
+                      }`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 transition-all ${
+                            subTier === type.value ? 'border-warm-bronze bg-warm-bronze' : 'border-soft-taupe'
+                          }`}>
+                            {subTier === type.value && <div className="w-2 h-2 bg-white rounded-full m-auto mt-0.5" />}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-charcoal text-sm">{type.label}</p>
+                            <p className="text-xs text-medium-gray mt-0.5">{type.desc}</p>
+                          </div>
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${type.badge}`}>
+                          {type.value === 'master' ? 'Free Forever' : type.value === 'promo' ? '45 Days Free' : 'Trial'}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+
+                  <button onClick={saveAccountType} disabled={subSaving}
+                    className="w-full py-3 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl text-sm font-medium disabled:opacity-60 transition-colors mt-2">
+                    {subSaving ? 'Applying...' : 'Apply Account Type'}
+                  </button>
+
+                  <p className="text-xs text-medium-gray text-center">
+                    Changes take effect immediately on the patient's next page load.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* PASSWORD */}
           {tab === 'password' && (
             <div className="space-y-4">
               <p className="text-sm text-medium-gray">
-                Choose how to reset the password for <strong className="text-charcoal">{user.email}</strong>
+                Reset the password for <strong className="text-charcoal">{user.email}</strong>
               </p>
+
               <div className="p-4 bg-soft-taupe/20 rounded-xl space-y-3">
                 <div>
                   <p className="font-medium text-charcoal text-sm">Send Password Reset Email</p>
-                  <p className="text-xs text-medium-gray mt-0.5">Patient receives an email with a secure link to set their own password</p>
+                  <p className="text-xs text-medium-gray mt-0.5">Patient receives a secure link to set their own password</p>
                 </div>
                 <button onClick={sendResetEmail} disabled={saving}
                   className="w-full py-2.5 bg-calm-blue/10 hover:bg-calm-blue/20 text-blue-700 border border-calm-blue/30 rounded-xl text-sm font-medium disabled:opacity-60 transition-colors">
-                  {saving ? 'Sending...' : 'Send Reset Email →'}
+                  {saving ? 'Sending...' : '✉️  Send Reset Email →'}
                 </button>
               </div>
+
               <div className="p-4 bg-soft-taupe/20 rounded-xl space-y-3">
                 <div>
                   <p className="font-medium text-charcoal text-sm">Force Password Change on Next Login</p>
-                  <p className="text-xs text-medium-gray mt-0.5">Patient will be blocked from their portal until they set a new password</p>
+                  <p className="text-xs text-medium-gray mt-0.5">Patient is blocked from their portal until they set a new password</p>
                 </div>
                 <button onClick={forcePasswordChange} disabled={saving}
                   className="w-full py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-sm font-medium disabled:opacity-60 transition-colors">
-                  {saving ? 'Updating...' : 'Force Password Change →'}
+                  {saving ? 'Updating...' : '🔒  Force Password Change →'}
                 </button>
               </div>
+
               <div className="p-4 bg-soft-taupe/20 rounded-xl space-y-3">
                 <div>
                   <p className="font-medium text-charcoal text-sm">Set Temporary Password</p>
-                  <p className="text-xs text-medium-gray mt-0.5">Set a temp password and send a reset email. Patient must change it on next login.</p>
+                  <p className="text-xs text-medium-gray mt-0.5">Admin sets a temp password. Patient must change it on next login.</p>
                 </div>
                 <div className="relative">
                   <input type={showNewPass ? 'text' : 'password'} value={form.newPassword}
@@ -216,7 +358,7 @@ function UserDetailPanel({ user, onClose, onRefresh }: { user: any; onClose: () 
                 </div>
                 <button onClick={setTempPassword} disabled={saving || !form.newPassword}
                   className="w-full py-2.5 bg-gentle-coral/10 hover:bg-gentle-coral/20 text-gentle-coral border border-gentle-coral/30 rounded-xl text-sm font-medium disabled:opacity-60 transition-colors">
-                  {saving ? 'Setting...' : 'Set Temp Password & Send Reset Email →'}
+                  {saving ? 'Setting...' : '🔑  Set Temp Password & Send Reset Email →'}
                 </button>
               </div>
             </div>
