@@ -48,15 +48,9 @@ export const PROMO_TOTAL_DAYS = 61; // ~2 months; first 45 are the standard free
  * rather than hardcoding — this is kept here for simplicity.
  */
 export const MASTER_EMAILS: string[] = [
-  'MrFantastic@MyMemoriaAlly.com',
-  'MrsFantastic@MyMemoriaAlly.com',
-  'Ummie@MyMemoriaAlly.com',
-  'Ali@MyMemoriaAlly.com',
-  'Stephen@MyMemoriaAlly.com',
-  'Lina@MyMemoriaAlly.com',
-  'David@MyMemoriaAlly.com',
-  'user6@MyMemoriaAlly.com',
-  'user7@MyMemoriaAlly.com',
+  'master@memoriahelps.com',
+  'admin@memoriahelps.com',
+  'mrfantastic@mymemoriaally.com',
 ];
 
 export function isMasterEmail(email: string | null | undefined): boolean {

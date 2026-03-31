@@ -6,6 +6,8 @@ import type { PatientIntake, PatientIntakeFormData } from '@/types/patientIntake
  * Complete patient creation flow.
  * Bypasses the Edge Function entirely — saves to patient_intake then calls
  * createPatient() directly so patients appear without needing a deployed function.
+ *
+ * Works for BOTH caregivers adding a patient AND patients filling in their own info.
  */
 export async function createAndProvisionPatient(
   formData: PatientIntakeFormData,
@@ -16,45 +18,47 @@ export async function createAndProvisionPatient(
   if (!user) {
     return { patientProfileId: '', intakeId: '', error: new Error('You must be logged in. Please sign in again.') };
   }
-  const realCaregiverId = user.id;
+  const realUserId = user.id;
 
   // Step 1: Save canonical intake record
+  // Use upsert-style insert — works regardless of whether the logged-in user
+  // is a caregiver or a patient filling in their own profile.
   const { data: intakeRow, error: intakeError } = await supabase
     .from('patient_intake')
     .insert({
-      patient_profile_id: null,
-      caregiver_profile_id: realCaregiverId,
-      patient_first_name: formData.patientFirstName,
-      patient_last_name: formData.patientLastName,
-      patient_preferred_name: formData.patientPreferredName || null,
-      patient_date_of_birth: formData.patientDateOfBirth || null,
-      patient_diagnosis_date: formData.patientDiagnosisDate || null,
-      patient_dementia_stage: formData.patientDementiaStage || null,
-      patient_street_address: formData.patientStreetAddress || null,
-      patient_city: formData.patientCity || null,
-      patient_state: formData.patientState || null,
-      patient_zip_code: formData.patientZipCode || null,
-      patient_phone: formData.patientPhone || null,
-      patient_email: formData.patientEmail || null,
-      preferred_hospital: formData.preferredHospital || null,
-      doctor_therapist_name: formData.doctorTherapistName || null,
-      doctor_therapist_phone: formData.doctorTherapistPhone || null,
-      caregiver_name: formData.caregiverName || null,
-      caregiver_relationship: formData.caregiverRelationship || null,
-      caregiver_phone: formData.caregiverPhone || null,
-      medications_and_dosage: formData.medicationsAndDosage || null,
-      emergency_contact_full_name: formData.emergencyContactFullName || null,
-      emergency_contact_phone: formData.emergencyContactPhone || null,
-      emergency_contact_email: formData.emergencyContactEmail || null,
-      emergency_contact_relationship: formData.emergencyContactRelationship || null,
-      created_by: realCaregiverId,
+      patient_profile_id:              null,
+      caregiver_profile_id:            realUserId,
+      patient_first_name:              formData.patientFirstName,
+      patient_last_name:               formData.patientLastName,
+      patient_preferred_name:          formData.patientPreferredName          || null,
+      patient_date_of_birth:           formData.patientDateOfBirth            || null,
+      patient_diagnosis_date:          formData.patientDiagnosisDate          || null,
+      patient_dementia_stage:          formData.patientDementiaStage          || null,
+      patient_street_address:          formData.patientStreetAddress          || null,
+      patient_city:                    formData.patientCity                   || null,
+      patient_state:                   formData.patientState                  || null,
+      patient_zip_code:                formData.patientZipCode                || null,
+      patient_phone:                   formData.patientPhone                  || null,
+      patient_email:                   formData.patientEmail                  || null,
+      preferred_hospital:              formData.preferredHospital             || null,
+      doctor_therapist_name:           formData.doctorTherapistName           || null,
+      doctor_therapist_phone:          formData.doctorTherapistPhone          || null,
+      caregiver_name:                  formData.caregiverName                 || null,
+      caregiver_relationship:          formData.caregiverRelationship         || null,
+      caregiver_phone:                 formData.caregiverPhone                || null,
+      medications_and_dosage:          formData.medicationsAndDosage          || null,
+      emergency_contact_full_name:     formData.emergencyContactFullName      || null,
+      emergency_contact_phone:         formData.emergencyContactPhone         || null,
+      emergency_contact_email:         formData.emergencyContactEmail         || null,
+      emergency_contact_relationship:  formData.emergencyContactRelationship  || null,
+      created_by:                      realUserId,
     })
     .select('id')
     .single();
 
   if (intakeError || !intakeRow) {
     const msg = intakeError?.message?.includes('row-level security')
-      ? 'Permission denied. Make sure you are logged in as a caregiver.'
+      ? 'Permission denied saving your information. Please sign out and sign back in, then try again.'
       : intakeError?.message || 'Failed to save patient data.';
     return { patientProfileId: '', intakeId: '', error: new Error(msg) };
   }
@@ -66,24 +70,24 @@ export async function createAndProvisionPatient(
   try {
     const patient = await createPatient(
       {
-        firstName: formData.patientFirstName,
-        lastName: formData.patientLastName,
+        firstName:    formData.patientFirstName,
+        lastName:     formData.patientLastName,
         preferredName: formData.patientPreferredName || undefined,
-        email: formData.patientEmail,
+        email:        formData.patientEmail,
         tempPassword: (formData as any).patientTempPassword || undefined,
-        dateOfBirth: formData.patientDateOfBirth || undefined,
+        dateOfBirth:  formData.patientDateOfBirth  || undefined,
         dementiaStage: formData.patientDementiaStage as 'early' | 'middle' | 'late' | undefined,
         diagnosisDate: formData.patientDiagnosisDate || undefined,
         emergencyContact: {
-          name: formData.emergencyContactFullName || '',
-          phone: formData.emergencyContactPhone || '',
-          relationship: formData.emergencyContactRelationship || '',
+          name:         formData.emergencyContactFullName      || '',
+          phone:        formData.emergencyContactPhone         || '',
+          relationship: formData.emergencyContactRelationship  || '',
         },
-        location: formData.patientCity || undefined,
-        address: [formData.patientStreetAddress, formData.patientCity, formData.patientState, formData.patientZipCode]
+        location: formData.patientCity    || undefined,
+        address:  [formData.patientStreetAddress, formData.patientCity, formData.patientState, formData.patientZipCode]
           .filter(Boolean).join(', ') || undefined,
       },
-      realCaregiverId,
+      realUserId,
       formData.caregiverRelationship || 'primary'
     );
 
