@@ -3,11 +3,13 @@ import { createPatient } from '@/services/patientService';
 import type { PatientIntake, PatientIntakeFormData } from '@/types/patientIntake';
 
 /**
- * Complete patient creation flow.
- * Bypasses the Edge Function entirely — saves to patient_intake then calls
- * createPatient() directly so patients appear without needing a deployed function.
+ * Complete patient creation/update flow.
  *
- * Works for BOTH caregivers adding a patient AND patients filling in their own info.
+ * Handles TWO scenarios:
+ *   A) A patient logs in and fills out their own intake form
+ *      → update their existing profile/patients rows directly (no new auth user)
+ *   B) An admin adds a new patient through the admin portal
+ *      → create a full new auth account + profile + patients row
  */
 export async function createAndProvisionPatient(
   formData: PatientIntakeFormData,
@@ -20,14 +22,21 @@ export async function createAndProvisionPatient(
   }
   const realUserId = user.id;
 
-  // Step 1: Save canonical intake record
-  // Use upsert-style insert — works regardless of whether the logged-in user
-  // is a caregiver or a patient filling in their own profile.
+  // ── Detect whether the logged-in user is already a patient ───────────────
+  const { data: existingProfile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', realUserId)
+    .maybeSingle();
+
+  const isPatientSelf = existingProfile?.role === 'patient';
+
+  // ── Step 1: Save intake record ────────────────────────────────────────────
   const { data: intakeRow, error: intakeError } = await supabase
     .from('patient_intake')
     .insert({
-      patient_profile_id:              null,
-      caregiver_profile_id:            realUserId,
+      patient_profile_id:              isPatientSelf ? realUserId : null,
+      caregiver_profile_id:            isPatientSelf ? null : realUserId,
       patient_first_name:              formData.patientFirstName,
       patient_last_name:               formData.patientLastName,
       patient_preferred_name:          formData.patientPreferredName          || null,
@@ -58,32 +67,72 @@ export async function createAndProvisionPatient(
 
   if (intakeError || !intakeRow) {
     const msg = intakeError?.message?.includes('row-level security')
-      ? 'Permission denied saving your information. Please sign out and sign back in, then try again.'
+      ? 'Permission denied saving your information. Please sign out, sign back in, and try again.'
       : intakeError?.message || 'Failed to save patient data.';
     return { patientProfileId: '', intakeId: '', error: new Error(msg) };
   }
 
   const intakeId = intakeRow.id as string;
 
-  // Step 2: Create patient account directly (no Edge Function)
+  // ── Step 2A: Patient is filling in their OWN profile ─────────────────────
+  // Just upsert their patients row and update their profile — no new auth user.
+  if (isPatientSelf) {
+    try {
+      // Upsert into patients table (may not exist yet for this user)
+      await supabase.from('patients').upsert({
+        id:                             realUserId,
+        preferred_name:                 formData.patientPreferredName          || null,
+        date_of_birth:                  formData.patientDateOfBirth            || null,
+        diagnosis_date:                 formData.patientDiagnosisDate          || null,
+        dementia_stage:                 formData.patientDementiaStage          || null,
+        location:                       formData.patientCity                   || null,
+        address:                        [formData.patientStreetAddress, formData.patientCity, formData.patientState, formData.patientZipCode]
+                                          .filter(Boolean).join(', ')          || null,
+        emergency_contact_name:         formData.emergencyContactFullName      || null,
+        emergency_contact_relationship: formData.emergencyContactRelationship  || null,
+        emergency_contact_phone:        formData.emergencyContactPhone         || null,
+        emergency_contact_email:        formData.emergencyContactEmail         || null,
+        updated_at:                     new Date().toISOString(),
+      }, { onConflict: 'id' });
+
+      // Update their profile with any name/phone changes from the form
+      await supabase.from('profiles').update({
+        first_name: formData.patientFirstName  || undefined,
+        last_name:  formData.patientLastName   || undefined,
+        phone:      formData.patientPhone      || null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', realUserId);
+
+      return { patientProfileId: realUserId, intakeId, error: null };
+    } catch (err: any) {
+      return {
+        patientProfileId: '',
+        intakeId,
+        error: new Error('Profile info saved but patient record update failed: ' + (err?.message || 'unknown error')),
+      };
+    }
+  }
+
+  // ── Step 2B: Admin/caregiver adding a NEW patient ─────────────────────────
+  // Create a full auth account + profile + patients row.
   let patientProfileId = '';
   try {
     const patient = await createPatient(
       {
-        firstName:    formData.patientFirstName,
-        lastName:     formData.patientLastName,
+        firstName:     formData.patientFirstName,
+        lastName:      formData.patientLastName,
         preferredName: formData.patientPreferredName || undefined,
-        email:        formData.patientEmail,
-        tempPassword: (formData as any).patientTempPassword || undefined,
-        dateOfBirth:  formData.patientDateOfBirth  || undefined,
+        email:         formData.patientEmail,
+        tempPassword:  (formData as any).patientTempPassword || undefined,
+        dateOfBirth:   formData.patientDateOfBirth   || undefined,
         dementiaStage: formData.patientDementiaStage as 'early' | 'middle' | 'late' | undefined,
         diagnosisDate: formData.patientDiagnosisDate || undefined,
         emergencyContact: {
-          name:         formData.emergencyContactFullName      || '',
-          phone:        formData.emergencyContactPhone         || '',
-          relationship: formData.emergencyContactRelationship  || '',
+          name:         formData.emergencyContactFullName     || '',
+          phone:        formData.emergencyContactPhone        || '',
+          relationship: formData.emergencyContactRelationship || '',
         },
-        location: formData.patientCity    || undefined,
+        location: formData.patientCity || undefined,
         address:  [formData.patientStreetAddress, formData.patientCity, formData.patientState, formData.patientZipCode]
           .filter(Boolean).join(', ') || undefined,
       },
@@ -93,7 +142,7 @@ export async function createAndProvisionPatient(
 
     patientProfileId = patient.id;
 
-    // Back-fill intake with the real patient profile id
+    // Back-fill intake with the new patient's profile id
     await supabase
       .from('patient_intake')
       .update({ patient_profile_id: patientProfileId })
