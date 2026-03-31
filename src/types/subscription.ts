@@ -51,6 +51,8 @@ export const MASTER_EMAILS: string[] = [
   'master@memoriahelps.com',
   'admin@memoriahelps.com',
   'mrfantastic@mymemoriaally.com',
+  'ali@mymemoriaally.com',
+  'ummie@mymemoriaally.com',
 ];
 
 export function isMasterEmail(email: string | null | undefined): boolean {
