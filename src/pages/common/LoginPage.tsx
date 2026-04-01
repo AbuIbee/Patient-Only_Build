@@ -84,7 +84,7 @@ export default function LoginPage() {
           <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center">
             <Heart className="w-6 h-6 text-white" />
           </div>
-          <span className="text-xl font-semibold text-charcoal">MemoriaHelps</span>
+          <span className="text-xl font-semibold text-charcoal">My Memoria Helps</span>
         </div>
         <button
           onClick={handleBack}
@@ -107,7 +107,7 @@ export default function LoginPage() {
               <Heart className="w-8 h-8 text-warm-bronze" />
             </div>
             <h1 className="text-2xl font-bold text-charcoal">Welcome back</h1>
-            <p className="text-medium-gray text-sm mt-1">Sign in to your MemoriaHelps account</p>
+            <p className="text-medium-gray text-sm mt-1">Sign in to your My Memoria Helps account</p>
           </div>
 
           {/* Form card */}

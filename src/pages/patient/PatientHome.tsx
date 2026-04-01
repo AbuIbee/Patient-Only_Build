@@ -354,26 +354,11 @@ const AI_VOICES = [
 // SUB-COMPONENT: CalmMeDialog
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CALM_TRACKS = {
-  melodies: [
-    { id: 'melody_1', label: 'Moonlight Sonata',   artist: 'Beethoven', emoji: '🎹', color: 'bg-purple-100 text-purple-700', url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/a/a4/Ludwig_van_Beethoven_-_Moonlight_Sonata_Op._27_No._2.ogg/Ludwig_van_Beethoven_-_Moonlight_Sonata_Op._27_No._2.ogg.mp3' },
-    { id: 'melody_2', label: 'Clair de Lune',       artist: 'Debussy',   emoji: '🌙', color: 'bg-indigo-100 text-indigo-700', url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/8/8c/Debussy_Clair_de_lune.ogg/Debussy_Clair_de_lune.ogg.mp3' },
-    { id: 'melody_3', label: 'Gymnopédie No. 1',    artist: 'Satie',     emoji: '🎵', color: 'bg-pink-100 text-pink-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/e/e9/Gymnop%C3%A9die_no._1.ogg/Gymnop%C3%A9die_no._1.ogg.mp3' },
-    { id: 'melody_4', label: 'Air on the G String', artist: 'Bach',      emoji: '🎻', color: 'bg-amber-100 text-amber-700',   url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/3/35/Johann_Sebastian_Bach_-_Air.ogg/Johann_Sebastian_Bach_-_Air.ogg.mp3' },
-  ],
-  nature: [
-    { id: 'nature_1', label: 'Gentle Rain',         artist: 'Nature',    emoji: '🌧️', color: 'bg-blue-100 text-blue-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/8/8d/Rain_on_a_tin_roof.ogg/Rain_on_a_tin_roof.ogg.mp3' },
-    { id: 'nature_2', label: 'Ocean Waves',          artist: 'Nature',    emoji: '🌊', color: 'bg-cyan-100 text-cyan-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/6/60/200711_Pushkar_fair-Talking_Dromedaries.ogg/200711_Pushkar_fair-Talking_Dromedaries.ogg.mp3' },
-    { id: 'nature_3', label: 'Forest Birdsong',      artist: 'Nature',    emoji: '🐦', color: 'bg-green-100 text-green-700',   url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/7/72/Cettia_cetti_vogelartinfo_chris_romeiks_CHR0294.ogg/Cettia_cetti_vogelartinfo_chris_romeiks_CHR0294.ogg.mp3' },
-    { id: 'nature_4', label: 'Crackling Fireplace',  artist: 'Nature',    emoji: '🔥', color: 'bg-orange-100 text-orange-700', url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/a/a4/Ludwig_van_Beethoven_-_Moonlight_Sonata_Op._27_No._2.ogg/Ludwig_van_Beethoven_-_Moonlight_Sonata_Op._27_No._2.ogg.mp3' },
-  ],
-  classical: [
-    { id: 'class_1', label: 'Canon in D',            artist: 'Pachelbel', emoji: '🌸', color: 'bg-rose-100 text-rose-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/3/30/Johann_Pachelbel_-_Canon_in_D_major.ogg/Johann_Pachelbel_-_Canon_in_D_major.ogg.mp3' },
-    { id: 'class_2', label: 'Für Elise',              artist: 'Beethoven', emoji: '✨', color: 'bg-yellow-100 text-yellow-700', url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/8/8d/F%C3%BCr_Elise.ogg/F%C3%BCr_Elise.ogg.mp3' },
-    { id: 'class_3', label: 'Four Seasons — Spring',  artist: 'Vivaldi',   emoji: '🎹', color: 'bg-teal-100 text-teal-700',     url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/6/67/Vivaldi_Spring_mvt_1_Allegro_-_John_Harrison_violin.ogg/Vivaldi_Spring_mvt_1_Allegro_-_John_Harrison_violin.ogg.mp3' },
-    { id: 'class_4', label: 'Prelude in C Major',     artist: 'Bach',      emoji: '🎶', color: 'bg-violet-100 text-violet-700', url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/8/8b/Johann_Sebastian_Bach_-_Prelude_and_Fugue_No._1_in_C_major%2C_BWV_846.ogg/Johann_Sebastian_Bach_-_Prelude_and_Fugue_No._1_in_C_major%2C_BWV_846.ogg.mp3' },
-  ],
-};
+// ─── CalmMe track type (matches Supabase calm_tracks table) ─────────────────
+interface CalmTrack {
+  id: string; category: string; title: string; artist: string;
+  emoji: string; color: string; audio_url: string;
+}
 
 type CalmTab = 'melodies' | 'nature' | 'classical' | 'my-music';
 
@@ -382,10 +367,28 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
   const [playing, setPlaying]             = useState<string | null>(null);
   const [progress, setProgress]           = useState(0);
   const [trackDuration, setTrackDuration] = useState(0);
+  const [dbTracks, setDbTracks]           = useState<CalmTrack[]>([]);
+  const [tracksLoading, setTracksLoading] = useState(true);
   const [myTracks, setMyTracks]           = useState<{ id: string; label: string; url: string }[]>(() => {
     try { return JSON.parse(localStorage.getItem('calmMyTracks') || '[]'); } catch { return []; }
   });
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // ── Fetch tracks from Supabase on open ────────────────────────────────
+  useEffect(() => {
+    if (!open) return;
+    setTracksLoading(true);
+    supabase
+      .from('calm_tracks')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order')
+      .then(({ data, error }) => {
+        if (!error && data) setDbTracks(data as CalmTrack[]);
+        else console.warn('calm_tracks fetch failed:', error?.message);
+        setTracksLoading(false);
+      });
+  }, [open]);
 
   const stopAudio = () => {
     audioRef.current?.pause();
@@ -443,7 +446,9 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
     { id: 'my-music',  label: 'My Music',  emoji: '⭐' },
   ];
 
-  const tracks = tab !== 'my-music' ? CALM_TRACKS[tab] : [];
+  const tracks = tab !== 'my-music'
+    ? dbTracks.filter(t => t.category === tab)
+    : [];
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -479,10 +484,22 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
           <AnimatePresence mode="wait">
             <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
 
-              {tab !== 'my-music' && tracks.map(track => (
+              {tab !== 'my-music' && tracksLoading && (
+                <div className="flex justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-soft-sage border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+
+              {tab !== 'my-music' && !tracksLoading && tracks.length === 0 && (
+                <div className="text-center py-8 text-medium-gray text-sm">
+                  <p>No tracks available in this category yet.</p>
+                </div>
+              )}
+
+              {tab !== 'my-music' && !tracksLoading && tracks.map(track => (
                 <button
                   key={track.id}
-                  onClick={() => playTrack(track.id, track.url)}
+                  onClick={() => playTrack(track.id, track.audio_url)}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
                     playing === track.id
                       ? 'border-soft-sage bg-soft-sage/10'
@@ -493,7 +510,7 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
                     {track.emoji}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-charcoal text-sm truncate">{track.label}</p>
+                    <p className="font-medium text-charcoal text-sm truncate">{track.title}</p>
                     <p className="text-xs text-medium-gray">{track.artist}</p>
                     {playing === track.id && trackDuration > 0 && (
                       <div className="mt-1.5 space-y-0.5">
@@ -736,254 +753,43 @@ function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClo
 // SUB-COMPONENT: TellMeAStoryDialog
 // ─────────────────────────────────────────────────────────────────────────────
 
-const STORY_LIBRARY = [
-  {
-    genre: '⏱ 30-Minute Stories',
-    color: 'bg-amber-50 border-amber-200',
-    badge: 'text-amber-700 bg-amber-100',
-    stories: [
-      { id: 's1',  title: 'The Gift of the Magi',          duration: '~30 min', desc: "O. Henry's beloved tale of selfless love",        url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/a/a4/Ludwig_van_Beethoven_-_Moonlight_Sonata_Op._27_No._2.ogg/Ludwig_van_Beethoven_-_Moonlight_Sonata_Op._27_No._2.ogg.mp3' },
-      { id: 's2',  title: 'The Happy Prince',              duration: '~25 min', desc: "Oscar Wilde's moving fairy tale",                 url: 'https://archive.org/download/the_happy_prince_0709_librivox/happyprince_wilde_64kb.mp3' },
-      { id: 's3',  title: 'The Selfish Giant',             duration: '~15 min', desc: "Oscar Wilde — a giant learns to love",            url: 'https://archive.org/download/the_happy_prince_0709_librivox/selfishgiant_wilde_64kb.mp3' },
-      { id: 's4',  title: 'The Model Millionaire',         duration: '~10 min', desc: "Oscar Wilde — kindness rewarded",                 url: 'https://archive.org/download/the_happy_prince_0709_librivox/modelmillionaire_wilde_64kb.mp3' },
-      { id: 's5',  title: 'The Devoted Friend',            duration: '~20 min', desc: "Oscar Wilde — a fable about true friendship",     url: 'https://archive.org/download/the_happy_prince_0709_librivox/devotedfriend_wilde_64kb.mp3' },
-      { id: 's6',  title: 'The Nightingale and the Rose',  duration: '~10 min', desc: "Oscar Wilde — beauty and sacrifice",              url: 'https://archive.org/download/the_happy_prince_0709_librivox/nightingaleandroseoscar_wilde_64kb.mp3' },
-      { id: 's7',  title: 'The Remarkable Rocket',         duration: '~25 min', desc: "Oscar Wilde — a humorous tale of vanity",         url: 'https://archive.org/download/the_happy_prince_0709_librivox/remarkablerocket_wilde_64kb.mp3' },
-      { id: 's8',  title: "The Canterville Ghost",         duration: '~55 min', desc: "Oscar Wilde's funny warm ghost story",            url: 'https://archive.org/download/canterville_ghost_librivox/cantervilleghost_01_wilde_64kb.mp3' },
-      { id: 's9',  title: 'Rip Van Winkle',                duration: '~35 min', desc: "Washington Irving's timeless American tale",      url: 'https://archive.org/download/rip_van_winkle_librivox/ripvanwinkle_irving_64kb.mp3' },
-      { id: 's10', title: 'The Legend of Sleepy Hollow',   duration: '~55 min', desc: "A cosy autumnal tale by Washington Irving",       url: 'https://archive.org/download/legend_of_sleepy_hollow_librivox/legendofsleepyhollow_irving_64kb.mp3' },
-    ],
-  },
-  {
-    genre: '🕐 1-Hour Stories',
-    color: 'bg-indigo-50 border-indigo-200',
-    badge: 'text-indigo-700 bg-indigo-100',
-    stories: [
-      { id: 'l1',  title: 'A Christmas Carol',             duration: '~1 hr',    desc: "Dickens' beloved Christmas classic",              url: 'https://archive.org/download/christmas_carol_librivox/christmascarol_01_dickens_64kb.mp3' },
-      { id: 'l2',  title: 'The Secret Garden Ch 1–3',    duration: '~45 min',  desc: "Frances Hodgson Burnett — a garden of healing",  url: 'https://archive.org/download/secret_garden_librivox/secretgarden_01_burnett_64kb.mp3' },
-      { id: 'l3',  title: 'Anne of Green Gables Ch 1',   duration: '~50 min',  desc: "L.M. Montgomery's warm, joyful classic",         url: 'https://archive.org/download/anne_of_green_gables_librivox/anneofgreengables_01_montgomery_64kb.mp3' },
-      { id: 'l4',  title: 'Little Women Ch 1–2',          duration: '~45 min',  desc: "Louisa May Alcott — family warmth and love",     url: 'https://archive.org/download/little_women_librivox/littlewomen_01_alcott_64kb.mp3' },
-      { id: 'l5',  title: 'The Wizard of Oz Ch 1–3',     duration: '~40 min',  desc: "L. Frank Baum's enchanting classic",             url: 'https://archive.org/download/wonderful_wizard_of_oz_librivox/wonderfulwizardofoz_01_baum_64kb.mp3' },
-      { id: 'l6',  title: 'Treasure Island Ch 1–3',      duration: '~45 min',  desc: "Robert Louis Stevenson's adventure classic",     url: 'https://archive.org/download/treasure_island_librivox/treasureisland_01_stevenson_64kb.mp3' },
-      { id: 'l7',  title: 'The Yellow Wallpaper',         duration: '~40 min',  desc: "Charlotte Perkins Gilman — vivid short story",   url: 'https://archive.org/download/yellowwallpaper_librivox/yellowwallpaper_gilman_64kb.mp3' },
-      { id: 'l8',  title: 'The Tell-Tale Heart',          duration: '~12 min',  desc: "Edgar Allan Poe — a suspenseful mystery",        url: 'https://archive.org/download/telltale_librivox/telltale_poe_64kb.mp3' },
-      { id: 'l9',  title: 'Pride & Prejudice Ch 1–3',    duration: '~50 min',  desc: "Jane Austen — wit, romance and society",         url: 'https://archive.org/download/pride_and_prejudice_librivox/prideprejudice_01_austen_64kb.mp3' },
-      { id: 'l10', title: 'Tom Sawyer Ch 1–3',           duration: '~45 min',  desc: "Mark Twain — mischief and adventure",            url: 'https://archive.org/download/tom_sawyer_librivox/tomsawyer_01_twain_64kb.mp3' },
-    ],
-  },
-  {
-    genre: '🌿 Nature & Calm',
-    color: 'bg-green-50 border-green-200',
-    badge: 'text-green-700 bg-green-100',
-    stories: [
-      { id: 'n1', title: 'A Walk Through the Forest',   duration: '8 min',  desc: 'A peaceful stroll among tall pines',            url: '' },
-      { id: 'n2', title: 'The Garden at Sunrise',       duration: '7 min',  desc: 'Morning birdsong and blooming flowers',         url: '' },
-    ],
-  },
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SUB-COMPONENT: VoiceRecorderDialog
-// ─────────────────────────────────────────────────────────────────────────────
-
-function VoiceRecorderDialog({
-  open, onClose, existingUrl,
-  onSave,
-}: {
-  open: boolean;
-  onClose: () => void;
-  existingUrl: string | null;
-  onSave: (url: string, label: string) => void;
-}) {
-  const [phase, setPhase]           = useState<'idle' | 'recording' | 'review' | 'confirm'>('idle');
-  const [blob, setBlob]             = useState<Blob | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [elapsed, setElapsed]       = useState(0);
-  const mediaRef  = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const audioRef  = useRef<HTMLAudioElement | null>(null);
-  const [previewPlaying, setPreviewPlaying] = useState(false);
-
-  // Reset on open
-  useEffect(() => {
-    if (open) { setPhase('idle'); setBlob(null); setPreviewUrl(null); setElapsed(0); setPreviewPlaying(false); }
-  }, [open]);
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
-      chunksRef.current = [];
-      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      mr.onstop = () => {
-        const b = new Blob(chunksRef.current, { type: 'audio/webm' });
-        setBlob(b);
-        setPreviewUrl(URL.createObjectURL(b));
-        setPhase('review');
-        stream.getTracks().forEach(t => t.stop());
-      };
-      mr.start();
-      mediaRef.current = mr;
-      setElapsed(0);
-      timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
-      setPhase('recording');
-    } catch {
-      alert('Microphone access is needed to record. Please allow it in your browser settings.');
-    }
-  };
-
-  const stopRecording = () => {
-    mediaRef.current?.stop();
-    if (timerRef.current) clearInterval(timerRef.current);
-  };
-
-  const handlePreviewPlay = () => {
-    if (!previewUrl) return;
-    if (previewPlaying) { audioRef.current?.pause(); setPreviewPlaying(false); return; }
-    const a = new Audio(previewUrl);
-    a.onended = () => setPreviewPlaying(false);
-    a.play();
-    audioRef.current = a;
-    setPreviewPlaying(true);
-  };
-
-  const handleSave = () => {
-    if (existingUrl) { setPhase('confirm'); return; }
-    doSave();
-  };
-
-  const doSave = () => {
-    if (!previewUrl) return;
-    onSave(previewUrl, 'Your voice');
-    onClose();
-  };
-
-  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-sm" onInteractOutside={e => e.preventDefault()}>
-        <DialogHeader>
-          <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
-            <Mic className="w-6 h-6 text-warm-bronze" /> Record Your Voice
-          </DialogTitle>
-          <DialogDescription className="text-center text-sm">
-            Record a personal message to play on the home screen
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-
-          {/* Instructions */}
-          {phase === 'idle' && (
-            <div className="bg-warm-bronze/5 border border-warm-bronze/20 rounded-xl p-4 space-y-2">
-              <p className="text-sm font-semibold text-charcoal text-center">📋 What to say:</p>
-              <div className="space-y-1 text-center">
-                {['You are safe.', 'You are loved.', 'You are at home.'].map(line => (
-                  <p key={line} className="text-base font-medium text-warm-bronze italic">"{line}"</p>
-                ))}
-              </div>
-              <p className="text-xs text-medium-gray text-center mt-2">
-                Speak slowly and warmly. The patient will hear your voice when they tap the button.
-              </p>
-            </div>
-          )}
-
-          {/* Recording phase */}
-          {phase === 'recording' && (
-            <div className="text-center space-y-4">
-              <div className="flex justify-center gap-1 items-end h-10">
-                {[0,1,2,3,4].map(i => (
-                  <motion.div key={i} className="w-2 bg-gentle-coral rounded-full"
-                    animate={{ height: ['12px','32px','12px'] }}
-                    transition={{ repeat: Infinity, duration: 0.6, delay: i * 0.12 }} />
-                ))}
-              </div>
-              <p className="text-2xl font-mono font-bold text-charcoal">{fmt(elapsed)}</p>
-              <p className="text-sm text-medium-gray">Recording… say the phrases slowly</p>
-              <div className="bg-warm-bronze/5 border border-warm-bronze/20 rounded-xl p-3 space-y-1">
-                {['You are safe.', 'You are loved.', 'You are at home.'].map(line => (
-                  <p key={line} className="text-sm font-medium text-warm-bronze text-center italic">"{line}"</p>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Review phase */}
-          {phase === 'review' && (
-            <div className="space-y-3">
-              <p className="text-sm text-center text-charcoal font-medium">✅ Recording complete! Preview it:</p>
-              <button
-                onClick={handlePreviewPlay}
-                className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all ${previewPlaying ? 'bg-warm-bronze text-white' : 'bg-warm-bronze/10 text-warm-bronze border border-warm-bronze/30 hover:bg-warm-bronze/20'}`}
-              >
-                {previewPlaying ? <><Pause className="w-4 h-4" /> Pause</> : <><Play className="w-4 h-4 ml-0.5" /> Play Preview</>}
-              </button>
-              <button
-                onClick={() => { setPhase('idle'); setBlob(null); setPreviewUrl(null); setPreviewPlaying(false); audioRef.current?.pause(); }}
-                className="w-full py-2 text-sm text-medium-gray hover:text-charcoal underline"
-              >
-                Record again
-              </button>
-            </div>
-          )}
-
-          {/* Overwrite confirm */}
-          {phase === 'confirm' && (
-            <div className="space-y-3 text-center">
-              <p className="text-sm text-charcoal font-medium">You already have a recording saved.</p>
-              <p className="text-sm text-medium-gray">Replace it with this new one?</p>
-              <div className="flex gap-2">
-                <button onClick={() => setPhase('review')} className="flex-1 py-2.5 rounded-xl border border-soft-taupe text-charcoal text-sm font-medium hover:bg-soft-taupe/20">Keep old</button>
-                <button onClick={doSave} className="flex-1 py-2.5 rounded-xl bg-warm-bronze text-white text-sm font-medium hover:bg-deep-bronze">Replace</button>
-              </div>
-            </div>
-          )}
-
-          {/* Action buttons */}
-          {phase === 'idle' && (
-            <button
-              onClick={startRecording}
-              className="w-full py-3 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-all"
-            >
-              <Mic className="w-5 h-5" /> Start Recording
-            </button>
-          )}
-          {phase === 'recording' && (
-            <button
-              onClick={stopRecording}
-              className="w-full py-3 bg-gentle-coral hover:bg-red-400 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-all animate-pulse"
-            >
-              <span className="w-3 h-3 bg-white rounded-sm" /> Stop Recording
-            </button>
-          )}
-          {phase === 'review' && (
-            <button
-              onClick={handleSave}
-              className="w-full py-3 bg-soft-sage hover:bg-green-500 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-all"
-            >
-              <CheckCircle2 className="w-5 h-5" /> Save Recording
-            </button>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
+// ─── Story type (matches Supabase audio_stories table) ──────────────────────
+interface AudioStory {
+  id: string; category: string; title: string; author?: string;
+  duration: string; description?: string; audio_url: string;
 }
 
 type StoryTab = 'library' | 'my-stories';
 
 function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+
   const [tab, setTab]             = useState<StoryTab>('library');
   const [playing, setPlaying]     = useState<string | null>(null);
   const [expanded, setExpanded]   = useState<string | null>(null);
   const [progress, setProgress]   = useState(0);
   const [duration, setDuration]   = useState(0);
+  const [dbStories,  setDbStories]   = useState<AudioStory[]>([]);
+  const [storiesLoading, setStoriesLoading] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [myStories, setMyStories] = useState<{ id: string; label: string; url: string; size: string }[]>(() => {
     try { return JSON.parse(localStorage.getItem('myStories') || '[]'); } catch { return []; }
   });
+
+  // ── Fetch stories from Supabase on open ───────────────────────────────
+  useEffect(() => {
+    if (!open) return;
+    setStoriesLoading(true);
+    supabase
+      .from('audio_stories')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order')
+      .then(({ data, error }) => {
+        if (!error && data) setDbStories(data as AudioStory[]);
+        else console.warn('audio_stories fetch failed:', error?.message);
+        setStoriesLoading(false);
+      });
+  }, [open]);
 
   const stopAudio = () => {
     audioRef.current?.pause();
@@ -1070,52 +876,78 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
 
             {tab === 'library' && (
               <motion.div key="library" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
-                {STORY_LIBRARY.map(group => (
-                  <div key={group.genre} className={`rounded-xl border ${group.color} overflow-hidden`}>
-                    <button
-                      onClick={() => setExpanded(expanded === group.genre ? null : group.genre)}
-                      className="w-full flex items-center justify-between p-3 hover:bg-black/5 transition-colors"
-                    >
-                      <span className="font-semibold text-charcoal text-sm">{group.genre}</span>
-                      <ChevronRight className={`w-4 h-4 text-medium-gray transition-transform ${expanded === group.genre ? 'rotate-90' : ''}`} />
-                    </button>
-                    {expanded === group.genre && (
-                      <div className="border-t border-black/10 divide-y divide-black/5">
-                        {group.stories.map(story => (
-                          <div key={story.id} className="p-3">
-                            <div className="flex items-start gap-3">
-                              <button
-                                onClick={() => handlePlay(story.id, story.url)}
-                                className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${playing === story.id ? 'bg-calm-blue text-white shadow-md' : 'bg-white border border-calm-blue/30 text-calm-blue hover:bg-calm-blue/10'}`}
-                              >
-                                {playing === story.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
-                              </button>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="font-medium text-charcoal text-sm">{story.title}</p>
-                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${group.badge}`}>{story.duration}</span>
-                                  {story.url && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">▶ Audio</span>}
-                                </div>
-                                <p className="text-xs text-medium-gray mt-0.5">{story.desc}</p>
-                                {/* Progress bar shown while playing */}
-                                {playing === story.id && duration > 0 && (
-                                  <div className="mt-2 space-y-1">
-                                    <div className="h-1.5 bg-calm-blue/20 rounded-full overflow-hidden">
-                                      <div className="h-full bg-calm-blue rounded-full transition-all" style={{ width: `${(progress/duration)*100}%` }} />
-                                    </div>
-                                    <div className="flex justify-between text-xs text-medium-gray">
-                                      <span>{fmtTime(progress)}</span><span>{fmtTime(duration)}</span>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+
+                {storiesLoading && (
+                  <div className="flex justify-center py-10">
+                    <div className="w-6 h-6 border-2 border-calm-blue border-t-transparent rounded-full animate-spin" />
                   </div>
-                ))}
+                )}
+
+                {!storiesLoading && (() => {
+                  const GROUPS = [
+                    { key: 'short', label: '⏱ 30-Minute Stories',   color: 'bg-amber-50 border-amber-200',   badge: 'text-amber-700 bg-amber-100' },
+                    { key: 'long',  label: '🕐 1-Hour Stories',      color: 'bg-indigo-50 border-indigo-200', badge: 'text-indigo-700 bg-indigo-100' },
+                    { key: 'nature',label: '🌿 Nature & Calm',       color: 'bg-green-50 border-green-200',   badge: 'text-green-700 bg-green-100' },
+                  ];
+                  return GROUPS.map(group => {
+                    const groupStories = dbStories.filter(s => s.category === group.key);
+                    if (groupStories.length === 0) return null;
+                    return (
+                      <div key={group.key} className={`rounded-xl border ${group.color} overflow-hidden`}>
+                        <button
+                          onClick={() => setExpanded(expanded === group.key ? null : group.key)}
+                          className="w-full flex items-center justify-between p-3 hover:bg-black/5 transition-colors"
+                        >
+                          <span className="font-semibold text-charcoal text-sm">{group.label}</span>
+                          <ChevronRight className={`w-4 h-4 text-medium-gray transition-transform ${expanded === group.key ? 'rotate-90' : ''}`} />
+                        </button>
+                        {expanded === group.key && (
+                          <div className="border-t border-black/10 divide-y divide-black/5">
+                            {groupStories.map(story => (
+                              <div key={story.id} className="p-3">
+                                <div className="flex items-start gap-3">
+                                  <button
+                                    onClick={() => handlePlay(story.id, story.audio_url)}
+                                    className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${playing === story.id ? 'bg-calm-blue text-white shadow-md' : 'bg-white border border-calm-blue/30 text-calm-blue hover:bg-calm-blue/10'}`}
+                                  >
+                                    {playing === story.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
+                                  </button>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className="font-medium text-charcoal text-sm">{story.title}</p>
+                                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${group.badge}`}>{story.duration}</span>
+                                      {story.audio_url && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">▶ Audio</span>}
+                                    </div>
+                                    {story.description && <p className="text-xs text-medium-gray mt-0.5">{story.description}</p>}
+                                    {story.author && <p className="text-xs text-medium-gray/70 mt-0.5 italic">{story.author}</p>}
+                                    {playing === story.id && duration > 0 && (
+                                      <div className="mt-2 space-y-1">
+                                        <div className="h-1.5 bg-calm-blue/20 rounded-full overflow-hidden">
+                                          <div className="h-full bg-calm-blue rounded-full transition-all" style={{ width: `${(progress/duration)*100}%` }} />
+                                        </div>
+                                        <div className="flex justify-between text-xs text-medium-gray">
+                                          <span>{fmtTime(progress)}</span><span>{fmtTime(duration)}</span>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+
+                {!storiesLoading && dbStories.length === 0 && (
+                  <div className="text-center py-8 text-medium-gray text-sm">
+                    <BookOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p>No stories in the library yet.</p>
+                  </div>
+                )}
+
                 <p className="text-xs text-center text-medium-gray/60 pb-2">Audiobooks via LibriVox — public domain, free forever 📖</p>
               </motion.div>
             )}

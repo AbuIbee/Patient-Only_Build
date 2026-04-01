@@ -13,12 +13,13 @@ import PatientDocuments from './PatientDocuments';
 import PatientReminders from './PatientReminders';
 import PatientMoodTracker from './PatientMoodTracker';
 import CarePartnerCheckin from './CarePartnerCheckin';
+import PatientEmergencyContacts from './PatientEmergencyContacts';
 import MediaUploader from '@/components/MediaUploader';
 import PatientGames from './PatientGames';
 import {
   LayoutDashboard, Calendar, Pill, FileText, Bell, Heart,
   Smile, Users, MoreHorizontal, ChevronLeft, ChevronRight,
-  Volume2, LogOut, ClipboardList, Film, Gamepad2, X, Lock,
+  Volume2, LogOut, ClipboardList, Film, Gamepad2, X, Lock, Phone,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -26,7 +27,7 @@ import type { FeatureKey, TierName } from '@/types/subscription';
 
 type PatientView =
   | 'dashboard' | 'medications' | 'routines' | 'memories'
-  | 'mood' | 'documents' | 'reminders' | 'checkin' | 'media' | 'games';
+  | 'mood' | 'documents' | 'reminders' | 'checkin' | 'media' | 'games' | 'emergency_contacts';
 
 // Map each nav view to the feature key that gates it (null = always accessible)
 const VIEW_FEATURE_MAP: Partial<Record<PatientView, { feature: FeatureKey; tier: TierName; label: string }>> = {
@@ -181,6 +182,7 @@ function PatientLayoutInner() {
       case 'documents':    return <PatientDocuments />;
       case 'reminders':    return <PatientReminders />;
       case 'checkin':      return <CarePartnerCheckin />;
+      case 'emergency_contacts': return <PatientEmergencyContacts />;
       case 'media':        return <MediaUploader readOnly={false} patientId={state.currentUser?.id} />;
       case 'games':        return <PatientGames />;
       default:             return <PatientHome />;
@@ -196,8 +198,9 @@ function PatientLayoutInner() {
   const sidebarWidthClass = sidebarCollapsed || simplifiedMode ? 'md:w-20' : 'md:w-64';
 
   const navItems = [
-    { id: 'checkin'   as PatientView, label: 'Care Partner',   icon: ClipboardList,   gate: VIEW_FEATURE_MAP.checkin },
-    { id: 'dashboard' as PatientView, label: 'Home',           icon: LayoutDashboard, gate: null },
+    { id: 'checkin'            as PatientView, label: 'Care Partner',      icon: ClipboardList,   gate: VIEW_FEATURE_MAP.checkin },
+    { id: 'emergency_contacts' as PatientView, label: 'Emergency Contacts', icon: Phone,           gate: null },
+    { id: 'dashboard'          as PatientView, label: 'Home',               icon: LayoutDashboard, gate: null },
     { id: 'memories'  as PatientView, label: 'Family',         icon: Users,           gate: VIEW_FEATURE_MAP.memories },
     { id: 'mood'      as PatientView, label: 'How I Feel',     icon: Smile,           gate: null },
     { id: 'reminders' as PatientView, label: 'Reminders',      icon: Bell,            gate: null },
@@ -287,7 +290,7 @@ function PatientLayoutInner() {
               <Heart className="w-6 h-6 text-white" />
             </div>
             {!sidebarCollapsed && !simplifiedMode && (
-              <span className="ml-3 font-semibold text-charcoal">MemoriaHelps</span>
+              <span className="ml-3 font-semibold text-charcoal">My Memoria Helps</span>
             )}
           </div>
 

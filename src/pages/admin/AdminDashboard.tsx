@@ -63,7 +63,7 @@ export function AdminDashboard({ onNavigate }: { onNavigate: (view: string) => v
     <div className="space-y-8">
       <div>
         <h2 className="text-2xl font-bold text-charcoal">Admin Overview</h2>
-        <p className="text-medium-gray mt-1">Patient management and system activity for MemoriaHelps.</p>
+        <p className="text-medium-gray mt-1">Patient management and system activity for My Memoria Helps.</p>
       </div>
 
       {/* Pending alert */}

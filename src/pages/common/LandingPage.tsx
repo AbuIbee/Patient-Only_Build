@@ -45,7 +45,7 @@ export default function LandingPage() {
             <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center">
               <Heart className="w-6 h-6 text-white" />
             </div>
-            <span className="text-xl font-semibold text-charcoal">MemoriaHelps</span>
+            <span className="text-xl font-semibold text-charcoal">My Memoria Helps</span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -75,7 +75,7 @@ export default function LandingPage() {
             </h1>
 
             <p className="text-lg text-medium-gray mb-8">
-              MemoriaHelps provides daily structure, reminders, and support
+              My Memoria Helps provides daily structure, reminders, and support
               for individuals who benefit from a calmer, more guided routine.
             </p>
 
@@ -191,13 +191,13 @@ export default function LandingPage() {
               className="bg-white rounded-2xl p-6 max-w-xl w-full"
             >
               <div className="flex justify-between mb-4">
-                <h2 className="text-xl font-bold">About MemoriaHelps</h2>
+                <h2 className="text-xl font-bold">About My Memoria Helps</h2>
                 <button onClick={() => setShowLearnMore(false)} className="text-medium-gray hover:text-charcoal">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <p className="text-medium-gray">
-                MemoriaHelps is a daily support system designed to help individuals maintain
+                My Memoria Helps is a daily support system designed to help individuals maintain
                 structure, stay on track with routines, and feel reassured throughout the day.
               </p>
             </motion.div>
