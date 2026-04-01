@@ -230,113 +230,11 @@ export default function PatientEmergencyContacts() {
 
       {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold text-charcoal">Contacts & Care Team</h1>
+        <h1 className="text-2xl font-bold text-charcoal">Emergency Contact & Care Partner</h1>
         <p className="text-medium-gray text-sm mt-1">
           Your care partner and emergency contacts — updated and ready when needed.
         </p>
       </div>
-
-      {/* ── CARE PARTNER SECTION ─────────────────────────────────────────── */}
-      <motion.div className="bg-white rounded-2xl border border-soft-taupe shadow-sm overflow-hidden"
-        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-
-        <button
-          onClick={() => setCpExpanded(p => !p)}
-          className="w-full flex items-center justify-between px-6 py-4 hover:bg-soft-taupe/10 transition-colors"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-warm-bronze/10 rounded-xl flex items-center justify-center">
-              <Heart className="w-5 h-5 text-warm-bronze" />
-            </div>
-            <div className="text-left">
-              <p className="font-semibold text-charcoal">Care Partner</p>
-              <p className="text-xs text-medium-gray mt-0.5">
-                {cpInfo.full_name || 'Not yet filled in'} {cpInfo.relationship ? `· ${cpInfo.relationship}` : ''}
-              </p>
-            </div>
-          </div>
-          {cpExpanded ? <ChevronUp className="w-5 h-5 text-medium-gray" /> : <ChevronDown className="w-5 h-5 text-medium-gray" />}
-        </button>
-
-        <AnimatePresence>
-          {cpExpanded && (
-            <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }}
-              className="overflow-hidden border-t border-soft-taupe">
-              {!cpLoaded ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin text-warm-bronze" />
-                </div>
-              ) : (
-                <div className="p-6 space-y-5">
-
-                  {/* Basic Info */}
-                  <div>
-                    <p className="text-xs font-semibold text-medium-gray uppercase tracking-wide mb-3">Basic Information</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <Field label="Full Name *" icon={User}>
-                        <input value={cpInfo.full_name} onChange={e => setCpInfo(p => ({...p, full_name: e.target.value}))}
-                          placeholder="Care partner's full name" className={inputCls} />
-                      </Field>
-                      <Field label="Relationship to Patient" icon={Heart}>
-                        <input value={cpInfo.relationship} onChange={e => setCpInfo(p => ({...p, relationship: e.target.value}))}
-                          placeholder="e.g. Daughter, Son, Spouse, Friend" className={inputCls} />
-                      </Field>
-                      <Field label="Email Address" icon={Mail}>
-                        <input type="email" value={cpInfo.email} onChange={e => setCpInfo(p => ({...p, email: e.target.value}))}
-                          placeholder="email@example.com" className={inputCls} />
-                      </Field>
-                      <Field label="Phone Number" icon={Phone}>
-                        <input type="tel" value={cpInfo.phone} onChange={e => setCpInfo(p => ({...p, phone: e.target.value}))}
-                          placeholder="(555) 123-4567" className={inputCls} />
-                      </Field>
-                    </div>
-                  </div>
-
-                  {/* Qualifications */}
-                  <div>
-                    <p className="text-xs font-semibold text-medium-gray uppercase tracking-wide mb-3">Qualifications & Background</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <Field label="Education Level" icon={GraduationCap}
-                        hint="e.g. High school, Associate's, Bachelor's, Master's, Doctorate">
-                        <input value={cpInfo.education_level} onChange={e => setCpInfo(p => ({...p, education_level: e.target.value}))}
-                          placeholder="Highest education completed" className={inputCls} />
-                      </Field>
-                      <Field label="Relevant Medical Experience" icon={Stethoscope}
-                        hint="Any nursing, caregiving, or medical training">
-                        <input value={cpInfo.medical_experience} onChange={e => setCpInfo(p => ({...p, medical_experience: e.target.value}))}
-                          placeholder="e.g. CNA, Home health aide, RN" className={inputCls} />
-                      </Field>
-                    </div>
-                    <div className="mt-4">
-                      <Field label="Relevant Employment / Position" icon={Briefcase}
-                        hint="Current or past employment relevant to this caregiving role">
-                        <input value={cpInfo.employment_relevant} onChange={e => setCpInfo(p => ({...p, employment_relevant: e.target.value}))}
-                          placeholder="e.g. Retired nurse, Social worker at Raleigh Senior Care" className={inputCls} />
-                      </Field>
-                    </div>
-                  </div>
-
-                  {/* Additional Notes */}
-                  <div>
-                    <p className="text-xs font-semibold text-medium-gray uppercase tracking-wide mb-3">Additional Notes</p>
-                    <Field label="Anything else important to note about this care partner">
-                      <textarea value={cpInfo.notes} onChange={e => setCpInfo(p => ({...p, notes: e.target.value}))}
-                        placeholder="Any other relevant information — availability, special instructions, etc."
-                        rows={3} className={textareaCls} />
-                    </Field>
-                  </div>
-
-                  <button onClick={saveCarePartner} disabled={cpSaving}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl text-sm font-semibold disabled:opacity-60 transition-colors">
-                    {cpSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    {cpSaving ? 'Saving...' : 'Save Care Partner Info'}
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
 
       {/* ── EMERGENCY CONTACTS SECTION ───────────────────────────────────── */}
       <motion.div className="bg-white rounded-2xl border border-soft-taupe shadow-sm overflow-hidden"
@@ -466,6 +364,109 @@ export default function PatientEmergencyContacts() {
                       </AnimatePresence>
                     </div>
                   ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
+
+      {/* ── CARE PARTNER SECTION ─────────────────────────────────────────── */}
+      <motion.div className="bg-white rounded-2xl border border-soft-taupe shadow-sm overflow-hidden"
+        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+
+        <button
+          onClick={() => setCpExpanded(p => !p)}
+          className="w-full flex items-center justify-between px-6 py-4 hover:bg-soft-taupe/10 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-warm-bronze/10 rounded-xl flex items-center justify-center">
+              <Heart className="w-5 h-5 text-warm-bronze" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold text-charcoal">Care Partner</p>
+              <p className="text-xs text-medium-gray mt-0.5">
+                {cpInfo.full_name || 'Not yet filled in'} {cpInfo.relationship ? `· ${cpInfo.relationship}` : ''}
+              </p>
+            </div>
+          </div>
+          {cpExpanded ? <ChevronUp className="w-5 h-5 text-medium-gray" /> : <ChevronDown className="w-5 h-5 text-medium-gray" />}
+        </button>
+
+        <AnimatePresence>
+          {cpExpanded && (
+            <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }}
+              className="overflow-hidden border-t border-soft-taupe">
+              {!cpLoaded ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-warm-bronze" />
+                </div>
+              ) : (
+                <div className="p-6 space-y-5">
+
+                  {/* Basic Info */}
+                  <div>
+                    <p className="text-xs font-semibold text-medium-gray uppercase tracking-wide mb-3">Basic Information</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Field label="Full Name *" icon={User}>
+                        <input value={cpInfo.full_name} onChange={e => setCpInfo(p => ({...p, full_name: e.target.value}))}
+                          placeholder="Care partner's full name" className={inputCls} />
+                      </Field>
+                      <Field label="Relationship to Patient" icon={Heart}>
+                        <input value={cpInfo.relationship} onChange={e => setCpInfo(p => ({...p, relationship: e.target.value}))}
+                          placeholder="e.g. Daughter, Son, Spouse, Friend" className={inputCls} />
+                      </Field>
+                      <Field label="Email Address" icon={Mail}>
+                        <input type="email" value={cpInfo.email} onChange={e => setCpInfo(p => ({...p, email: e.target.value}))}
+                          placeholder="email@example.com" className={inputCls} />
+                      </Field>
+                      <Field label="Phone Number" icon={Phone}>
+                        <input type="tel" value={cpInfo.phone} onChange={e => setCpInfo(p => ({...p, phone: e.target.value}))}
+                          placeholder="(555) 123-4567" className={inputCls} />
+                      </Field>
+                    </div>
+                  </div>
+
+                  {/* Qualifications */}
+                  <div>
+                    <p className="text-xs font-semibold text-medium-gray uppercase tracking-wide mb-3">Qualifications & Background</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Field label="Education Level" icon={GraduationCap}
+                        hint="e.g. High school, Associate's, Bachelor's, Master's, Doctorate">
+                        <input value={cpInfo.education_level} onChange={e => setCpInfo(p => ({...p, education_level: e.target.value}))}
+                          placeholder="Highest education completed" className={inputCls} />
+                      </Field>
+                      <Field label="Relevant Medical Experience" icon={Stethoscope}
+                        hint="Any nursing, caregiving, or medical training">
+                        <input value={cpInfo.medical_experience} onChange={e => setCpInfo(p => ({...p, medical_experience: e.target.value}))}
+                          placeholder="e.g. CNA, Home health aide, RN" className={inputCls} />
+                      </Field>
+                    </div>
+                    <div className="mt-4">
+                      <Field label="Relevant Employment / Position" icon={Briefcase}
+                        hint="Current or past employment relevant to this caregiving role">
+                        <input value={cpInfo.employment_relevant} onChange={e => setCpInfo(p => ({...p, employment_relevant: e.target.value}))}
+                          placeholder="e.g. Retired nurse, Social worker at Raleigh Senior Care" className={inputCls} />
+                      </Field>
+                    </div>
+                  </div>
+
+                  {/* Additional Notes */}
+                  <div>
+                    <p className="text-xs font-semibold text-medium-gray uppercase tracking-wide mb-3">Additional Notes</p>
+                    <Field label="Anything else important to note about this care partner">
+                      <textarea value={cpInfo.notes} onChange={e => setCpInfo(p => ({...p, notes: e.target.value}))}
+                        placeholder="Any other relevant information — availability, special instructions, etc."
+                        rows={3} className={textareaCls} />
+                    </Field>
+                  </div>
+
+                  <button onClick={saveCarePartner} disabled={cpSaving}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl text-sm font-semibold disabled:opacity-60 transition-colors">
+                    {cpSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    {cpSaving ? 'Saving...' : 'Save Care Partner Info'}
+                  </button>
                 </div>
               )}
             </motion.div>
