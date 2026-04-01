@@ -9,6 +9,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@/types';
+import { isTempUser } from '@/types/subscription';
 import './App.css';
 
 function AppContent() {
@@ -252,6 +253,13 @@ function AppContent() {
 
     if (!state.isAuthenticated) {
       return state.currentView === 'login' ? <LoginPage /> : <LandingPage />;
+    }
+
+    // ── Temp users: always patient portal, always read-only ──────────────────
+    // This is a second enforcement layer — the primary layer is in PatientLayout
+    // via TempUserProvider. Temp users can NEVER reach AdminLayout.
+    if (isTempUser(state.currentUser?.email)) {
+      return <PatientLayout />;
     }
 
     switch (state.selectedRole) {

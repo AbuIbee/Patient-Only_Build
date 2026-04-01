@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { useTempUser } from '@/components/TempUserGuard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CheckInData {
@@ -210,6 +211,7 @@ export default function CarePartnerCheckin() {
   const [data, setData]         = useState<CheckInData>({ ...EMPTY });
   const [view, setView]         = useState<'form' | 'history'>('form');
   const [saving, setSaving]     = useState(false);
+  const { blockIfReadOnly }       = useTempUser();
   const [history, setHistory]   = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [openSections, setOpenSections]     = useState<Record<string, boolean>>({
@@ -261,6 +263,7 @@ export default function CarePartnerCheckin() {
   const completedCount = Object.values(sectionComplete).filter(Boolean).length;
 
   const handleSubmit = async () => {
+    if (blockIfReadOnly()) return;
     if (!patientId || !state.currentUser) {
       toast.error('You must be logged in to submit a check-in'); return;
     }

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { useTempUser } from '@/components/TempUserGuard';
 import type { DementiaStage } from '@/types/patientIntake';
 
 const US_STATES = [
@@ -76,6 +77,7 @@ export default function PatientProfileSetup() {
   const [form,    setForm]    = useState<ProfileForm>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
+  const { blockIfReadOnly } = useTempUser();
   const [saved,   setSaved]   = useState(false);
 
   // ── Load existing data ─────────────────────────────────────────────────────
@@ -129,6 +131,7 @@ export default function PatientProfileSetup() {
 
   // ── Save all steps to Supabase ─────────────────────────────────────────────
   const saveAll = async () => {
+    if (blockIfReadOnly()) return;
     if (!form.firstName.trim() || !form.lastName.trim()) {
       toast.error('First and last name are required'); return;
     }

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { useTempUser } from '@/components/TempUserGuard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CarePartnerInfo {
@@ -63,6 +64,7 @@ const textareaCls = "w-full px-3 py-2.5 border border-soft-taupe rounded-xl text
 export default function PatientEmergencyContacts() {
   const { state } = useApp();
   const patientId = state.currentUser?.id;
+  const { blockIfReadOnly } = useTempUser();
 
   // Care Partner state
   const [cpInfo,       setCpInfo]       = useState<CarePartnerInfo>(EMPTY_CARE_PARTNER);
@@ -138,6 +140,7 @@ export default function PatientEmergencyContacts() {
 
   // ── Save Care Partner ─────────────────────────────────────────────────────
   const saveCarePartner = async () => {
+    if (blockIfReadOnly()) return;
     if (!cpInfo.full_name.trim()) { toast.error('Care partner name is required'); return; }
     setCpSaving(true);
     try {
@@ -176,6 +179,7 @@ export default function PatientEmergencyContacts() {
   };
 
   const saveContact = async (contact: EmergencyContact) => {
+    if (blockIfReadOnly()) return;
     if (!contact.full_name.trim()) { toast.error('Contact name is required'); return; }
     setEcSaving(contact.id);
     try {
@@ -211,6 +215,7 @@ export default function PatientEmergencyContacts() {
   };
 
   const deleteContact = async (id: string) => {
+    if (blockIfReadOnly()) return;
     if (!confirm('Remove this emergency contact?')) return;
     try {
       if (!id.startsWith('new-')) {

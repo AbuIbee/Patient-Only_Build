@@ -20,6 +20,8 @@ import {
   ChevronRight, Volume2, Sun, Moon, LogOut, ClipboardList, UserCheck, Film, ClipboardPlus, Phone, Gamepad2, X, Menu,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { TempUserProvider, ReadOnlyBanner, useTempUser } from '@/components/TempUserGuard';
+import { isTempUser } from '@/types/subscription';
 import { toast } from 'sonner';
 
 type PatientView =
@@ -37,7 +39,7 @@ type PatientView =
   | 'media'
   | 'games';
 
-export default function PatientLayout() {
+function PatientLayoutInner() {
   const [currentView, setCurrentView] = useState<PatientView>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -486,6 +488,8 @@ export default function PatientLayout() {
 
       <main className={`flex-1 transition-all duration-300 ${sidebarCollapsed || simplifiedMode ? 'md:ml-20' : 'md:ml-64'} overflow-y-auto pb-16 md:pb-0`}>
         <div className="min-h-screen">
+          <ReadOnlyBanner />
+
           {isSundowningTime && (
             <div className="bg-warm-amber/10 border-b border-warm-amber/20 px-4 py-3">
               <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
@@ -638,5 +642,13 @@ export default function PatientLayout() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function PatientLayout() {
+  return (
+    <TempUserProvider>
+      <PatientLayoutInner />
+    </TempUserProvider>
   );
 }
