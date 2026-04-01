@@ -11,12 +11,13 @@ import PatientMoodTracker from './PatientMoodTracker';
 import CarePartnerCheckin from './CarePartnerCheckin';
 import PatientProfileSetup from './PatientProfileSetup';
 import PatientEmergencyContacts from './PatientEmergencyContacts';
+import PatientGames from './PatientGames';
 import PatientCareTeam from './PatientCareTeam';
 import MediaUploader from '@/components/MediaUploader';
 import {
   LayoutDashboard, Calendar, Pill, FileText, Bell,
   Heart, Smile, Users, MoreHorizontal, ChevronLeft,
-  ChevronRight, Volume2, Sun, Moon, LogOut, ClipboardList, UserCheck, Film, ClipboardPlus, Phone,
+  ChevronRight, Volume2, Sun, Moon, LogOut, ClipboardList, UserCheck, Film, ClipboardPlus, Phone, Gamepad2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -33,7 +34,8 @@ type PatientView =
   | 'intake'
   | 'emergency_contacts'
   | 'careteam'
-  | 'media';
+  | 'media'
+  | 'games';
 
 export default function PatientLayout() {
   const [currentView, setCurrentView] = useState<PatientView>('dashboard');
@@ -251,10 +253,11 @@ export default function PatientLayout() {
   ];
 
   const moreNavItems = [
-    { id: 'medications' as PatientView, label: 'Medications', icon: Pill },
-    { id: 'routines' as PatientView, label: 'My Day', icon: Calendar },
-    { id: 'documents' as PatientView, label: 'Papers', icon: FileText },
-    { id: 'media' as PatientView, label: 'Videos & Media', icon: Film },
+    { id: 'medications' as PatientView, label: 'Medications',    icon: Pill },
+    { id: 'routines'    as PatientView, label: 'My Day',         icon: Calendar },
+    { id: 'documents'   as PatientView, label: 'Papers',         icon: FileText },
+    { id: 'media'       as PatientView, label: 'Videos & Media', icon: Film },
+    { id: 'games'       as PatientView, label: 'Memory Games',   icon: Gamepad2 },
   ];
 
   const allNavItems = [...navItems, ...moreNavItems];
@@ -285,6 +288,8 @@ export default function PatientLayout() {
         return <PatientCareTeam />;
       case 'media':
         return <MediaUploader readOnly={false} patientId={state.currentUser?.id} />;
+      case 'games':
+        return <PatientGames />;
       default:
         return <PatientHome />;
     }
