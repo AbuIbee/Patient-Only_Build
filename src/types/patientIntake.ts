@@ -21,6 +21,7 @@ export interface PatientIntakeFormData {
   patientZipCode?: string;
   patientPhone?: string;
   patientEmail: string;
+  patientTempPassword?: string;
 
   // Doctor/Therapist Information
   preferredHospital?: string;

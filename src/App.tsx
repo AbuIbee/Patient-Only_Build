@@ -2,11 +2,11 @@ import { AppProvider, useApp } from '@/store/AppContext';
 import LandingPage from '@/pages/common/LandingPage';
 import LoginPage from '@/pages/common/LoginPage';
 import ResetPasswordPage from '@/pages/common/ResetPasswordPage';
+import PublicPatientIntakePage from '@/pages/common/PublicPatientIntakePage';
 import PatientLayout from '@/pages/patient/PatientLayout';
 import AdminLayout from '@/pages/admin/AdminLayout';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Toaster } from '@/components/ui/sonner';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@/types';
 import './App.css';
@@ -18,8 +18,11 @@ function AppContent() {
   const [forcedChange, setForcedChange] = useState(false);
   const [currentUserEmail, setCurrentUserEmail] = useState('');
 
+  const currentPath = useMemo(() => window.location.pathname, []);
+  const isPublicPatientIntakeRoute = currentPath === '/patient-intake';
+
   const restoreUser = (profile: any) => {
-    console.log('🔐 [App] Restoring user:', profile.email);
+    const safeRole = (profile.role as UserRole) || 'patient';
 
     dispatch({
       type: 'SET_USER',
@@ -28,30 +31,27 @@ function AppContent() {
         email: profile.email,
         firstName: profile.first_name,
         lastName: profile.last_name,
-        role: profile.role as UserRole,
+        role: safeRole,
         phone: profile.phone || undefined,
         createdAt: profile.created_at,
         updatedAt: profile.updated_at,
       },
     });
 
-    dispatch({ type: 'SET_ROLE', payload: profile.role as UserRole });
+    dispatch({
+      type: 'SET_ROLE',
+      payload: safeRole,
+    });
+
     dispatch({ type: 'SET_AUTHENTICATED', payload: true });
   };
 
   useEffect(() => {
     const restoreSession = async () => {
-      console.log('🔄 [App] Attempting to restore session...');
-
       try {
         const {
           data: { session },
         } = await supabase.auth.getSession();
-
-        console.log('🔄 [App] Session check result:', {
-          hasSession: !!session?.user,
-          userId: session?.user?.id,
-        });
 
         if (session?.user) {
           const { data: profile } = await supabase
@@ -60,16 +60,9 @@ function AppContent() {
             .eq('id', session.user.id)
             .maybeSingle();
 
-          console.log('🔄 [App] Profile fetch result:', {
-            hasProfile: !!profile,
-            role: profile?.role,
-          });
-
           if (profile) {
             if (profile.must_change_password) {
-              console.log('🔐 [App] Password change required');
               setCurrentUserEmail(profile.email || '');
-              setForcedChange(true);
 
               dispatch({
                 type: 'SET_USER',
@@ -78,30 +71,25 @@ function AppContent() {
                   email: profile.email,
                   firstName: profile.first_name,
                   lastName: profile.last_name,
-                  role: profile.role as UserRole,
+                  role: (profile.role as UserRole) || 'patient',
                   phone: profile.phone || undefined,
                   createdAt: profile.created_at,
                   updatedAt: profile.updated_at,
                 },
               });
 
+              setForcedChange(true);
               setCheckingSession(false);
               return;
             }
 
             restoreUser(profile);
-            console.log('✅ [App] Session restored successfully');
-          } else {
-            console.log('⚠️ [App] No profile found for user');
           }
-        } else {
-          console.log('📭 [App] No active session found');
         }
       } catch (err) {
-        console.error('❌ [App] Session restore error:', err);
+        console.error('Session restore error:', err);
       } finally {
         setCheckingSession(false);
-        console.log('🔄 [App] Session restore complete');
       }
     };
 
@@ -110,28 +98,16 @@ function AppContent() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event) => {
-      console.log('🔔 [App] Auth state changed:', event);
-
       if (event === 'SIGNED_OUT') {
-        console.log('🚪 [App] User signed out');
         dispatch({ type: 'LOGOUT' });
         setShowPasswordReset(false);
         setForcedChange(false);
 
         try {
           Object.keys(localStorage)
-            .filter(
-              (k) =>
-                k.includes('supabase') ||
-                k.includes('sb-') ||
-                k.includes('auth')
-            )
+            .filter((k) => k.includes('supabase') || k.includes('sb-') || k.includes('auth'))
             .forEach((k) => {
-              if (
-                k.includes('token') ||
-                k.includes('session') ||
-                k.includes('refresh')
-              ) {
+              if (k.includes('token') || k.includes('session') || k.includes('refresh')) {
                 localStorage.removeItem(k);
               }
             });
@@ -141,34 +117,37 @@ function AppContent() {
       }
 
       if (event === 'PASSWORD_RECOVERY') {
-        console.log('🔑 [App] Password recovery initiated');
         setShowPasswordReset(true);
         setForcedChange(false);
         setCheckingSession(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [dispatch]);
 
   useEffect(() => {
+    if (isPublicPatientIntakeRoute) return;
+
     if (state.isAuthenticated && state.selectedRole) {
-      // Use replaceState so refresh reloads the same URL without pushing duplicate entries
-      window.history.replaceState(
-        { role: state.selectedRole },
-        '',
-        '/' + state.selectedRole
-      );
+      const allowedRoles = ['patient', 'admin', 'superadmin'];
+      const roleForRoute = allowedRoles.includes(state.selectedRole)
+        ? state.selectedRole
+        : 'patient';
+
+      window.history.pushState({ role: roleForRoute }, '', '/' + roleForRoute);
     } else if (!state.isAuthenticated) {
       window.history.replaceState({}, '', '/');
     }
-  }, [state.isAuthenticated, state.selectedRole]);
+  }, [state.isAuthenticated, state.selectedRole, isPublicPatientIntakeRoute]);
 
   useEffect(() => {
-    const handlePop = (e: PopStateEvent) => {
-      // Only log out if the user navigated back to a state with no role
-      // AND they are currently authenticated — genuine back-button logout
-      if (state.isAuthenticated && !e.state?.role) {
+    if (isPublicPatientIntakeRoute) return;
+
+    const handlePop = () => {
+      if (!window.history.state?.role) {
         supabase.auth.signOut();
         dispatch({ type: 'LOGOUT' });
       }
@@ -176,10 +155,9 @@ function AppContent() {
 
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
-  }, [dispatch, state.isAuthenticated]);
+  }, [dispatch, isPublicPatientIntakeRoute]);
 
   const handlePasswordSet = async () => {
-    console.log('🔑 [App] Password reset completed');
     setShowPasswordReset(false);
     setForcedChange(false);
 
@@ -194,40 +172,43 @@ function AppContent() {
         .eq('id', session.user.id)
         .maybeSingle();
 
-      if (profile) restoreUser(profile);
+      if (profile) {
+        restoreUser(profile);
+      }
     }
   };
 
   useEffect(() => {
-    if (!state.isAuthenticated) return;
+    if (!state.isAuthenticated || isPublicPatientIntakeRoute) return;
 
     const TIMEOUT = 15 * 60 * 1000;
-    let t: ReturnType<typeof setTimeout>;
+    let timeoutId: ReturnType<typeof setTimeout>;
 
-    const reset = () => {
-      clearTimeout(t);
-      t = setTimeout(async () => {
-        console.log('⏱️ [App] Session timeout, logging out');
+    const resetTimeout = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(async () => {
         await supabase.auth.signOut();
         dispatch({ type: 'LOGOUT' });
       }, TIMEOUT);
     };
 
     const events = ['mousedown', 'keydown', 'touchstart', 'scroll'];
-    events.forEach((e) =>
-      window.addEventListener(e, reset, { passive: true })
+
+    events.forEach((eventName) =>
+      window.addEventListener(eventName, resetTimeout, { passive: true })
     );
 
-    reset();
+    resetTimeout();
 
     return () => {
-      clearTimeout(t);
-      events.forEach((e) => window.removeEventListener(e, reset));
+      clearTimeout(timeoutId);
+      events.forEach((eventName) =>
+        window.removeEventListener(eventName, resetTimeout)
+      );
     };
-  }, [state.isAuthenticated, dispatch]);
+  }, [state.isAuthenticated, dispatch, isPublicPatientIntakeRoute]);
 
   if (checkingSession) {
-    console.log('🔄 [App] Rendering: CHECKING SESSION');
     return (
       <div className="min-h-screen bg-warm-ivory flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -239,7 +220,6 @@ function AppContent() {
   }
 
   if (forcedChange) {
-    console.log('🔑 [App] Rendering: FORCED PASSWORD CHANGE');
     return (
       <div className="min-h-screen bg-warm-ivory">
         <ResetPasswordPage
@@ -253,7 +233,6 @@ function AppContent() {
   }
 
   if (showPasswordReset) {
-    console.log('🔑 [App] Rendering: PASSWORD RESET');
     return (
       <div className="min-h-screen bg-warm-ivory">
         <ResetPasswordPage
@@ -267,26 +246,21 @@ function AppContent() {
   }
 
   const renderContent = () => {
+    if (isPublicPatientIntakeRoute) {
+      return <PublicPatientIntakePage />;
+    }
+
     if (!state.isAuthenticated) {
-      console.log('🔓 [App] Rendering: NOT AUTHENTICATED');
       return state.currentView === 'login' ? <LoginPage /> : <LandingPage />;
     }
 
-    console.log('🔐 [App] Rendering authenticated layout:', state.selectedRole);
-
     switch (state.selectedRole) {
       case 'patient':
-        console.log('🎬 [App] Rendering PatientLayout');
         return <PatientLayout />;
-
       case 'admin':
-        console.log('🎬 [App] Rendering AdminLayout');
         return <AdminLayout />;
-
-
       default:
-        console.log('⚠️ [App] No valid role matched, showing landing');
-        return <LandingPage />;
+        return <PatientLayout />;
     }
   };
 
@@ -299,16 +273,10 @@ function AppContent() {
 }
 
 function App() {
-  console.log('🚀 [App] Application starting...');
-
   return (
-    <ErrorBoundary>
-      <AppProvider>
-        <ErrorBoundary>
-          <AppContent />
-        </ErrorBoundary>
-      </AppProvider>
-    </ErrorBoundary>
+    <AppProvider>
+      <AppContent />
+    </AppProvider>
   );
 }
 
