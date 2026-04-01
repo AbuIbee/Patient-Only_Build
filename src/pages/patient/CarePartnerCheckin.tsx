@@ -10,6 +10,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useTempUser } from '@/components/TempUserGuard';
+import { isTempUser } from '@/types/subscription';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CheckInData {
@@ -263,7 +264,8 @@ export default function CarePartnerCheckin() {
   const completedCount = Object.values(sectionComplete).filter(Boolean).length;
 
   const handleSubmit = async () => {
-    if (blockIfReadOnly()) return;
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (blockIfReadOnly() || isTempUser(authUser?.email)) return;
     if (!patientId || !state.currentUser) {
       toast.error('You must be logged in to submit a check-in'); return;
     }

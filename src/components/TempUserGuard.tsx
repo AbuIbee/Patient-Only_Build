@@ -17,8 +17,9 @@
  *   };
  */
 
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useApp } from '@/store/AppContext';
+import { supabase } from '@/lib/supabase';
 import { isTempUser, TEMP_USER_BLOCKED_MSG } from '@/types/subscription';
 import { toast } from 'sonner';
 import { Eye, Lock } from 'lucide-react';
@@ -39,8 +40,19 @@ const TempUserContext = createContext<TempUserCtx>({
 
 export function TempUserProvider({ children }: { children: ReactNode }) {
   const { state } = useApp();
-  const email = state.currentUser?.email || '';
-  const isReadOnly = isTempUser(email);
+  const [authEmail, setAuthEmail] = useState<string>('');
+
+  // ── Get email from Supabase Auth directly ─────────────────────────────────
+  // profile.email can be null in the DB but auth.users always has the email.
+  // This is the only reliable source for temp-user detection.
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      const email = user?.email || state.currentUser?.email || '';
+      setAuthEmail(email);
+    });
+  }, [state.currentUser?.id]);
+
+  const isReadOnly = isTempUser(authEmail);
 
   const blockIfReadOnly = (): boolean => {
     if (!isReadOnly) return false;
@@ -49,7 +61,7 @@ export function TempUserProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <TempUserContext.Provider value={{ isReadOnly, blockIfReadOnly, email }}>
+    <TempUserContext.Provider value={{ isReadOnly, blockIfReadOnly, email: authEmail }}>
       {children}
     </TempUserContext.Provider>
   );

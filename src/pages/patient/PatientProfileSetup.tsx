@@ -14,6 +14,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useTempUser } from '@/components/TempUserGuard';
+import { isTempUser } from '@/types/subscription';
 import type { DementiaStage } from '@/types/patientIntake';
 
 const US_STATES = [
@@ -131,7 +132,9 @@ export default function PatientProfileSetup() {
 
   // ── Save all steps to Supabase ─────────────────────────────────────────────
   const saveAll = async () => {
-    if (blockIfReadOnly()) return;
+    // Double-check: verify directly from auth in case TempUserProvider hasn't resolved
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (blockIfReadOnly() || isTempUser(authUser?.email)) return;
     if (!form.firstName.trim() || !form.lastName.trim()) {
       toast.error('First and last name are required'); return;
     }

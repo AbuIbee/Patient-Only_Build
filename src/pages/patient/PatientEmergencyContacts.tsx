@@ -9,6 +9,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useTempUser } from '@/components/TempUserGuard';
+import { isTempUser } from '@/types/subscription';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CarePartnerInfo {
@@ -140,7 +141,8 @@ export default function PatientEmergencyContacts() {
 
   // ── Save Care Partner ─────────────────────────────────────────────────────
   const saveCarePartner = async () => {
-    if (blockIfReadOnly()) return;
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (blockIfReadOnly() || isTempUser(authUser?.email)) return;
     if (!cpInfo.full_name.trim()) { toast.error('Care partner name is required'); return; }
     setCpSaving(true);
     try {
@@ -179,7 +181,8 @@ export default function PatientEmergencyContacts() {
   };
 
   const saveContact = async (contact: EmergencyContact) => {
-    if (blockIfReadOnly()) return;
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (blockIfReadOnly() || isTempUser(authUser?.email)) return;
     if (!contact.full_name.trim()) { toast.error('Contact name is required'); return; }
     setEcSaving(contact.id);
     try {
@@ -215,7 +218,8 @@ export default function PatientEmergencyContacts() {
   };
 
   const deleteContact = async (id: string) => {
-    if (blockIfReadOnly()) return;
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (blockIfReadOnly() || isTempUser(authUser?.email)) return;
     if (!confirm('Remove this emergency contact?')) return;
     try {
       if (!id.startsWith('new-')) {
