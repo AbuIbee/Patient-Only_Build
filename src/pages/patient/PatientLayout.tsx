@@ -17,7 +17,7 @@ import MediaUploader from '@/components/MediaUploader';
 import {
   LayoutDashboard, Calendar, Pill, FileText, Bell,
   Heart, Smile, Users, MoreHorizontal, ChevronLeft,
-  ChevronRight, Volume2, Sun, Moon, LogOut, ClipboardList, UserCheck, Film, ClipboardPlus, Phone, Gamepad2,
+  ChevronRight, Volume2, Sun, Moon, LogOut, ClipboardList, UserCheck, Film, ClipboardPlus, Phone, Gamepad2, X, Menu,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -41,6 +41,7 @@ export default function PatientLayout() {
   const [currentView, setCurrentView] = useState<PatientView>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const { state, dispatch } = useApp();
@@ -243,13 +244,13 @@ export default function PatientLayout() {
   };
 
   const navItems = [
-    { id: 'checkin'            as PatientView, label: 'Care Partner',       icon: ClipboardList },
-    { id: 'intake'             as PatientView, label: 'Patient Intake Form', icon: ClipboardPlus },
-    { id: 'emergency_contacts' as PatientView, label: 'Emergency Contacts',  icon: Phone },
     { id: 'dashboard'          as PatientView, label: 'Home',                icon: LayoutDashboard },
-    { id: 'memories'           as PatientView, label: 'Family',              icon: Users },
-    { id: 'mood'               as PatientView, label: 'How I Feel',          icon: Smile },
-    { id: 'reminders'          as PatientView, label: 'Reminders',           icon: Bell },
+    { id: 'checkin'            as PatientView, label: 'Care Partner',         icon: ClipboardList },
+    { id: 'intake'             as PatientView, label: 'Patient Intake Form',  icon: ClipboardPlus },
+    { id: 'emergency_contacts' as PatientView, label: 'Emergency Contacts',   icon: Phone },
+    { id: 'memories'           as PatientView, label: 'Family',               icon: Users },
+    { id: 'mood'               as PatientView, label: 'How I Feel',           icon: Smile },
+    { id: 'reminders'          as PatientView, label: 'Reminders',            icon: Bell },
   ];
 
   const moreNavItems = [
@@ -483,7 +484,7 @@ export default function PatientLayout() {
         </div>
       </aside>
 
-      <main className={`flex-1 transition-all duration-300 ${sidebarCollapsed || simplifiedMode ? 'md:ml-20' : 'md:ml-64'} overflow-y-auto`}>
+      <main className={`flex-1 transition-all duration-300 ${sidebarCollapsed || simplifiedMode ? 'md:ml-20' : 'md:ml-64'} overflow-y-auto pb-16 md:pb-0`}>
         <div className="min-h-screen">
           {isSundowningTime && (
             <div className="bg-warm-amber/10 border-b border-warm-amber/20 px-4 py-3">
@@ -509,6 +510,133 @@ export default function PatientLayout() {
           {renderView()}
         </div>
       </main>
+
+      {/* ── MOBILE BOTTOM NAV BAR ──────────────────────────────────────── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-soft-taupe z-50 flex items-stretch h-16 safe-area-pb">
+        {/* Show first 4 nav items + More button */}
+        {[...navItems.slice(0, 4)].map((item) => {
+          const Icon = item.icon;
+          const isActive = currentView === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => { setCurrentView(item.id); setShowMobileMenu(false); }}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+                isActive ? 'text-warm-bronze' : 'text-medium-gray'
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+              <span className="text-[10px] font-medium leading-none">{item.label}</span>
+            </button>
+          );
+        })}
+        {/* More button opens slide-up drawer */}
+        <button
+          onClick={() => setShowMobileMenu(true)}
+          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+            showMobileMenu ? 'text-warm-bronze' : 'text-medium-gray'
+          }`}
+        >
+          <Menu className="w-5 h-5" />
+          <span className="text-[10px] font-medium leading-none">More</span>
+        </button>
+      </nav>
+
+      {/* ── MOBILE SLIDE-UP DRAWER ─────────────────────────────────────── */}
+      <AnimatePresence>
+        {showMobileMenu && (
+          <motion.div
+            className="md:hidden fixed inset-0 z-[60]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            {/* Backdrop */}
+            <div
+              className="absolute inset-0 bg-black/40"
+              onClick={() => setShowMobileMenu(false)}
+            />
+            {/* Drawer */}
+            <motion.div
+              className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl overflow-hidden"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            >
+              {/* Handle */}
+              <div className="flex justify-center pt-3 pb-1">
+                <div className="w-10 h-1 bg-soft-taupe rounded-full" />
+              </div>
+
+              {/* Patient name header */}
+              <div className="flex items-center justify-between px-5 py-3 border-b border-soft-taupe">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-warm-bronze rounded-full flex items-center justify-center">
+                    <span className="text-white font-semibold text-sm">
+                      {patient?.preferredName?.[0] || patient?.firstName?.[0] || '?'}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-charcoal text-sm">
+                      {patient?.preferredName || patient?.firstName || 'My Memoria Ally'}
+                    </p>
+                    <p className="text-xs text-medium-gray">
+                      {isEvening ? 'Good Evening' : hour < 12 ? 'Good Morning' : 'Good Afternoon'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowMobileMenu(false)}
+                  className="w-8 h-8 rounded-full bg-soft-taupe/40 flex items-center justify-center"
+                >
+                  <X className="w-4 h-4 text-charcoal" />
+                </button>
+              </div>
+
+              {/* All nav items */}
+              <div className="px-4 py-3 grid grid-cols-2 gap-2 max-h-[60vh] overflow-y-auto">
+                {[...navItems, ...moreNavItems].map((item) => {
+                  const Icon = item.icon;
+                  const isActive = currentView === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => { setCurrentView(item.id); setShowMobileMenu(false); }}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left ${
+                        isActive
+                          ? 'bg-warm-bronze text-white shadow-sm'
+                          : 'bg-soft-taupe/30 text-charcoal hover:bg-soft-taupe/60'
+                      }`}
+                    >
+                      <Icon className="w-5 h-5 flex-shrink-0" />
+                      <span className="font-medium text-sm">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Bottom actions */}
+              <div className="px-4 pb-6 pt-2 border-t border-soft-taupe flex gap-3">
+                <button
+                  onClick={playSafetyMessage}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-soft-sage/10 text-soft-sage font-medium text-sm"
+                >
+                  <Volume2 className="w-4 h-4" />
+                  {isPlaying ? 'Playing...' : 'You\'re Safe'}
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gentle-coral/10 text-gentle-coral font-medium text-sm"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1476,7 +1476,7 @@ export default function PatientHome() {
 
               {/* Greeting */}
               <p className="text-xl text-charcoal font-semibold mb-4 drop-shadow-sm">
-                {getTimeOfDayGreeting()}, {patient?.preferredName || 'Ellie'}!
+                {getTimeOfDayGreeting()}{patient?.preferredName || patient?.firstName ? `, ${patient?.preferredName || patient?.firstName}` : ''}!
               </p>
 
               {/* What's Next Section */}
@@ -1885,7 +1885,7 @@ export default function PatientHome() {
               Help is Coming
             </DialogTitle>
             <DialogDescription className="text-center text-lg">
-              You're safe. {patient?.familiarFaces?.[0]?.name || 'Mary'} is being called now.
+              You're safe. Help is on the way.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1905,7 +1905,7 @@ export default function PatientHome() {
             </div>
             
             <div className="p-4 bg-soft-sage/10 rounded-xl text-center">
-              <p className="text-charcoal font-medium">Calling {patient?.familiarFaces?.[0]?.name || 'Mary'}...</p>
+              <p className="text-charcoal font-medium">Calling {patient?.emergencyContact?.phone || '911'}...</p>
               <p className="text-medium-gray text-sm mt-1">Stay calm. Someone will be with you soon.</p>
             </div>
             
