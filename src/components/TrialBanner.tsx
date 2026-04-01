@@ -30,7 +30,7 @@ export default function TrialBanner({ onUpgrade }: TrialBannerProps) {
           <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0" />
           <p className="text-sm text-red-800 font-medium">
             Your {subscription.status === 'expired' ? 'free trial has ended' : 'access has expired'}.
-            {' '}Upgrade to continue using My Memoria Helps.
+            {' '}Upgrade to continue using My Memoria Ally.
           </p>
         </div>
         <button

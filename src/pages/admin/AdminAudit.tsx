@@ -78,7 +78,7 @@ export function AdminAudit() {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `memoriahelps-audit-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `my-memoria-ally-audit-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

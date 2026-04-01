@@ -1,4 +1,4 @@
-// MemoriaHelps - Patient + Admin Only Types
+// My Memoria Ally - Patient + Admin Only Types
 
 export type UserRole = 'patient' | 'admin';
 

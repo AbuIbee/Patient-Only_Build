@@ -235,8 +235,8 @@ export default function PricingPage({
 
       if (selectedTier === 'companion' || subStatus === 'promo') {
         const msg = promoApplied
-          ? `Welcome to My Memoria Helps! Your promo gives you free access until ${trialEnd.toLocaleDateString()}. 🎉`
-          : `Welcome to My Memoria Helps! Enjoy ${FREE_TRIAL_DAYS} days free. 🎉`;
+          ? `Welcome to My Memoria Ally! Your promo gives you free access until ${trialEnd.toLocaleDateString()}. 🎉`
+          : `Welcome to My Memoria Ally! Enjoy ${FREE_TRIAL_DAYS} days free. 🎉`;
         toast.success(msg);
         dispatch({ type: 'SET_USER', payload: { id: data.user.id, email: normalizedEmail, firstName, lastName, role: 'patient', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
         dispatch({ type: 'SET_ROLE',          payload: 'patient' });

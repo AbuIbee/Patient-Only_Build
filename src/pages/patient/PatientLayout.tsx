@@ -9,12 +9,14 @@ import PatientDocuments from './PatientDocuments';
 import PatientReminders from './PatientReminders';
 import PatientMoodTracker from './PatientMoodTracker';
 import CarePartnerCheckin from './CarePartnerCheckin';
+import PatientProfileSetup from './PatientProfileSetup';
+import PatientEmergencyContacts from './PatientEmergencyContacts';
 import PatientCareTeam from './PatientCareTeam';
 import MediaUploader from '@/components/MediaUploader';
 import {
   LayoutDashboard, Calendar, Pill, FileText, Bell,
   Heart, Smile, Users, MoreHorizontal, ChevronLeft,
-  ChevronRight, Volume2, VolumeX, Sun, Moon, LogOut, ClipboardList, UserCheck, Film, ClipboardPlus,
+  ChevronRight, Volume2, Sun, Moon, LogOut, ClipboardList, UserCheck, Film, ClipboardPlus, Phone,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -28,6 +30,8 @@ type PatientView =
   | 'documents'
   | 'reminders'
   | 'checkin'
+  | 'intake'
+  | 'emergency_contacts'
   | 'careteam'
   | 'media';
 
@@ -237,12 +241,13 @@ export default function PatientLayout() {
   };
 
   const navItems = [
-    { id: 'dashboard' as PatientView, label: 'Home', icon: LayoutDashboard },
-    { id: 'memories' as PatientView, label: 'Family', icon: Users },
-    { id: 'mood' as PatientView, label: 'How I Feel', icon: Smile },
-    { id: 'reminders' as PatientView, label: 'Reminders', icon: Bell },
-    { id: 'checkin' as PatientView, label: 'Care Partner', icon: ClipboardList },
-    { id: 'careteam' as PatientView, label: 'My Care Team', icon: UserCheck },
+    { id: 'checkin'            as PatientView, label: 'Care Partner',       icon: ClipboardList },
+    { id: 'intake'             as PatientView, label: 'Patient Intake Form', icon: ClipboardPlus },
+    { id: 'emergency_contacts' as PatientView, label: 'Emergency Contacts',  icon: Phone },
+    { id: 'dashboard'          as PatientView, label: 'Home',                icon: LayoutDashboard },
+    { id: 'memories'           as PatientView, label: 'Family',              icon: Users },
+    { id: 'mood'               as PatientView, label: 'How I Feel',          icon: Smile },
+    { id: 'reminders'          as PatientView, label: 'Reminders',           icon: Bell },
   ];
 
   const moreNavItems = [
@@ -272,6 +277,10 @@ export default function PatientLayout() {
         return <PatientReminders />;
       case 'checkin':
         return <CarePartnerCheckin />;
+      case 'intake':
+        return <PatientProfileSetup />;
+      case 'emergency_contacts':
+        return <PatientEmergencyContacts />;
       case 'careteam':
         return <PatientCareTeam />;
       case 'media':
@@ -319,7 +328,7 @@ export default function PatientLayout() {
           <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center flex-shrink-0">
             <Heart className="w-6 h-6 text-white" />
           </div>
-          {!sidebarCollapsed && <span className="ml-3 font-semibold text-charcoal">MemoriaHelps</span>}
+          {!sidebarCollapsed && <span className="ml-3 font-semibold text-charcoal">My Memoria Ally</span>}
         </div>
 
         {!sidebarCollapsed && (
@@ -374,18 +383,6 @@ export default function PatientLayout() {
               </button>
             );
           })}
-
-          <button
-            onClick={() => {
-              window.location.href = '/patient-intake';
-            }}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-medium-gray hover:bg-soft-taupe hover:text-charcoal"
-          >
-            <ClipboardPlus className="w-5 h-5 flex-shrink-0" />
-            {!sidebarCollapsed && !simplifiedMode && (
-              <span className="font-medium text-sm">Patient Intake Form</span>
-            )}
-          </button>
 
           <button
             onClick={() => setShowMoreMenu(!showMoreMenu)}
@@ -467,22 +464,6 @@ export default function PatientLayout() {
             {!sidebarCollapsed && (
               <span className="font-medium text-sm">
                 {simplifiedMode ? 'Normal Mode' : 'Simplified Mode'}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setIsPlaying(!isPlaying)}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-medium-gray hover:bg-soft-taupe transition-colors"
-          >
-            {isPlaying ? (
-              <VolumeX className="w-5 h-5 flex-shrink-0" />
-            ) : (
-              <Volume2 className="w-5 h-5 flex-shrink-0" />
-            )}
-            {!sidebarCollapsed && (
-              <span className="font-medium text-sm">
-                {isPlaying ? 'Mute Audio' : 'Enable Audio'}
               </span>
             )}
           </button>

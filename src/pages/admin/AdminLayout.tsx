@@ -626,7 +626,7 @@ export default function AdminLayout() {
           <ShieldCheck className="w-5 h-5 text-white" />
         </div>
         <div className="ml-3">
-          <p className="font-semibold text-charcoal text-sm">My Memoria Helps</p>
+          <p className="font-semibold text-charcoal text-sm">My Memoria Ally</p>
           <p className="text-xs text-medium-gray">Admin Center</p>
         </div>
       </div>
@@ -719,7 +719,7 @@ export default function AdminLayout() {
               transition={{ duration: 0.2 }}
               className="absolute left-0 top-0 bottom-0 w-72 bg-white border-r border-soft-taupe flex flex-col">
               <div className="flex items-center justify-between px-4 py-3 border-b border-soft-taupe">
-                <span className="font-semibold text-charcoal">My Memoria Helps Admin</span>
+                <span className="font-semibold text-charcoal">My Memoria Ally Admin</span>
                 <button onClick={() => setShowMobileSidebar(false)}
                   className="w-9 h-9 rounded-xl hover:bg-soft-taupe flex items-center justify-center">
                   <X className="w-5 h-5 text-charcoal" />
