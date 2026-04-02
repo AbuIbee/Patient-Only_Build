@@ -31,66 +31,22 @@ export interface Subscription {
 // ─── Free trial duration ─────────────────────────────────────────────────────
 
 /** Days of free access for the Companion (free) tier before requiring upgrade */
-export const FREE_TRIAL_DAYS = 45;
+export const FREE_TRIAL_DAYS = 30;
 
-/** Days of free access granted by a promotional code (includes the 45-day free period) */
-export const PROMO_TOTAL_DAYS = 61; // ~2 months; first 45 are the standard free tier
-
-// ─── Master account ───────────────────────────────────────────────────────────
+/** Days of free access granted by a promotional code */
+export const PROMO_TOTAL_DAYS = 45;
 
 /**
- * Email addresses that are treated as master accounts.
- * Master accounts have full_support access, bypass all payment walls,
- * and never expire. Add your admin email(s) here AND set role = 'admin'
- * in the profiles table.
- *
- * For production you should store these in an env variable or DB table
- * rather than hardcoding — this is kept here for simplicity.
+ * Master account detection is now DB-driven — managed via the Admin Center.
+ * Go to: Admin Center → All Users → click any user → Account Type → Master Account.
+ * No code changes needed. This array is kept empty intentionally.
  */
-export const MASTER_EMAILS: string[] = [
-  'master@memoriahelps.com',
-  'admin@memoriahelps.com',
-  'mrfantastic@mymemoriaally.com',
-  'ali@mymemoriaally.com',
-  'ummie@mymemoriaally.com',
-  'mystarr@mymemoriaally.com',
-  'temp-user@tempuser.com',
-  ];
+export const MASTER_EMAILS: string[] = [];  // managed via Admin Center UI + subscriptions table
 
 export function isMasterEmail(email: string | null | undefined): boolean {
   if (!email) return false;
   return MASTER_EMAILS.map(e => e.toLowerCase()).includes(email.toLowerCase());
 }
-
-
-// ─── Temp User (Read-Only Demo Accounts) ─────────────────────────────────────
-
-/**
- * Temp users have read-only access to the patient portal.
- * They can VIEW all content but cannot write, save, submit, or mutate anything.
- *
- * Pattern: temp-user@<any-domain>  OR  temp-user<N>@<any-domain>
- * Examples: temp-user@tempuser.com, temp-user1@tempuser.com, temp-user99@example.com
- *
- * This check is ADDITIVE — temp users still appear in MASTER_EMAILS so they
- * bypass the payment wall, but this flag gates write operations everywhere.
- *
- * IRONCLAD RULE: Any email matching /^temp-user\d*@/i is ALWAYS read-only.
- * This cannot be overridden by role, tier, or any other flag.
- */
-export const TEMP_USER_EMAIL_PATTERN = /^temp-user\d*@/i;
-
-export function isTempUser(email: string | null | undefined): boolean {
-  if (!email) return false;
-  return TEMP_USER_EMAIL_PATTERN.test(email.toLowerCase().trim());
-}
-
-/**
- * Returns a consistent read-only toast message for temp users who try to write.
- * Import and call this wherever a mutation is blocked.
- */
-export const TEMP_USER_BLOCKED_MSG =
-  "This is a read-only demo account. Contact support to get full access.";
 
 // ─── Promo codes ─────────────────────────────────────────────────────────────
 
