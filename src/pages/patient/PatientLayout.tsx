@@ -12,12 +12,13 @@ import CarePartnerCheckin from './CarePartnerCheckin';
 import PatientProfileSetup from './PatientProfileSetup';
 import PatientEmergencyContacts from './PatientEmergencyContacts';
 import PatientGames from './PatientGames';
+import PatientIntakeForm from './PatientIntakeForm';
 import PatientCareTeam from './PatientCareTeam';
 import MediaUploader from '@/components/MediaUploader';
 import {
   LayoutDashboard, Calendar, Pill, FileText, Bell,
   Heart, Smile, Users, MoreHorizontal, ChevronLeft,
-  ChevronRight, Volume2, Sun, Moon, LogOut, ClipboardList, UserCheck, Film, ClipboardPlus, Phone, Gamepad2, X, Menu,
+  ChevronRight, Volume2, Sun, Moon, LogOut, ClipboardList, UserCheck, Film, ClipboardPlus, Phone, Gamepad2, X, Menu, ClipboardCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -51,10 +52,22 @@ export default function PatientLayout() {
   const isSundowningTime = hour >= 16 && hour <= 19;
   const isEvening = hour >= 19;
   const [simplifiedMode, setSimplifiedMode] = useState(false);
+  const [intakeCompleted, setIntakeCompleted] = useState<boolean | null>(null);
 
   useEffect(() => {
     loadPatientData();
   }, []);
+
+  useEffect(() => {
+    if (!state.currentUser?.id) return;
+    supabase.from('patient_intake')
+      .select('intake_completed')
+      .eq('patient_profile_id', state.currentUser.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        setIntakeCompleted(data?.intake_completed === true);
+      });
+  }, [state.currentUser?.id]);
 
   const loadPatientData = async () => {
     setIsLoading(true);
@@ -282,7 +295,7 @@ export default function PatientLayout() {
       case 'checkin':
         return <CarePartnerCheckin />;
       case 'intake':
-        return <PatientProfileSetup />;
+        return <PatientIntakeForm onCompleted={() => setIntakeCompleted(true)} />;
       case 'emergency_contacts':
         return <PatientEmergencyContacts />;
       case 'careteam':
@@ -503,6 +516,35 @@ export default function PatientLayout() {
                 >
                   {simplifiedMode ? 'Turn Off Simple View' : 'Turn On Simple View'}
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Intake reminder popup ──────────────────────────────── */}
+          {intakeCompleted === false && currentView !== 'intake' && (
+            <div className="fixed inset-0 z-[9998] bg-black/70 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl shadow-2xl border border-soft-taupe w-full max-w-md p-8 text-center space-y-5">
+                <div className="w-20 h-20 bg-warm-bronze/10 rounded-full flex items-center justify-center mx-auto">
+                  <ClipboardCheck className="w-10 h-10 text-warm-bronze" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-charcoal">Complete Your Profile</h2>
+                  <p className="text-medium-gray mt-2 leading-relaxed">Your care team needs your information to provide the best possible support. Please take a few minutes to fill out your Patient Intake Form.</p>
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-left space-y-2">
+                  <p className="text-sm font-semibold text-amber-800">Why this matters:</p>
+                  <ul className="text-sm text-amber-700 space-y-1">
+                    <li>✓ Your doctor and hospital preferences are saved</li>
+                    <li>✓ Emergency contacts are on file</li>
+                    <li>✓ Your care team can see your medications</li>
+                    <li>✓ Your family knows who to contact</li>
+                  </ul>
+                </div>
+                <button onClick={() => setCurrentView('intake')}
+                  className="w-full py-4 bg-warm-bronze hover:bg-deep-bronze text-white rounded-2xl font-bold text-lg transition-colors shadow-md">
+                  Fill Out My Profile Now
+                </button>
+                <p className="text-xs text-medium-gray">This reminder will disappear once you complete and save the form.</p>
               </div>
             </div>
           )}
