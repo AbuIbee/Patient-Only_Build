@@ -364,7 +364,7 @@ interface CalmTrack {
 type CalmTab = 'melodies' | 'nature' | 'classical' | 'my-music';
 
 function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [tab, setTab]                     = useState<CalmTab>('melodies');
+  const [tab, setTab]                     = useState<CalmTab>('classical');
   const [playing, setPlaying]             = useState<string | null>(null);
   const [progress, setProgress]           = useState(0);
   const [trackDuration, setTrackDuration] = useState(0);
@@ -392,11 +392,8 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
   }, [open]);
 
   const stopAudio = () => {
-    if (audioRef.current) {
-      audioRef.current.loop = false;
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
+    audioRef.current?.pause();
+    audioRef.current = null;
     setPlaying(null);
     setProgress(0);
     setTrackDuration(0);
@@ -404,19 +401,14 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
 
   useEffect(() => { if (!open) stopAudio(); }, [open]);
 
-  const playTrack = (id: string, url?: string, category?: string) => {
+  const playTrack = (id: string, url?: string) => {
     stopAudio();
     if (playing === id) return;
     setPlaying(id);
     if (url) {
-      const shouldLoop = category === 'melodies' || category === 'nature';
       const a = new Audio();
       a.crossOrigin = 'anonymous';
-      a.loop = shouldLoop;
-      // For looping tracks onended never fires — only fire it for classical
-      if (!shouldLoop) {
-        a.onended = () => { setPlaying(null); setProgress(0); setTrackDuration(0); };
-      }
+      a.onended = () => { setPlaying(null); setProgress(0); setTrackDuration(0); };
       a.onloadedmetadata = () => setTrackDuration(a.duration);
       a.ontimeupdate = () => setProgress(a.currentTime);
       a.onerror = () => { setPlaying(null); setProgress(0); setTrackDuration(0); };
@@ -449,8 +441,8 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
   const fmtTime = (s: number) => isNaN(s) ? '0:00' : `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 
   const tabs: { id: CalmTab; label: string; emoji: string }[] = [
-    { id: 'melodies',  label: 'Melodies',  emoji: '🎹' },
     { id: 'classical', label: 'Classical', emoji: '🎻' },
+    { id: 'melodies',  label: 'Melodies',  emoji: '🎹' },
     { id: 'nature',    label: 'Nature',    emoji: '🌿' },
     { id: 'my-music',  label: 'My Music',  emoji: '⭐' },
   ];
@@ -508,7 +500,7 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
               {tab !== 'my-music' && !tracksLoading && tracks.map(track => (
                 <button
                   key={track.id}
-                  onClick={() => playTrack(track.id, track.audio_url, track.category)}
+                  onClick={() => playTrack(track.id, track.audio_url)}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
                     playing === track.id
                       ? 'border-soft-sage bg-soft-sage/10'
@@ -521,29 +513,14 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-charcoal text-sm truncate">{track.title}</p>
                     <p className="text-xs text-medium-gray">{track.artist}</p>
-                    {playing === track.id && (
+                    {playing === track.id && trackDuration > 0 && (
                       <div className="mt-1.5 space-y-0.5">
-                        {(track.category === 'melodies' || track.category === 'nature') ? (
-                          <div className="flex items-center gap-1.5">
-                            <div className="h-1 bg-soft-sage/20 rounded-full overflow-hidden flex-1">
-                              <motion.div
-                                className="h-full bg-soft-sage/60 rounded-full"
-                                animate={{ width: ['0%', '100%'] }}
-                                transition={{ repeat: Infinity, duration: trackDuration || 10, ease: 'linear' }}
-                              />
-                            </div>
-                            <span className="text-xs text-soft-sage font-medium">🔁</span>
-                          </div>
-                        ) : trackDuration > 0 ? (
-                          <div className="space-y-0.5">
-                            <div className="h-1 bg-soft-sage/20 rounded-full overflow-hidden">
-                              <div className="h-full bg-soft-sage rounded-full transition-all" style={{ width: `${(progress/trackDuration)*100}%` }} />
-                            </div>
-                            <div className="flex justify-between text-xs text-medium-gray">
-                              <span>{fmtTime(progress)}</span><span>{fmtTime(trackDuration)}</span>
-                            </div>
-                          </div>
-                        ) : null}
+                        <div className="h-1 bg-soft-sage/20 rounded-full overflow-hidden">
+                          <div className="h-full bg-soft-sage rounded-full transition-all" style={{ width: `${(progress/trackDuration)*100}%` }} />
+                        </div>
+                        <div className="flex justify-between text-xs text-medium-gray">
+                          <span>{fmtTime(progress)}</span><span>{fmtTime(trackDuration)}</span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -615,9 +592,7 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
                   transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.2 }} />
               ))}
             </div>
-            <p className="text-sm text-soft-sage font-medium flex-1">
-              Now playing…{(tab === 'melodies' || tab === 'nature') ? ' 🔁 looping' : ''}
-            </p>
+            <p className="text-sm text-soft-sage font-medium flex-1">Now playing…</p>
             <button onClick={stopAudio} className="text-xs text-medium-gray hover:text-charcoal underline">Stop</button>
           </div>
         )}
