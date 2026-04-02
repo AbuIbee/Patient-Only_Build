@@ -200,13 +200,20 @@ function SignUpForm({ onBack, onSignedIn }: { onBack: () => void; onSignedIn: (u
     setLoading(true);
     try {
       // 1. Create auth user
+      const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
       const { data, error } = await supabase.auth.signUp({
         email: form.email.trim().toLowerCase(),
         password: form.password,
-        options: { data: { first_name: form.firstName.trim(), last_name: form.lastName.trim(), role: 'patient' } },
+        options: {
+          emailRedirectTo: siteUrl,
+          data: { first_name: form.firstName.trim(), last_name: form.lastName.trim(), role: 'patient' },
+        },
       });
       if (error) { toast.error(error.message); return; }
       if (!data.user) throw new Error('No user returned');
+
+      // If Supabase returns a user but no session, email confirmation is required
+      const needsConfirmation = !data.session && data.user;
 
       const uid = data.user.id;
       const now = new Date().toISOString();
@@ -270,6 +277,17 @@ function SignUpForm({ onBack, onSignedIn }: { onBack: () => void; onSignedIn: (u
         sms_consent: form.agreeTexts,
         terms_accepted_at: now,
       }).eq('id', uid);
+
+      if (needsConfirmation) {
+        // Email confirmation required — show success message but don't log in yet
+        toast.success(
+          `Account created! Check your email at ${form.email.trim().toLowerCase()} to confirm your account, then sign in.`,
+          { duration: 8000 }
+        );
+        setLoading(false);
+        onBack(); // Go back to sign-in screen
+        return;
+      }
 
       toast.success(`Welcome, ${form.firstName}! Your account is ready.`);
       onSignedIn(uid);
