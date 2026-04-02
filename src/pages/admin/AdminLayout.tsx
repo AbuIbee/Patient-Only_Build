@@ -136,8 +136,6 @@ function getAccountTypeDef(key: string): AccountTypeDef {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const ROLES = [
   { value: 'patient',   label: 'Patient',   color: 'bg-soft-sage/20 text-green-700'     },
-  { value: 'caregiver', label: 'Caregiver', color: 'bg-warm-bronze/10 text-warm-bronze' },
-  { value: 'therapist', label: 'Therapist', color: 'bg-calm-blue/10 text-blue-700'      },
   { value: 'admin',     label: 'Admin',     color: 'bg-deep-bronze/10 text-deep-bronze' },
   { value: 'pending',   label: 'Pending',   color: 'bg-amber-100 text-amber-700'        },
 ];
@@ -635,7 +633,7 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 function DashboardOverview({ onNavigate }: { onNavigate: (v: AdminView) => void }) {
-  const [stats,   setStats]   = useState({ patients: 0, admins: 0, caregivers: 0, therapists: 0, newWeek: 0, masters: 0, promos: 0, trials: 0, temps: 0, inactive: 0 });
+  const [stats,   setStats]   = useState({ patients: 0, admins: 0, newWeek: 0, masters: 0, promos: 0, trials: 0, temps: 0, inactive: 0 });
   const [recent,  setRecent]  = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -662,8 +660,6 @@ function DashboardOverview({ onNavigate }: { onNavigate: (v: AdminView) => void 
       setStats({
         patients:   p.filter(x => x.role === 'patient').length,
         admins:     p.filter(x => x.role === 'admin').length,
-        caregivers: p.filter(x => x.role === 'caregiver').length,
-        therapists: p.filter(x => x.role === 'therapist').length,
         newWeek:    weekRes.count || 0,
         masters:    s.filter(x => x.tier === 'master').length,
         promos:     s.filter(x => x.status === 'promo').length,
@@ -692,8 +688,6 @@ function DashboardOverview({ onNavigate }: { onNavigate: (v: AdminView) => void 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { label: 'Patients',   value: stats.patients,   view: 'patients' as AdminView, color: 'text-green-700' },
-            { label: 'Caregivers', value: stats.caregivers, view: 'all_users' as AdminView, color: 'text-warm-bronze' },
-            { label: 'Therapists', value: stats.therapists, view: 'all_users' as AdminView, color: 'text-blue-700' },
             { label: 'Admins',     value: stats.admins,     view: 'admins'   as AdminView, color: 'text-deep-bronze' },
           ].map(s => (
             <div key={s.label} onClick={() => onNavigate(s.view)}
