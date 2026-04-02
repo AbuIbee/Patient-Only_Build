@@ -48,6 +48,23 @@ export function isMasterEmail(email: string | null | undefined): boolean {
   return MASTER_EMAILS.map(e => e.toLowerCase()).includes(email.toLowerCase());
 }
 
+// ─── Temp User (Read-Only Demo Accounts) ─────────────────────────────────────
+
+/**
+ * Pattern: temp-user@<domain> OR temp-user<digits>@<domain>
+ * Examples: temp-user@tempuser.com, temp-user1@example.com
+ * These accounts are always read-only regardless of subscription tier.
+ */
+export const TEMP_USER_EMAIL_PATTERN = /^temp-user\d*@/i;
+
+export function isTempUser(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return TEMP_USER_EMAIL_PATTERN.test(email.toLowerCase().trim());
+}
+
+export const TEMP_USER_BLOCKED_MSG =
+  'This is a read-only demo account. Contact support to get full access.';
+
 // ─── Promo codes ─────────────────────────────────────────────────────────────
 
 /**
