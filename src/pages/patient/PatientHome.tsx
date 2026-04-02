@@ -355,40 +355,79 @@ const AI_VOICES = [
 // SUB-COMPONENT: CalmMeDialog
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─── CalmMe track type (matches Supabase calm_tracks table) ─────────────────
-interface CalmTrack {
-  id: string; category: string; title: string; artist: string;
-  emoji: string; color: string; audio_url: string;
+// ─── CalmMe: reads directly from Supabase storage bucket "music-files" ─────
+// Folder structure in the bucket determines the tab:
+//   music-files/classical/  → Classical tab
+//   music-files/melodies/   → Melodies tab
+//   music-files/nature/     → Nature tab
+// Any file you upload appears automatically — no SQL inserts needed.
+
+interface StorageTrack {
+  id: string;       // storage file path
+  title: string;    // cleaned filename
+  audio_url: string;// public URL
+  category: string; // folder name
 }
 
-type CalmTab = 'melodies' | 'nature' | 'classical' | 'my-music';
+type CalmTab = 'classical' | 'melodies' | 'nature' | 'my-music';
+
+const CATEGORY_META: Record<string, { emoji: string; color: string; label: string }> = {
+  classical: { emoji: '🎻', color: 'bg-rose-100 text-rose-700',   label: 'Classical' },
+  melodies:  { emoji: '🎹', color: 'bg-purple-100 text-purple-700', label: 'Melodies' },
+  nature:    { emoji: '🌿', color: 'bg-green-100 text-green-700',  label: 'Nature'   },
+};
+
+function fileToTitle(name: string): string {
+  // "canon-in-d.mp3" → "Canon In D"
+  return name
+    .replace(/\.[^.]+$/, '')
+    .replace(/[-_]/g, ' ')
+    .replace(/\w/g, l => l.toUpperCase());
+}
 
 function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab]                     = useState<CalmTab>('classical');
   const [playing, setPlaying]             = useState<string | null>(null);
   const [progress, setProgress]           = useState(0);
   const [trackDuration, setTrackDuration] = useState(0);
-  const [dbTracks, setDbTracks]           = useState<CalmTrack[]>([]);
+  const [storageTracks, setStorageTracks] = useState<StorageTrack[]>([]);
   const [tracksLoading, setTracksLoading] = useState(true);
   const [myTracks, setMyTracks]           = useState<{ id: string; label: string; url: string }[]>(() => {
     try { return JSON.parse(localStorage.getItem('calmMyTracks') || '[]'); } catch { return []; }
   });
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // ── Fetch tracks from Supabase on open ────────────────────────────────
+  // ── List files directly from music-files storage bucket ───────────────
   useEffect(() => {
     if (!open) return;
     setTracksLoading(true);
-    supabase
-      .from('calm_tracks')
-      .select('*')
-      .eq('is_active', true)
-      .order('sort_order')
-      .then(({ data, error }) => {
-        if (!error && data) setDbTracks(data as CalmTrack[]);
-        else console.warn('calm_tracks fetch failed:', error?.message);
-        setTracksLoading(false);
-      });
+
+    const BUCKET = 'music-files';
+    const folders = ['classical', 'melodies', 'nature'];
+
+    Promise.all(
+      folders.map(folder =>
+        supabase.storage.from(BUCKET).list(folder, { limit: 100, sortBy: { column: 'name', order: 'asc' } })
+          .then(({ data, error }) => {
+            if (error || !data) return [];
+            return data
+              .filter(f => f.name && !f.name.startsWith('.') && f.id) // skip folders/placeholders
+              .map(f => {
+                const path = `${folder}/${f.name}`;
+                const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path);
+                return {
+                  id:        path,
+                  title:     fileToTitle(f.name),
+                  audio_url: urlData.publicUrl,
+                  category:  folder,
+                } as StorageTrack;
+              });
+          })
+      )
+    ).then(results => {
+      setStorageTracks(results.flat());
+      setTracksLoading(false);
+    });
   }, [open]);
 
   const stopAudio = () => {
@@ -407,7 +446,6 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
     setPlaying(id);
     if (url) {
       const a = new Audio();
-      a.crossOrigin = 'anonymous';
       a.onended = () => { setPlaying(null); setProgress(0); setTrackDuration(0); };
       a.onloadedmetadata = () => setTrackDuration(a.duration);
       a.ontimeupdate = () => setProgress(a.currentTime);
@@ -448,7 +486,7 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
   ];
 
   const tracks = tab !== 'my-music'
-    ? dbTracks.filter(t => t.category === tab)
+    ? storageTracks.filter(t => t.category === tab)
     : [];
 
   return (
@@ -507,12 +545,12 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
                       : 'border-transparent bg-warm-ivory hover:border-soft-taupe'
                   }`}
                 >
-                  <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 ${track.color}`}>
-                    {track.emoji}
+                  <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 ${CATEGORY_META[track.category]?.color || 'bg-soft-taupe text-charcoal'}`}>
+                    {CATEGORY_META[track.category]?.emoji || '🎵'}
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-charcoal text-sm truncate">{track.title}</p>
-                    <p className="text-xs text-medium-gray">{track.artist}</p>
+                    <p className="text-xs text-medium-gray capitalize">{track.category}</p>
                     {playing === track.id && trackDuration > 0 && (
                       <div className="mt-1.5 space-y-0.5">
                         <div className="h-1 bg-soft-sage/20 rounded-full overflow-hidden">
