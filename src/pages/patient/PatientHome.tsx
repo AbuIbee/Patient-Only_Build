@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useApp } from '@/store/AppContext';
+import { supabase } from '@/lib/supabase';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -9,7 +9,6 @@ import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 
 // Mock family stories
-// Story dialog reads from audio-files storage — see TellMeAStoryDialog
 
 
 // Mock weather with emotional context
@@ -37,194 +36,141 @@ const AI_VOICES = [
 ];
 
 
-// ─── TellMeAStoryDialog — live from audio-files storage bucket ────────────────
-// Structure: audio-files/{section}/{optional-subfolder}/files
-// Sections: novels, religion, short-stories — all auto-detected from bucket
-
-function storyFileToTitle(name: string): string {
-  return name
-    .replace(/\.[^.]+$/, '')
-    .replace(/[-_]/g, ' ')
-    .replace(/^\s*\d+\s*/, '')
-    .replace(/\w/g, l => l.toUpperCase())
-    .trim() || name;
+// ─── Tell Me A Story — reads from audio-files bucket ─────────────────────────
+function storyTitle(name: string): string {
+  return name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ')
+    .replace(/^\s*\d+\s*/, '').replace(/\w/g, l => l.toUpperCase()).trim() || name;
 }
-
-const STORY_FOLDER_EMOJI: Record<string, string> = {
-  'religion': '🕌', 'novels': '📚', 'short-stories': '📖',
-  "aesop's fables": '🦊', 'ghost stories': '👻',
-  'grimms fairytales': '🏰', 'mice & men comedy play': '🎭',
-  'among meadow people': '🌿', 'adventures of sherlock holmes': '🔍',
+const STORY_EMOJI: Record<string, string> = {
+  'religion':'🕌','novels':'📚','short-stories':'📖',
+  "aesop's fables":'🦊','ghost stories':'👻','grimms fairytales':'🏰',
+  'mice & men comedy play':'🎭','among meadow people':'🌿',
+  'adventures of sherlock holmes':'🔍',
 };
-function storyEmoji(name: string) {
-  return STORY_FOLDER_EMOJI[name.toLowerCase()] || '🎧';
-}
+const sEmoji = (n: string) => STORY_EMOJI[n.toLowerCase()] || '🎧';
 
 function TellMeAStoryDialog({ onClose }: { onClose: () => void }) {
   const BUCKET = 'audio-files';
-  const [navStack,      setNavStack]      = React.useState<string[]>([]);
-  const [nodes,         setNodes]         = React.useState<{ label: string; path: string }[]>([]);
-  const [tracks,        setTracks]        = React.useState<{ id: string; title: string; url: string }[]>([]);
-  const [loadingNodes,  setLoadingNodes]  = React.useState(true);
-  const [loadingTracks, setLoadingTracks] = React.useState(false);
-  const [playing,       setPlaying]       = React.useState<string | null>(null);
-  const [progress,      setProgress]      = React.useState(0);
-  const [duration,      setDuration]      = React.useState(0);
-  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const [nav,    setNav]    = useState<string[]>([]);
+  const [nodes,  setNodes]  = useState<{label:string;path:string}[]>([]);
+  const [tracks, setTracks] = useState<{id:string;title:string;url:string}[]>([]);
+  const [loadN,  setLoadN]  = useState(true);
+  const [loadT,  setLoadT]  = useState(false);
+  const [playing,setPlaying]= useState<string|null>(null);
+  const [prog,   setProg]   = useState(0);
+  const [dur,    setDur]    = useState(0);
+  const aRef = React.useRef<HTMLAudioElement|null>(null);
+  const path = nav.join('/');
 
-  const currentPath = navStack.join('/');
-
-  React.useEffect(() => {
-    setLoadingNodes(true);
-    setNodes([]); setTracks([]); stopAudio();
-
-    const folder = currentPath || undefined;
-    supabase.storage.from(BUCKET)
-      .list(folder, { limit: 300, sortBy: { column: 'name', order: 'asc' } })
-      .then(({ data }) => {
-        const items   = data || [];
-        const folders = items.filter(i => !i.id || i.metadata === null);
-        const files   = items.filter(i => i.id && i.metadata !== null && !i.name.startsWith('.'));
-
-        if (files.length > 0) {
-          setLoadingTracks(true);
-          const ts = files.map(f => {
-            const path = currentPath ? `${currentPath}/${f.name}` : f.name;
-            const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(path);
-            return { id: path, title: storyFileToTitle(f.name), url: u.publicUrl };
-          });
-          setTracks(ts);
-          setLoadingTracks(false);
+  useEffect(() => {
+    setLoadN(true); setNodes([]); setTracks([]);
+    aRef.current?.pause(); aRef.current=null; setPlaying(null); setProg(0); setDur(0);
+    supabase.storage.from(BUCKET).list(path||undefined,{limit:300,sortBy:{column:'name',order:'asc'}})
+      .then(({data})=>{
+        const all = data||[];
+        const dirs  = all.filter(i=>!i.id||i.metadata===null).filter(i=>!i.name.startsWith('.'));
+        const files = all.filter(i=>i.id&&i.metadata!==null&&!i.name.startsWith('.'));
+        if(files.length>0){
+          setLoadT(true);
+          setTracks(files.map(f=>{
+            const p = path?`${path}/${f.name}`:f.name;
+            const {data:u}=supabase.storage.from(BUCKET).getPublicUrl(p);
+            return {id:p,title:storyTitle(f.name),url:u.publicUrl};
+          }));
+          setLoadT(false);
         } else {
-          setNodes(folders.filter(f => f.name && !f.name.startsWith('.')).map(f => ({
-            label: f.name,
-            path:  currentPath ? `${currentPath}/${f.name}` : f.name,
-          })));
+          setNodes(dirs.map(f=>({label:f.name,path:path?`${path}/${f.name}`:f.name})));
         }
-      })
-      .finally(() => setLoadingNodes(false));
-  }, [currentPath]);
+      }).finally(()=>setLoadN(false));
+  },[path]);
 
-  const stopAudio = () => {
-    audioRef.current?.pause(); audioRef.current = null;
-    setPlaying(null); setProgress(0); setDuration(0);
-  };
-  const playTrack = (id: string, url: string) => {
-    stopAudio();
-    if (playing === id) return;
-    const a = new Audio(url);
-    a.onended = () => { setPlaying(null); setProgress(0); setDuration(0); };
-    a.onloadedmetadata = () => setDuration(a.duration);
-    a.ontimeupdate = () => setProgress(a.currentTime);
-    a.onerror = () => setPlaying(null);
-    a.play().catch(() => setPlaying(null));
-    audioRef.current = a;
-    setPlaying(id);
-  };
-  React.useEffect(() => () => stopAudio(), []);
+  useEffect(()=>(()=>{aRef.current?.pause();}),[]);
 
-  const fmtTime = (s: number) =>
-    isNaN(s) ? '0:00' : `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+  const play = (id:string,url:string)=>{
+    aRef.current?.pause(); aRef.current=null; setPlaying(null); setProg(0); setDur(0);
+    if(playing===id) return;
+    const a=new Audio(url);
+    a.onended=()=>{setPlaying(null);setProg(0);setDur(0);};
+    a.onloadedmetadata=()=>setDur(a.duration);
+    a.ontimeupdate=()=>setProg(a.currentTime);
+    a.onerror=()=>setPlaying(null);
+    a.play().catch(()=>setPlaying(null));
+    aRef.current=a; setPlaying(id);
+  };
+  const fmt=(s:number)=>isNaN(s)?'0:00':`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden">
-
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-soft-taupe flex-shrink-0">
           <div className="flex items-center gap-2 min-w-0">
-            {navStack.length > 0 && (
-              <button onClick={() => setNavStack(s => s.slice(0,-1))}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-soft-taupe/40 text-warm-bronze flex-shrink-0 text-lg">←</button>
-            )}
-            <BookOpen className="w-5 h-5 text-calm-blue flex-shrink-0" />
+            {nav.length>0&&<button onClick={()=>setNav(s=>s.slice(0,-1))}
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-soft-taupe/40 text-warm-bronze flex-shrink-0 text-lg">←</button>}
+            <BookOpen className="w-5 h-5 text-calm-blue flex-shrink-0"/>
             <h2 className="font-semibold text-charcoal truncate capitalize">
-              {navStack.length === 0 ? 'Tell Me a Story' : navStack[navStack.length-1]}
+              {nav.length===0?'Tell Me a Story':nav[nav.length-1]}
             </h2>
           </div>
-          <button onClick={() => { stopAudio(); onClose(); }}
+          <button onClick={()=>{aRef.current?.pause();onClose();}}
             className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-soft-taupe/40 text-medium-gray text-xl font-bold flex-shrink-0">×</button>
         </div>
-
-        {/* Breadcrumb */}
-        {navStack.length > 0 && (
+        {nav.length>0&&(
           <div className="flex items-center gap-1 px-5 py-1.5 text-xs text-medium-gray border-b border-soft-taupe/50 flex-shrink-0 overflow-x-auto whitespace-nowrap">
-            <button onClick={() => setNavStack([])} className="hover:text-warm-bronze">Library</button>
-            {navStack.map((seg, i) => (
+            <button onClick={()=>setNav([])} className="hover:text-warm-bronze">Library</button>
+            {nav.map((seg,i)=>(
               <React.Fragment key={seg}>
                 <span>›</span>
-                <button onClick={() => setNavStack(s => s.slice(0,i+1))}
-                  className="hover:text-warm-bronze capitalize">{seg}</button>
+                <button onClick={()=>setNav(s=>s.slice(0,i+1))} className="hover:text-warm-bronze capitalize">{seg}</button>
               </React.Fragment>
             ))}
           </div>
         )}
-
-        {/* Content */}
         <div className="overflow-y-auto flex-1 p-3 space-y-1.5">
-          {(loadingNodes || loadingTracks) && (
-            <div className="flex justify-center py-8">
-              <div className="w-6 h-6 border-2 border-calm-blue border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
-
-          {/* Folder tiles */}
-          {!loadingNodes && nodes.map(node => (
-            <button key={node.path} onClick={() => setNavStack(s => [...s, node.label])}
+          {(loadN||loadT)&&<div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-calm-blue border-t-transparent rounded-full animate-spin"/></div>}
+          {!loadN&&nodes.map(n=>(
+            <button key={n.path} onClick={()=>setNav(s=>[...s,n.label])}
               className="w-full flex items-center gap-3 p-3.5 rounded-xl bg-soft-taupe/20 hover:bg-calm-blue/10 border-2 border-transparent hover:border-calm-blue/30 transition-all text-left">
-              <span className="text-2xl flex-shrink-0">{storyEmoji(node.label)}</span>
+              <span className="text-2xl flex-shrink-0">{sEmoji(n.label)}</span>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-charcoal capitalize">{node.label}</p>
+                <p className="font-semibold text-charcoal capitalize">{n.label}</p>
                 <p className="text-xs text-medium-gray">Tap to browse</p>
               </div>
               <span className="text-medium-gray text-lg flex-shrink-0">›</span>
             </button>
           ))}
-
-          {/* Track list */}
-          {!loadingTracks && tracks.map((track, i) => (
-            <button key={track.id} onClick={() => playTrack(track.id, track.url)}
-              className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                playing === track.id ? 'border-calm-blue bg-calm-blue/10' : 'border-transparent bg-soft-taupe/20 hover:border-soft-taupe'
-              }`}>
-              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                playing === track.id ? 'bg-calm-blue text-white' : 'bg-soft-taupe/40 text-medium-gray'
-              }`}>{playing === track.id ? '▶' : i+1}</span>
+          {!loadT&&tracks.map((t,i)=>(
+            <button key={t.id} onClick={()=>play(t.id,t.url)}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${playing===t.id?'border-calm-blue bg-calm-blue/10':'border-transparent bg-soft-taupe/20 hover:border-soft-taupe'}`}>
+              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${playing===t.id?'bg-calm-blue text-white':'bg-soft-taupe/40 text-medium-gray'}`}>
+                {playing===t.id?'▶':i+1}
+              </span>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-charcoal text-sm truncate">{track.title}</p>
-                {playing === track.id && duration > 0 && (
+                <p className="font-medium text-charcoal text-sm truncate">{t.title}</p>
+                {playing===t.id&&dur>0&&(
                   <div className="mt-1 space-y-0.5">
                     <div className="h-1 bg-calm-blue/20 rounded-full overflow-hidden">
-                      <div className="h-full bg-calm-blue rounded-full transition-all" style={{ width: `${(progress/duration)*100}%` }} />
+                      <div className="h-full bg-calm-blue rounded-full transition-all" style={{width:`${(prog/dur)*100}%`}}/>
                     </div>
                     <div className="flex justify-between text-xs text-medium-gray">
-                      <span>{fmtTime(progress)}</span><span>{fmtTime(duration)}</span>
+                      <span>{fmt(prog)}</span><span>{fmt(dur)}</span>
                     </div>
                   </div>
                 )}
               </div>
-              {playing === track.id
-                ? <Pause className="w-4 h-4 text-calm-blue flex-shrink-0" />
-                : <Play className="w-4 h-4 text-medium-gray flex-shrink-0" />}
+              {playing===t.id?<Pause className="w-4 h-4 text-calm-blue flex-shrink-0"/>:<Play className="w-4 h-4 text-medium-gray flex-shrink-0"/>}
             </button>
           ))}
-
-          {!loadingNodes && !loadingTracks && nodes.length === 0 && tracks.length === 0 && (
+          {!loadN&&!loadT&&nodes.length===0&&tracks.length===0&&(
             <p className="text-center text-medium-gray text-sm py-8">Nothing here yet.</p>
           )}
         </div>
-
-        {/* Now playing bar */}
-        {playing && (
+        {playing&&(
           <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 bg-calm-blue/10 border-t border-calm-blue/20">
             <div className="flex gap-0.5 items-end h-4">
-              {[0,1,2].map(i => (
-                <div key={i} className="w-1 bg-calm-blue rounded-full animate-pulse"
-                  style={{ height: `${8+i*4}px`, animationDelay: `${i*0.15}s` }} />
-              ))}
+              {[0,1,2].map(i=><div key={i} className="w-1 bg-calm-blue rounded-full animate-pulse" style={{height:`${8+i*4}px`,animationDelay:`${i*0.15}s`}}/>)}
             </div>
             <p className="text-sm text-calm-blue font-medium flex-1">Now playing…</p>
-            <button onClick={stopAudio} className="text-xs text-medium-gray hover:text-charcoal underline">Stop</button>
+            <button onClick={()=>{aRef.current?.pause();setPlaying(null);}} className="text-xs text-medium-gray hover:text-charcoal underline">Stop</button>
           </div>
         )}
       </div>
@@ -887,7 +833,7 @@ export default function PatientHome() {
         </DialogContent>
       </Dialog>
 
-      {/* Tell Me a Story Dialog — reads from audio-files storage */}
+      {/* Tell Me a Story Dialog */}
       {showStoryDialog && <TellMeAStoryDialog onClose={() => setShowStoryDialog(false)} />}
 
       {/* Emergency Help Dialog */}
