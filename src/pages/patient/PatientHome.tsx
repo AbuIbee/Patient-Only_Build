@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useApp } from '@/store/AppContext';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,7 +9,8 @@ import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 
 // Mock family stories
-// familyStories replaced by live storage listing — see TellMeAStoryDialog below
+// Story dialog reads from audio-files storage — see TellMeAStoryDialog
+
 
 // Mock weather with emotional context
 const getWeatherContext = () => {
@@ -35,104 +36,79 @@ const AI_VOICES = [
   { id: 'cheerful',      label: 'Cheerful',         emoji: '😊', description: 'Upbeat, encouraging tone' },
 ];
 
-// ─── Tell Me A Story Dialog ───────────────────────────────────────────────────
-// Reads from the audio-files bucket — ALL top-level folders are sections.
-// Each folder can either contain files directly (e.g. religion/, novels/)
-// OR contain subfolders (e.g. short-stories/{subfolder}/files).
-// Upload anything to any folder and it appears automatically.
 
-function fileToTitle(name: string): string {
+// ─── TellMeAStoryDialog — live from audio-files storage bucket ────────────────
+// Structure: audio-files/{section}/{optional-subfolder}/files
+// Sections: novels, religion, short-stories — all auto-detected from bucket
+
+function storyFileToTitle(name: string): string {
   return name
     .replace(/\.[^.]+$/, '')
     .replace(/[-_]/g, ' ')
-    .replace(/^\s*\d+\s*/, '')       // strip leading track number
-    .replace(/\b\w/g, l => l.toUpperCase())
+    .replace(/^\s*\d+\s*/, '')
+    .replace(/\w/g, l => l.toUpperCase())
     .trim() || name;
 }
 
-const FOLDER_EMOJI: Record<string, string> = {
-  'religion':               '🕌',
-  'novels':                 '📚',
-  'short-stories':          '📖',
-  "aesop's fables":        '🦊',
-  'ghost stories':          '👻',
-  'grimms fairytales':      '🏰',
-  'mice & men comedy play': '🎭',
+const STORY_FOLDER_EMOJI: Record<string, string> = {
+  'religion': '🕌', 'novels': '📚', 'short-stories': '📖',
+  "aesop's fables": '🦊', 'ghost stories': '👻',
+  'grimms fairytales': '🏰', 'mice & men comedy play': '🎭',
+  'among meadow people': '🌿', 'adventures of sherlock holmes': '🔍',
 };
-function folderEmoji(name: string) { return FOLDER_EMOJI[name.toLowerCase()] || '🎧'; }
-
-interface StoryNode {
-  label:       string;   // display name
-  path:        string;   // full storage path
-  hasChildren: boolean;  // true = subfolder, false = files here
+function storyEmoji(name: string) {
+  return STORY_FOLDER_EMOJI[name.toLowerCase()] || '🎧';
 }
 
 function TellMeAStoryDialog({ onClose }: { onClose: () => void }) {
   const BUCKET = 'audio-files';
-
-  // nav stack: [] = root, ['religion'] = inside religion, ['short-stories','ghost stories'] = deeper
-  const [navStack,     setNavStack]     = React.useState<string[]>([]);
-  const [nodes,        setNodes]        = React.useState<StoryNode[]>([]);
-  const [tracks,       setTracks]       = React.useState<{ id: string; title: string; url: string }[]>([]);
-  const [loadingNodes, setLoadingNodes] = React.useState(true);
-  const [loadingTracks,setLoadingTracks]= React.useState(false);
-  const [playing,      setPlaying]      = React.useState<string | null>(null);
-  const [progress,     setProgress]     = React.useState(0);
-  const [duration,     setDuration]     = React.useState(0);
+  const [navStack,      setNavStack]      = React.useState<string[]>([]);
+  const [nodes,         setNodes]         = React.useState<{ label: string; path: string }[]>([]);
+  const [tracks,        setTracks]        = React.useState<{ id: string; title: string; url: string }[]>([]);
+  const [loadingNodes,  setLoadingNodes]  = React.useState(true);
+  const [loadingTracks, setLoadingTracks] = React.useState(false);
+  const [playing,       setPlaying]       = React.useState<string | null>(null);
+  const [progress,      setProgress]      = React.useState(0);
+  const [duration,      setDuration]      = React.useState(0);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
   const currentPath = navStack.join('/');
 
-  // ── List current folder ────────────────────────────────────────────────
   React.useEffect(() => {
     setLoadingNodes(true);
-    setNodes([]);
-    setTracks([]);
-    stopAudio();
+    setNodes([]); setTracks([]); stopAudio();
 
     const folder = currentPath || undefined;
     supabase.storage.from(BUCKET)
       .list(folder, { limit: 300, sortBy: { column: 'name', order: 'asc' } })
-      .then(({ data, error }) => {
-        if (error) { console.warn('list error:', error.message); return; }
-        const items = data || [];
-        // Supabase: folders have metadata=null and no real id vs files have an id
+      .then(({ data }) => {
+        const items   = data || [];
         const folders = items.filter(i => !i.id || i.metadata === null);
         const files   = items.filter(i => i.id && i.metadata !== null && !i.name.startsWith('.'));
 
         if (files.length > 0) {
-          // This folder contains files directly — load them as tracks
           setLoadingTracks(true);
           const ts = files.map(f => {
             const path = currentPath ? `${currentPath}/${f.name}` : f.name;
-            const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path);
-            return { id: path, title: fileToTitle(f.name), url: urlData.publicUrl };
+            const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(path);
+            return { id: path, title: storyFileToTitle(f.name), url: u.publicUrl };
           });
           setTracks(ts);
           setLoadingTracks(false);
         } else {
-          // Folder contains subfolders — show navigation nodes
-          const ns: StoryNode[] = folders
-            .filter(f => f.name && !f.name.startsWith('.'))
-            .map(f => ({
-              label: f.name,
-              path: currentPath ? `${currentPath}/${f.name}` : f.name,
-              hasChildren: true,
-            }));
-          setNodes(ns);
+          setNodes(folders.filter(f => f.name && !f.name.startsWith('.')).map(f => ({
+            label: f.name,
+            path:  currentPath ? `${currentPath}/${f.name}` : f.name,
+          })));
         }
       })
       .finally(() => setLoadingNodes(false));
   }, [currentPath]);
 
   const stopAudio = () => {
-    audioRef.current?.pause();
-    audioRef.current = null;
-    setPlaying(null);
-    setProgress(0);
-    setDuration(0);
+    audioRef.current?.pause(); audioRef.current = null;
+    setPlaying(null); setProgress(0); setDuration(0);
   };
-
   const playTrack = (id: string, url: string) => {
     stopAudio();
     if (playing === id) return;
@@ -145,11 +121,10 @@ function TellMeAStoryDialog({ onClose }: { onClose: () => void }) {
     audioRef.current = a;
     setPlaying(id);
   };
-
   React.useEffect(() => () => stopAudio(), []);
 
   const fmtTime = (s: number) =>
-    isNaN(s) ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+    isNaN(s) ? '0:00' : `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4">
@@ -159,31 +134,27 @@ function TellMeAStoryDialog({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-soft-taupe flex-shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             {navStack.length > 0 && (
-              <button onClick={() => setNavStack(s => s.slice(0, -1))}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-soft-taupe/40 text-warm-bronze flex-shrink-0">
-                ←
-              </button>
+              <button onClick={() => setNavStack(s => s.slice(0,-1))}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-soft-taupe/40 text-warm-bronze flex-shrink-0 text-lg">←</button>
             )}
             <BookOpen className="w-5 h-5 text-calm-blue flex-shrink-0" />
             <h2 className="font-semibold text-charcoal truncate capitalize">
-              {navStack.length === 0 ? 'Tell Me a Story' : navStack[navStack.length - 1]}
+              {navStack.length === 0 ? 'Tell Me a Story' : navStack[navStack.length-1]}
             </h2>
           </div>
           <button onClick={() => { stopAudio(); onClose(); }}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-soft-taupe/40 text-medium-gray text-lg font-bold flex-shrink-0">
-            ×
-          </button>
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-soft-taupe/40 text-medium-gray text-xl font-bold flex-shrink-0">×</button>
         </div>
 
         {/* Breadcrumb */}
         {navStack.length > 0 && (
-          <div className="flex items-center gap-1 px-5 py-2 text-xs text-medium-gray border-b border-soft-taupe/50 flex-shrink-0 overflow-x-auto">
-            <button onClick={() => setNavStack([])} className="hover:text-warm-bronze whitespace-nowrap">Library</button>
+          <div className="flex items-center gap-1 px-5 py-1.5 text-xs text-medium-gray border-b border-soft-taupe/50 flex-shrink-0 overflow-x-auto whitespace-nowrap">
+            <button onClick={() => setNavStack([])} className="hover:text-warm-bronze">Library</button>
             {navStack.map((seg, i) => (
               <React.Fragment key={seg}>
                 <span>›</span>
-                <button onClick={() => setNavStack(s => s.slice(0, i + 1))}
-                  className="hover:text-warm-bronze capitalize whitespace-nowrap">{seg}</button>
+                <button onClick={() => setNavStack(s => s.slice(0,i+1))}
+                  className="hover:text-warm-bronze capitalize">{seg}</button>
               </React.Fragment>
             ))}
           </div>
@@ -191,52 +162,40 @@ function TellMeAStoryDialog({ onClose }: { onClose: () => void }) {
 
         {/* Content */}
         <div className="overflow-y-auto flex-1 p-3 space-y-1.5">
-
-          {/* Loading */}
           {(loadingNodes || loadingTracks) && (
             <div className="flex justify-center py-8">
               <div className="w-6 h-6 border-2 border-calm-blue border-t-transparent rounded-full animate-spin" />
             </div>
           )}
 
-          {/* Folder navigation */}
-          {!loadingNodes && nodes.length > 0 && (
-            <>
-              {nodes.map(node => (
-                <button key={node.path}
-                  onClick={() => setNavStack(s => [...s, node.label])}
-                  className="w-full flex items-center gap-3 p-3.5 rounded-xl bg-soft-taupe/20 hover:bg-calm-blue/10 hover:border-calm-blue border-2 border-transparent transition-all text-left">
-                  <span className="text-2xl flex-shrink-0">{folderEmoji(node.label)}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-charcoal capitalize">{node.label}</p>
-                    <p className="text-xs text-medium-gray">Tap to browse</p>
-                  </div>
-                  <span className="text-medium-gray text-lg flex-shrink-0">›</span>
-                </button>
-              ))}
-            </>
-          )}
+          {/* Folder tiles */}
+          {!loadingNodes && nodes.map(node => (
+            <button key={node.path} onClick={() => setNavStack(s => [...s, node.label])}
+              className="w-full flex items-center gap-3 p-3.5 rounded-xl bg-soft-taupe/20 hover:bg-calm-blue/10 border-2 border-transparent hover:border-calm-blue/30 transition-all text-left">
+              <span className="text-2xl flex-shrink-0">{storyEmoji(node.label)}</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-charcoal capitalize">{node.label}</p>
+                <p className="text-xs text-medium-gray">Tap to browse</p>
+              </div>
+              <span className="text-medium-gray text-lg flex-shrink-0">›</span>
+            </button>
+          ))}
 
           {/* Track list */}
-          {!loadingTracks && tracks.length > 0 && tracks.map((track, i) => (
+          {!loadingTracks && tracks.map((track, i) => (
             <button key={track.id} onClick={() => playTrack(track.id, track.url)}
               className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                playing === track.id
-                  ? 'border-calm-blue bg-calm-blue/10'
-                  : 'border-transparent bg-soft-taupe/20 hover:border-soft-taupe'
+                playing === track.id ? 'border-calm-blue bg-calm-blue/10' : 'border-transparent bg-soft-taupe/20 hover:border-soft-taupe'
               }`}>
               <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
                 playing === track.id ? 'bg-calm-blue text-white' : 'bg-soft-taupe/40 text-medium-gray'
-              }`}>
-                {playing === track.id ? '▶' : i + 1}
-              </span>
+              }`}>{playing === track.id ? '▶' : i+1}</span>
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-charcoal text-sm truncate">{track.title}</p>
                 {playing === track.id && duration > 0 && (
                   <div className="mt-1 space-y-0.5">
                     <div className="h-1 bg-calm-blue/20 rounded-full overflow-hidden">
-                      <div className="h-full bg-calm-blue rounded-full transition-all"
-                        style={{ width: `${(progress / duration) * 100}%` }} />
+                      <div className="h-full bg-calm-blue rounded-full transition-all" style={{ width: `${(progress/duration)*100}%` }} />
                     </div>
                     <div className="flex justify-between text-xs text-medium-gray">
                       <span>{fmtTime(progress)}</span><span>{fmtTime(duration)}</span>
@@ -261,7 +220,7 @@ function TellMeAStoryDialog({ onClose }: { onClose: () => void }) {
             <div className="flex gap-0.5 items-end h-4">
               {[0,1,2].map(i => (
                 <div key={i} className="w-1 bg-calm-blue rounded-full animate-pulse"
-                  style={{ height: `${8 + i * 4}px`, animationDelay: `${i * 0.15}s` }} />
+                  style={{ height: `${8+i*4}px`, animationDelay: `${i*0.15}s` }} />
               ))}
             </div>
             <p className="text-sm text-calm-blue font-medium flex-1">Now playing…</p>
@@ -928,7 +887,7 @@ export default function PatientHome() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Tell Me a Story Dialog — reads from audio-files/short-stories/ ── */}
+      {/* Tell Me a Story Dialog — reads from audio-files storage */}
       {showStoryDialog && <TellMeAStoryDialog onClose={() => setShowStoryDialog(false)} />}
 
       {/* Emergency Help Dialog */}
