@@ -141,7 +141,7 @@ const ROLES = [
 ];
 
 const EMAIL_RE  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const inputCls  = 'w-full px-2 py-1.5 border border-soft-taupe rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze bg-white';
+const inputCls  = 'w-full min-w-[100px] px-2 py-1.5 border border-soft-taupe rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze bg-white whitespace-nowrap';
 const minputCls = (err?: string) =>
   `w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 ${err
     ? 'border-gentle-coral focus:ring-gentle-coral/20 bg-gentle-coral/5'
@@ -510,7 +510,7 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
               <thead className="bg-soft-taupe/20">
                 <tr>
                   {[
-                    'First Name', 'Last Name', 'Email', 'Phone', 'Role',
+                    'UID', 'First Name', 'Last Name', 'Email', 'Phone', 'Role',
                     ...(showAccountType ? ['Account Type'] : []),
                     'Joined', 'Actions'
                   ].map(h => (
@@ -534,32 +534,38 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
                       inactive ? 'bg-soft-taupe/10 opacity-60' :
                                  'hover:bg-soft-taupe/10'
                     }`}>
-                      {/* First Name */}
+                      {/* UID */}
                       <td className="px-4 py-2.5">
+                        <span className="font-mono text-xs text-medium-gray bg-soft-taupe/30 px-2 py-1 rounded-lg block whitespace-nowrap" title={u.id}>
+                          {u.id.slice(0, 8)}…
+                        </span>
+                      </td>
+                      {/* First Name */}
+                      <td className="px-4 py-2.5 min-w-[120px]">
                         <input value={e.first_name}
                           onChange={ev => setField(u.id, 'first_name', ev.target.value)}
                           className={inputCls} placeholder="First name" />
                       </td>
                       {/* Last Name */}
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2.5 min-w-[120px]">
                         <input value={e.last_name}
                           onChange={ev => setField(u.id, 'last_name', ev.target.value)}
                           className={inputCls} placeholder="Last name" />
                       </td>
                       {/* Email */}
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2.5 min-w-[180px]">
                         <input type="email" value={e.email}
                           onChange={ev => setField(u.id, 'email', ev.target.value)}
                           className={inputCls} placeholder="Email" />
                       </td>
                       {/* Phone */}
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2.5 min-w-[130px]">
                         <input type="tel" value={e.phone}
                           onChange={ev => setField(u.id, 'phone', ev.target.value)}
                           className={inputCls} placeholder="Phone" />
                       </td>
                       {/* Role */}
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2.5 min-w-[120px]">
                         <select value={e.role}
                           onChange={ev => setField(u.id, 'role', ev.target.value)}
                           className={`${inputCls} ${dirty && e.role !== u.role ? 'border-warm-bronze text-warm-bronze font-medium' : ''}`}>
@@ -586,7 +592,7 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
                         {new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </td>
                       {/* Actions */}
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2.5 min-w-[180px] whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <button onClick={() => saveUser(u)} disabled={!dirty || isSaving}
                             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
