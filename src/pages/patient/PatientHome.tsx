@@ -792,18 +792,41 @@ function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClo
 function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const BUCKET = 'audio-files';
 
-  // ── Hardcoded tree – matches your actual bucket structure (all lowercase, no special chars) ──
-  // novels/
-  //   among meadow people/          (leaf: mp3s)
-  //   adventures of sherlock holmes/ (leaf: mp3s)
-  // religion/
-  //   quran/                        (leaf: mp3s)
-  // short-stories/
-  //   aesops fables/                (leaf: mp3s)
-  //   ghost stories/                (leaf: mp3s)
-  //   grimms fairytales/            (leaf: mp3s)
-  //   mice and men comedy play/     (leaf: mp3s)
+  // Define all audio files per subfolder (hardcoded)
+  // Format: 'folder/path' -> array of { title, fileName }
+  const AUDIO_FILES: Record<string, { title: string; fileName: string }[]> = {
+    'novels/among meadow people': [
+      { title: 'Chapter 1 - The Meadow', fileName: 'chapter1.mp3' },
+      { title: 'Chapter 2 - The Stream', fileName: 'chapter2.mp3' },
+      // Add more files here
+    ],
+    'novels/adventures of sherlock holmes': [
+      { title: 'A Scandal in Bohemia', fileName: 'scandal.mp3' },
+      { title: 'The Red-Headed League', fileName: 'redhead.mp3' },
+    ],
+    'religion/quran': [
+      { title: 'Surah Al-Fatiha', fileName: 'fatiha.mp3' },
+      { title: 'Surah Al-Ikhlas', fileName: 'ikhlas.mp3' },
+    ],
+    'short-stories/aesops fables': [
+      { title: 'The Tortoise and the Hare', fileName: 'tortoise_hare.mp3' },
+      { title: 'The Lion and the Mouse', fileName: 'lion_mouse.mp3' },
+    ],
+    'short-stories/ghost stories': [
+      { title: 'The Haunted House', fileName: 'haunted.mp3' },
+      { title: 'The Whispers', fileName: 'whispers.mp3' },
+    ],
+    'short-stories/grimms fairytales': [
+      { title: 'Hansel and Gretel', fileName: 'hansel_gretel.mp3' },
+      { title: 'Rapunzel', fileName: 'rapunzel.mp3' },
+    ],
+    'short-stories/mice and men comedy play': [
+      { title: 'Act 1 - The Plan', fileName: 'act1.mp3' },
+      { title: 'Act 2 - The Confusion', fileName: 'act2.mp3' },
+    ],
+  };
 
+  // Tree structure (same as before)
   type StoryNode = { label: string; path: string; children?: StoryNode[] };
   const TREE: StoryNode[] = [
     {
@@ -817,9 +840,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     {
       label: 'Religion',
       path: 'religion',
-      children: [
-        { label: 'Quran', path: 'religion/quran' },   // <-- fixed: subfolder, not leaf
-      ],
+      children: [{ label: 'Quran', path: 'religion/quran' }],
     },
     {
       label: 'Short Stories',
@@ -833,9 +854,8 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     },
   ];
 
-  const [currentPath, setCurrentPath] = useState<string | null>(null); // null = root
+  const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [tracks, setTracks] = useState<{ id: string; title: string; url: string }[]>([]);
-  const [loading, setLoading] = useState(false);
   const [playing, setPlaying] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -864,13 +884,13 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     return undefined;
   };
 
-  // Load audio files when currentPath is a leaf (no children)
+  // Load hardcoded audio files when a leaf folder is selected
   useEffect(() => {
     if (!open) {
       stopAudio();
       return;
     }
-    if (currentPath === null) {
+    if (!currentPath) {
       setTracks([]);
       return;
     }
@@ -882,36 +902,18 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
       return;
     }
 
-    setLoading(true);
-    setTracks([]);
-    stopAudio();
-
-    supabase.storage
-      .from(BUCKET)
-      .list(currentPath, { limit: 300, sortBy: { column: 'name', order: 'asc' } })
-      .then(({ data, error }) => {
-        if (error) {
-          console.warn('Story list error:', error.message);
-          setLoading(false);
-          return;
-        }
-        const files = (data || []).filter(
-          (i) => i.name && !i.name.startsWith('.') && i.name.includes('.')
-        );
-        setTracks(
-          files.map((f) => {
-            const filePath = `${currentPath}/${f.name}`;
-            const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
-            return {
-              id: filePath,
-              title: storyTitle(f.name),
-              url: u.publicUrl,
-            };
-          })
-        );
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    // Get hardcoded files for this path
+    const files = AUDIO_FILES[currentPath] || [];
+    const trackList = files.map((f, idx) => {
+      const filePath = `${currentPath}/${f.fileName}`;
+      const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
+      return {
+        id: filePath,
+        title: f.title,
+        url: u.publicUrl,
+      };
+    });
+    setTracks(trackList);
   }, [open, currentPath]);
 
   const handlePlay = (id: string, url: string) => {
@@ -946,7 +948,6 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     return node ? node.label : currentPath.split('/').pop() || currentPath;
   };
 
-  // Helper to get the parent path for Back button
   const getParentPath = (path: string): string | null => {
     for (const n of TREE) {
       if (n.children?.some((c) => c.path === path)) return n.path;
@@ -1006,14 +1007,8 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
         )}
 
         <div className="overflow-y-auto flex-1 space-y-2 pr-1">
-          {loading && (
-            <div className="flex justify-center py-10">
-              <div className="w-6 h-6 border-2 border-calm-blue border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
-
-          {/* Show folders (from TREE) */}
-          {!loading && tracks.length === 0 && (
+          {/* Show folders */}
+          {tracks.length === 0 && (
             <>
               {(currentPath === null ? TREE : findNode(currentPath)?.children || []).map((node) => (
                 <button
@@ -1042,7 +1037,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
           )}
 
           {/* Show audio tracks */}
-          {!loading && tracks.map((track, i) => (
+          {tracks.map((track, i) => (
             <button
               key={track.id}
               onClick={() => handlePlay(track.id, track.url)}
@@ -1077,11 +1072,11 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
           ))}
 
           {/* Empty state */}
-          {!loading && tracks.length === 0 && currentPath !== null && !(findNode(currentPath)?.children) && (
+          {tracks.length === 0 && currentPath !== null && !(findNode(currentPath)?.children) && (
             <div className="text-center py-8 text-medium-gray text-sm">
               <BookOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p>No stories found in this folder.</p>
-              <p className="text-xs mt-1">Add MP3 files to your Supabase storage bucket.</p>
+              <p>No audio files defined for this folder.</p>
+              <p className="text-xs mt-1">Edit the AUDIO_FILES object in the code to add your MP3s.</p>
             </div>
           )}
         </div>
