@@ -792,12 +792,29 @@ function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClo
 function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const BUCKET = 'audio-files';
   
-  // Only three top-level folders that match your bucket structure
+  // Root folders (level 1)
   const ROOT_FOLDERS = [
     { label: 'Novels', path: 'novels' },
     { label: 'Religion', path: 'religion' },
     { label: 'Short Stories', path: 'short-stories' }
   ];
+
+  // Hardcoded subfolders for each root (level 2) - similar to CalmMe's folders
+  const SUBFOLDERS: Record<string, { label: string; path: string }[]> = {
+    novels: [
+      { label: 'Adventures of Sherlock Holmes', path: 'novels/adventures of sherlock holmes' },
+      { label: 'Among Meadow People', path: 'novels/among meadow people' }
+    ],
+    religion: [
+      { label: 'Quran', path: 'religion/Quran' }
+    ],
+    'short-stories': [
+      { label: "Aesop's Fables", path: "short-stories/aesop's fables" },
+      { label: 'Ghost Stories', path: 'short-stories/Ghost Stories' },
+      { label: "Grimm's Fairytales", path: 'short-stories/grimms fairytales' },
+      { label: 'Mice & Men Comedy Play', path: 'short-stories/Mice&MenComedyPlay' }
+    ]
+  };
 
   const [nav, setNav] = useState<string[]>([]);
   const [nodes, setNodes] = useState<{ label: string; path: string; isFolder: boolean }[]>([]);
@@ -821,7 +838,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
   const fmtTime = (s: number) =>
     isNaN(s) ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-  // Load current folder contents
+  // Load current level
   useEffect(() => {
     if (!open) {
       stopAudio();
@@ -833,14 +850,24 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     setTracks([]);
     stopAudio();
 
-    // If at root level, show hard-coded folders
+    // Level 0: root folders
     if (nav.length === 0) {
       setNodes(ROOT_FOLDERS.map(f => ({ ...f, isFolder: true })));
       setLoading(false);
       return;
     }
-
-    // Otherwise, list the current folder path
+    
+    // Level 1: we are at a root folder (e.g., 'novels') - show its hardcoded subfolders
+    if (nav.length === 1) {
+      const rootKey = nav[0];
+      const subfolders = SUBFOLDERS[rootKey] || [];
+      setNodes(subfolders.map(sf => ({ label: sf.label, path: sf.path, isFolder: true })));
+      setLoading(false);
+      return;
+    }
+    
+    // Level 2+: we are inside a subfolder (e.g., 'novels/adventures of sherlock holmes')
+    // List audio files directly from that path
     supabase.storage.from(BUCKET)
       .list(navPath, { limit: 300, sortBy: { column: 'name', order: 'asc' } })
       .then(({ data, error }) => {
@@ -851,14 +878,10 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
         }
 
         const all = (data || []).filter(i => !i.name.startsWith('.'));
-        
-        // Detect folders (no metadata.size) vs files (has metadata.size)
+        // Only files (we ignore subfolders at this level)
         const isFile = (i: any) => i.metadata != null && typeof i.metadata.size === 'number' && i.metadata.size > 0;
-        
-        const folders = all.filter(i => !isFile(i));
         const files = all.filter(isFile);
 
-        // If we have files, show them as tracks
         if (files.length > 0) {
           setTracks(files.map(f => {
             const filePath = `${navPath}/${f.name}`;
@@ -869,15 +892,11 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
               url: u.publicUrl
             };
           }));
+        } else {
+          // If no files, maybe there are subfolders (though not expected)
+          const folders = all.filter(i => !isFile(i));
+          setNodes(folders.map(f => ({ label: f.name, path: `${navPath}/${f.name}`, isFolder: true })));
         }
-        
-        // Show subfolders as navigation options
-        setNodes(folders.map(f => ({
-          label: f.name,
-          path: f.name,
-          isFolder: true
-        })));
-        
         setLoading(false);
       })
       .catch(err => {
@@ -915,8 +934,12 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
   // Helper to get display name for current folder
   const getCurrentDisplayName = () => {
     if (nav.length === 0) return 'Tell Me a Story';
+    if (nav.length === 1) {
+      const root = nav[0];
+      return root === 'novels' ? 'Novels' : root === 'religion' ? 'Religion' : 'Short Stories';
+    }
+    // For deeper levels, show the last segment nicely formatted
     const last = nav[nav.length - 1];
-    // Convert folder names to nice display names (e.g., "adventures-of-sherlock-holmes" -> "Adventures of Sherlock Holmes")
     return last.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   };
 
@@ -929,7 +952,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
             {getCurrentDisplayName()}
           </DialogTitle>
           <DialogDescription className="text-center">
-            {nav.length === 0 ? 'Choose a category' : 'Tap a story to listen'}
+            {nav.length === 0 ? 'Choose a category' : nav.length === 1 ? 'Choose a story collection' : 'Tap a track to play'}
           </DialogDescription>
         </DialogHeader>
 
@@ -980,8 +1003,8 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
             >
               <span className="text-2xl flex-shrink-0">📁</span>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-charcoal capitalize">
-                  {node.label.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                <p className="font-semibold text-charcoal">
+                  {node.label}
                 </p>
                 <p className="text-xs text-medium-gray">Tap to browse</p>
               </div>
