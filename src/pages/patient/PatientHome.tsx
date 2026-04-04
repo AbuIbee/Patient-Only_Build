@@ -793,25 +793,58 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
   const BUCKET = 'audio-files';
 
   // -------------------------------------------------------------------------
-  // 1. HARDCODED AUDIO FILES – ADJUST THE PATHS AND FILE NAMES TO MATCH YOUR BUCKET EXACTLY
-  //    Use the exact folder names as they appear in Supabase (case‑sensitive, spaces, etc.)
+  // HARDCODED AUDIO FILES – PATHS MATCH YOUR ACTUAL BUCKET (lowercase, spaces)
   // -------------------------------------------------------------------------
   const AUDIO_FILES: Record<string, { title: string; fileName: string }[]> = {
     // Novels / Among Meadow People (29 files)
     'novels/among meadow people': [
       { title: 'Among Meadow People 00', fileName: 'amongmeadowpeople_00_pierson_128kb.mp3' },
       { title: 'Among Meadow People 01', fileName: 'amongmeadowpeople_01_pierson_128kb.mp3' },
-      // ... (all 29 files as previously listed, but keep them for brevity)
-      // I'll include a representative sample – you already have the full list in your previous code.
+      { title: 'Among Meadow People 02', fileName: 'amongmeadowpeople_02_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 03', fileName: 'amongmeadowpeople_03_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 04', fileName: 'amongmeadowpeople_04_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 05', fileName: 'amongmeadowpeople_05_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 06', fileName: 'amongmeadowpeople_06_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 07', fileName: 'amongmeadowpeople_07_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 08', fileName: 'amongmeadowpeople_08_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 09', fileName: 'amongmeadowpeople_09_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 10', fileName: 'amongmeadowpeople_10_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 11', fileName: 'amongmeadowpeople_11_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 12', fileName: 'amongmeadowpeople_12_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 13', fileName: 'amongmeadowpeople_13_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 14', fileName: 'amongmeadowpeople_14_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 15', fileName: 'amongmeadowpeople_15_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 16', fileName: 'amongmeadowpeople_16_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 17', fileName: 'amongmeadowpeople_17_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 18', fileName: 'amongmeadowpeople_18_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 19', fileName: 'amongmeadowpeople_19_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 20', fileName: 'amongmeadowpeople_20_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 21', fileName: 'amongmeadowpeople_21_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 22', fileName: 'amongmeadowpeople_22_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 23', fileName: 'amongmeadowpeople_23_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 24', fileName: 'amongmeadowpeople_24_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 25', fileName: 'amongmeadowpeople_25_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 26', fileName: 'amongmeadowpeople_26_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 27', fileName: 'amongmeadowpeople_27_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 28', fileName: 'amongmeadowpeople_28_pierson_128kb.mp3' },
     ],
     // Novels / Adventures of Sherlock Holmes (12 files)
     'novels/adventures of sherlock holmes': [
-      { title: 'Adventures 01', fileName: 'adventuresherlockholmes_01_doyle.mp3' },
-      // ... (all 12 files)
+      { title: 'Sherlock Holmes 01', fileName: 'adventuresherlockholmes_01_doyle.mp3' },
+      { title: 'Sherlock Holmes 02', fileName: 'adventuresherlockholmes_02_doyle.mp3' },
+      { title: 'Sherlock Holmes 03', fileName: 'adventuresherlockholmes_03_doyle.mp3' },
+      { title: 'Sherlock Holmes 04', fileName: 'adventuresherlockholmes_04_doyle.mp3' },
+      { title: 'Sherlock Holmes 05', fileName: 'adventuresherlockholmes_05_doyle.mp3' },
+      { title: 'Sherlock Holmes 06', fileName: 'adventuresherlockholmes_06_doyle.mp3' },
+      { title: 'Sherlock Holmes 07', fileName: 'adventuresherlockholmes_07_doyle.mp3' },
+      { title: 'Sherlock Holmes 08', fileName: 'adventuresherlockholmes_08_doyle.mp3' },
+      { title: 'Sherlock Holmes 09', fileName: 'adventuresherlockholmes_09_doyle.mp3' },
+      { title: 'Sherlock Holmes 10', fileName: 'adventuresherlockholmes_10_doyle.mp3' },
+      { title: 'Sherlock Holmes 11', fileName: 'adventuresherlockholmes_11_doyle.mp3' },
+      { title: 'Sherlock Holmes 12', fileName: 'adventuresherlockholmes_12_doyle.mp3' },
     ],
-    // Religion – files directly inside the "religion" folder (no subfolder)
-    // IMPORTANT: The folder name must match EXACTLY. If your bucket folder is "religion", use "religion".
-    'religion': [
+    // Religion / Quran (files inside religion/quran/)
+    'religion/quran': [
       { title: 'Koran 01', fileName: 'koran_01_pickthall.mp3' },
       { title: 'Koran 03', fileName: 'koran_03_pickthall.mp3' },
       { title: 'Koran 04', fileName: 'koran_04_pickthall.mp3' },
@@ -821,31 +854,123 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
       { title: 'Koran 08', fileName: 'koran_08_pickthall.mp3' },
       { title: 'Koran 09', fileName: 'koran_09_pickthall.mp3' },
       { title: 'Koran 10', fileName: 'koran_10_pickthall.mp3' },
-      // ... add all the way to koran_69_pickthall.mp3 (as shown in your screenshots)
+      { title: 'Koran 11', fileName: 'koran_11_pickthall.mp3' },
+      { title: 'Koran 12', fileName: 'koran_12_pickthall.mp3' },
+      { title: 'Koran 13', fileName: 'koran_13_pickthall.mp3' },
+      { title: 'Koran 14', fileName: 'koran_14_pickthall.mp3' },
+      { title: 'Koran 15', fileName: 'koran_15_pickthall.mp3' },
+      { title: 'Koran 16', fileName: 'koran_16_pickthall.mp3' },
+      { title: 'Koran 17', fileName: 'koran_17_pickthall.mp3' },
+      { title: 'Koran 18', fileName: 'koran_18_pickthall.mp3' },
+      { title: 'Koran 19', fileName: 'koran_19_pickthall.mp3' },
+      { title: 'Koran 20', fileName: 'koran_20_pickthall.mp3' },
+      { title: 'Koran 21', fileName: 'koran_21_pickthall.mp3' },
+      { title: 'Koran 22', fileName: 'koran_22_pickthall.mp3' },
+      { title: 'Koran 23', fileName: 'koran_23_pickthall.mp3' },
+      { title: 'Koran 24', fileName: 'koran_24_pickthall.mp3' },
+      { title: 'Koran 25', fileName: 'koran_25_pickthall.mp3' },
+      { title: 'Koran 26', fileName: 'koran_26_pickthall.mp3' },
+      { title: 'Koran 27', fileName: 'koran_27_pickthall.mp3' },
+      { title: 'Koran 28', fileName: 'koran_28_pickthall.mp3' },
+      { title: 'Koran 29', fileName: 'koran_29_pickthall.mp3' },
+      { title: 'Koran 30', fileName: 'koran_30_pickthall.mp3' },
+      { title: 'Koran 31', fileName: 'koran_31_pickthall.mp3' },
+      { title: 'Koran 32', fileName: 'koran_32_pickthall.mp3' },
+      { title: 'Koran 33', fileName: 'koran_33_pickthall.mp3' },
+      { title: 'Koran 34', fileName: 'koran_34_pickthall.mp3' },
+      { title: 'Koran 35', fileName: 'koran_35_pickthall.mp3' },
+      { title: 'Koran 36', fileName: 'koran_36_pickthall.mp3' },
+      { title: 'Koran 37', fileName: 'koran_37_pickthall.mp3' },
+      { title: 'Koran 38', fileName: 'koran_38_pickthall.mp3' },
+      { title: 'Koran 39', fileName: 'koran_39_pickthall.mp3' },
+      { title: 'Koran 40', fileName: 'koran_40_pickthall.mp3' },
+      { title: 'Koran 41', fileName: 'koran_41_pickthall.mp3' },
+      { title: 'Koran 42', fileName: 'koran_42_pickthall.mp3' },
+      { title: 'Koran 43', fileName: 'koran_43_pickthall.mp3' },
+      { title: 'Koran 44', fileName: 'koran_44_pickthall.mp3' },
+      { title: 'Koran 45', fileName: 'koran_45_pickthall.mp3' },
+      { title: 'Koran 46', fileName: 'koran_46_pickthall.mp3' },
+      { title: 'Koran 47', fileName: 'koran_47_pickthall.mp3' },
+      { title: 'Koran 48', fileName: 'koran_48_pickthall.mp3' },
+      { title: 'Koran 49', fileName: 'koran_49_pickthall.mp3' },
+      { title: 'Koran 50', fileName: 'koran_50_pickthall.mp3' },
+      { title: 'Koran 51', fileName: 'koran_51_pickthall.mp3' },
+      { title: 'Koran 52', fileName: 'koran_52_pickthall.mp3' },
+      { title: 'Koran 53', fileName: 'koran_53_pickthall.mp3' },
+      { title: 'Koran 54', fileName: 'koran_54_pickthall.mp3' },
+      { title: 'Koran 55', fileName: 'koran_55_pickthall.mp3' },
+      { title: 'Koran 56', fileName: 'koran_56_pickthall.mp3' },
+      { title: 'Koran 57', fileName: 'koran_57_pickthall.mp3' },
+      { title: 'Koran 58', fileName: 'koran_58_pickthall.mp3' },
+      { title: 'Koran 59', fileName: 'koran_59_pickthall.mp3' },
+      { title: 'Koran 60', fileName: 'koran_60_pickthall.mp3' },
+      { title: 'Koran 61', fileName: 'koran_61_pickthall.mp3' },
+      { title: 'Koran 62', fileName: 'koran_62_pickthall.mp3' },
+      { title: 'Koran 63', fileName: 'koran_63_pickthall.mp3' },
+      { title: 'Koran 64', fileName: 'koran_64_pickthall.mp3' },
+      { title: 'Koran 65', fileName: 'koran_65_pickthall.mp3' },
+      { title: 'Koran 66', fileName: 'koran_66_pickthall.mp3' },
+      { title: 'Koran 67', fileName: 'koran_67_pickthall.mp3' },
+      { title: 'Koran 68', fileName: 'koran_68_pickthall.mp3' },
+      { title: 'Koran 69', fileName: 'koran_69_pickthall.mp3' },
     ],
-    // Short Stories / Aesop's Fables – adjust folder name if needed
+    // Short Stories / Aesop's Fables (example files – extend as needed)
     'short-stories/aesops fables': [
       { title: 'Aesop 12', fileName: 'fables_01_12_aesop_64k.mp3' },
       { title: 'Aesop 13', fileName: 'fables_01_13_aesop_64k.mp3' },
-      // ... up to 25
+      { title: 'Aesop 14', fileName: 'fables_01_14_aesop_64k.mp3' },
+      { title: 'Aesop 15', fileName: 'fables_01_15_aesop_64k.mp3' },
+      { title: 'Aesop 16', fileName: 'fables_01_16_aesop_64k.mp3' },
+      { title: 'Aesop 17', fileName: 'fables_01_17_aesop_64k.mp3' },
+      { title: 'Aesop 18', fileName: 'fables_01_18_aesop_64k.mp3' },
+      { title: 'Aesop 19', fileName: 'fables_01_19_aesop_64k.mp3' },
+      { title: 'Aesop 20', fileName: 'fables_01_20_aesop_64k.mp3' },
+      { title: 'Aesop 21', fileName: 'fables_01_21_aesop_64k.mp3' },
+      { title: 'Aesop 22', fileName: 'fables_01_22_aesop_64k.mp3' },
+      { title: 'Aesop 23', fileName: 'fables_01_23_aesop_64k.mp3' },
+      { title: 'Aesop 24', fileName: 'fables_01_24_aesop_64k.mp3' },
+      { title: 'Aesop 25', fileName: 'fables_01_25_aesop_64k.mp3' },
     ],
-    // Short Stories / Ghost Stories
+    // Short Stories / Ghost Stories (example files – extend)
     'short-stories/ghost stories': [
       { title: 'Ghost 12', fileName: '30ghoststories_12_vario.mp3' },
       { title: 'Ghost 13', fileName: '30ghoststories_13_vario.mp3' },
-      // ... up to 30
+      { title: 'Ghost 14', fileName: '30ghoststories_14_vario.mp3' },
+      { title: 'Ghost 15', fileName: '30ghoststories_15_vario.mp3' },
+      { title: 'Ghost 16', fileName: '30ghoststories_16_vario.mp3' },
+      { title: 'Ghost 17', fileName: '30ghoststories_17_vario.mp3' },
+      { title: 'Ghost 18', fileName: '30ghoststories_18_vario.mp3' },
+      { title: 'Ghost 19', fileName: '30ghoststories_19_vario.mp3' },
+      { title: 'Ghost 20', fileName: '30ghoststories_20_vario.mp3' },
+      { title: 'Ghost 21', fileName: '30ghoststories_21_vario.mp3' },
+      { title: 'Ghost 22', fileName: '30ghoststories_22_vario.mp3' },
+      { title: 'Ghost 23', fileName: '30ghoststories_23_vario.mp3' },
+      { title: 'Ghost 24', fileName: '30ghoststories_24_vario.mp3' },
+      { title: 'Ghost 25', fileName: '30ghoststories_25_vario.mp3' },
+      { title: 'Ghost 26', fileName: '30ghoststories_26_vario.mp3' },
+      { title: 'Ghost 27', fileName: '30ghoststories_27_vario.mp3' },
+      { title: 'Ghost 28', fileName: '30ghoststories_28_vario.mp3' },
+      { title: 'Ghost 29', fileName: '30ghoststories_29_vario.mp3' },
+      { title: 'Ghost 30', fileName: '30ghoststories_30_vario.mp3' },
     ],
-    // Short Stories / Grimm's Fairytales
+    // Short Stories / Grimm's Fairytales (example files – extend)
     'short-stories/grimms fairytales': [
       { title: 'Grimm 01', fileName: 'grimmsfairytales_01_gri.mp3' },
-      // ... up to 63
+      { title: 'Grimm 02', fileName: 'grimmsfairytales_02_gri.mp3' },
+      { title: 'Grimm 03', fileName: 'grimmsfairytales_03_gri.mp3' },
+      { title: 'Grimm 04', fileName: 'grimmsfairytales_04_gri.mp3' },
+      { title: 'Grimm 05', fileName: 'grimmsfairytales_05_gri.mp3' },
+      { title: 'Grimm 06', fileName: 'grimmsfairytales_06_gri.mp3' },
+      { title: 'Grimm 07', fileName: 'grimmsfairytales_07_gri.mp3' },
+      { title: 'Grimm 08', fileName: 'grimmsfairytales_08_gri.mp3' },
+      { title: 'Grimm 09', fileName: 'grimmsfairytales_09_gri.mp3' },
+      { title: 'Grimm 10', fileName: 'grimmsfairytales_10_gri.mp3' },
+      // ... add up to 63
     ],
     'short-stories/mice and men comedy play': [],
   };
 
-  // -------------------------------------------------------------------------
-  // 2. TREE STRUCTURE – the folder hierarchy (same as before)
-  // -------------------------------------------------------------------------
+  // TREE STRUCTURE – now religion has a child "quran"
   type StoryNode = { label: string; path: string; children?: StoryNode[] };
   const TREE: StoryNode[] = [
     {
@@ -858,7 +983,8 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     },
     {
       label: 'Religion',
-      path: 'religion',   // ⚠️ Must match the key in AUDIO_FILES and the actual bucket folder name
+      path: 'religion',
+      children: [{ label: 'Quran', path: 'religion/quran' }],
     },
     {
       label: 'Short Stories',
@@ -872,6 +998,10 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     },
   ];
 
+  // ------------------------------------------------------------
+  // Rest of the component (state, handlers, JSX) – same as before
+  // (keep everything identical to the working version for Novels)
+  // ------------------------------------------------------------
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
@@ -901,59 +1031,40 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     return undefined;
   };
 
-  // Build track list from hardcoded data
   const getTracksForPath = (path: string | null) => {
     if (!path) return [];
-    const files = AUDIO_FILES[path] || [];
-    return files.map((f) => {
+    return (AUDIO_FILES[path] || []).map((f) => {
       const filePath = `${path}/${f.fileName}`;
       const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
-      return {
-        id: filePath,
-        title: f.title,
-        url: u.publicUrl,
-      };
+      return { id: filePath, title: f.title, url: u.publicUrl };
     });
   };
 
   const currentTracks = getTracksForPath(currentPath);
 
-  // --------------------------------------------------------------
-  // 3. PLAYBACK WITH DETAILED LOGGING
-  // --------------------------------------------------------------
   const handlePlay = (id: string, url: string) => {
     if (playing === id) {
       stopAudio();
       return;
     }
     stopAudio();
-    console.log(`[TellMeAStory] Playing: ${id}`);
-    console.log(`[TellMeAStory] URL: ${url}`);
     setPlaying(id);
     const a = new Audio(url);
-    a.oncanplay = () => console.log('[TellMeAStory] Audio can play');
     a.onended = () => {
-      console.log('[TellMeAStory] Playback ended');
       setPlaying(null);
       setProgress(0);
       setDuration(0);
     };
-    a.onloadedmetadata = () => {
-      console.log(`[TellMeAStory] Duration: ${a.duration}`);
-      setDuration(a.duration);
-    };
+    a.onloadedmetadata = () => setDuration(a.duration);
     a.ontimeupdate = () => setProgress(a.currentTime);
-    a.onerror = (e) => {
-      console.error('[TellMeAStory] Playback error:', e);
-      console.error('Audio error code:', a.error?.code, a.error?.message);
+    a.onerror = () => {
+      console.error('Playback error');
       setPlaying(null);
     };
-    a.play()
-      .then(() => console.log('[TellMeAStory] Play started successfully'))
-      .catch((err) => {
-        console.error('[TellMeAStory] Play failed:', err);
-        setPlaying(null);
-      });
+    a.play().catch((err) => {
+      console.error('Failed to play:', err);
+      setPlaying(null);
+    });
     audioRef.current = a;
   };
 
@@ -986,7 +1097,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
           </DialogDescription>
         </DialogHeader>
 
-        {/* Breadcrumb and Back button (same as before) */}
+        {/* Breadcrumb */}
         {currentPath !== null && (
           <div className="flex items-center gap-1 text-xs text-medium-gray flex-shrink-0 overflow-x-auto whitespace-nowrap pb-1">
             <button onClick={() => { stopAudio(); setCurrentPath(null); }} className="hover:text-warm-bronze font-medium">
@@ -1010,6 +1121,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
           </div>
         )}
 
+        {/* Back button */}
         {currentPath !== null && (
           <button
             onClick={() => {
@@ -1024,7 +1136,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
         )}
 
         <div className="overflow-y-auto flex-1 space-y-2 pr-1">
-          {/* Show folders */}
+          {/* Folders */}
           {currentTracks.length === 0 && (
             <>
               {(currentPath === null ? TREE : findNode(currentPath)?.children || []).map((node) => (
@@ -1044,7 +1156,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
             </>
           )}
 
-          {/* Show audio tracks */}
+          {/* Audio tracks */}
           {currentTracks.map((track, i) => (
             <button
               key={track.id}
@@ -1082,11 +1194,11 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
             </button>
           ))}
 
+          {/* Empty state */}
           {currentTracks.length === 0 && currentPath !== null && !(findNode(currentPath)?.children) && (
             <div className="text-center py-8 text-medium-gray text-sm">
               <BookOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p>No audio files defined for this folder.</p>
-              <p className="text-xs mt-1">Edit the <code className="bg-gray-200 px-1 rounded">AUDIO_FILES</code> object.</p>
+              <p>No audio files added for this folder.</p>
             </div>
           )}
         </div>
