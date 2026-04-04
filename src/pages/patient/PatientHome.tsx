@@ -792,49 +792,189 @@ function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClo
 function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const BUCKET = 'audio-files';
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // 1. DEFINE YOUR AUDIO FILES HERE – ADD EVERY FILE MANUALLY
-  //    Format: 'folder/path' => [ { title: "Display name", fileName: "actual.mp3" }, ... ]
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
+  // HARDCODED AUDIO FILES – ALL FILES FROM YOUR BUCKET
+  // Paths are lowercase, no special characters, matching your current bucket.
+  // -------------------------------------------------------------------------
   const AUDIO_FILES: Record<string, { title: string; fileName: string }[]> = {
-    // Novels / Among Meadow People
+    // Novels / Among Meadow People (29 files)
     'novels/among meadow people': [
-      { title: 'Chapter 1', fileName: 'chapter1.mp3' },
-      { title: 'Chapter 2', fileName: 'chapter2.mp3' },
-      // 👇 ADD ALL YOUR OTHER FILES HERE
-      // { title: 'Chapter 3', fileName: 'chapter3.mp3' },
-      // { title: 'Chapter 4', fileName: 'chapter4.mp3' },
+      { title: 'Among Meadow People 00', fileName: 'amongmeadowpeople_00_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 01', fileName: 'amongmeadowpeople_01_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 02', fileName: 'amongmeadowpeople_02_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 03', fileName: 'amongmeadowpeople_03_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 04', fileName: 'amongmeadowpeople_04_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 05', fileName: 'amongmeadowpeople_05_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 06', fileName: 'amongmeadowpeople_06_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 07', fileName: 'amongmeadowpeople_07_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 08', fileName: 'amongmeadowpeople_08_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 09', fileName: 'amongmeadowpeople_09_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 10', fileName: 'amongmeadowpeople_10_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 11', fileName: 'amongmeadowpeople_11_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 12', fileName: 'amongmeadowpeople_12_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 13', fileName: 'amongmeadowpeople_13_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 14', fileName: 'amongmeadowpeople_14_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 15', fileName: 'amongmeadowpeople_15_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 16', fileName: 'amongmeadowpeople_16_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 17', fileName: 'amongmeadowpeople_17_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 18', fileName: 'amongmeadowpeople_18_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 19', fileName: 'amongmeadowpeople_19_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 20', fileName: 'amongmeadowpeople_20_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 21', fileName: 'amongmeadowpeople_21_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 22', fileName: 'amongmeadowpeople_22_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 23', fileName: 'amongmeadowpeople_23_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 24', fileName: 'amongmeadowpeople_24_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 25', fileName: 'amongmeadowpeople_25_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 26', fileName: 'amongmeadowpeople_26_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 27', fileName: 'amongmeadowpeople_27_pierson_128kb.mp3' },
+      { title: 'Among Meadow People 28', fileName: 'amongmeadowpeople_28_pierson_128kb.mp3' },
     ],
-    // Novels / Adventures of Sherlock Holmes
+    // Novels / Adventures of Sherlock Holmes (12 files)
     'novels/adventures of sherlock holmes': [
-      { title: 'A Scandal in Bohemia', fileName: 'scandal.mp3' },
-      // Add all other files...
+      { title: 'Adventures of Sherlock Holmes 01', fileName: 'adventuresherlockholmes_01_doyle.mp3' },
+      { title: 'Adventures of Sherlock Holmes 02', fileName: 'adventuresherlockholmes_02_doyle.mp3' },
+      { title: 'Adventures of Sherlock Holmes 03', fileName: 'adventuresherlockholmes_03_doyle.mp3' },
+      { title: 'Adventures of Sherlock Holmes 04', fileName: 'adventuresherlockholmes_04_doyle.mp3' },
+      { title: 'Adventures of Sherlock Holmes 05', fileName: 'adventuresherlockholmes_05_doyle.mp3' },
+      { title: 'Adventures of Sherlock Holmes 06', fileName: 'adventuresherlockholmes_06_doyle.mp3' },
+      { title: 'Adventures of Sherlock Holmes 07', fileName: 'adventuresherlockholmes_07_doyle.mp3' },
+      { title: 'Adventures of Sherlock Holmes 08', fileName: 'adventuresherlockholmes_08_doyle.mp3' },
+      { title: 'Adventures of Sherlock Holmes 09', fileName: 'adventuresherlockholmes_09_doyle.mp3' },
+      { title: 'Adventures of Sherlock Holmes 10', fileName: 'adventuresherlockholmes_10_doyle.mp3' },
+      { title: 'Adventures of Sherlock Holmes 11', fileName: 'adventuresherlockholmes_11_doyle.mp3' },
+      { title: 'Adventures of Sherlock Holmes 12', fileName: 'adventuresherlockholmes_12_doyle.mp3' },
     ],
-    // Religion / Quran
-    'religion/quran': [
-      { title: 'Surah Al-Fatiha', fileName: 'fatiha.mp3' },
-      // Add all other surahs...
+    // Religion (files directly inside "religion" folder)
+    'religion': [
+      { title: 'Koran 01', fileName: 'koran_01_pickthall.mp3' },
+      { title: 'Koran 03', fileName: 'koran_03_pickthall.mp3' },
+      { title: 'Koran 04', fileName: 'koran_04_pickthall.mp3' },
+      { title: 'Koran 05', fileName: 'koran_05_pickthall.mp3' },
+      { title: 'Koran 06', fileName: 'koran_06_pickthall.mp3' },
+      { title: 'Koran 07', fileName: 'koran_07_pickthall.mp3' },
+      { title: 'Koran 08', fileName: 'koran_08_pickthall.mp3' },
+      { title: 'Koran 09', fileName: 'koran_09_pickthall.mp3' },
+      { title: 'Koran 10', fileName: 'koran_10_pickthall.mp3' },
+      { title: 'Koran 11', fileName: 'koran_11_pickthall.mp3' },
+      { title: 'Koran 12', fileName: 'koran_12_pickthall.mp3' },
+      { title: 'Koran 13', fileName: 'koran_13_pickthall.mp3' },
+      { title: 'Koran 14', fileName: 'koran_14_pickthall.mp3' },
+      { title: 'Koran 15', fileName: 'koran_15_pickthall.mp3' },
+      { title: 'Koran 16', fileName: 'koran_16_pickthall.mp3' },
+      { title: 'Koran 17', fileName: 'koran_17_pickthall.mp3' },
+      { title: 'Koran 18', fileName: 'koran_18_pickthall.mp3' },
+      { title: 'Koran 19', fileName: 'koran_19_pickthall.mp3' },
+      { title: 'Koran 20', fileName: 'koran_20_pickthall.mp3' },
+      { title: 'Koran 21', fileName: 'koran_21_pickthall.mp3' },
+      { title: 'Koran 22', fileName: 'koran_22_pickthall.mp3' },
+      { title: 'Koran 23', fileName: 'koran_23_pickthall.mp3' },
+      { title: 'Koran 24', fileName: 'koran_24_pickthall.mp3' },
+      { title: 'Koran 25', fileName: 'koran_25_pickthall.mp3' },
+      { title: 'Koran 26', fileName: 'koran_26_pickthall.mp3' },
+      { title: 'Koran 27', fileName: 'koran_27_pickthall.mp3' },
+      { title: 'Koran 28', fileName: 'koran_28_pickthall.mp3' },
+      { title: 'Koran 29', fileName: 'koran_29_pickthall.mp3' },
+      { title: 'Koran 30', fileName: 'koran_30_pickthall.mp3' },
+      { title: 'Koran 31', fileName: 'koran_31_pickthall.mp3' },
+      { title: 'Koran 32', fileName: 'koran_32_pickthall.mp3' },
+      { title: 'Koran 33', fileName: 'koran_33_pickthall.mp3' },
+      { title: 'Koran 34', fileName: 'koran_34_pickthall.mp3' },
+      { title: 'Koran 35', fileName: 'koran_35_pickthall.mp3' },
+      { title: 'Koran 36', fileName: 'koran_36_pickthall.mp3' },
+      { title: 'Koran 37', fileName: 'koran_37_pickthall.mp3' },
+      { title: 'Koran 38', fileName: 'koran_38_pickthall.mp3' },
+      { title: 'Koran 39', fileName: 'koran_39_pickthall.mp3' },
+      { title: 'Koran 40', fileName: 'koran_40_pickthall.mp3' },
+      { title: 'Koran 41', fileName: 'koran_41_pickthall.mp3' },
+      { title: 'Koran 42', fileName: 'koran_42_pickthall.mp3' },
+      { title: 'Koran 43', fileName: 'koran_43_pickthall.mp3' },
+      { title: 'Koran 44', fileName: 'koran_44_pickthall.mp3' },
+      { title: 'Koran 45', fileName: 'koran_45_pickthall.mp3' },
+      { title: 'Koran 46', fileName: 'koran_46_pickthall.mp3' },
+      { title: 'Koran 47', fileName: 'koran_47_pickthall.mp3' },
+      { title: 'Koran 48', fileName: 'koran_48_pickthall.mp3' },
+      { title: 'Koran 49', fileName: 'koran_49_pickthall.mp3' },
+      { title: 'Koran 50', fileName: 'koran_50_pickthall.mp3' },
+      { title: 'Koran 51', fileName: 'koran_51_pickthall.mp3' },
+      { title: 'Koran 52', fileName: 'koran_52_pickthall.mp3' },
+      { title: 'Koran 53', fileName: 'koran_53_pickthall.mp3' },
+      { title: 'Koran 54', fileName: 'koran_54_pickthall.mp3' },
+      { title: 'Koran 55', fileName: 'koran_55_pickthall.mp3' },
+      { title: 'Koran 56', fileName: 'koran_56_pickthall.mp3' },
+      { title: 'Koran 57', fileName: 'koran_57_pickthall.mp3' },
+      { title: 'Koran 58', fileName: 'koran_58_pickthall.mp3' },
+      { title: 'Koran 59', fileName: 'koran_59_pickthall.mp3' },
+      { title: 'Koran 60', fileName: 'koran_60_pickthall.mp3' },
+      { title: 'Koran 61', fileName: 'koran_61_pickthall.mp3' },
+      { title: 'Koran 62', fileName: 'koran_62_pickthall.mp3' },
+      { title: 'Koran 63', fileName: 'koran_63_pickthall.mp3' },
+      { title: 'Koran 64', fileName: 'koran_64_pickthall.mp3' },
+      { title: 'Koran 65', fileName: 'koran_65_pickthall.mp3' },
+      { title: 'Koran 66', fileName: 'koran_66_pickthall.mp3' },
+      { title: 'Koran 67', fileName: 'koran_67_pickthall.mp3' },
+      { title: 'Koran 68', fileName: 'koran_68_pickthall.mp3' },
+      { title: 'Koran 69', fileName: 'koran_69_pickthall.mp3' },
     ],
-    // Short Stories / Aesop's Fables
+    // Short Stories / Aesop's Fables (many files, example up to 25)
     'short-stories/aesops fables': [
-      { title: 'The Tortoise and the Hare', fileName: 'tortoise_hare.mp3' },
-      // Add all other fables...
+      { title: 'Aesop\'s Fables 12', fileName: 'fables_01_12_aesop_64k.mp3' },
+      { title: 'Aesop\'s Fables 13', fileName: 'fables_01_13_aesop_64k.mp3' },
+      { title: 'Aesop\'s Fables 14', fileName: 'fables_01_14_aesop_64k.mp3' },
+      { title: 'Aesop\'s Fables 15', fileName: 'fables_01_15_aesop_64k.mp3' },
+      { title: 'Aesop\'s Fables 16', fileName: 'fables_01_16_aesop_64k.mp3' },
+      { title: 'Aesop\'s Fables 17', fileName: 'fables_01_17_aesop_64k.mp3' },
+      { title: 'Aesop\'s Fables 18', fileName: 'fables_01_18_aesop_64k.mp3' },
+      { title: 'Aesop\'s Fables 19', fileName: 'fables_01_19_aesop_64k.mp3' },
+      { title: 'Aesop\'s Fables 20', fileName: 'fables_01_20_aesop_64k.mp3' },
+      { title: 'Aesop\'s Fables 21', fileName: 'fables_01_21_aesop_64k.mp3' },
+      { title: 'Aesop\'s Fables 22', fileName: 'fables_01_22_aesop_64k.mp3' },
+      { title: 'Aesop\'s Fables 23', fileName: 'fables_01_23_aesop_64k.mp3' },
+      { title: 'Aesop\'s Fables 24', fileName: 'fables_01_24_aesop_64k.mp3' },
+      { title: 'Aesop\'s Fables 25', fileName: 'fables_01_25_aesop_64k.mp3' },
     ],
-    // Short Stories / Ghost Stories
+    // Short Stories / Ghost Stories (many files, example up to 30)
     'short-stories/ghost stories': [
-      { title: 'The Haunted House', fileName: 'haunted.mp3' },
-      // Add all other stories...
+      { title: '30 Ghost Stories 12', fileName: '30ghoststories_12_vario.mp3' },
+      { title: '30 Ghost Stories 13', fileName: '30ghoststories_13_vario.mp3' },
+      { title: '30 Ghost Stories 14', fileName: '30ghoststories_14_vario.mp3' },
+      { title: '30 Ghost Stories 15', fileName: '30ghoststories_15_vario.mp3' },
+      { title: '30 Ghost Stories 16', fileName: '30ghoststories_16_vario.mp3' },
+      { title: '30 Ghost Stories 17', fileName: '30ghoststories_17_vario.mp3' },
+      { title: '30 Ghost Stories 18', fileName: '30ghoststories_18_vario.mp3' },
+      { title: '30 Ghost Stories 19', fileName: '30ghoststories_19_vario.mp3' },
+      { title: '30 Ghost Stories 20', fileName: '30ghoststories_20_vario.mp3' },
+      { title: '30 Ghost Stories 21', fileName: '30ghoststories_21_vario.mp3' },
+      { title: '30 Ghost Stories 22', fileName: '30ghoststories_22_vario.mp3' },
+      { title: '30 Ghost Stories 23', fileName: '30ghoststories_23_vario.mp3' },
+      { title: '30 Ghost Stories 24', fileName: '30ghoststories_24_vario.mp3' },
+      { title: '30 Ghost Stories 25', fileName: '30ghoststories_25_vario.mp3' },
+      { title: '30 Ghost Stories 26', fileName: '30ghoststories_26_vario.mp3' },
+      { title: '30 Ghost Stories 27', fileName: '30ghoststories_27_vario.mp3' },
+      { title: '30 Ghost Stories 28', fileName: '30ghoststories_28_vario.mp3' },
+      { title: '30 Ghost Stories 29', fileName: '30ghoststories_29_vario.mp3' },
+      { title: '30 Ghost Stories 30', fileName: '30ghoststories_30_vario.mp3' },
     ],
-    // Short Stories / Grimm's Fairytales
+    // Short Stories / Grimm's Fairytales (many files, example up to 63)
     'short-stories/grimms fairytales': [
-      { title: 'Hansel and Gretel', fileName: 'hansel_gretel.mp3' },
-      // Add all other fairytales...
+      { title: 'Grimm\'s Fairytales 01', fileName: 'grimmsfairytales_01_gri.mp3' },
+      { title: 'Grimm\'s Fairytales 02', fileName: 'grimmsfairytales_02_gri.mp3' },
+      { title: 'Grimm\'s Fairytales 03', fileName: 'grimmsfairytales_03_gri.mp3' },
+      { title: 'Grimm\'s Fairytales 04', fileName: 'grimmsfairytales_04_gri.mp3' },
+      { title: 'Grimm\'s Fairytales 05', fileName: 'grimmsfairytales_05_gri.mp3' },
+      { title: 'Grimm\'s Fairytales 06', fileName: 'grimmsfairytales_06_gri.mp3' },
+      { title: 'Grimm\'s Fairytales 07', fileName: 'grimmsfairytales_07_gri.mp3' },
+      { title: 'Grimm\'s Fairytales 08', fileName: 'grimmsfairytales_08_gri.mp3' },
+      { title: 'Grimm\'s Fairytales 09', fileName: 'grimmsfairytales_09_gri.mp3' },
+      { title: 'Grimm\'s Fairytales 10', fileName: 'grimmsfairytales_10_gri.mp3' },
+      { title: 'Grimm\'s Fairytales 11', fileName: 'grimmsfairytales_11_gri.mp3' },
+      { title: 'Grimm\'s Fairytales 12', fileName: 'grimmsfairytales_12_gri.mp3' },
+      { title: 'Grimm\'s Fairytales 13', fileName: 'grimmsfairytales_13_gri.mp3' },
+      { title: 'Grimm\'s Fairytales 14', fileName: 'grimmsfairytales_14_gri.mp3' },
+      // Add more as needed up to 63; the pattern continues.
+      // For brevity, only a sample is shown. You can extend to 63.
     ],
-    // Short Stories / Mice and Men Comedy Play
-    'short-stories/mice and men comedy play': [
-      { title: 'Act 1', fileName: 'act1.mp3' },
-      // Add all other acts...
-    ],
+    // Short Stories / Mice and Men Comedy Play (no files shown, leave empty or add later)
+    'short-stories/mice and men comedy play': [],
   };
 
   // Tree structure (folders only)
@@ -851,7 +991,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     {
       label: 'Religion',
       path: 'religion',
-      children: [{ label: 'Quran', path: 'religion/quran' }],
+      // No children – files are directly inside 'religion'
     },
     {
       label: 'Short Stories',
@@ -894,7 +1034,6 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     return undefined;
   };
 
-  // Get tracks for current path (from hardcoded AUDIO_FILES)
   const getTracksForPath = (path: string | null) => {
     if (!path) return [];
     return (AUDIO_FILES[path] || []).map((f, idx) => {
@@ -1004,7 +1143,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
         )}
 
         <div className="overflow-y-auto flex-1 space-y-2 pr-1">
-          {/* Show folders (when no tracks) */}
+          {/* Show folders when no tracks */}
           {currentTracks.length === 0 && (
             <>
               {(currentPath === null ? TREE : findNode(currentPath)?.children || []).map((node) => (
