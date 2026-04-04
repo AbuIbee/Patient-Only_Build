@@ -48,11 +48,15 @@ function AppContent() {
   };
 
   useEffect(() => {
+    // HIPAA: auth token stored in sessionStorage only.
+    // sessionStorage is cleared when the tab/window closes, so a new browser
+    // window will never inherit a previous patient session. This prevents
+    // cross-session bypass without an explicit login.
+    // We still call restoreSession so same-tab refreshes (F5) keep the user
+    // logged in during their active session.
     const restoreSession = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const { data: { session } } = await supabase.auth.getSession();
 
         if (session?.user) {
           const { data: profile } = await supabase
@@ -64,26 +68,23 @@ function AppContent() {
           if (profile) {
             if (profile.must_change_password) {
               setCurrentUserEmail(profile.email || '');
-
               dispatch({
                 type: 'SET_USER',
                 payload: {
-                  id: profile.id,
-                  email: profile.email,
+                  id:        profile.id,
+                  email:     profile.email,
                   firstName: profile.first_name,
-                  lastName: profile.last_name,
-                  role: (profile.role as UserRole) || 'patient',
-                  phone: profile.phone || undefined,
+                  lastName:  profile.last_name,
+                  role:      (profile.role as UserRole) || 'patient',
+                  phone:     profile.phone || undefined,
                   createdAt: profile.created_at,
                   updatedAt: profile.updated_at,
                 },
               });
-
               setForcedChange(true);
               setCheckingSession(false);
               return;
             }
-
             restoreUser(profile);
           }
         }
@@ -104,17 +105,7 @@ function AppContent() {
         setShowPasswordReset(false);
         setForcedChange(false);
 
-        try {
-          Object.keys(localStorage)
-            .filter((k) => k.includes('supabase') || k.includes('sb-') || k.includes('auth'))
-            .forEach((k) => {
-              if (k.includes('token') || k.includes('session') || k.includes('refresh')) {
-                localStorage.removeItem(k);
-              }
-            });
-        } catch {
-          // ignore
-        }
+        // sessionStorage clears automatically on tab/window close — no manual cleanup needed
       }
 
       if (event === 'PASSWORD_RECOVERY') {
@@ -182,7 +173,7 @@ function AppContent() {
   useEffect(() => {
     if (!state.isAuthenticated || isPublicPatientIntakeRoute) return;
 
-    const TIMEOUT = 15 * 60 * 1000;
+    const TIMEOUT = 5 * 60 * 1000; // HIPAA: 5-minute inactivity logout
     let timeoutId: ReturnType<typeof setTimeout>;
 
     const resetTimeout = () => {

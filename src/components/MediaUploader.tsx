@@ -225,7 +225,7 @@ export default function MediaUploader({ patientId, patientName, readOnly = false
               <div className="relative aspect-video bg-soft-taupe/20 cursor-pointer group" onClick={() => setPreview(item)}>
                 {item.file_type === 'video' ? (
                   <>
-                    <video src={item.file_url} className="w-full h-full object-cover" muted />
+                    <video src={item.signedUrl || ""} className="w-full h-full object-cover" muted />
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
                       <div className="w-14 h-14 bg-white/90 rounded-full flex items-center justify-center">
                         <Play className="w-6 h-6 text-charcoal ml-1" />
@@ -233,7 +233,7 @@ export default function MediaUploader({ patientId, patientName, readOnly = false
                     </div>
                   </>
                 ) : (
-                  <img src={item.file_url} alt={item.caption} className="w-full h-full object-cover" />
+                  <img src={item.signedUrl || ""} alt={item.caption} className="w-full h-full object-cover" />
                 )}
                 <div className="absolute top-2 left-2">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
