@@ -785,17 +785,18 @@ function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClo
 // SUB-COMPONENT: TellMeAStoryDialog
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SUB-COMPONENT: TellMeAStoryDialog
+// ─────────────────────────────────────────────────────────────────────────────
+
 function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const BUCKET = 'audio-files';
   
-  // Hard-coded top-level folders that match your bucket structure
+  // Only three top-level folders that match your bucket structure
   const ROOT_FOLDERS = [
     { label: 'Novels', path: 'novels' },
     { label: 'Religion', path: 'religion' },
-    { label: 'Short Stories', path: 'short-stories' },
-    { label: "Aesop's Fables", path: "aesop's fables" },
-    { label: 'Ghost Stories', path: 'Ghost Stories' },
-    { label: "Mice & Men Comedy Play", path: 'Mice&MenComedyPlay' }
+    { label: 'Short Stories', path: 'short-stories' }
   ];
 
   const [nav, setNav] = useState<string[]>([]);
@@ -915,7 +916,8 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
   const getCurrentDisplayName = () => {
     if (nav.length === 0) return 'Tell Me a Story';
     const last = nav[nav.length - 1];
-    return last.replace(/-/g, ' ').replace(/^\w/, c => c.toUpperCase()).replace(/'\w/, c => c.toUpperCase());
+    // Convert folder names to nice display names (e.g., "adventures-of-sherlock-holmes" -> "Adventures of Sherlock Holmes")
+    return last.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   };
 
   return (
@@ -944,7 +946,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
                   onClick={() => { stopAudio(); setNav(s => s.slice(0, i + 1)); }}
                   className="hover:text-warm-bronze capitalize"
                 >
-                  {seg.replace(/-/g, ' ').replace(/^\w/, c => c.toUpperCase())}
+                  {seg.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                 </button>
               </span>
             ))}
@@ -979,7 +981,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
               <span className="text-2xl flex-shrink-0">📁</span>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-charcoal capitalize">
-                  {node.label.replace(/-/g, ' ').replace(/^\w/, c => c.toUpperCase())}
+                  {node.label.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                 </p>
                 <p className="text-xs text-medium-gray">Tap to browse</p>
               </div>
