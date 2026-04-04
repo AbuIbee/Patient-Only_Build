@@ -791,119 +791,83 @@ function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClo
 
 function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const BUCKET = 'audio-files';
-  
-  // Root folders (level 1)
-  const ROOT_FOLDERS = [
-    { label: 'Novels', path: 'novels' },
-    { label: 'Religion', path: 'religion' },
-    { label: 'Short Stories', path: 'short-stories' }
+
+  // ── Hardcoded tree — mirrors exact Supabase bucket structure ─────────────
+  // Same approach as CalmMe: no dynamic folder detection, just list() on leaf paths.
+  // novels/
+  //   among meadow people/       ← leaf (mp3s)
+  //   adventures of sherlock holmes/  ← leaf (mp3s)
+  // religion/                    ← leaf (mp3s directly inside)
+  // short-stories/
+  //   aesop's fables/            ← leaf
+  //   Ghost Stories/             ← leaf
+  //   grimms fairytales/         ← leaf
+  //   Mice & Men Comedy Play/    ← leaf
+  type StoryNode = { label: string; path: string; children?: StoryNode[] };
+  const TREE: StoryNode[] = [
+    { label: 'Novels', path: 'novels', children: [
+      { label: "Among Meadow People",            path: "novels/among meadow people" },
+      { label: "Adventures of Sherlock Holmes",   path: "novels/adventures of sherlock holmes" },
+    ]},
+    { label: 'Religion', path: 'religion' }, // leaf — files sit directly here
+    { label: 'Short Stories', path: 'short-stories', children: [
+      { label: "Aesop's Fables",         path: "short-stories/aesop's fables" },
+      { label: "Ghost Stories",          path: "short-stories/Ghost Stories" },
+      { label: "Grimms Fairytales",      path: "short-stories/grimms fairytales" },
+      { label: "Mice & Men Comedy Play", path: "short-stories/Mice & Men Comedy Play" },
+    ]},
   ];
 
-  // Hardcoded subfolders for each root (level 2) - similar to CalmMe's folders
-  const SUBFOLDERS: Record<string, { label: string; path: string }[]> = {
-    novels: [
-      { label: 'Adventures of Sherlock Holmes', path: 'novels/adventures of sherlock holmes' },
-      { label: 'Among Meadow People', path: 'novels/among meadow people' }
-    ],
-    religion: [
-      { label: 'Quran', path: 'religion/Quran' }
-    ],
-    'short-stories': [
-      { label: "Aesop's Fables", path: "short-stories/aesop's fables" },
-      { label: 'Ghost Stories', path: 'short-stories/Ghost Stories' },
-      { label: "Grimm's Fairytales", path: 'short-stories/grimms fairytales' },
-      { label: 'Mice & Men Comedy Play', path: 'short-stories/Mice&MenComedyPlay' }
-    ]
-  };
-
-  const [nav, setNav] = useState<string[]>([]);
-  const [nodes, setNodes] = useState<{ label: string; path: string; isFolder: boolean }[]>([]);
-  const [tracks, setTracks] = useState<{ id: string; title: string; url: string }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [playing, setPlaying] = useState<string | null>(null);
+  const [currentPath, setCurrentPath] = useState<string | null>(null); // null = root
+  const [tracks,   setTracks]   = useState<{ id: string; title: string; url: string }[]>([]);
+  const [loading,  setLoading]  = useState(false);
+  const [playing,  setPlaying]  = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  
-  const navPath = nav.join('/');
 
   const stopAudio = () => {
     audioRef.current?.pause();
     audioRef.current = null;
-    setPlaying(null);
-    setProgress(0);
-    setDuration(0);
+    setPlaying(null); setProgress(0); setDuration(0);
   };
 
   const fmtTime = (s: number) =>
     isNaN(s) ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-  // Load current level
+  // Find the node for the current path
+  const findNode = (path: string): StoryNode | undefined => {
+    for (const n of TREE) {
+      if (n.path === path) return n;
+      if (n.children) for (const c of n.children) if (c.path === path) return c;
+    }
+    return undefined;
+  };
+
+  // When currentPath is a leaf, load mp3s from storage
   useEffect(() => {
-    if (!open) {
-      stopAudio();
-      return;
-    }
-    
-    setLoading(true);
-    setNodes([]);
-    setTracks([]);
-    stopAudio();
+    if (!open) { stopAudio(); return; }
+    if (currentPath === null) { setTracks([]); return; } // root — no fetch needed
 
-    // Level 0: root folders
-    if (nav.length === 0) {
-      setNodes(ROOT_FOLDERS.map(f => ({ ...f, isFolder: true })));
-      setLoading(false);
-      return;
-    }
-    
-    // Level 1: we are at a root folder (e.g., 'novels') - show its hardcoded subfolders
-    if (nav.length === 1) {
-      const rootKey = nav[0];
-      const subfolders = SUBFOLDERS[rootKey] || [];
-      setNodes(subfolders.map(sf => ({ label: sf.label, path: sf.path, isFolder: true })));
-      setLoading(false);
-      return;
-    }
-    
-    // Level 2+: we are inside a subfolder (e.g., 'novels/adventures of sherlock holmes')
-    // List audio files directly from that path
+    const node = findNode(currentPath);
+    const isLeaf = !node?.children; // no children = leaf folder with mp3s
+    if (!isLeaf) { setTracks([]); return; }
+
+    setLoading(true); setTracks([]); stopAudio();
     supabase.storage.from(BUCKET)
-      .list(navPath, { limit: 300, sortBy: { column: 'name', order: 'asc' } })
+      .list(currentPath, { limit: 300, sortBy: { column: 'name', order: 'asc' } })
       .then(({ data, error }) => {
-        if (error) {
-          console.warn('Story list error:', error.message);
-          setLoading(false);
-          return;
-        }
-
-        const all = (data || []).filter(i => !i.name.startsWith('.'));
-        // Only files (we ignore subfolders at this level)
-        const isFile = (i: any) => i.metadata != null && typeof i.metadata.size === 'number' && i.metadata.size > 0;
-        const files = all.filter(isFile);
-
-        if (files.length > 0) {
-          setTracks(files.map(f => {
-            const filePath = `${navPath}/${f.name}`;
-            const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
-            return {
-              id: filePath,
-              title: storyTitle(f.name),
-              url: u.publicUrl
-            };
-          }));
-        } else {
-          // If no files, maybe there are subfolders (though not expected)
-          const folders = all.filter(i => !isFile(i));
-          setNodes(folders.map(f => ({ label: f.name, path: `${navPath}/${f.name}`, isFolder: true })));
-        }
+        if (error) { console.warn('Story list error:', error.message); setLoading(false); return; }
+        const files = (data || []).filter(i => i.name && !i.name.startsWith('.') && i.name.includes('.'));
+        setTracks(files.map(f => {
+          const p = `${currentPath}/${f.name}`;
+          const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(p);
+          return { id: p, title: storyTitle(f.name), url: u.publicUrl };
+        }));
         setLoading(false);
       })
-      .catch(err => {
-        console.warn('Failed to list folder:', err);
-        setLoading(false);
-      });
-  }, [open, navPath, nav.length]);
+      .catch(() => setLoading(false));
+  }, [open, currentPath]);
 
   const handlePlay = (id: string, url: string) => {
     if (playing === id) {
@@ -933,14 +897,11 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
 
   // Helper to get display name for current folder
   const getCurrentDisplayName = () => {
-    if (nav.length === 0) return 'Tell Me a Story';
-    if (nav.length === 1) {
-      const root = nav[0];
-      return root === 'novels' ? 'Novels' : root === 'religion' ? 'Religion' : 'Short Stories';
-    }
-    // For deeper levels, show the last segment nicely formatted
-    const last = nav[nav.length - 1];
-    return last.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    if (!currentPath) return 'Tell Me a Story';
+    const node = findNode(currentPath);
+    if (node) return node.label;
+    const last = currentPath.split('/').pop() || currentPath;
+    return last.replace(/[-_]/g, ' ').replace(/\w/g, (ch: string) => ch.toUpperCase());
   };
 
   return (
@@ -952,24 +913,27 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
             {getCurrentDisplayName()}
           </DialogTitle>
           <DialogDescription className="text-center">
-            {nav.length === 0 ? 'Choose a category' : nav.length === 1 ? 'Choose a story collection' : 'Tap a track to play'}
+            {nav.length === 0 ? 'Choose a category' : 'Tap a story to listen'}
           </DialogDescription>
         </DialogHeader>
 
         {/* Breadcrumb navigation */}
-        {nav.length > 0 && (
+        {currentPath !== null && (
           <div className="flex items-center gap-1 text-xs text-medium-gray flex-shrink-0 overflow-x-auto whitespace-nowrap pb-1">
-            <button onClick={() => { stopAudio(); setNav([]); }} className="hover:text-warm-bronze font-medium">
+            <button onClick={() => { stopAudio(); setCurrentPath(null); }} className="hover:text-warm-bronze font-medium">
               Library
             </button>
-            {nav.map((seg, i) => (
-              <span key={seg} className="flex items-center gap-1">
+            {currentPath && currentPath.split('/').map((seg, i, parts) => (
+              <span key={i} className="flex items-center gap-1">
                 <ChevronRight className="w-3 h-3" />
-                <button 
-                  onClick={() => { stopAudio(); setNav(s => s.slice(0, i + 1)); }}
+                <button
+                  onClick={() => {
+                    const partial = parts.slice(0, i + 1).join('/');
+                    stopAudio(); setCurrentPath(partial === currentPath ? currentPath : partial);
+                  }}
                   className="hover:text-warm-bronze capitalize"
                 >
-                  {seg.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                  {seg.replace(/[-_]/g, ' ').replace(/\w/g, (ch: string) => ch.toUpperCase())}
                 </button>
               </span>
             ))}
@@ -979,7 +943,14 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
         {/* Back button */}
         {nav.length > 0 && (
           <button 
-            onClick={() => { stopAudio(); setNav(s => s.slice(0, -1)); }}
+            onClick={() => {
+              stopAudio();
+              if (currentPath === null) return;
+              const node = findNode(currentPath);
+              // Go up: if this is a child node, find its parent; otherwise go to root
+              const parent = TREE.find(t => t.children?.some(c => c.path === currentPath));
+              setCurrentPath(parent ? parent.path : null);
+            }}
             className="flex items-center gap-1 text-sm text-warm-bronze hover:text-deep-bronze font-medium flex-shrink-0 -mt-1 mb-1"
           >
             <ChevronLeft className="w-4 h-4" /> Back
@@ -994,23 +965,35 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
             </div>
           )}
 
-          {/* Show folders */}
-          {!loading && nodes.map(node => (
-            <button
-              key={node.path}
-              onClick={() => { stopAudio(); setNav(s => [...s, node.path]); }}
-              className="w-full flex items-center gap-3 p-3.5 rounded-xl bg-soft-taupe/20 hover:bg-calm-blue/10 border-2 border-transparent hover:border-calm-blue/30 transition-all text-left"
-            >
-              <span className="text-2xl flex-shrink-0">📁</span>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-charcoal">
-                  {node.label}
-                </p>
-                <p className="text-xs text-medium-gray">Tap to browse</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-medium-gray flex-shrink-0" />
-            </button>
-          ))}
+          {/* Show folders from TREE */}
+          {!loading && tracks.length === 0 && (() => {
+            const visibleNodes = currentPath === null
+              ? TREE
+              : (findNode(currentPath)?.children || []);
+            return visibleNodes.map(node => (
+              <button
+                key={node.path}
+                onClick={() => { stopAudio(); setCurrentPath(node.path); }}
+                className="w-full flex items-center gap-3 p-3.5 rounded-xl bg-soft-taupe/20 hover:bg-calm-blue/10 border-2 border-transparent hover:border-calm-blue/30 transition-all text-left"
+              >
+                <span className="text-2xl flex-shrink-0">
+                  {node.path.startsWith('novels') ? '📚' :
+                   node.path.startsWith('religion') ? '🕌' :
+                   node.path.includes("aesop") ? '🦊' :
+                   node.path.includes("ghost") || node.path.includes("Ghost") ? '👻' :
+                   node.path.includes("grimm") ? '🏰' :
+                   node.path.includes("Mice") || node.path.includes("mice") ? '🎭' :
+                   node.path.includes("meadow") ? '🌿' :
+                   node.path.includes("sherlock") ? '🔍' : '📖'}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-charcoal">{node.label}</p>
+                  <p className="text-xs text-medium-gray">Tap to browse</p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-medium-gray flex-shrink-0" />
+              </button>
+            ));
+          })()}
 
           {/* Show audio tracks */}
           {!loading && tracks.map((track, i) => (
@@ -1048,7 +1031,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
           ))}
 
           {/* Empty state */}
-          {!loading && nodes.length === 0 && tracks.length === 0 && (
+          {!loading && tracks.length === 0 && (currentPath !== null) && !(findNode(currentPath)?.children) && (
             <div className="text-center py-8 text-medium-gray text-sm">
               <BookOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
               <p>No stories found in this folder.</p>
