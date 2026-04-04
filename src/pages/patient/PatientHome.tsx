@@ -913,7 +913,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
             {getCurrentDisplayName()}
           </DialogTitle>
           <DialogDescription className="text-center">
-            {nav.length === 0 ? 'Choose a category' : 'Tap a story to listen'}
+            {currentPath === null ? 'Choose a category' : 'Tap a story to listen'}
           </DialogDescription>
         </DialogHeader>
 
@@ -941,14 +941,11 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
         )}
 
         {/* Back button */}
-        {nav.length > 0 && (
-          <button 
+        {currentPath !== null && (
+          <button
             onClick={() => {
               stopAudio();
-              if (currentPath === null) return;
-              const node = findNode(currentPath);
-              // Go up: if this is a child node, find its parent; otherwise go to root
-              const parent = TREE.find(t => t.children?.some(c => c.path === currentPath));
+              const parent = TREE.find(t => t.children?.some((ch: any) => ch.path === currentPath));
               setCurrentPath(parent ? parent.path : null);
             }}
             className="flex items-center gap-1 text-sm text-warm-bronze hover:text-deep-bronze font-medium flex-shrink-0 -mt-1 mb-1"
