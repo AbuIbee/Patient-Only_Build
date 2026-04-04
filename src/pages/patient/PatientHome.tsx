@@ -425,6 +425,62 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
     ? dbTracks.filter(t => t.category === tab)
     : [];
 
+  const stopAudio = () => {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setPlaying(null);
+    setProgress(0);
+    setTrackDuration(0);
+  };
+
+  useEffect(() => { if (!open) stopAudio(); }, [open]);
+
+  const playTrack = (id: string, url?: string) => {
+    stopAudio();
+    if (playing === id) return;
+    setPlaying(id);
+    if (url) {
+      const a = new Audio();
+      a.crossOrigin = 'anonymous';
+      a.onended = () => { setPlaying(null); setProgress(0); setTrackDuration(0); };
+      a.onloadedmetadata = () => setTrackDuration(a.duration);
+      a.ontimeupdate = () => setProgress(a.currentTime);
+      a.onerror = () => { setPlaying(null); setProgress(0); setTrackDuration(0); };
+      a.src = url;
+      a.load();
+      a.play().catch(() => { setPlaying(null); });
+      audioRef.current = a;
+    }
+  };
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const label = file.name.replace(/\.[^.]+$/, '');
+    const url   = URL.createObjectURL(file);
+    const newTrack = { id: Date.now().toString(), label, url };
+    const updated  = [...myTracks, newTrack];
+    setMyTracks(updated);
+    localStorage.setItem('calmMyTracks', JSON.stringify(updated.map(t => ({ ...t, url: '' }))));
+    e.target.value = '';
+  };
+
+  const removeMyTrack = (id: string) => {
+    const updated = myTracks.filter(t => t.id !== id);
+    setMyTracks(updated);
+    localStorage.setItem('calmMyTracks', JSON.stringify(updated));
+    if (playing === id) stopAudio();
+  };
+
+  const fmtTime = (s: number) => isNaN(s) ? '0:00' : `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+
+  const tabs: { id: CalmTab; label: string; emoji: string }[] = [
+    { id: 'melodies',  label: 'Melodies',  emoji: '🎹' },
+    { id: 'classical', label: 'Classical', emoji: '🎻' },
+    { id: 'nature',    label: 'Nature',    emoji: '🌿' },
+    { id: 'my-music',  label: 'My Music',  emoji: '⭐' },
+  ];
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col" onInteractOutside={e => e.preventDefault()}>
@@ -724,9 +780,281 @@ function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClo
   );
 }
 
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SUB-COMPONENT: TellMeAStoryDialog
 // ─────────────────────────────────────────────────────────────────────────────
+
+function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const BUCKET = 'audio-files';
+  
+  // Hard-coded top-level folders that match your bucket structure
+  const ROOT_FOLDERS = [
+    { label: 'Novels', path: 'novels' },
+    { label: 'Religion', path: 'religion' },
+    { label: 'Short Stories', path: 'short-stories' },
+    { label: "Aesop's Fables", path: "aesop's fables" },
+    { label: 'Ghost Stories', path: 'Ghost Stories' },
+    { label: "Mice & Men Comedy Play", path: 'Mice&MenComedyPlay' }
+  ];
+
+  const [nav, setNav] = useState<string[]>([]);
+  const [nodes, setNodes] = useState<{ label: string; path: string; isFolder: boolean }[]>([]);
+  const [tracks, setTracks] = useState<{ id: string; title: string; url: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  
+  const navPath = nav.join('/');
+
+  const stopAudio = () => {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setPlaying(null);
+    setProgress(0);
+    setDuration(0);
+  };
+
+  const fmtTime = (s: number) =>
+    isNaN(s) ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+  // Load current folder contents
+  useEffect(() => {
+    if (!open) {
+      stopAudio();
+      return;
+    }
+    
+    setLoading(true);
+    setNodes([]);
+    setTracks([]);
+    stopAudio();
+
+    // If at root level, show hard-coded folders
+    if (nav.length === 0) {
+      setNodes(ROOT_FOLDERS.map(f => ({ ...f, isFolder: true })));
+      setLoading(false);
+      return;
+    }
+
+    // Otherwise, list the current folder path
+    supabase.storage.from(BUCKET)
+      .list(navPath, { limit: 300, sortBy: { column: 'name', order: 'asc' } })
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('Story list error:', error.message);
+          setLoading(false);
+          return;
+        }
+
+        const all = (data || []).filter(i => !i.name.startsWith('.'));
+        
+        // Detect folders (no metadata.size) vs files (has metadata.size)
+        const isFile = (i: any) => i.metadata != null && typeof i.metadata.size === 'number' && i.metadata.size > 0;
+        
+        const folders = all.filter(i => !isFile(i));
+        const files = all.filter(isFile);
+
+        // If we have files, show them as tracks
+        if (files.length > 0) {
+          setTracks(files.map(f => {
+            const filePath = `${navPath}/${f.name}`;
+            const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
+            return {
+              id: filePath,
+              title: storyTitle(f.name),
+              url: u.publicUrl
+            };
+          }));
+        }
+        
+        // Show subfolders as navigation options
+        setNodes(folders.map(f => ({
+          label: f.name,
+          path: f.name,
+          isFolder: true
+        })));
+        
+        setLoading(false);
+      })
+      .catch(err => {
+        console.warn('Failed to list folder:', err);
+        setLoading(false);
+      });
+  }, [open, navPath, nav.length]);
+
+  const handlePlay = (id: string, url: string) => {
+    if (playing === id) {
+      stopAudio();
+      return;
+    }
+    stopAudio();
+    setPlaying(id);
+    const a = new Audio(url);
+    a.onended = () => {
+      setPlaying(null);
+      setProgress(0);
+      setDuration(0);
+    };
+    a.onloadedmetadata = () => setDuration(a.duration);
+    a.ontimeupdate = () => setProgress(a.currentTime);
+    a.onerror = () => {
+      console.error('Playback error');
+      setPlaying(null);
+    };
+    a.play().catch(err => {
+      console.error('Failed to play:', err);
+      setPlaying(null);
+    });
+    audioRef.current = a;
+  };
+
+  // Helper to get display name for current folder
+  const getCurrentDisplayName = () => {
+    if (nav.length === 0) return 'Tell Me a Story';
+    const last = nav[nav.length - 1];
+    return last.replace(/-/g, ' ').replace(/^\w/, c => c.toUpperCase()).replace(/'\w/, c => c.toUpperCase());
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={() => { stopAudio(); onClose(); }}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col" onInteractOutside={e => e.preventDefault()}>
+        <DialogHeader>
+          <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
+            <BookOpen className="w-6 h-6 text-calm-blue" />
+            {getCurrentDisplayName()}
+          </DialogTitle>
+          <DialogDescription className="text-center">
+            {nav.length === 0 ? 'Choose a category' : 'Tap a story to listen'}
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Breadcrumb navigation */}
+        {nav.length > 0 && (
+          <div className="flex items-center gap-1 text-xs text-medium-gray flex-shrink-0 overflow-x-auto whitespace-nowrap pb-1">
+            <button onClick={() => { stopAudio(); setNav([]); }} className="hover:text-warm-bronze font-medium">
+              Library
+            </button>
+            {nav.map((seg, i) => (
+              <span key={seg} className="flex items-center gap-1">
+                <ChevronRight className="w-3 h-3" />
+                <button 
+                  onClick={() => { stopAudio(); setNav(s => s.slice(0, i + 1)); }}
+                  className="hover:text-warm-bronze capitalize"
+                >
+                  {seg.replace(/-/g, ' ').replace(/^\w/, c => c.toUpperCase())}
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Back button */}
+        {nav.length > 0 && (
+          <button 
+            onClick={() => { stopAudio(); setNav(s => s.slice(0, -1)); }}
+            className="flex items-center gap-1 text-sm text-warm-bronze hover:text-deep-bronze font-medium flex-shrink-0 -mt-1 mb-1"
+          >
+            <ChevronLeft className="w-4 h-4" /> Back
+          </button>
+        )}
+
+        {/* Content */}
+        <div className="overflow-y-auto flex-1 space-y-2 pr-1">
+          {loading && (
+            <div className="flex justify-center py-10">
+              <div className="w-6 h-6 border-2 border-calm-blue border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+
+          {/* Show folders */}
+          {!loading && nodes.map(node => (
+            <button
+              key={node.path}
+              onClick={() => { stopAudio(); setNav(s => [...s, node.path]); }}
+              className="w-full flex items-center gap-3 p-3.5 rounded-xl bg-soft-taupe/20 hover:bg-calm-blue/10 border-2 border-transparent hover:border-calm-blue/30 transition-all text-left"
+            >
+              <span className="text-2xl flex-shrink-0">📁</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-charcoal capitalize">
+                  {node.label.replace(/-/g, ' ').replace(/^\w/, c => c.toUpperCase())}
+                </p>
+                <p className="text-xs text-medium-gray">Tap to browse</p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-medium-gray flex-shrink-0" />
+            </button>
+          ))}
+
+          {/* Show audio tracks */}
+          {!loading && tracks.map((track, i) => (
+            <button
+              key={track.id}
+              onClick={() => handlePlay(track.id, track.url)}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                playing === track.id 
+                  ? 'border-calm-blue bg-calm-blue/10' 
+                  : 'border-transparent bg-soft-taupe/20 hover:border-soft-taupe'
+              }`}
+            >
+              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                playing === track.id ? 'bg-calm-blue text-white' : 'bg-soft-taupe/40 text-medium-gray'
+              }`}>
+                {playing === track.id ? '▶' : i + 1}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-charcoal text-sm truncate">{track.title}</p>
+                {playing === track.id && duration > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    <div className="h-1 bg-calm-blue/20 rounded-full overflow-hidden">
+                      <div className="h-full bg-calm-blue rounded-full transition-all" style={{ width: `${(progress / duration) * 100}%` }} />
+                    </div>
+                    <div className="flex justify-between text-xs text-medium-gray">
+                      <span>{fmtTime(progress)}</span><span>{fmtTime(duration)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {playing === track.id
+                ? <Pause className="w-4 h-4 text-calm-blue flex-shrink-0" />
+                : <Play className="w-4 h-4 text-medium-gray flex-shrink-0" />}
+            </button>
+          ))}
+
+          {/* Empty state */}
+          {!loading && nodes.length === 0 && tracks.length === 0 && (
+            <div className="text-center py-8 text-medium-gray text-sm">
+              <BookOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
+              <p>No stories found in this folder.</p>
+              <p className="text-xs mt-1">Add MP3 files to your Supabase storage bucket.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Now playing bar */}
+        {playing && (
+          <div className="flex-shrink-0 flex items-center gap-3 p-3 bg-calm-blue/10 rounded-xl border border-calm-blue/20">
+            <div className="flex gap-1 items-end h-5">
+              {[0, 1, 2].map(i => (
+                <motion.div
+                  key={i}
+                  className="w-1.5 bg-calm-blue rounded-full"
+                  animate={{ height: ['8px', '20px', '8px'] }}
+                  transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.2 }}
+                />
+              ))}
+            </div>
+            <p className="text-sm text-calm-blue font-medium flex-1">Now playing…</p>
+            <button onClick={stopAudio} className="text-xs text-medium-gray hover:text-charcoal underline">
+              Stop
+            </button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SUB-COMPONENT: VoiceRecorderDialog
@@ -918,189 +1246,7 @@ function VoiceRecorderDialog({
   );
 }
 
-// ─── Tell Me A Story — reads from audio-files storage bucket ─────────────────
-// Bucket: audio-files/{section}/{optional-subfolder}/files
-// Upload anything — it auto-appears, no code changes needed
 
-function storyTitle(name: string): string {
-  return name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ')
-    .replace(/^\s*\d+\s*/, '').replace(/\b\w/g, (l: string) => l.toUpperCase()).trim() || name;
-}
-
-const STORY_FOLDER_EMOJI: Record<string, string> = {
-  'religion': '🕌', 'novels': '📚', 'short-stories': '📖',
-  "aesop's fables": '🦊', 'ghost stories': '👻', 'grimms fairytales': '🏰',
-  'mice & men comedy play': '🎭', 'among meadow people': '🌿',
-  'adventures of sherlock holmes': '🔍',
-};
-const storyFolderEmoji = (n: string) => STORY_FOLDER_EMOJI[n.toLowerCase()] || '🎧';
-
-function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const BUCKET = 'audio-files';
-  const [nav,      setNav]      = useState<string[]>([]);
-  const [nodes,    setNodes]    = useState<{ label: string; path: string }[]>([]);
-  const [tracks,   setTracks]   = useState<{ id: string; title: string; url: string }[]>([]);
-  const [loadN,    setLoadN]    = useState(true);
-  const [loadT,    setLoadT]    = useState(false);
-  const [playing,  setPlaying]  = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const navPath = nav.join('/');
-
-  const stopAudio = () => {
-    audioRef.current?.pause();
-    audioRef.current = null;
-    setPlaying(null); setProgress(0); setDuration(0);
-  };
-
-  const fmtTime = (s: number) =>
-    isNaN(s) ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-
-  useEffect(() => {
-    if (!open) { stopAudio(); return; }
-    setLoadN(true); setNodes([]); setTracks([]); stopAudio();
-    supabase.storage.from(BUCKET)
-      .list(navPath || '', { limit: 300, sortBy: { column: 'name', order: 'asc' } })
-      .then(({ data, error }) => {
-        if (error) { console.warn('story list error:', error.message); setLoadN(false); return; }
-        const all   = data || [];
-        const dirs  = all.filter(i => (!i.id || i.metadata === null) && !i.name.startsWith('.'));
-        const files = all.filter(i => i.id && i.metadata !== null && !i.name.startsWith('.'));
-        if (files.length > 0) {
-          setLoadT(true);
-          setTracks(files.map(f => {
-            const p = navPath ? `${navPath}/${f.name}` : f.name;
-            const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(p);
-            return { id: p, title: storyTitle(f.name), url: u.publicUrl };
-          }));
-          setLoadT(false);
-        } else {
-          setNodes(dirs.map(f => ({
-            label: f.name,
-            path: navPath ? `${navPath}/${f.name}` : f.name,
-          })));
-        }
-        setLoadN(false);
-      });
-  }, [open, navPath]);
-
-  useEffect(() => () => stopAudio(), []);
-
-  const handlePlay = (id: string, url: string) => {
-    if (playing === id) { stopAudio(); return; }
-    stopAudio(); setPlaying(id);
-    const a = new Audio(url);
-    a.onended = () => { setPlaying(null); setProgress(0); setDuration(0); };
-    a.onloadedmetadata = () => setDuration(a.duration);
-    a.ontimeupdate = () => setProgress(a.currentTime);
-    a.onerror = () => { setPlaying(null); setProgress(0); setDuration(0); };
-    a.play().catch(() => setPlaying(null));
-    audioRef.current = a;
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={() => { stopAudio(); onClose(); }}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col" onInteractOutside={e => e.preventDefault()}>
-        <DialogHeader>
-          <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
-            <BookOpen className="w-6 h-6 text-calm-blue" />
-            {nav.length === 0 ? 'Tell Me a Story' : <span className="capitalize">{nav[nav.length - 1]}</span>}
-          </DialogTitle>
-          <DialogDescription className="text-center">
-            {nav.length === 0 ? 'Browse your audio library' : 'Tap a track to play'}
-          </DialogDescription>
-        </DialogHeader>
-
-        {nav.length > 0 && (
-          <div className="flex items-center gap-1 text-xs text-medium-gray flex-shrink-0 overflow-x-auto whitespace-nowrap pb-1">
-            <button onClick={() => { stopAudio(); setNav([]); }} className="hover:text-warm-bronze font-medium">Library</button>
-            {nav.map((seg, i) => (
-              <span key={seg} className="flex items-center gap-1">
-                <ChevronRight className="w-3 h-3" />
-                <button onClick={() => { stopAudio(); setNav(s => s.slice(0, i + 1)); }}
-                  className="hover:text-warm-bronze capitalize">{seg}</button>
-              </span>
-            ))}
-          </div>
-        )}
-
-        {nav.length > 0 && (
-          <button onClick={() => { stopAudio(); setNav(s => s.slice(0, -1)); }}
-            className="flex items-center gap-1 text-sm text-warm-bronze hover:text-deep-bronze font-medium flex-shrink-0 -mt-1 mb-1">
-            <ChevronLeft className="w-4 h-4" /> Back
-          </button>
-        )}
-
-        <div className="overflow-y-auto flex-1 space-y-1.5 pr-1">
-          {(loadN || loadT) && (
-            <div className="flex justify-center py-10">
-              <div className="w-6 h-6 border-2 border-calm-blue border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
-          {!loadN && nodes.map(node => (
-            <button key={node.path}
-              onClick={() => { stopAudio(); setNav(s => [...s, node.label]); }}
-              className="w-full flex items-center gap-3 p-3.5 rounded-xl bg-soft-taupe/20 hover:bg-calm-blue/10 border-2 border-transparent hover:border-calm-blue/30 transition-all text-left">
-              <span className="text-2xl flex-shrink-0">{storyFolderEmoji(node.label)}</span>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-charcoal capitalize">{node.label}</p>
-                <p className="text-xs text-medium-gray">Tap to browse</p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-medium-gray flex-shrink-0" />
-            </button>
-          ))}
-          {!loadT && tracks.map((track, i) => (
-            <button key={track.id} onClick={() => handlePlay(track.id, track.url)}
-              className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                playing === track.id ? 'border-calm-blue bg-calm-blue/10' : 'border-transparent bg-soft-taupe/20 hover:border-soft-taupe'
-              }`}>
-              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                playing === track.id ? 'bg-calm-blue text-white' : 'bg-soft-taupe/40 text-medium-gray'
-              }`}>{playing === track.id ? '▶' : i + 1}</span>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-charcoal text-sm truncate">{track.title}</p>
-                {playing === track.id && duration > 0 && (
-                  <div className="mt-1 space-y-0.5">
-                    <div className="h-1 bg-calm-blue/20 rounded-full overflow-hidden">
-                      <div className="h-full bg-calm-blue rounded-full transition-all" style={{ width: `${(progress / duration) * 100}%` }} />
-                    </div>
-                    <div className="flex justify-between text-xs text-medium-gray">
-                      <span>{fmtTime(progress)}</span><span>{fmtTime(duration)}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-              {playing === track.id
-                ? <Pause className="w-4 h-4 text-calm-blue flex-shrink-0" />
-                : <Play className="w-4 h-4 text-medium-gray flex-shrink-0" />}
-            </button>
-          ))}
-          {!loadN && !loadT && nodes.length === 0 && tracks.length === 0 && (
-            <div className="text-center py-8 text-medium-gray text-sm">
-              <BookOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p>Nothing here yet.</p>
-            </div>
-          )}
-        </div>
-
-        {playing && (
-          <div className="flex-shrink-0 flex items-center gap-3 p-3 bg-calm-blue/10 rounded-xl border border-calm-blue/20">
-            <div className="flex gap-1 items-end h-5">
-              {[0, 1, 2].map(i => (
-                <motion.div key={i} className="w-1.5 bg-calm-blue rounded-full"
-                  animate={{ height: ['8px', '20px', '8px'] }}
-                  transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.2 }} />
-              ))}
-            </div>
-            <p className="text-sm text-calm-blue font-medium flex-1">Now playing…</p>
-            <button onClick={stopAudio} className="text-xs text-medium-gray hover:text-charcoal underline">Stop</button>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
