@@ -792,36 +792,51 @@ function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClo
 function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const BUCKET = 'audio-files';
 
-  // ── Hardcoded tree — mirrors exact Supabase bucket structure ─────────────
-  // Same approach as CalmMe: no dynamic folder detection, just list() on leaf paths.
+  // ── Hardcoded tree – matches your actual bucket structure (all lowercase, no special chars) ──
   // novels/
-  //   among meadow people/       ← leaf (mp3s)
-  //   adventures of sherlock holmes/  ← leaf (mp3s)
-  // religion/                    ← leaf (mp3s directly inside)
+  //   among meadow people/          (leaf: mp3s)
+  //   adventures of sherlock holmes/ (leaf: mp3s)
+  // religion/
+  //   quran/                        (leaf: mp3s)
   // short-stories/
-  //   aesop's fables/            ← leaf
-  //   Ghost Stories/             ← leaf
-  //   grimms fairytales/         ← leaf
-  //   Mice & Men Comedy Play/    ← leaf
+  //   aesops fables/                (leaf: mp3s)
+  //   ghost stories/                (leaf: mp3s)
+  //   grimms fairytales/            (leaf: mp3s)
+  //   mice and men comedy play/     (leaf: mp3s)
+
   type StoryNode = { label: string; path: string; children?: StoryNode[] };
   const TREE: StoryNode[] = [
-    { label: 'Novels', path: 'novels', children: [
-      { label: "Among Meadow People",            path: "novels/among meadow people" },
-      { label: "Adventures of Sherlock Holmes",   path: "novels/adventures of sherlock holmes" },
-    ]},
-    { label: 'Religion', path: 'religion' }, // leaf — files sit directly here
-    { label: 'Short Stories', path: 'short-stories', children: [
-      { label: "Aesop's Fables",         path: "short-stories/aesop's fables" },
-      { label: "Ghost Stories",          path: "short-stories/Ghost Stories" },
-      { label: "Grimms Fairytales",      path: "short-stories/grimms fairytales" },
-      { label: "Mice & Men Comedy Play", path: "short-stories/Mice & Men Comedy Play" },
-    ]},
+    {
+      label: 'Novels',
+      path: 'novels',
+      children: [
+        { label: 'Among Meadow People', path: 'novels/among meadow people' },
+        { label: 'Adventures of Sherlock Holmes', path: 'novels/adventures of sherlock holmes' },
+      ],
+    },
+    {
+      label: 'Religion',
+      path: 'religion',
+      children: [
+        { label: 'Quran', path: 'religion/quran' },   // <-- fixed: subfolder, not leaf
+      ],
+    },
+    {
+      label: 'Short Stories',
+      path: 'short-stories',
+      children: [
+        { label: "Aesop's Fables", path: 'short-stories/aesops fables' },
+        { label: 'Ghost Stories', path: 'short-stories/ghost stories' },
+        { label: "Grimm's Fairytales", path: 'short-stories/grimms fairytales' },
+        { label: 'Mice and Men Comedy Play', path: 'short-stories/mice and men comedy play' },
+      ],
+    },
   ];
 
   const [currentPath, setCurrentPath] = useState<string | null>(null); // null = root
-  const [tracks,   setTracks]   = useState<{ id: string; title: string; url: string }[]>([]);
-  const [loading,  setLoading]  = useState(false);
-  const [playing,  setPlaying]  = useState<string | null>(null);
+  const [tracks, setTracks] = useState<{ id: string; title: string; url: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [playing, setPlaying] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -829,41 +844,71 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
   const stopAudio = () => {
     audioRef.current?.pause();
     audioRef.current = null;
-    setPlaying(null); setProgress(0); setDuration(0);
+    setPlaying(null);
+    setProgress(0);
+    setDuration(0);
   };
 
   const fmtTime = (s: number) =>
     isNaN(s) ? '0:00' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-  // Find the node for the current path
   const findNode = (path: string): StoryNode | undefined => {
     for (const n of TREE) {
       if (n.path === path) return n;
-      if (n.children) for (const c of n.children) if (c.path === path) return c;
+      if (n.children) {
+        for (const c of n.children) {
+          if (c.path === path) return c;
+        }
+      }
     }
     return undefined;
   };
 
-  // When currentPath is a leaf, load mp3s from storage
+  // Load audio files when currentPath is a leaf (no children)
   useEffect(() => {
-    if (!open) { stopAudio(); return; }
-    if (currentPath === null) { setTracks([]); return; } // root — no fetch needed
+    if (!open) {
+      stopAudio();
+      return;
+    }
+    if (currentPath === null) {
+      setTracks([]);
+      return;
+    }
 
     const node = findNode(currentPath);
-    const isLeaf = !node?.children; // no children = leaf folder with mp3s
-    if (!isLeaf) { setTracks([]); return; }
+    const isLeaf = !node?.children;
+    if (!isLeaf) {
+      setTracks([]);
+      return;
+    }
 
-    setLoading(true); setTracks([]); stopAudio();
-    supabase.storage.from(BUCKET)
+    setLoading(true);
+    setTracks([]);
+    stopAudio();
+
+    supabase.storage
+      .from(BUCKET)
       .list(currentPath, { limit: 300, sortBy: { column: 'name', order: 'asc' } })
       .then(({ data, error }) => {
-        if (error) { console.warn('Story list error:', error.message); setLoading(false); return; }
-        const files = (data || []).filter(i => i.name && !i.name.startsWith('.') && i.name.includes('.'));
-        setTracks(files.map(f => {
-          const p = `${currentPath}/${f.name}`;
-          const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(p);
-          return { id: p, title: storyTitle(f.name), url: u.publicUrl };
-        }));
+        if (error) {
+          console.warn('Story list error:', error.message);
+          setLoading(false);
+          return;
+        }
+        const files = (data || []).filter(
+          (i) => i.name && !i.name.startsWith('.') && i.name.includes('.')
+        );
+        setTracks(
+          files.map((f) => {
+            const filePath = `${currentPath}/${f.name}`;
+            const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
+            return {
+              id: filePath,
+              title: storyTitle(f.name),
+              url: u.publicUrl,
+            };
+          })
+        );
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -888,25 +933,30 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
       console.error('Playback error');
       setPlaying(null);
     };
-    a.play().catch(err => {
+    a.play().catch((err) => {
       console.error('Failed to play:', err);
       setPlaying(null);
     });
     audioRef.current = a;
   };
 
-  // Helper to get display name for current folder
   const getCurrentDisplayName = () => {
     if (!currentPath) return 'Tell Me a Story';
     const node = findNode(currentPath);
-    if (node) return node.label;
-    const last = currentPath.split('/').pop() || currentPath;
-    return last.replace(/[-_]/g, ' ').replace(/\w/g, (ch: string) => ch.toUpperCase());
+    return node ? node.label : currentPath.split('/').pop() || currentPath;
+  };
+
+  // Helper to get the parent path for Back button
+  const getParentPath = (path: string): string | null => {
+    for (const n of TREE) {
+      if (n.children?.some((c) => c.path === path)) return n.path;
+    }
+    return null;
   };
 
   return (
     <Dialog open={open} onOpenChange={() => { stopAudio(); onClose(); }}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col" onInteractOutside={e => e.preventDefault()}>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
             <BookOpen className="w-6 h-6 text-calm-blue" />
@@ -917,23 +967,24 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
           </DialogDescription>
         </DialogHeader>
 
-        {/* Breadcrumb navigation */}
+        {/* Breadcrumb */}
         {currentPath !== null && (
           <div className="flex items-center gap-1 text-xs text-medium-gray flex-shrink-0 overflow-x-auto whitespace-nowrap pb-1">
             <button onClick={() => { stopAudio(); setCurrentPath(null); }} className="hover:text-warm-bronze font-medium">
               Library
             </button>
-            {currentPath && currentPath.split('/').map((seg, i, parts) => (
+            {currentPath.split('/').map((seg, i, parts) => (
               <span key={i} className="flex items-center gap-1">
                 <ChevronRight className="w-3 h-3" />
                 <button
                   onClick={() => {
                     const partial = parts.slice(0, i + 1).join('/');
-                    stopAudio(); setCurrentPath(partial === currentPath ? currentPath : partial);
+                    stopAudio();
+                    setCurrentPath(partial === currentPath ? currentPath : partial);
                   }}
                   className="hover:text-warm-bronze capitalize"
                 >
-                  {seg.replace(/[-_]/g, ' ').replace(/\w/g, (ch: string) => ch.toUpperCase())}
+                  {seg.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                 </button>
               </span>
             ))}
@@ -945,8 +996,8 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
           <button
             onClick={() => {
               stopAudio();
-              const parent = TREE.find(t => t.children?.some((ch: any) => ch.path === currentPath));
-              setCurrentPath(parent ? parent.path : null);
+              const parent = getParentPath(currentPath);
+              setCurrentPath(parent);
             }}
             className="flex items-center gap-1 text-sm text-warm-bronze hover:text-deep-bronze font-medium flex-shrink-0 -mt-1 mb-1"
           >
@@ -954,7 +1005,6 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
           </button>
         )}
 
-        {/* Content */}
         <div className="overflow-y-auto flex-1 space-y-2 pr-1">
           {loading && (
             <div className="flex justify-center py-10">
@@ -962,35 +1012,34 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
             </div>
           )}
 
-          {/* Show folders from TREE */}
-          {!loading && tracks.length === 0 && (() => {
-            const visibleNodes = currentPath === null
-              ? TREE
-              : (findNode(currentPath)?.children || []);
-            return visibleNodes.map(node => (
-              <button
-                key={node.path}
-                onClick={() => { stopAudio(); setCurrentPath(node.path); }}
-                className="w-full flex items-center gap-3 p-3.5 rounded-xl bg-soft-taupe/20 hover:bg-calm-blue/10 border-2 border-transparent hover:border-calm-blue/30 transition-all text-left"
-              >
-                <span className="text-2xl flex-shrink-0">
-                  {node.path.startsWith('novels') ? '📚' :
-                   node.path.startsWith('religion') ? '🕌' :
-                   node.path.includes("aesop") ? '🦊' :
-                   node.path.includes("ghost") || node.path.includes("Ghost") ? '👻' :
-                   node.path.includes("grimm") ? '🏰' :
-                   node.path.includes("Mice") || node.path.includes("mice") ? '🎭' :
-                   node.path.includes("meadow") ? '🌿' :
-                   node.path.includes("sherlock") ? '🔍' : '📖'}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-charcoal">{node.label}</p>
-                  <p className="text-xs text-medium-gray">Tap to browse</p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-medium-gray flex-shrink-0" />
-              </button>
-            ));
-          })()}
+          {/* Show folders (from TREE) */}
+          {!loading && tracks.length === 0 && (
+            <>
+              {(currentPath === null ? TREE : findNode(currentPath)?.children || []).map((node) => (
+                <button
+                  key={node.path}
+                  onClick={() => { stopAudio(); setCurrentPath(node.path); }}
+                  className="w-full flex items-center gap-3 p-3.5 rounded-xl bg-soft-taupe/20 hover:bg-calm-blue/10 border-2 border-transparent hover:border-calm-blue/30 transition-all text-left"
+                >
+                  <span className="text-2xl flex-shrink-0">
+                    {node.path.includes('novels') ? '📚' :
+                     node.path.includes('religion') ? '🕌' :
+                     node.path.includes('aesops') ? '🦊' :
+                     node.path.includes('ghost') ? '👻' :
+                     node.path.includes('grimms') ? '🏰' :
+                     node.path.includes('mice') ? '🎭' :
+                     node.path.includes('meadow') ? '🌿' :
+                     node.path.includes('sherlock') ? '🔍' : '📖'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-charcoal">{node.label}</p>
+                    <p className="text-xs text-medium-gray">Tap to browse</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-medium-gray flex-shrink-0" />
+                </button>
+              ))}
+            </>
+          )}
 
           {/* Show audio tracks */}
           {!loading && tracks.map((track, i) => (
@@ -998,8 +1047,8 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
               key={track.id}
               onClick={() => handlePlay(track.id, track.url)}
               className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                playing === track.id 
-                  ? 'border-calm-blue bg-calm-blue/10' 
+                playing === track.id
+                  ? 'border-calm-blue bg-calm-blue/10'
                   : 'border-transparent bg-soft-taupe/20 hover:border-soft-taupe'
               }`}
             >
@@ -1028,7 +1077,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
           ))}
 
           {/* Empty state */}
-          {!loading && tracks.length === 0 && (currentPath !== null) && !(findNode(currentPath)?.children) && (
+          {!loading && tracks.length === 0 && currentPath !== null && !(findNode(currentPath)?.children) && (
             <div className="text-center py-8 text-medium-gray text-sm">
               <BookOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
               <p>No stories found in this folder.</p>
@@ -1041,7 +1090,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
         {playing && (
           <div className="flex-shrink-0 flex items-center gap-3 p-3 bg-calm-blue/10 rounded-xl border border-calm-blue/20">
             <div className="flex gap-1 items-end h-5">
-              {[0, 1, 2].map(i => (
+              {[0, 1, 2].map((i) => (
                 <motion.div
                   key={i}
                   className="w-1.5 bg-calm-blue rounded-full"
