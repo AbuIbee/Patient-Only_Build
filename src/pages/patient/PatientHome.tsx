@@ -792,7 +792,52 @@ function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClo
 function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const BUCKET = 'audio-files';
 
-  // Tree structure – all paths lowercase, no special chars
+  // ─────────────────────────────────────────────────────────────────────────
+  // 1. DEFINE YOUR AUDIO FILES HERE – ADD EVERY FILE MANUALLY
+  //    Format: 'folder/path' => [ { title: "Display name", fileName: "actual.mp3" }, ... ]
+  // ─────────────────────────────────────────────────────────────────────────
+  const AUDIO_FILES: Record<string, { title: string; fileName: string }[]> = {
+    // Novels / Among Meadow People
+    'novels/among meadow people': [
+      { title: 'Chapter 1', fileName: 'chapter1.mp3' },
+      { title: 'Chapter 2', fileName: 'chapter2.mp3' },
+      // 👇 ADD ALL YOUR OTHER FILES HERE
+      // { title: 'Chapter 3', fileName: 'chapter3.mp3' },
+      // { title: 'Chapter 4', fileName: 'chapter4.mp3' },
+    ],
+    // Novels / Adventures of Sherlock Holmes
+    'novels/adventures of sherlock holmes': [
+      { title: 'A Scandal in Bohemia', fileName: 'scandal.mp3' },
+      // Add all other files...
+    ],
+    // Religion / Quran
+    'religion/quran': [
+      { title: 'Surah Al-Fatiha', fileName: 'fatiha.mp3' },
+      // Add all other surahs...
+    ],
+    // Short Stories / Aesop's Fables
+    'short-stories/aesops fables': [
+      { title: 'The Tortoise and the Hare', fileName: 'tortoise_hare.mp3' },
+      // Add all other fables...
+    ],
+    // Short Stories / Ghost Stories
+    'short-stories/ghost stories': [
+      { title: 'The Haunted House', fileName: 'haunted.mp3' },
+      // Add all other stories...
+    ],
+    // Short Stories / Grimm's Fairytales
+    'short-stories/grimms fairytales': [
+      { title: 'Hansel and Gretel', fileName: 'hansel_gretel.mp3' },
+      // Add all other fairytales...
+    ],
+    // Short Stories / Mice and Men Comedy Play
+    'short-stories/mice and men comedy play': [
+      { title: 'Act 1', fileName: 'act1.mp3' },
+      // Add all other acts...
+    ],
+  };
+
+  // Tree structure (folders only)
   type StoryNode = { label: string; path: string; children?: StoryNode[] };
   const TREE: StoryNode[] = [
     {
@@ -821,8 +866,6 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
   ];
 
   const [currentPath, setCurrentPath] = useState<string | null>(null);
-  const [tracks, setTracks] = useState<{ id: string; title: string; url: string }[]>([]);
-  const [loading, setLoading] = useState(false);
   const [playing, setPlaying] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -851,63 +894,23 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     return undefined;
   };
 
-  // Load audio files dynamically from Supabase when a leaf folder is selected
-  useEffect(() => {
-    if (!open) {
-      stopAudio();
-      return;
-    }
-    if (!currentPath) {
-      setTracks([]);
-      return;
-    }
+  // Get tracks for current path (from hardcoded AUDIO_FILES)
+  const getTracksForPath = (path: string | null) => {
+    if (!path) return [];
+    return (AUDIO_FILES[path] || []).map((f, idx) => {
+      const filePath = `${path}/${f.fileName}`;
+      const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
+      return {
+        id: filePath,
+        title: f.title,
+        url: u.publicUrl,
+      };
+    });
+  };
 
-    const node = findNode(currentPath);
-    const isLeaf = !node?.children;
-    if (!isLeaf) {
-      setTracks([]);
-      return;
-    }
-
-    setLoading(true);
-    setTracks([]);
-    stopAudio();
-
-    supabase.storage
-      .from(BUCKET)
-      .list(currentPath, { limit: 500, sortBy: { column: 'name', order: 'asc' } })
-      .then(({ data, error }) => {
-        if (error) {
-          console.error('Error listing folder:', currentPath, error);
-          setLoading(false);
-          return;
-        }
-        // Filter only audio files (common extensions)
-        const audioExtensions = /\.(mp3|wav|m4a|ogg|flac)$/i;
-        const files = (data || []).filter(
-          (item) => item.name && !item.name.startsWith('.') && audioExtensions.test(item.name)
-        );
-        console.log(`Found ${files.length} audio files in ${currentPath}:`, files.map(f => f.name));
-        const trackList = files.map((file) => {
-          const filePath = `${currentPath}/${file.name}`;
-          const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
-          return {
-            id: filePath,
-            title: storyTitle(file.name),
-            url: urlData.publicUrl,
-          };
-        });
-        setTracks(trackList);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error('Failed to list folder:', err);
-        setLoading(false);
-      });
-  }, [open, currentPath]);
+  const currentTracks = getTracksForPath(currentPath);
 
   const handlePlay = (id: string, url: string) => {
-    // Prevent any event bubbling that might close the dialog
     if (playing === id) {
       stopAudio();
       return;
@@ -922,8 +925,8 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     };
     a.onloadedmetadata = () => setDuration(a.duration);
     a.ontimeupdate = () => setProgress(a.currentTime);
-    a.onerror = (e) => {
-      console.error('Playback error for', url, e);
+    a.onerror = () => {
+      console.error('Playback error');
       setPlaying(null);
     };
     a.play().catch((err) => {
@@ -950,9 +953,7 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent
         className="sm:max-w-lg max-h-[85vh] flex flex-col"
-        // Prevent accidental close when clicking inside
         onInteractOutside={(e) => e.preventDefault()}
-        // Also prevent close on escape if desired, but keep default
       >
         <DialogHeader>
           <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
@@ -1003,14 +1004,8 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
         )}
 
         <div className="overflow-y-auto flex-1 space-y-2 pr-1">
-          {loading && (
-            <div className="flex justify-center py-10">
-              <div className="w-6 h-6 border-2 border-calm-blue border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
-
-          {/* Show folders (only when no tracks are shown) */}
-          {!loading && tracks.length === 0 && (
+          {/* Show folders (when no tracks) */}
+          {currentTracks.length === 0 && (
             <>
               {(currentPath === null ? TREE : findNode(currentPath)?.children || []).map((node) => (
                 <button
@@ -1039,11 +1034,11 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
           )}
 
           {/* Show audio tracks */}
-          {!loading && tracks.map((track, i) => (
+          {currentTracks.map((track, i) => (
             <button
               key={track.id}
               onClick={(e) => {
-                e.stopPropagation(); // Prevent event bubbling
+                e.stopPropagation();
                 handlePlay(track.id, track.url);
               }}
               className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
@@ -1076,13 +1071,12 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
             </button>
           ))}
 
-          {/* Empty state for leaf folders with no audio files */}
-          {!loading && tracks.length === 0 && currentPath !== null && !(findNode(currentPath)?.children) && (
+          {/* Empty state */}
+          {currentTracks.length === 0 && currentPath !== null && !(findNode(currentPath)?.children) && (
             <div className="text-center py-8 text-medium-gray text-sm">
               <BookOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
-              <p>No audio files found in this folder.</p>
-              <p className="text-xs mt-1">Make sure your MP3 files are uploaded to:</p>
-              <p className="text-xs font-mono break-all">{currentPath}</p>
+              <p>No audio files have been added to this folder in the code.</p>
+              <p className="text-xs mt-1">Edit the <code className="bg-gray-200 px-1 rounded">AUDIO_FILES</code> object and add your files.</p>
             </div>
           )}
         </div>
