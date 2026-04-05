@@ -1941,7 +1941,7 @@ export default function PatientHome() {
             </CardContent>
           </Card>
         </motion.div>
-      </div>
+      
 
       {/* 6. EMERGENCY HELP BUTTON - Fixed top right */}
       <motion.button
