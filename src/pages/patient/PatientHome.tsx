@@ -359,148 +359,266 @@ const AI_VOICES = [
 // Bucket: music-files/melodies/  music-files/classical/  music-files/nature/
 // Upload MP3s to any of those folders and they appear automatically
 
-interface CalmTrack {
-  id: string; category: string; title: string; artist: string;
-  emoji: string; color: string; audio_url: string;
+interface MediaItem {
+  id: string;
+  category: 'videos' | 'nature';
+  title: string;
+  file_path: string;
+  file_url: string;
+  emoji: string;
+  color: string;
 }
 
-const CALM_FOLDER_META: Record<string, { emoji: string; color: string; artist: string }> = {
-  melodies:  { emoji: '🎵', color: 'bg-purple-100 text-purple-700', artist: 'Melodies'  },
-  classical: { emoji: '🎻', color: 'bg-rose-100 text-rose-700',     artist: 'Classical' },
-  nature:    { emoji: '🌿', color: 'bg-green-100 text-green-700',   artist: 'Nature'    },
+const MEDIA_FOLDER_META: Record<'videos' | 'nature', { emoji: string; color: string }> = {
+  videos: { emoji: '🎥', color: 'bg-blue-100 text-blue-700' },
+  nature: { emoji: '🌿', color: 'bg-green-100 text-green-700' },
 };
 
-function calmTitle(name: string): string {
-  return name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ')
-    .replace(/^\s*\d+\s*/, '').replace(/\b\w/g, (l: string) => l.toUpperCase()).trim() || name;
+function mediaTitle(name: string): string {
+  return name
+    .replace(/\.[^.]+$/, '')
+    .replace(/[-_]/g, ' ')
+    .replace(/^\s*\d+\s*/, '')
+    .replace(/\b\w/g, (l: string) => l.toUpperCase())
+    .trim() || name;
 }
 
-type CalmTab = 'melodies' | 'nature' | 'classical' | 'my-music';
+type FamilyVideoTab = 'videos' | 'nature';
 
 function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { state } = useApp();
   const BUCKET = 'music-files';
-  const [tab, setTab]                     = useState<CalmTab>('melodies');
-  const [playing, setPlaying]             = useState<string | null>(null);
-  const [progress, setProgress]           = useState(0);
-  const [trackDuration, setTrackDuration] = useState(0);
-  const [dbTracks, setDbTracks]           = useState<CalmTrack[]>([]);
-  const [tracksLoading, setTracksLoading] = useState(true);
-  const [myTracks, setMyTracks]           = useState<{ id: string; label: string; url: string }[]>(() => {
-    try { return JSON.parse(localStorage.getItem('calmMyTracks') || '[]'); } catch { return []; }
-  });
+  const VIDEO_FOLDER = 'videos';
+  const NATURE_FOLDER = 'nature';
+
+  const patientId =
+    state.currentPatient?.id ||
+    state.patient?.id ||
+    state.user?.id ||
+    '';
+
+  const [tab, setTab] = useState<FamilyVideoTab>('videos');
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // ── Load tracks from music-files storage ──────────────────────────────
-  useEffect(() => {
-    if (!open) return;
-    setTracksLoading(true);
-    const folders: CalmTab[] = ['melodies', 'classical', 'nature'];
-    Promise.all(
-      folders.map(folder =>
-        supabase.storage.from(BUCKET)
-          .list(folder, { limit: 200, sortBy: { column: 'name', order: 'asc' } })
-          .then(({ data }) => {
-            const meta = CALM_FOLDER_META[folder];
-            return (data || [])
-              .filter(f => f.id && f.metadata !== null && !f.name.startsWith('.'))
-              .map(f => {
-                const path = `${folder}/${f.name}`;
-                const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(path);
-                return {
-                  id: path, category: folder,
-                  title: calmTitle(f.name), artist: meta.artist,
-                  emoji: meta.emoji, color: meta.color,
-                  audio_url: u.publicUrl,
-                } as CalmTrack;
-              });
-          })
-      )
-    ).then(results => {
-      setDbTracks(results.flat());
-      setTracksLoading(false);
-    }).catch(() => setTracksLoading(false));
-  }, [open]);
-
-  const tracks = tab !== 'my-music'
-    ? dbTracks.filter(t => t.category === tab)
-    : [];
-
-  const stopAudio = () => {
+  const stopPlayback = () => {
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
     audioRef.current?.pause();
     audioRef.current = null;
     setPlaying(null);
-    setProgress(0);
-    setTrackDuration(0);
   };
 
-  useEffect(() => { if (!open) stopAudio(); }, [open]);
+  const getSignedUrl = async (path: string) => {
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(path, 60 * 60);
 
-  const playTrack = (id: string, url?: string) => {
-    stopAudio();
-    if (playing === id) return;
-    setPlaying(id);
-    if (url) {
-      const a = new Audio();
-      a.crossOrigin = 'anonymous';
-      a.onended = () => { setPlaying(null); setProgress(0); setTrackDuration(0); };
-      a.onloadedmetadata = () => setTrackDuration(a.duration);
-      a.ontimeupdate = () => setProgress(a.currentTime);
-      a.onerror = () => { setPlaying(null); setProgress(0); setTrackDuration(0); };
-      a.src = url;
-      a.load();
-      a.play().catch(() => { setPlaying(null); });
-      audioRef.current = a;
+    if (error) throw error;
+    return data.signedUrl;
+  };
+
+  const loadNature = async (): Promise<MediaItem[]> => {
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .list(NATURE_FOLDER, { limit: 200, sortBy: { column: 'name', order: 'asc' } });
+
+    if (error) throw error;
+
+    const filtered = (data || []).filter(f => f.id && !f.name.startsWith('.'));
+    const urls = await Promise.all(
+      filtered.map(async (f) => {
+        const path = `${NATURE_FOLDER}/${f.name}`;
+        const signedUrl = await getSignedUrl(path);
+        return {
+          id: path,
+          category: 'nature' as const,
+          title: mediaTitle(f.name),
+          file_path: path,
+          file_url: signedUrl,
+          emoji: MEDIA_FOLDER_META.nature.emoji,
+          color: MEDIA_FOLDER_META.nature.color,
+        };
+      })
+    );
+
+    return urls;
+  };
+
+  const loadVideos = async (): Promise<MediaItem[]> => {
+    if (!patientId) return [];
+
+    const patientFolder = `${VIDEO_FOLDER}/${patientId}`;
+
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .list(patientFolder, { limit: 200, sortBy: { column: 'name', order: 'desc' } });
+
+    if (error) {
+      if (error.message?.toLowerCase().includes('not found')) return [];
+      throw error;
+    }
+
+    const filtered = (data || []).filter(f => f.id && !f.name.startsWith('.'));
+    const urls = await Promise.all(
+      filtered.map(async (f) => {
+        const path = `${patientFolder}/${f.name}`;
+        const signedUrl = await getSignedUrl(path);
+        return {
+          id: path,
+          category: 'videos' as const,
+          title: mediaTitle(f.name),
+          file_path: path,
+          file_url: signedUrl,
+          emoji: MEDIA_FOLDER_META.videos.emoji,
+          color: MEDIA_FOLDER_META.videos.color,
+        };
+      })
+    );
+
+    return urls;
+  };
+
+  const refreshMedia = async () => {
+    if (!open) return;
+    setLoading(true);
+    setVideoError(null);
+
+    try {
+      const [videos, nature] = await Promise.all([
+        loadVideos(),
+        loadNature(),
+      ]);
+      setMediaItems([...videos, ...nature]);
+    } catch (err: any) {
+      setVideoError(err.message || 'Failed to load media');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    if (!open) return;
+    refreshMedia();
+  }, [open, patientId]);
+
+  useEffect(() => {
+    if (!open) stopPlayback();
+  }, [open]);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const label = file.name.replace(/\.[^.]+$/, '');
-    const url   = URL.createObjectURL(file);
-    const newTrack = { id: Date.now().toString(), label, url };
-    const updated  = [...myTracks, newTrack];
-    setMyTracks(updated);
-    localStorage.setItem('calmMyTracks', JSON.stringify(updated.map(t => ({ ...t, url: '' }))));
-    e.target.value = '';
+
+    if (!patientId) {
+      setVideoError('No patient account is loaded.');
+      e.target.value = '';
+      return;
+    }
+
+    if (!file.type.startsWith('video/')) {
+      setVideoError('Only video files are allowed here.');
+      e.target.value = '';
+      return;
+    }
+
+    const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
+    if (file.size > MAX_VIDEO_SIZE) {
+      setVideoError('Video exceeds the 100MB limit.');
+      e.target.value = '';
+      return;
+    }
+
+    setUploading(true);
+    setVideoError(null);
+
+    try {
+      const ext = file.name.split('.').pop() || 'mp4';
+      const safeName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const path = `${VIDEO_FOLDER}/${patientId}/${safeName}`;
+
+      const { error } = await supabase.storage
+        .from(BUCKET)
+        .upload(path, file, {
+          upsert: false,
+          contentType: file.type,
+        });
+
+      if (error) throw error;
+
+      await refreshMedia();
+      setTab('videos');
+    } catch (err: any) {
+      setVideoError(err.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
   };
 
-  const removeMyTrack = (id: string) => {
-    const updated = myTracks.filter(t => t.id !== id);
-    setMyTracks(updated);
-    localStorage.setItem('calmMyTracks', JSON.stringify(updated));
-    if (playing === id) stopAudio();
+  const handleDeleteVideo = async (item: MediaItem) => {
+    if (item.category !== 'videos') return;
+    if (!confirm(`Delete "${item.title}"?`)) return;
+
+    try {
+      const { error } = await supabase.storage.from(BUCKET).remove([item.file_path]);
+      if (error) throw error;
+
+      if (playing === item.id) stopPlayback();
+      await refreshMedia();
+    } catch (err: any) {
+      setVideoError(err.message || 'Delete failed');
+    }
   };
 
-  const fmtTime = (s: number) => isNaN(s) ? '0:00' : `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+  const playNatureAudio = (item: MediaItem) => {
+    stopPlayback();
 
-  const tabs: { id: CalmTab; label: string; emoji: string }[] = [
-    { id: 'melodies',  label: 'Melodies',  emoji: '🎹' },
-    { id: 'classical', label: 'Classical', emoji: '🎻' },
-    { id: 'nature',    label: 'Nature',    emoji: '🌿' },
-    { id: 'my-music',  label: 'My Music',  emoji: '⭐' },
+    const a = new Audio();
+    a.crossOrigin = 'anonymous';
+    a.src = item.file_url;
+    a.onended = () => setPlaying(null);
+    a.onerror = () => setPlaying(null);
+    a.play().catch(() => setPlaying(null));
+
+    audioRef.current = a;
+    setPlaying(item.id);
+  };
+
+  const videos = mediaItems.filter(i => i.category === 'videos');
+  const natureTracks = mediaItems.filter(i => i.category === 'nature');
+
+  const tabs: { id: FamilyVideoTab; label: string; emoji: string }[] = [
+    { id: 'videos', label: 'Family Videos', emoji: '🎥' },
+    { id: 'nature', label: 'Nature', emoji: '🌿' },
   ];
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col" onInteractOutside={e => e.preventDefault()}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col" onInteractOutside={e => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
             <Music className="w-6 h-6 text-soft-sage" />
-            Calm Me
+            Family Videos
           </DialogTitle>
           <DialogDescription className="text-center">
-            Choose something soothing to listen to
+            Watch familiar videos anytime, even after signing out and signing back in
           </DialogDescription>
         </DialogHeader>
 
-        {/* Tabs */}
         <div className="flex gap-1 bg-soft-taupe/20 rounded-xl p-1 flex-shrink-0">
           {tabs.map(t => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`flex-1 flex flex-col items-center py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex-1 flex flex-col items-center py-2 rounded-lg text-xs font-medium transition-all ${
                 tab === t.id ? 'bg-white shadow text-charcoal' : 'text-medium-gray hover:text-charcoal'
               }`}
             >
@@ -510,122 +628,116 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
           ))}
         </div>
 
-        {/* Track list */}
-        <div className="overflow-y-auto flex-1 space-y-2 pr-1">
-          <AnimatePresence mode="wait">
-            <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
-
-              {tab !== 'my-music' && tracksLoading && (
-                <div className="flex justify-center py-8">
-                  <div className="w-6 h-6 border-2 border-soft-sage border-t-transparent rounded-full animate-spin" />
-                </div>
-              )}
-
-              {tab !== 'my-music' && !tracksLoading && tracks.length === 0 && (
-                <div className="text-center py-8 text-medium-gray text-sm">
-                  <p>No tracks available in this category yet.</p>
-                </div>
-              )}
-
-              {tab !== 'my-music' && !tracksLoading && tracks.map(track => (
-                <button
-                  key={track.id}
-                  onClick={() => playTrack(track.id, track.audio_url)}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                    playing === track.id
-                      ? 'border-soft-sage bg-soft-sage/10'
-                      : 'border-transparent bg-warm-ivory hover:border-soft-taupe'
-                  }`}
-                >
-                  <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 ${track.color}`}>
-                    {track.emoji}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-charcoal text-sm truncate">{track.title}</p>
-                    <p className="text-xs text-medium-gray">{track.artist}</p>
-                    {playing === track.id && trackDuration > 0 && (
-                      <div className="mt-1.5 space-y-0.5">
-                        <div className="h-1 bg-soft-sage/20 rounded-full overflow-hidden">
-                          <div className="h-full bg-soft-sage rounded-full transition-all" style={{ width: `${(progress/trackDuration)*100}%` }} />
-                        </div>
-                        <div className="flex justify-between text-xs text-medium-gray">
-                          <span>{fmtTime(progress)}</span><span>{fmtTime(trackDuration)}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    playing === track.id ? 'bg-soft-sage text-white' : 'bg-soft-taupe/40 text-medium-gray'
-                  }`}>
-                    {playing === track.id
-                      ? <Pause className="w-3.5 h-3.5" />
-                      : <Play className="w-3.5 h-3.5 ml-0.5" />}
-                  </div>
-                </button>
-              ))}
-
-              {tab === 'my-music' && (
-                <>
-                  {myTracks.length === 0 && (
-                    <div className="py-6 text-center text-medium-gray">
-                      <Headphones className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                      <p className="text-sm">No music added yet</p>
-                      <p className="text-xs mt-1">Upload your favourite songs below</p>
-                    </div>
-                  )}
-                  {myTracks.map(track => (
-                    <div key={track.id} className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
-                      playing === track.id ? 'border-soft-sage bg-soft-sage/10' : 'border-transparent bg-warm-ivory'
-                    }`}>
-                      <span className="w-10 h-10 rounded-xl bg-warm-bronze/10 flex items-center justify-center text-lg flex-shrink-0">⭐</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-charcoal text-sm truncate">{track.label}</p>
-                        <p className="text-xs text-medium-gray">My music</p>
-                      </div>
-                      <button
-                        onClick={() => playTrack(track.id, track.url)}
-                        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                          playing === track.id ? 'bg-soft-sage text-white' : 'bg-soft-taupe/40 text-medium-gray'
-                        }`}
-                      >
-                        {playing === track.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
-                      </button>
-                      <button onClick={() => removeMyTrack(track.id)} className="w-7 h-7 rounded-full flex items-center justify-center text-gentle-coral hover:bg-gentle-coral/10 flex-shrink-0">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-
-                  {/* Upload button */}
-                  <label className="flex items-center gap-3 p-3 rounded-xl border-2 border-dashed border-soft-taupe hover:border-warm-bronze bg-warm-ivory hover:bg-warm-bronze/5 cursor-pointer transition-all">
-                    <input type="file" accept="audio/*" className="hidden" onChange={handleUpload} />
-                    <span className="w-10 h-10 rounded-xl bg-warm-bronze/10 flex items-center justify-center flex-shrink-0">
-                      <Upload className="w-5 h-5 text-warm-bronze" />
-                    </span>
-                    <div>
-                      <p className="font-medium text-warm-bronze text-sm">Upload My Own Music</p>
-                      <p className="text-xs text-medium-gray">MP3, WAV, M4A accepted</p>
-                    </div>
-                  </label>
-                </>
-              )}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-
-        {playing && (
-          <div className="flex-shrink-0 flex items-center gap-3 p-3 bg-soft-sage/10 rounded-xl border border-soft-sage/20">
-            <div className="flex gap-1 items-end h-5">
-              {[0, 1, 2].map(i => (
-                <motion.div key={i} className="w-1.5 bg-soft-sage rounded-full"
-                  animate={{ height: ['8px', '20px', '8px'] }}
-                  transition={{ repeat: Infinity, duration: 0.8, delay: i * 0.2 }} />
-              ))}
-            </div>
-            <p className="text-sm text-soft-sage font-medium flex-1">Now playing…</p>
-            <button onClick={stopAudio} className="text-xs text-medium-gray hover:text-charcoal underline">Stop</button>
+        {videoError && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {videoError}
           </div>
         )}
+
+        <div className="overflow-y-auto flex-1 space-y-3 pr-1 mt-3">
+          {loading && (
+            <div className="flex justify-center py-8">
+              <div className="w-6 h-6 border-2 border-soft-sage border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+
+          {!loading && tab === 'videos' && (
+            <>
+              <label className="flex items-center gap-3 p-3 rounded-xl border-2 border-dashed border-soft-taupe hover:border-warm-bronze bg-warm-ivory hover:bg-warm-bronze/5 cursor-pointer transition-all">
+                <input
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={handleUpload}
+                  disabled={uploading}
+                />
+                <span className="w-10 h-10 rounded-xl bg-warm-bronze/10 flex items-center justify-center flex-shrink-0">
+                  <Upload className="w-5 h-5 text-warm-bronze" />
+                </span>
+                <div>
+                  <p className="font-medium text-warm-bronze text-sm">
+                    {uploading ? 'Uploading…' : 'Upload Family Video'}
+                  </p>
+                  <p className="text-xs text-medium-gray">MP4, MOV, WEBM and other video files</p>
+                </div>
+              </label>
+
+              {videos.length === 0 ? (
+                <div className="py-8 text-center text-medium-gray">
+                  <Headphones className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No family videos uploaded yet</p>
+                  <p className="text-xs mt-1">Videos uploaded here will stay in this patient account</p>
+                </div>
+              ) : (
+                videos.map(item => (
+                  <div key={item.id} className="rounded-xl border bg-warm-ivory p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-charcoal text-sm truncate">{item.title}</p>
+                        <p className="text-xs text-medium-gray">Stored in music-files/videos</p>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteVideo(item)}
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-gentle-coral hover:bg-gentle-coral/10 flex-shrink-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <video
+                      ref={playing === item.id ? videoRef : null}
+                      key={item.file_url}
+                      src={item.file_url}
+                      controls
+                      className="w-full rounded-xl bg-black max-h-[360px]"
+                      onPlay={() => setPlaying(item.id)}
+                      onPause={() => {
+                        if (playing === item.id) setPlaying(null);
+                      }}
+                    />
+                  </div>
+                ))
+              )}
+            </>
+          )}
+
+          {!loading && tab === 'nature' && (
+            <>
+              {natureTracks.length === 0 ? (
+                <div className="text-center py-8 text-medium-gray text-sm">
+                  <p>No nature tracks available in this category yet.</p>
+                </div>
+              ) : (
+                natureTracks.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => playNatureAudio(item)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                      playing === item.id
+                        ? 'border-soft-sage bg-soft-sage/10'
+                        : 'border-transparent bg-warm-ivory hover:border-soft-taupe'
+                    }`}
+                  >
+                    <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 ${item.color}`}>
+                      {item.emoji}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-charcoal text-sm truncate">{item.title}</p>
+                      <p className="text-xs text-medium-gray">Nature</p>
+                    </div>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      playing === item.id ? 'bg-soft-sage text-white' : 'bg-soft-taupe/40 text-medium-gray'
+                    }`}>
+                      {playing === item.id
+                        ? <Pause className="w-3.5 h-3.5" />
+                        : <Play className="w-3.5 h-3.5 ml-0.5" />}
+                    </div>
+                  </button>
+                ))
+              )}
+            </>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -1765,8 +1877,8 @@ export default function PatientHome() {
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-300 to-teal-400 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
                 <span className="text-3xl">🎵</span>
               </div>
-              <span className="text-sm font-semibold text-charcoal">Calm Me</span>
-              <span className="text-xs text-medium-gray text-center leading-tight">Music &amp; sounds</span>
+              <span className="text-sm font-semibold text-charcoal">Family Videos</span>
+                <span className="text-xs text-medium-gray text-center leading-tight">Videos &amp; nature sounds</span>
             </button>
 
             {/* Show Me Home */}
