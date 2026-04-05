@@ -1687,7 +1687,7 @@ export default function PatientHome() {
                       <div className="text-4xl md:text-5xl font-bold text-charcoal leading-none">
                         {weather.temp}°
                       </div>
-                      <div className="text-lg md:text-xl font-medium text-charcoal/90 leading-snug">
+                      <div className="text-lg md:text-xl font-medium text-charcoal/85 leading-snug">
                         {weather.message}
                       </div>
                     </div>
