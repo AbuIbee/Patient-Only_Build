@@ -110,43 +110,43 @@ function WeatherIcon({ condition, className }: { condition: WeatherCondition; cl
 
 const WEATHER_SCENES: Record<WeatherCondition, { bg: string; overlay: string; particles?: string }> = {
   sunny: {
-    bg: 'bg-gradient-to-br from-sky-300 via-yellow-100 to-amber-200',
-    overlay: '',
+    bg: 'bg-[linear-gradient(180deg,#bfe7ff_0%,#d7efff_28%,#f5efcf_68%,#f4e6b8_100%)]',
+    overlay: 'sunny-sky',
   },
   'partly-cloudy': {
-    bg: 'bg-gradient-to-br from-sky-200 via-blue-100 to-slate-100',
-    overlay: '',
+    bg: 'bg-[linear-gradient(180deg,#c7e8ff_0%,#dff1ff_35%,#f2f5ef_72%,#ece4c8_100%)]',
+    overlay: 'cloudy-sky',
   },
   cloudy: {
-    bg: 'bg-gradient-to-br from-slate-300 via-gray-200 to-slate-200',
-    overlay: '',
+    bg: 'bg-[linear-gradient(180deg,#c9d7e4_0%,#d9e2e8_35%,#e6e4da_72%,#e7dcc2_100%)]',
+    overlay: 'cloudy-sky',
   },
   rainy: {
-    bg: 'bg-gradient-to-br from-slate-400 via-blue-200 to-slate-300',
+    bg: 'bg-[linear-gradient(180deg,#9cb4c7_0%,#b8cad8_30%,#d6d7cf_70%,#ddd1bb_100%)]',
     overlay: 'rain',
   },
   stormy: {
-    bg: 'bg-gradient-to-br from-gray-700 via-slate-600 to-gray-800',
+    bg: 'bg-[linear-gradient(180deg,#5a6774_0%,#798898_30%,#a8a79f_72%,#b8aa92_100%)]',
     overlay: 'storm',
   },
   snowy: {
-    bg: 'bg-gradient-to-br from-blue-100 via-white to-slate-100',
+    bg: 'bg-[linear-gradient(180deg,#dcecff_0%,#eef6ff_35%,#f8f8f5_75%,#ece7dc_100%)]',
     overlay: 'snow',
   },
   foggy: {
-    bg: 'bg-gradient-to-br from-gray-200 via-slate-100 to-gray-300',
+    bg: 'bg-[linear-gradient(180deg,#d7dde0_0%,#e5e9e8_38%,#efeee8_72%,#e8dfcf_100%)]',
     overlay: 'fog',
   },
   'clear-night': {
-    bg: 'bg-gradient-to-br from-indigo-900 via-slate-800 to-blue-900',
+    bg: 'bg-[linear-gradient(180deg,#17315c_0%,#29497a_28%,#4e5f77_65%,#72695f_100%)]',
     overlay: 'stars',
   },
   autumn: {
-    bg: 'bg-gradient-to-br from-orange-200 via-amber-100 to-yellow-100',
+    bg: 'bg-[linear-gradient(180deg,#cfe7ff_0%,#e7f1ff_28%,#f7e6bf_65%,#efcf95_100%)]',
     overlay: 'leaves',
   },
   windy: {
-    bg: 'bg-gradient-to-br from-teal-100 via-sky-100 to-blue-100',
+    bg: 'bg-[linear-gradient(180deg,#c9eff8_0%,#dff6fb_35%,#eef1e7_72%,#e9dfc8_100%)]',
     overlay: 'wind',
   },
 };
