@@ -1750,7 +1750,7 @@ export default function PatientHome() {
               </div>
             </CardContent>
           </Card>
-        </motion.div>
+        
 
         {/* 2. ENHANCED "PEOPLE WHO LOVE YOU" - Interactive Photos + Upload */}
         <motion.div
