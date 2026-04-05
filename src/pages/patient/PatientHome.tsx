@@ -1747,6 +1747,9 @@ export default function PatientHome() {
               </div>
             </div>
           </div>
+            </div>
+              </div>
+            </div>
         </CardContent>
       </Card>
     </motion.div>
