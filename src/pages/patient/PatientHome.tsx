@@ -1682,9 +1682,9 @@ export default function PatientHome() {
                 </div>
                 <div className="text-right">
                   <div className="flex items-center gap-3 text-charcoal">
-                    <WeatherIcon condition={weather.condition} className="w-6 h-6" />
+                    <WeatherIcon condition={weather.condition} className="w-7 h-7" />
                     <div className="text-right">
-                      <div className="text-2xl font-bold text-charcoal leading-none">
+                      <div className="text-4xl md:text-5xl font-bold text-charcoal leading-none">
                         {weather.temp}°
                       </div>
                       <div className="mt-1 text-sm font-medium text-charcoal/85 leading-snug">
