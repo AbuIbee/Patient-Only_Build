@@ -331,7 +331,7 @@ function WeatherBackground({ condition, isDay }: { condition: WeatherCondition; 
 
       {/* Frosted glass overlay so content stays readable */}
       <div className="absolute inset-0 bg-white/18 backdrop-blur-[0.5px]" />
-<div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,transparent_0%,rgba(244,232,196,0.55)_55%,rgba(235,221,183,0.78)_100%)]" />
+      <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,transparent_0%,rgba(244,232,196,0.55)_55%,rgba(235,221,183,0.78)_100%)]" />
     </div>
   );
 }
@@ -898,10 +898,6 @@ function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClo
 // SUB-COMPONENT: TellMeAStoryDialog
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SUB-COMPONENT: TellMeAStoryDialog
-// ─────────────────────────────────────────────────────────────────────────────
-
 function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const BUCKET = 'audio-files';
 
@@ -1231,17 +1227,17 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SUB-COMPONENT: VoiceRecorderDialog
+// SUB-COMPONENT: VoiceRecorderDialog (FIXED: stores base64 instead of blob URL)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function VoiceRecorderDialog({
-  open, onClose, existingUrl,
+  open, onClose, existingBase64,
   onSave,
 }: {
   open: boolean;
   onClose: () => void;
-  existingUrl: string | null;
-  onSave: (url: string, label: string) => void;
+  existingBase64: string | null;
+  onSave: (base64: string, label: string) => void;
 }) {
   const [phase, setPhase]           = useState<'idle' | 'recording' | 'review' | 'confirm'>('idle');
   const [blob, setBlob]             = useState<Blob | null>(null);
@@ -1297,14 +1293,19 @@ function VoiceRecorderDialog({
   };
 
   const handleSave = () => {
-    if (existingUrl) { setPhase('confirm'); return; }
+    if (existingBase64) { setPhase('confirm'); return; }
     doSave();
   };
 
   const doSave = () => {
-    if (!previewUrl) return;
-    onSave(previewUrl, 'Your voice');
-    onClose();
+    if (!blob) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      onSave(base64, 'Your voice');
+      onClose();
+    };
+    reader.readAsDataURL(blob);
   };
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -1437,8 +1438,8 @@ export default function PatientHome() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showHomePhoto, setShowHomePhoto] = useState(false);
   const [showStoryDialog, setShowStoryDialog] = useState(false);
-  // Voice & photo upload state
-  const [customVoiceUrl, setCustomVoiceUrl]       = useState<string | null>(() => localStorage.getItem('customVoiceUrl'));
+  // Voice & photo upload state (FIXED: store base64, not blob URL)
+  const [customVoiceBase64, setCustomVoiceBase64] = useState<string | null>(() => localStorage.getItem('customVoiceBase64'));
   const [customVoiceLabel, setCustomVoiceLabel]   = useState<string>(() => localStorage.getItem('customVoiceLabel') || '');
   const [selectedVoice, setSelectedVoice]         = useState<string>(() => localStorage.getItem('selectedVoice') || 'default');
   const [currentAudio, setCurrentAudio]           = useState<HTMLAudioElement | null>(null);
@@ -1545,9 +1546,8 @@ export default function PatientHome() {
   }, []);
 
   const playSafetyMessage = () => {
-    // Only plays if a custom voice recording exists — no chime fallback
-    if (isPlaying || !customVoiceUrl) return;
-    const audio = new Audio(customVoiceUrl);
+    if (isPlaying || !customVoiceBase64) return;
+    const audio = new Audio(customVoiceBase64);
     audio.onended = () => { setIsPlaying(false); setCurrentAudio(null); };
     audio.play().catch(() => setIsPlaying(false));
     setCurrentAudio(audio);
@@ -1620,10 +1620,10 @@ export default function PatientHome() {
                 {/* Tap-to-hear button */}
                 <button
                   onClick={playSafetyMessage}
-                  disabled={!customVoiceUrl}
+                  disabled={!customVoiceBase64}
                   className={`mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-full shadow-soft transition-all ${
                     isPlaying ? 'bg-warm-bronze text-white' :
-                    customVoiceUrl ? 'bg-white/80 hover:bg-white' :
+                    customVoiceBase64 ? 'bg-white/80 hover:bg-white' :
                     'bg-white/40 text-charcoal/40 cursor-not-allowed'
                   }`}
                 >
@@ -1636,7 +1636,7 @@ export default function PatientHome() {
                     <>
                       <Volume2 className="w-5 h-5 text-warm-bronze" />
                       <span className="text-charcoal font-medium">
-                        {customVoiceUrl
+                        {customVoiceBase64
                           ? `Tap to hear${customVoiceLabel ? ` — ${customVoiceLabel}` : ''}`
                           : 'Record your voice below'}
                       </span>
@@ -1646,7 +1646,7 @@ export default function PatientHome() {
 
                 {/* Voice source indicator */}
                 <div className="mt-2 flex items-center justify-center gap-1.5 text-xs text-charcoal/50">
-                  {customVoiceUrl ? (
+                  {customVoiceBase64 ? (
                     <><Mic className="w-3 h-3" /> Your personal recording</>
                   ) : (
                     <><Mic className="w-3 h-3" /> No recording yet — tap below to add one</>
@@ -1660,7 +1660,7 @@ export default function PatientHome() {
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/60 hover:bg-white border border-white/80 text-charcoal/70 hover:text-charcoal text-xs font-medium transition-all shadow-sm"
                   >
                     <Mic className="w-3.5 h-3.5 text-warm-bronze" />
-                    {customVoiceUrl ? 'Change recording' : 'Record your voice'}
+                    {customVoiceBase64 ? 'Change recording' : 'Record your voice'}
                   </button>
                 </div>
               </div>
@@ -1681,17 +1681,19 @@ export default function PatientHome() {
                   </div>
                 </div>
                 <div className="text-right">
-                 <div className="flex items-center gap-3 text-charcoal">
-                  <WeatherIcon condition={weather.condition} className="w-6 h-6" />
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-charcoal leading-none">
-                      {weather.temp}°
-                    </div>
-                    <div className="mt-1 text-sm font-medium text-charcoal/85 leading-snug">
-                      {weather.message}
+                  <div className="flex items-center gap-3 text-charcoal">
+                    <WeatherIcon condition={weather.condition} className="w-6 h-6" />
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-charcoal leading-none">
+                        {weather.temp}°
+                      </div>
+                      <div className="mt-1 text-sm font-medium text-charcoal/85 leading-snug">
+                        {weather.message}
+                      </div>
                     </div>
                   </div>
                 </div>
+              </div>
 
               {/* Greeting */}
               <p className="text-xl text-charcoal font-semibold mb-4 drop-shadow-sm">
@@ -1729,7 +1731,7 @@ export default function PatientHome() {
                 )}
               </div>
 
-              {/* Medication Status */}
+              {/* Medication Status - fixed to be full width */}
               <div className="mt-4 p-4 bg-white/60 backdrop-blur-sm rounded-xl flex items-center gap-3">
                 <span className="text-2xl">💊</span>
                 <div className="flex-1">
@@ -1746,13 +1748,8 @@ export default function PatientHome() {
                 )}
               </div>
             </div>
-          </div>
-            </div>
-              </div>
-            </div>
-      </Card>
-    </motion.div>
-        
+          </Card>
+        </motion.div>
 
         {/* 2. ENHANCED "PEOPLE WHO LOVE YOU" - Interactive Photos + Upload */}
         <motion.div
@@ -1946,246 +1943,243 @@ export default function PatientHome() {
             </CardContent>
           </Card>
         </motion.div>
-        </motion.div>
-      
 
-      {/* 6. EMERGENCY HELP BUTTON - Fixed top right */}
-      <motion.button
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ delay: 1, type: "spring" }}
-        onClick={handleEmergency}
-        className="fixed top-20 right-6 z-50 w-16 h-16 bg-red-800 rounded-full shadow-elevated flex flex-col items-center justify-center hover:scale-110 transition-transform"
-      >
-        <span className="text-white text-xs font-bold">HELP</span>
-      </motion.button>
+        {/* 6. EMERGENCY HELP BUTTON - Fixed top right */}
+        <motion.button
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 1, type: "spring" }}
+          onClick={handleEmergency}
+          className="fixed top-20 right-6 z-50 w-16 h-16 bg-red-800 rounded-full shadow-elevated flex flex-col items-center justify-center hover:scale-110 transition-transform"
+        >
+          <span className="text-white text-xs font-bold">HELP</span>
+        </motion.button>
 
-      {/* Selected Face Dialog */}
-      <Dialog open={!!selectedFace} onOpenChange={() => setSelectedFace(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-center text-2xl">{selectedFace?.name}</DialogTitle>
-            <DialogDescription className="text-center">{selectedFace?.relationship}</DialogDescription>
-          </DialogHeader>
-          {selectedFace && (
+        {/* Selected Face Dialog */}
+        <Dialog open={!!selectedFace} onOpenChange={() => setSelectedFace(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-center text-2xl">{selectedFace?.name}</DialogTitle>
+              <DialogDescription className="text-center">{selectedFace?.relationship}</DialogDescription>
+            </DialogHeader>
+            {selectedFace && (
+              <div className="space-y-4">
+                <div className="flex justify-center">
+                  {selectedFace.photoUrl ? (
+                    <img
+                      src={selectedFace.photoUrl}
+                      alt={selectedFace.name}
+                      className="w-48 h-48 rounded-2xl object-cover shadow-card"
+                    />
+                  ) : (
+                    <div className="w-48 h-48 bg-warm-bronze rounded-2xl flex items-center justify-center">
+                      <span className="text-6xl text-white font-medium">{selectedFace.name[0]}</span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Voice Message Button */}
+                <Button 
+                  onClick={() => alert(`Playing message from ${selectedFace.name}...`)}
+                  className="w-full bg-soft-sage hover:bg-soft-sage/90 text-white rounded-xl py-6"
+                >
+                  <Volume2 className="w-5 h-5 mr-2" />
+                  Play Voice Message
+                </Button>
+                
+                {/* Video Call Button */}
+                <Button 
+                  variant="outline"
+                  onClick={() => alert(`Starting video call with ${selectedFace.name}...`)}
+                  className="w-full rounded-xl py-6"
+                >
+                  <Phone className="w-5 h-5 mr-2" />
+                  Video Call
+                </Button>
+                
+                {selectedFace.phone && (
+                  <Button 
+                    variant="outline"
+                    onClick={() => window.location.href = `tel:${selectedFace.phone}`}
+                    className="w-full rounded-xl py-6"
+                  >
+                    <Phone className="w-5 h-5 mr-2" />
+                    Call {selectedFace.phone}
+                  </Button>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Slideshow Dialog */}
+        <Dialog open={showSlideshow} onOpenChange={() => { setShowSlideshow(false); setSlideshowAuto(false); }}>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh]">
+            <DialogHeader>
+              <DialogTitle className="text-center flex items-center justify-center gap-2">
+                <Heart className="w-5 h-5 text-gentle-coral" />
+                People Who Love You
+              </DialogTitle>
+            </DialogHeader>
+            <div className="relative">
+              {slideshowImages.length > 0 ? (
+                <div className="relative">
+                  <motion.img
+                    key={currentSlide}
+                    src={slideshowImages[currentSlide]?.url}
+                    alt={slideshowImages[currentSlide]?.caption}
+                    initial={{ opacity: 0, scale: 1.03 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.6 }}
+                    className="w-full h-80 object-cover rounded-2xl"
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent rounded-b-2xl">
+                    <p className="text-white text-xl font-bold">{slideshowImages[currentSlide]?.caption}</p>
+                    <p className="text-white/70 text-sm">{currentSlide + 1} of {slideshowImages.length}</p>
+                  </div>
+                  {/* Dot indicators */}
+                  <div className="absolute top-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                    {slideshowImages.map((_, i) => (
+                      <button key={i} onClick={() => setCurrentSlide(i)}
+                        className={`w-2 h-2 rounded-full transition-all ${i === currentSlide ? 'bg-white w-4' : 'bg-white/50'}`} />
+                    ))}
+                  </div>
+                  <button onClick={() => setCurrentSlide(s => (s - 1 + slideshowImages.length) % slideshowImages.length)}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-all">
+                    <ChevronLeft className="w-6 h-6" />
+                  </button>
+                  <button onClick={() => setCurrentSlide(s => (s + 1) % slideshowImages.length)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-all">
+                    <ChevronRight className="w-6 h-6" />
+                  </button>
+                </div>
+              ) : (
+                <div className="h-48 bg-soft-taupe/20 rounded-2xl flex flex-col items-center justify-center gap-3 text-medium-gray">
+                  <ImageIcon className="w-10 h-10 opacity-40" />
+                  <p className="text-sm">No photos yet — add some below!</p>
+                </div>
+              )}
+
+              <div className="flex justify-center gap-3 mt-4">
+                <Button variant="outline" size="sm"
+                  onClick={() => setSlideshowAuto(a => !a)}
+                  className={slideshowAuto ? 'bg-warm-bronze text-white border-warm-bronze' : ''}>
+                  {slideshowAuto ? <><Pause className="w-4 h-4 mr-1" />Stop</> : <><Play className="w-4 h-4 mr-1" />Auto Play</>}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => { setShowSlideshow(false); setSlideshowAuto(false); }}>
+                  <X className="w-4 h-4 mr-1" />Close
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── Calm Me Dialog ────────────────────────────────────────────────── */}
+        <CalmMeDialog open={showComfortMenu} onClose={() => setShowComfortMenu(false)} />
+
+        {/* ── Show Me Home Dialog ───────────────────────────────────────────── */}
+        <ShowMeHomeDialog open={showHomePhoto} onClose={() => setShowHomePhoto(false)} patientName={patient?.preferredName || patient?.firstName || 'you'} />
+
+        {/* ── Tell Me a Story Dialog ────────────────────────────────────────── */}
+        <TellMeAStoryDialog open={showStoryDialog} onClose={() => setShowStoryDialog(false)} />
+
+        {/* ── Voice Recorder Dialog (updated to use base64) ──────────────────── */}
+        <VoiceRecorderDialog
+          open={showRecorder}
+          onClose={() => setShowRecorder(false)}
+          existingBase64={customVoiceBase64}
+          onSave={(base64, label) => {
+            setCustomVoiceBase64(base64);
+            setCustomVoiceLabel(label);
+            localStorage.setItem('customVoiceBase64', base64);
+            localStorage.setItem('customVoiceLabel', label);
+          }}
+        />
+
+        {/* Emergency Help Dialog */}
+        <Dialog open={showEmergencyDialog} onOpenChange={() => setShowEmergencyDialog(false)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-center text-2xl text-red-800 flex items-center justify-center gap-2">
+                <Heart className="w-8 h-8" />
+                Help is Coming
+              </DialogTitle>
+              <DialogDescription className="text-center text-lg">
+                You're safe. Help is on the way.
+              </DialogDescription>
+            </DialogHeader>
             <div className="space-y-4">
+              {/* Show familiar face */}
               <div className="flex justify-center">
-                {selectedFace.photoUrl ? (
+                {patient?.familiarFaces?.[0]?.photoUrl ? (
                   <img
-                    src={selectedFace.photoUrl}
-                    alt={selectedFace.name}
-                    className="w-48 h-48 rounded-2xl object-cover shadow-card"
+                    src={patient.familiarFaces[0].photoUrl}
+                    alt={patient.familiarFaces[0].name}
+                    className="w-32 h-32 rounded-2xl object-cover shadow-card"
                   />
                 ) : (
-                  <div className="w-48 h-48 bg-warm-bronze rounded-2xl flex items-center justify-center">
-                    <span className="text-6xl text-white font-medium">{selectedFace.name[0]}</span>
+                  <div className="w-32 h-32 bg-warm-bronze rounded-2xl flex items-center justify-center">
+                    <Phone className="w-12 h-12 text-white" />
                   </div>
                 )}
               </div>
               
-              {/* Voice Message Button */}
-              <Button 
-                onClick={() => alert(`Playing message from ${selectedFace.name}...`)}
-                className="w-full bg-soft-sage hover:bg-soft-sage/90 text-white rounded-xl py-6"
-              >
-                <Volume2 className="w-5 h-5 mr-2" />
-                Play Voice Message
-              </Button>
+              <div className="p-4 bg-soft-sage/10 rounded-xl text-center">
+                <p className="text-charcoal font-medium">Calling {patient?.emergencyContact?.phone || '911'}...</p>
+                <p className="text-medium-gray text-sm mt-1">Stay calm. Someone will be with you soon.</p>
+              </div>
               
-              {/* Video Call Button */}
-              <Button 
-                variant="outline"
-                onClick={() => alert(`Starting video call with ${selectedFace.name}...`)}
-                className="w-full rounded-xl py-6"
-              >
-                <Phone className="w-5 h-5 mr-2" />
-                Video Call
-              </Button>
-              
-              {selectedFace.phone && (
+              <div className="flex gap-3">
                 <Button 
                   variant="outline"
-                  onClick={() => window.location.href = `tel:${selectedFace.phone}`}
-                  className="w-full rounded-xl py-6"
+                  onClick={() => setShowEmergencyDialog(false)}
+                  className="flex-1 rounded-xl"
                 >
-                  <Phone className="w-5 h-5 mr-2" />
-                  Call {selectedFace.phone}
+                  I'm Okay Now
                 </Button>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Slideshow Dialog */}
-      <Dialog open={showSlideshow} onOpenChange={() => { setShowSlideshow(false); setSlideshowAuto(false); }}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh]">
-          <DialogHeader>
-            <DialogTitle className="text-center flex items-center justify-center gap-2">
-              <Heart className="w-5 h-5 text-gentle-coral" />
-              People Who Love You
-            </DialogTitle>
-          </DialogHeader>
-          <div className="relative">
-            {slideshowImages.length > 0 ? (
-              <div className="relative">
-                <motion.img
-                  key={currentSlide}
-                  src={slideshowImages[currentSlide]?.url}
-                  alt={slideshowImages[currentSlide]?.caption}
-                  initial={{ opacity: 0, scale: 1.03 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.6 }}
-                  className="w-full h-80 object-cover rounded-2xl"
-                />
-                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent rounded-b-2xl">
-                  <p className="text-white text-xl font-bold">{slideshowImages[currentSlide]?.caption}</p>
-                  <p className="text-white/70 text-sm">{currentSlide + 1} of {slideshowImages.length}</p>
-                </div>
-                {/* Dot indicators */}
-                <div className="absolute top-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                  {slideshowImages.map((_, i) => (
-                    <button key={i} onClick={() => setCurrentSlide(i)}
-                      className={`w-2 h-2 rounded-full transition-all ${i === currentSlide ? 'bg-white w-4' : 'bg-white/50'}`} />
-                  ))}
-                </div>
-                <button onClick={() => setCurrentSlide(s => (s - 1 + slideshowImages.length) % slideshowImages.length)}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-all">
-                  <ChevronLeft className="w-6 h-6" />
-                </button>
-                <button onClick={() => setCurrentSlide(s => (s + 1) % slideshowImages.length)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-all">
-                  <ChevronRight className="w-6 h-6" />
-                </button>
+                <Button 
+                  onClick={() => window.location.href = `tel:${patient?.emergencyContact?.phone || '911'}`}
+                  className="flex-1 bg-red-800 hover:bg-red-900 text-white rounded-xl"
+                >
+                  <Phone className="w-4 h-4 mr-2" />
+                  Call Now
+                </Button>
               </div>
-            ) : (
-              <div className="h-48 bg-soft-taupe/20 rounded-2xl flex flex-col items-center justify-center gap-3 text-medium-gray">
-                <ImageIcon className="w-10 h-10 opacity-40" />
-                <p className="text-sm">No photos yet — add some below!</p>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── Loved One Photo Popup ─────────────────────────────────── */}
+        <Dialog open={!!showPhotoPopup} onOpenChange={() => setShowPhotoPopup(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-center text-2xl">{showPhotoPopup?.name}</DialogTitle>
+              <DialogDescription className="text-center">Someone who loves you</DialogDescription>
+            </DialogHeader>
+            {showPhotoPopup && (
+              <div className="space-y-4">
+                <div className="flex justify-center">
+                  <img src={showPhotoPopup.url} alt={showPhotoPopup.name}
+                    className="w-56 h-56 rounded-2xl object-cover shadow-card" />
+                </div>
+                <p className="text-center text-lg font-semibold text-charcoal">
+                  {showPhotoPopup.name} loves you very much 💛
+                </p>
+                <Button variant="outline"
+                  onClick={() => {
+                    const updated = lovedOnePhotos.filter(p => p.id !== showPhotoPopup.id);
+                    setLovedOnePhotos(updated);
+                    localStorage.setItem('lovedOnePhotos', JSON.stringify(updated));
+                    setShowPhotoPopup(null);
+                  }}
+                  className="w-full text-gentle-coral border-gentle-coral/30 hover:bg-gentle-coral/10 rounded-xl">
+                  Remove Photo
+                </Button>
               </div>
             )}
-
-            <div className="flex justify-center gap-3 mt-4">
-              <Button variant="outline" size="sm"
-                onClick={() => setSlideshowAuto(a => !a)}
-                className={slideshowAuto ? 'bg-warm-bronze text-white border-warm-bronze' : ''}>
-                {slideshowAuto ? <><Pause className="w-4 h-4 mr-1" />Stop</> : <><Play className="w-4 h-4 mr-1" />Auto Play</>}
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => { setShowSlideshow(false); setSlideshowAuto(false); }}>
-                <X className="w-4 h-4 mr-1" />Close
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Calm Me Dialog ────────────────────────────────────────────────── */}
-      <CalmMeDialog open={showComfortMenu} onClose={() => setShowComfortMenu(false)} />
-
-      {/* ── Show Me Home Dialog ───────────────────────────────────────────── */}
-      <ShowMeHomeDialog open={showHomePhoto} onClose={() => setShowHomePhoto(false)} patientName={patient?.preferredName || patient?.firstName || 'you'} />
-
-      {/* ── Tell Me a Story Dialog ────────────────────────────────────────── */}
-      <TellMeAStoryDialog open={showStoryDialog} onClose={() => setShowStoryDialog(false)} />
-
-      {/* ── Voice Recorder Dialog ─────────────────────────────────────────── */}
-      <VoiceRecorderDialog
-        open={showRecorder}
-        onClose={() => setShowRecorder(false)}
-        existingUrl={customVoiceUrl}
-        onSave={(url, label) => {
-          setCustomVoiceUrl(url);
-          setCustomVoiceLabel(label);
-          localStorage.setItem('customVoiceUrl', url);
-          localStorage.setItem('customVoiceLabel', label);
-        }}
-      />
-
-      {/* Emergency Help Dialog */}
-      <Dialog open={showEmergencyDialog} onOpenChange={() => setShowEmergencyDialog(false)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-center text-2xl text-red-800 flex items-center justify-center gap-2">
-              <Heart className="w-8 h-8" />
-              Help is Coming
-            </DialogTitle>
-            <DialogDescription className="text-center text-lg">
-              You're safe. Help is on the way.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            {/* Show familiar face */}
-            <div className="flex justify-center">
-              {patient?.familiarFaces?.[0]?.photoUrl ? (
-                <img
-                  src={patient.familiarFaces[0].photoUrl}
-                  alt={patient.familiarFaces[0].name}
-                  className="w-32 h-32 rounded-2xl object-cover shadow-card"
-                />
-              ) : (
-                <div className="w-32 h-32 bg-warm-bronze rounded-2xl flex items-center justify-center">
-                  <Phone className="w-12 h-12 text-white" />
-                </div>
-              )}
-            </div>
-            
-            <div className="p-4 bg-soft-sage/10 rounded-xl text-center">
-              <p className="text-charcoal font-medium">Calling {patient?.emergencyContact?.phone || '911'}...</p>
-              <p className="text-medium-gray text-sm mt-1">Stay calm. Someone will be with you soon.</p>
-            </div>
-            
-            <div className="flex gap-3">
-              <Button 
-                variant="outline"
-                onClick={() => setShowEmergencyDialog(false)}
-                className="flex-1 rounded-xl"
-              >
-                I'm Okay Now
-              </Button>
-              <Button 
-                onClick={() => window.location.href = `tel:${patient?.emergencyContact?.phone || '911'}`}
-                className="flex-1 bg-red-800 hover:bg-red-900 text-white rounded-xl"
-              >
-                <Phone className="w-4 h-4 mr-2" />
-                Call Now
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-      {/* ── Loved One Photo Popup ─────────────────────────────────── */}
-      <Dialog open={!!showPhotoPopup} onOpenChange={() => setShowPhotoPopup(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-center text-2xl">{showPhotoPopup?.name}</DialogTitle>
-            <DialogDescription className="text-center">Someone who loves you</DialogDescription>
-          </DialogHeader>
-          {showPhotoPopup && (
-            <div className="space-y-4">
-              <div className="flex justify-center">
-                <img src={showPhotoPopup.url} alt={showPhotoPopup.name}
-                  className="w-56 h-56 rounded-2xl object-cover shadow-card" />
-              </div>
-              <p className="text-center text-lg font-semibold text-charcoal">
-                {showPhotoPopup.name} loves you very much 💛
-              </p>
-              <Button variant="outline"
-                onClick={() => {
-                  const updated = lovedOnePhotos.filter(p => p.id !== showPhotoPopup.id);
-                  setLovedOnePhotos(updated);
-                  localStorage.setItem('lovedOnePhotos', JSON.stringify(updated));
-                  setShowPhotoPopup(null);
-                }}
-                className="w-full text-gentle-coral border-gentle-coral/30 hover:bg-gentle-coral/10 rounded-xl">
-                Remove Photo
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Voice Upload Dialog (accessible from Tap to Hear long-press area) ── */}
-      {/* This dialog is triggered from the CaregiverVoiceManager component      */}
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 }
