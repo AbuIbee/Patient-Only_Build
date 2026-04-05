@@ -1750,7 +1750,6 @@ export default function PatientHome() {
             </div>
               </div>
             </div>
-        </CardContent>
       </Card>
     </motion.div>
         
@@ -1946,6 +1945,7 @@ export default function PatientHome() {
               </p>
             </CardContent>
           </Card>
+        </motion.div>
         </motion.div>
       
 
