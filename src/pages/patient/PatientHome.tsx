@@ -1744,12 +1744,12 @@ export default function PatientHome() {
                 {todaysMedsTaken === totalMedsToday && totalMedsToday > 0 && (
                   <CheckCircle2 className="w-6 h-6 text-soft-sage" />
                 )}
-                    </div>
-                  </div>
-                </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
         
 
         {/* 2. ENHANCED "PEOPLE WHO LOVE YOU" - Interactive Photos + Upload */}
