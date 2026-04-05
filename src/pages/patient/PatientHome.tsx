@@ -330,7 +330,8 @@ function WeatherBackground({ condition, isDay }: { condition: WeatherCondition; 
       )}
 
       {/* Frosted glass overlay so content stays readable */}
-      <div className="absolute inset-0 bg-white/55 backdrop-blur-[1px]" />
+      <div className="absolute inset-0 bg-white/18 backdrop-blur-[0.5px]" />
+<div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,transparent_0%,rgba(244,232,196,0.55)_55%,rgba(235,221,183,0.78)_100%)]" />
     </div>
   );
 }
@@ -1608,10 +1609,10 @@ export default function PatientHome() {
                   animate={{ scale: [1, 1.02, 1] }}
                   transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
                 >
-                  <h1 className="text-3xl md:text-4xl font-bold text-charcoal mb-2 drop-shadow-sm">
+                  <h1 className="text-3xl md:text-4xl font-bold text-charcoal mb-2 tracking-tight">
                     {patient?.affirmation?.split('.')[0] || 'You are safe'}
                   </h1>
-                  <p className="text-xl text-charcoal/80">
+                  <p className="text-lg md:text-xl font-medium text-charcoal/80">
                     {patient?.affirmation?.split('.').slice(1).join('. ') || 'You are loved. You are at home.'}
                   </p>
                 </motion.div>
@@ -1680,13 +1681,17 @@ export default function PatientHome() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="flex items-center gap-2 justify-end">
-                    <WeatherIcon condition={weather.condition} className="w-6 h-6" />
-                    <span className="text-2xl font-bold text-charcoal drop-shadow-sm">{weather.temp}°</span>
+                 <div className="flex items-center gap-3 text-charcoal">
+                  <WeatherIcon condition={weather.condition} className="w-6 h-6" />
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-charcoal leading-none">
+                      {weather.temp}°
+                    </div>
+                    <div className="mt-1 text-sm font-medium text-charcoal/85 leading-snug">
+                      {weather.message}
+                    </div>
                   </div>
-                  <p className="text-sm text-charcoal/70 font-medium max-w-[160px]">{weather.message}</p>
                 </div>
-              </div>
 
               {/* Greeting */}
               <p className="text-xl text-charcoal font-semibold mb-4 drop-shadow-sm">
