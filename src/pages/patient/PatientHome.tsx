@@ -331,7 +331,7 @@ function WeatherBackground({ condition, isDay }: { condition: WeatherCondition; 
 
       {/* Frosted glass overlay so content stays readable */}
       <div className="absolute inset-0 bg-white/18 backdrop-blur-[0.5px]" />
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,transparent_0%,rgba(244,232,196,0.55)_55%,rgba(235,221,183,0.78)_100%)]" />
+<div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,transparent_0%,rgba(244,232,196,0.55)_55%,rgba(235,221,183,0.78)_100%)]" />
     </div>
   );
 }
@@ -355,10 +355,8 @@ const AI_VOICES = [
 // ─────────────────────────────────────────────────────────────────────────────
 // SUB-COMPONENT: CalmMeDialog
 // ─────────────────────────────────────────────────────────────────────────────
-
-// ─── CalmMe reads from music-files storage bucket ────────────────────────────
-// Bucket: music-files/melodies/  music-files/classical/  music-files/nature/
-// Upload MP3s to any of those folders and they appear automatically
+// SUB-COMPONENT: CalmMeDialog
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface MediaItem {
   id: string;
@@ -376,12 +374,8 @@ const MEDIA_FOLDER_META: Record<'videos' | 'nature', { emoji: string; color: str
 };
 
 function mediaTitle(name: string): string {
-  return name
-    .replace(/\.[^.]+$/, '')
-    .replace(/[-_]/g, ' ')
-    .replace(/^\s*\d+\s*/, '')
-    .replace(/\b\w/g, (l: string) => l.toUpperCase())
-    .trim() || name;
+  return name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ')
+    .replace(/^\s*\d+\s*/, '').replace(/\b\w/g, (l: string) => l.toUpperCase()).trim() || name;
 }
 
 type FamilyVideoTab = 'videos' | 'nature';
@@ -392,387 +386,279 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
   const VIDEO_FOLDER = 'videos';
   const NATURE_FOLDER = 'nature';
 
-  const patientId =
-    state.currentPatient?.id ||
-    state.patient?.id ||
-    state.user?.id ||
-    '';
+  const patientId = state.currentPatient?.id || state.patient?.id || state.user?.id || '';
 
-  const [tab, setTab] = useState<FamilyVideoTab>('videos');
-  const [playing, setPlaying] = useState<string | null>(null);
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [videoError, setVideoError] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [tab, setTab]                     = useState<FamilyVideoTab>('videos');
+  const [playing, setPlaying]             = useState<string | null>(null);
+  const [mediaItems, setMediaItems]       = useState<MediaItem[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [uploading, setUploading]         = useState(false);
+  const [videoError, setVideoError]       = useState<string | null>(null);
+  const [editingTitle, setEditingTitle]   = useState<string | null>(null);
+  const [editValue, setEditValue]         = useState('');
+  const [selectedVideo, setSelectedVideo] = useState<MediaItem | null>(null);
+  const [showVideoPopup, setShowVideoPopup] = useState(false);
+  const videoRef      = useRef<HTMLVideoElement | null>(null);
+  const audioRef      = useRef<HTMLAudioElement | null>(null);
+  const popupVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const stopPlayback = () => {
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-    }
+    if (videoRef.current)      { videoRef.current.pause();      videoRef.current.currentTime = 0; }
+    if (popupVideoRef.current) { popupVideoRef.current.pause(); popupVideoRef.current.currentTime = 0; }
     audioRef.current?.pause();
     audioRef.current = null;
     setPlaying(null);
   };
 
   const getSignedUrl = async (path: string) => {
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(path, 60 * 60);
-
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 60);
     if (error) throw error;
     return data.signedUrl;
   };
 
   const loadNature = async (): Promise<MediaItem[]> => {
     const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .list(NATURE_FOLDER, { limit: 200, sortBy: { column: 'name', order: 'asc' } });
-
+      .from(BUCKET).list(NATURE_FOLDER, { limit: 200, sortBy: { column: 'name', order: 'asc' } });
     if (error) throw error;
-
     const filtered = (data || []).filter(f => f.id && !f.name.startsWith('.'));
-    const urls = await Promise.all(
-      filtered.map(async (f) => {
-        const path = `${NATURE_FOLDER}/${f.name}`;
-        const signedUrl = await getSignedUrl(path);
-        return {
-          id: path,
-          category: 'nature' as const,
-          title: mediaTitle(f.name),
-          file_path: path,
-          file_url: signedUrl,
-          emoji: MEDIA_FOLDER_META.nature.emoji,
-          color: MEDIA_FOLDER_META.nature.color,
-        };
-      })
-    );
-
-    return urls;
+    return Promise.all(filtered.map(async f => {
+      const path = `${NATURE_FOLDER}/${f.name}`;
+      const signedUrl = await getSignedUrl(path);
+      const storedTitle = localStorage.getItem(`video_title_${path}`);
+      return { id: path, category: 'nature' as const, title: storedTitle || mediaTitle(f.name),
+               file_path: path, file_url: signedUrl, ...MEDIA_FOLDER_META.nature };
+    }));
   };
 
   const loadVideos = async (): Promise<MediaItem[]> => {
     if (!patientId) return [];
-
     const patientFolder = `${VIDEO_FOLDER}/${patientId}`;
-
     const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .list(patientFolder, { limit: 200, sortBy: { column: 'name', order: 'desc' } });
-
-    if (error) {
-      if (error.message?.toLowerCase().includes('not found')) return [];
-      throw error;
-    }
-
+      .from(BUCKET).list(patientFolder, { limit: 200, sortBy: { column: 'name', order: 'desc' } });
+    if (error) { if (error.message?.toLowerCase().includes('not found')) return []; throw error; }
     const filtered = (data || []).filter(f => f.id && !f.name.startsWith('.'));
-    const urls = await Promise.all(
-      filtered.map(async (f) => {
-        const path = `${patientFolder}/${f.name}`;
-        const signedUrl = await getSignedUrl(path);
-        return {
-          id: path,
-          category: 'videos' as const,
-          title: mediaTitle(f.name),
-          file_path: path,
-          file_url: signedUrl,
-          emoji: MEDIA_FOLDER_META.videos.emoji,
-          color: MEDIA_FOLDER_META.videos.color,
-        };
-      })
-    );
-
-    return urls;
+    return Promise.all(filtered.map(async f => {
+      const path = `${patientFolder}/${f.name}`;
+      const signedUrl = await getSignedUrl(path);
+      const storedTitle = localStorage.getItem(`video_title_${path}`);
+      return { id: path, category: 'videos' as const, title: storedTitle || mediaTitle(f.name),
+               file_path: path, file_url: signedUrl, ...MEDIA_FOLDER_META.videos };
+    }));
   };
 
   const refreshMedia = async () => {
     if (!open) return;
-    setLoading(true);
-    setVideoError(null);
-
+    setLoading(true); setVideoError(null);
     try {
-      const [videos, nature] = await Promise.all([
-        loadVideos(),
-        loadNature(),
-      ]);
+      const [videos, nature] = await Promise.all([loadVideos(), loadNature()]);
       setMediaItems([...videos, ...nature]);
     } catch (err: any) {
       setVideoError(err.message || 'Failed to load media');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    if (!open) return;
-    refreshMedia();
-  }, [open, patientId]);
+  useEffect(() => { if (!open) return; refreshMedia(); }, [open, patientId]);
+  useEffect(() => { if (!open) stopPlayback(); }, [open]);
 
-  useEffect(() => {
-    if (!open) stopPlayback();
-  }, [open]);
-
-const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-
-  if (!patientId) {
-    setVideoError('No patient account is loaded. Please log in again.');
-    e.target.value = '';
-    return;
-  }
-
-  if (!file.type.startsWith('video/')) {
-    setVideoError('Only video files are allowed here.');
-    e.target.value = '';
-    return;
-  }
-
-  const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
-  if (file.size > MAX_VIDEO_SIZE) {
-    setVideoError('Video exceeds the 100MB limit.');
-    e.target.value = '';
-    return;
-  }
-
-  setUploading(true);
-  setVideoError(null);
-
-  try {
-    // Check if user is authenticated
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      throw new Error('You must be logged in to upload videos.');
-    }
-
-    // Create a safe filename
-    const timestamp = Date.now();
-    const safeName = `${timestamp}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    const path = `${VIDEO_FOLDER}/${patientId}/${safeName}`;
-
-    console.log('Uploading to path:', path); // Debug log
-
-    const { error: uploadError, data } = await supabase.storage
-      .from(BUCKET)
-      .upload(path, file, {
-        upsert: false,
-        contentType: file.type,
-        cacheControl: '3600',
-      });
-
-    if (uploadError) {
-      console.error('Upload error details:', uploadError);
-      
-      // Provide user-friendly error messages
-      if (uploadError.message.includes('row-level security')) {
-        throw new Error('Storage permission error. Please contact support.');
-      } else if (uploadError.message.includes('bucket not found')) {
-        throw new Error('Storage bucket not configured. Please contact support.');
-      } else {
-        throw new Error(uploadError.message);
-      }
-    }
-
-    console.log('Upload successful:', data);
-    await refreshMedia();
-    setTab('videos');
-    
-    // Clear any previous errors
-    setVideoError(null);
-    
-  } catch (err: any) {
-    console.error('Upload failed:', err);
-    setVideoError(err.message || 'Upload failed. Please try again.');
-  } finally {
-    setUploading(false);
-    e.target.value = '';
-  }
-};
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!patientId) { setVideoError('No patient account is loaded.'); e.target.value = ''; return; }
+    if (!file.type.startsWith('video/')) { setVideoError('Only video files are allowed here.'); e.target.value = ''; return; }
+    if (file.size > 100 * 1024 * 1024) { setVideoError('Video exceeds the 100MB limit.'); e.target.value = ''; return; }
+    setUploading(true); setVideoError(null);
+    try {
+      const safeName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const path = `${VIDEO_FOLDER}/${patientId}/${safeName}`;
+      const { error } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: false, contentType: file.type });
+      if (error) throw error;
+      await refreshMedia(); setTab('videos');
+    } catch (err: any) {
+      setVideoError(err.message || 'Upload failed');
+    } finally { setUploading(false); e.target.value = ''; }
+  };
 
   const handleDeleteVideo = async (item: MediaItem) => {
     if (item.category !== 'videos') return;
     if (!confirm(`Delete "${item.title}"?`)) return;
-
     try {
       const { error } = await supabase.storage.from(BUCKET).remove([item.file_path]);
       if (error) throw error;
-
+      localStorage.removeItem(`video_title_${item.file_path}`);
       if (playing === item.id) stopPlayback();
       await refreshMedia();
-    } catch (err: any) {
-      setVideoError(err.message || 'Delete failed');
+    } catch (err: any) { setVideoError(err.message || 'Delete failed'); }
+  };
+
+  const handleRename = (item: MediaItem) => { setEditingTitle(item.id); setEditValue(item.title); };
+
+  const saveTitle = (item: MediaItem) => {
+    if (editValue.trim()) {
+      const newTitle = editValue.trim();
+      localStorage.setItem(`video_title_${item.file_path}`, newTitle);
+      setMediaItems(prev => prev.map(i => i.id === item.id ? { ...i, title: newTitle } : i));
     }
+    setEditingTitle(null); setEditValue('');
   };
 
   const playNatureAudio = (item: MediaItem) => {
     stopPlayback();
-
-    const a = new Audio();
-    a.crossOrigin = 'anonymous';
-    a.src = item.file_url;
-    a.onended = () => setPlaying(null);
-    a.onerror = () => setPlaying(null);
+    const a = new Audio(); a.crossOrigin = 'anonymous'; a.src = item.file_url;
+    a.onended = () => setPlaying(null); a.onerror = () => setPlaying(null);
     a.play().catch(() => setPlaying(null));
-
-    audioRef.current = a;
-    setPlaying(item.id);
+    audioRef.current = a; setPlaying(item.id);
   };
 
-  const videos = mediaItems.filter(i => i.category === 'videos');
-  const natureTracks = mediaItems.filter(i => i.category === 'nature');
+  const openVideoPopup = (item: MediaItem) => { setSelectedVideo(item); setShowVideoPopup(true); stopPlayback(); };
 
+  const videos       = mediaItems.filter(i => i.category === 'videos');
+  const natureTracks = mediaItems.filter(i => i.category === 'nature');
   const tabs: { id: FamilyVideoTab; label: string; emoji: string }[] = [
     { id: 'videos', label: 'Family Videos', emoji: '🎥' },
-    { id: 'nature', label: 'Nature', emoji: '🌿' },
+    { id: 'nature', label: 'Nature',        emoji: '🌿' },
   ];
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col" onInteractOutside={e => e.preventDefault()}>
-        <DialogHeader>
-          <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
-            <Music className="w-6 h-6 text-soft-sage" />
-            Family Videos
-          </DialogTitle>
-          <DialogDescription className="text-center">
-            Watch familiar videos anytime, even after signing out and signing back in
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col" onInteractOutside={e => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
+              <Music className="w-6 h-6 text-soft-sage" />
+              Family Videos
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              Watch familiar videos anytime. Click any video to play in a larger window.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="flex gap-1 bg-soft-taupe/20 rounded-xl p-1 flex-shrink-0">
-          {tabs.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex-1 flex flex-col items-center py-2 rounded-lg text-xs font-medium transition-all ${
-                tab === t.id ? 'bg-white shadow text-charcoal' : 'text-medium-gray hover:text-charcoal'
-              }`}
-            >
-              <span className="text-base">{t.emoji}</span>
-              <span>{t.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {videoError && (
-          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {videoError}
+          <div className="flex gap-1 bg-soft-taupe/20 rounded-xl p-1 flex-shrink-0">
+            {tabs.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`flex-1 flex flex-col items-center py-2 rounded-lg text-xs font-medium transition-all ${
+                  tab === t.id ? 'bg-white shadow text-charcoal' : 'text-medium-gray hover:text-charcoal'}`}>
+                <span className="text-base">{t.emoji}</span>
+                <span>{t.label}</span>
+              </button>
+            ))}
           </div>
-        )}
 
-        <div className="overflow-y-auto flex-1 space-y-3 pr-1 mt-3">
-          {loading && (
-            <div className="flex justify-center py-8">
-              <div className="w-6 h-6 border-2 border-soft-sage border-t-transparent rounded-full animate-spin" />
+          {videoError && (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {videoError}
             </div>
           )}
 
-          {!loading && tab === 'videos' && (
-            <>
-              <label className="flex items-center gap-3 p-3 rounded-xl border-2 border-dashed border-soft-taupe hover:border-warm-bronze bg-warm-ivory hover:bg-warm-bronze/5 cursor-pointer transition-all">
-                <input
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={handleUpload}
-                  disabled={uploading}
-                />
-                <span className="w-10 h-10 rounded-xl bg-warm-bronze/10 flex items-center justify-center flex-shrink-0">
-                  <Upload className="w-5 h-5 text-warm-bronze" />
-                </span>
-                <div>
-                  <p className="font-medium text-warm-bronze text-sm">
-                    {uploading ? 'Uploading…' : 'Upload Family Video'}
-                  </p>
-                  <p className="text-xs text-medium-gray">MP4, MOV, WEBM and other video files</p>
-                </div>
-              </label>
+          <div className="overflow-y-auto flex-1 space-y-3 pr-1 mt-3">
+            {loading && <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-soft-sage border-t-transparent rounded-full animate-spin" /></div>}
 
-              {videos.length === 0 ? (
-                <div className="py-8 text-center text-medium-gray">
-                  <Headphones className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No family videos uploaded yet</p>
-                  <p className="text-xs mt-1">Videos uploaded here will stay in this patient account</p>
-                </div>
-              ) : (
-                videos.map(item => (
-                  <div key={item.id} className="rounded-xl border bg-warm-ivory p-3 space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-medium text-charcoal text-sm truncate">{item.title}</p>
-                        <p className="text-xs text-medium-gray">Stored in music-files/videos</p>
-                      </div>
-                      <button
-                        onClick={() => handleDeleteVideo(item)}
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-gentle-coral hover:bg-gentle-coral/10 flex-shrink-0"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <video
-                      ref={playing === item.id ? videoRef : null}
-                      key={item.file_url}
-                      src={item.file_url}
-                      controls
-                      className="w-full rounded-xl bg-black max-h-[360px]"
-                      onPlay={() => setPlaying(item.id)}
-                      onPause={() => {
-                        if (playing === item.id) setPlaying(null);
-                      }}
-                    />
+            {!loading && tab === 'videos' && (
+              <>
+                <label className="flex items-center gap-3 p-3 rounded-xl border-2 border-dashed border-soft-taupe hover:border-warm-bronze bg-warm-ivory cursor-pointer transition-all">
+                  <input type="file" accept="video/*" className="hidden" onChange={handleUpload} disabled={uploading} />
+                  <span className="w-10 h-10 rounded-xl bg-warm-bronze/10 flex items-center justify-center flex-shrink-0">
+                    <Upload className="w-5 h-5 text-warm-bronze" />
+                  </span>
+                  <div>
+                    <p className="font-medium text-warm-bronze text-sm">{uploading ? 'Uploading…' : 'Upload Family Video'}</p>
+                    <p className="text-xs text-medium-gray">MP4, MOV, WEBM (max 100MB)</p>
                   </div>
-                ))
-              )}
-            </>
-          )}
+                </label>
 
-          {!loading && tab === 'nature' && (
-            <>
-              {natureTracks.length === 0 ? (
-                <div className="text-center py-8 text-medium-gray text-sm">
-                  <p>No nature tracks available in this category yet.</p>
-                </div>
+                {videos.length === 0 ? (
+                  <div className="py-8 text-center text-medium-gray">
+                    <Headphones className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No family videos uploaded yet</p>
+                  </div>
+                ) : (
+                  videos.map(item => (
+                    <div key={item.id} className="rounded-xl border bg-warm-ivory p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                          {editingTitle === item.id ? (
+                            <div className="flex items-center gap-2">
+                              <input type="text" value={editValue} onChange={e => setEditValue(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && saveTitle(item)}
+                                className="flex-1 px-2 py-1 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-warm-bronze"
+                                autoFocus />
+                              <button onClick={() => saveTitle(item)} className="px-2 py-1 text-xs bg-soft-sage text-white rounded-md">Save</button>
+                              <button onClick={() => setEditingTitle(null)} className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded-md">Cancel</button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => openVideoPopup(item)}
+                                className="font-semibold text-charcoal text-sm truncate hover:text-warm-bronze transition-colors text-left">
+                                {item.title}
+                              </button>
+                              <button onClick={() => handleRename(item)}
+                                className="text-xs text-warm-bronze hover:text-deep-bronze opacity-50 hover:opacity-100 flex-shrink-0"
+                                title="Rename">✏️</button>
+                            </div>
+                          )}
+                        </div>
+                        <button onClick={() => handleDeleteVideo(item)}
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-gentle-coral hover:bg-gentle-coral/10 flex-shrink-0">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="relative cursor-pointer rounded-xl overflow-hidden" onClick={() => openVideoPopup(item)}>
+                        <video src={item.file_url} className="w-full bg-black max-h-[160px] rounded-xl" />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-all">
+                          <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center shadow-lg">
+                            <Play className="w-6 h-6 ml-1 text-warm-bronze" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </>
+            )}
+
+            {!loading && tab === 'nature' && (
+              natureTracks.length === 0 ? (
+                <div className="text-center py-8 text-medium-gray text-sm"><p>No nature tracks available yet.</p></div>
               ) : (
                 natureTracks.map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => playNatureAudio(item)}
+                  <button key={item.id} onClick={() => playNatureAudio(item)}
                     className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                      playing === item.id
-                        ? 'border-soft-sage bg-soft-sage/10'
-                        : 'border-transparent bg-warm-ivory hover:border-soft-taupe'
-                    }`}
-                  >
-                    <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 ${item.color}`}>
-                      {item.emoji}
-                    </span>
+                      playing === item.id ? 'border-soft-sage bg-soft-sage/10' : 'border-transparent bg-warm-ivory hover:border-soft-taupe'}`}>
+                    <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 ${item.color}`}>{item.emoji}</span>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-charcoal text-sm truncate">{item.title}</p>
-                      <p className="text-xs text-medium-gray">Nature</p>
                     </div>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      playing === item.id ? 'bg-soft-sage text-white' : 'bg-soft-taupe/40 text-medium-gray'
-                    }`}>
-                      {playing === item.id
-                        ? <Pause className="w-3.5 h-3.5" />
-                        : <Play className="w-3.5 h-3.5 ml-0.5" />}
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${playing === item.id ? 'bg-soft-sage text-white' : 'bg-soft-taupe/40 text-medium-gray'}`}>
+                      {playing === item.id ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
                     </div>
                   </button>
                 ))
-              )}
-            </>
+              )
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showVideoPopup} onOpenChange={() => { setShowVideoPopup(false); setSelectedVideo(null); popupVideoRef.current?.pause(); }}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh]" onInteractOutside={e => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-center text-xl">{selectedVideo?.title}</DialogTitle>
+            <DialogDescription className="text-center">Family memory video</DialogDescription>
+          </DialogHeader>
+          {selectedVideo && (
+            <div className="space-y-4">
+              <video ref={popupVideoRef} src={selectedVideo.file_url} controls autoPlay
+                className="w-full rounded-xl bg-black max-h-[60vh]" controlsList="nodownload" />
+              <div className="flex justify-center">
+                <Button variant="outline" onClick={() => setShowVideoPopup(false)} className="rounded-xl">Close</Button>
+              </div>
+            </div>
           )}
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SUB-COMPONENT: ShowMeHomeDialog
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClose: () => void; patientName: string }) {
@@ -920,6 +806,10 @@ function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClo
   );
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUB-COMPONENT: TellMeAStoryDialog
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SUB-COMPONENT: TellMeAStoryDialog
@@ -1254,17 +1144,17 @@ function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => v
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SUB-COMPONENT: VoiceRecorderDialog (FIXED: stores base64 instead of blob URL)
+// SUB-COMPONENT: VoiceRecorderDialog
 // ─────────────────────────────────────────────────────────────────────────────
 
 function VoiceRecorderDialog({
-  open, onClose, existingBase64,
+  open, onClose, existingUrl,
   onSave,
 }: {
   open: boolean;
   onClose: () => void;
-  existingBase64: string | null;
-  onSave: (base64: string, label: string) => void;
+  existingUrl: string | null;
+  onSave: (url: string, label: string) => void;
 }) {
   const [phase, setPhase]           = useState<'idle' | 'recording' | 'review' | 'confirm'>('idle');
   const [blob, setBlob]             = useState<Blob | null>(null);
@@ -1320,19 +1210,14 @@ function VoiceRecorderDialog({
   };
 
   const handleSave = () => {
-    if (existingBase64) { setPhase('confirm'); return; }
+    if (existingUrl) { setPhase('confirm'); return; }
     doSave();
   };
 
   const doSave = () => {
-    if (!blob) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result as string;
-      onSave(base64, 'Your voice');
-      onClose();
-    };
-    reader.readAsDataURL(blob);
+    if (!previewUrl) return;
+    onSave(previewUrl, 'Your voice');
+    onClose();
   };
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -1465,8 +1350,8 @@ export default function PatientHome() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showHomePhoto, setShowHomePhoto] = useState(false);
   const [showStoryDialog, setShowStoryDialog] = useState(false);
-  // Voice & photo upload state (FIXED: store base64, not blob URL)
-  const [customVoiceBase64, setCustomVoiceBase64] = useState<string | null>(() => localStorage.getItem('customVoiceBase64'));
+  // Voice & photo upload state
+  const [customVoiceUrl, setCustomVoiceUrl]       = useState<string | null>(() => localStorage.getItem('customVoiceUrl'));
   const [customVoiceLabel, setCustomVoiceLabel]   = useState<string>(() => localStorage.getItem('customVoiceLabel') || '');
   const [selectedVoice, setSelectedVoice]         = useState<string>(() => localStorage.getItem('selectedVoice') || 'default');
   const [currentAudio, setCurrentAudio]           = useState<HTMLAudioElement | null>(null);
@@ -1573,8 +1458,9 @@ export default function PatientHome() {
   }, []);
 
   const playSafetyMessage = () => {
-    if (isPlaying || !customVoiceBase64) return;
-    const audio = new Audio(customVoiceBase64);
+    // Only plays if a custom voice recording exists — no chime fallback
+    if (isPlaying || !customVoiceUrl) return;
+    const audio = new Audio(customVoiceUrl);
     audio.onended = () => { setIsPlaying(false); setCurrentAudio(null); };
     audio.play().catch(() => setIsPlaying(false));
     setCurrentAudio(audio);
@@ -1647,10 +1533,10 @@ export default function PatientHome() {
                 {/* Tap-to-hear button */}
                 <button
                   onClick={playSafetyMessage}
-                  disabled={!customVoiceBase64}
+                  disabled={!customVoiceUrl}
                   className={`mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-full shadow-soft transition-all ${
                     isPlaying ? 'bg-warm-bronze text-white' :
-                    customVoiceBase64 ? 'bg-white/80 hover:bg-white' :
+                    customVoiceUrl ? 'bg-white/80 hover:bg-white' :
                     'bg-white/40 text-charcoal/40 cursor-not-allowed'
                   }`}
                 >
@@ -1663,7 +1549,7 @@ export default function PatientHome() {
                     <>
                       <Volume2 className="w-5 h-5 text-warm-bronze" />
                       <span className="text-charcoal font-medium">
-                        {customVoiceBase64
+                        {customVoiceUrl
                           ? `Tap to hear${customVoiceLabel ? ` — ${customVoiceLabel}` : ''}`
                           : 'Record your voice below'}
                       </span>
@@ -1673,7 +1559,7 @@ export default function PatientHome() {
 
                 {/* Voice source indicator */}
                 <div className="mt-2 flex items-center justify-center gap-1.5 text-xs text-charcoal/50">
-                  {customVoiceBase64 ? (
+                  {customVoiceUrl ? (
                     <><Mic className="w-3 h-3" /> Your personal recording</>
                   ) : (
                     <><Mic className="w-3 h-3" /> No recording yet — tap below to add one</>
@@ -1687,7 +1573,7 @@ export default function PatientHome() {
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/60 hover:bg-white border border-white/80 text-charcoal/70 hover:text-charcoal text-xs font-medium transition-all shadow-sm"
                   >
                     <Mic className="w-3.5 h-3.5 text-warm-bronze" />
-                    {customVoiceBase64 ? 'Change recording' : 'Record your voice'}
+                    {customVoiceUrl ? 'Change recording' : 'Record your voice'}
                   </button>
                 </div>
               </div>
@@ -1708,19 +1594,17 @@ export default function PatientHome() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="flex items-center gap-3 text-charcoal">
-                    <WeatherIcon condition={weather.condition} className="w-7 h-7" />
-                    <div className="text-right">
-                      <div className="text-4xl md:text-5xl font-bold text-charcoal leading-none">
-                        {weather.temp}°
-                      </div>
-                      <div className="text-lg md:text-md font-medium text-charcoal/90 leading-snug">
-                        {weather.message}
-                      </div>
+                 <div className="flex items-center gap-3 text-charcoal">
+                  <WeatherIcon condition={weather.condition} className="w-6 h-6" />
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-charcoal leading-none">
+                      {weather.temp}°
+                    </div>
+                    <div className="mt-1 text-sm font-medium text-charcoal/85 leading-snug">
+                      {weather.message}
                     </div>
                   </div>
                 </div>
-              </div>
 
               {/* Greeting */}
               <p className="text-xl text-charcoal font-semibold mb-4 drop-shadow-sm">
@@ -1758,7 +1642,7 @@ export default function PatientHome() {
                 )}
               </div>
 
-              {/* Medication Status - fixed to be full width */}
+              {/* Medication Status */}
               <div className="mt-4 p-4 bg-white/60 backdrop-blur-sm rounded-xl flex items-center gap-3">
                 <span className="text-2xl">💊</span>
                 <div className="flex-1">
@@ -1775,8 +1659,13 @@ export default function PatientHome() {
                 )}
               </div>
             </div>
-          </Card>
-        </motion.div>
+          </div>
+            </div>
+              </div>
+            </div>
+      </Card>
+    </motion.div>
+        
 
         {/* 2. ENHANCED "PEOPLE WHO LOVE YOU" - Interactive Photos + Upload */}
         <motion.div
@@ -1970,736 +1859,246 @@ export default function PatientHome() {
             </CardContent>
           </Card>
         </motion.div>
+        </motion.div>
+      
 
-        {/* 6. EMERGENCY HELP BUTTON - Fixed top right */}
-        <motion.button
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 1, type: "spring" }}
-          onClick={handleEmergency}
-          className="fixed top-20 right-6 z-50 w-16 h-16 bg-red-800 rounded-full shadow-elevated flex flex-col items-center justify-center hover:scale-110 transition-transform"
-        >
-          <span className="text-white text-xs font-bold">HELP</span>
-        </motion.button>
+      {/* 6. EMERGENCY HELP BUTTON - Fixed top right */}
+      <motion.button
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        transition={{ delay: 1, type: "spring" }}
+        onClick={handleEmergency}
+        className="fixed top-20 right-6 z-50 w-16 h-16 bg-red-800 rounded-full shadow-elevated flex flex-col items-center justify-center hover:scale-110 transition-transform"
+      >
+        <span className="text-white text-xs font-bold">HELP</span>
+      </motion.button>
 
-        {/* Selected Face Dialog */}
-        <Dialog open={!!selectedFace} onOpenChange={() => setSelectedFace(null)}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-center text-2xl">{selectedFace?.name}</DialogTitle>
-              <DialogDescription className="text-center">{selectedFace?.relationship}</DialogDescription>
-            </DialogHeader>
-            {selectedFace && (
-              <div className="space-y-4">
-                <div className="flex justify-center">
-                  {selectedFace.photoUrl ? (
-                    <img
-                      src={selectedFace.photoUrl}
-                      alt={selectedFace.name}
-                      className="w-48 h-48 rounded-2xl object-cover shadow-card"
-                    />
-                  ) : (
-                    <div className="w-48 h-48 bg-warm-bronze rounded-2xl flex items-center justify-center">
-                      <span className="text-6xl text-white font-medium">{selectedFace.name[0]}</span>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Voice Message Button */}
-                <Button 
-                  onClick={() => alert(`Playing message from ${selectedFace.name}...`)}
-                  className="w-full bg-soft-sage hover:bg-soft-sage/90 text-white rounded-xl py-6"
-                >
-                  <Volume2 className="w-5 h-5 mr-2" />
-                  Play Voice Message
-                </Button>
-                
-                {/* Video Call Button */}
+      {/* Selected Face Dialog */}
+      <Dialog open={!!selectedFace} onOpenChange={() => setSelectedFace(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-center text-2xl">{selectedFace?.name}</DialogTitle>
+            <DialogDescription className="text-center">{selectedFace?.relationship}</DialogDescription>
+          </DialogHeader>
+          {selectedFace && (
+            <div className="space-y-4">
+              <div className="flex justify-center">
+                {selectedFace.photoUrl ? (
+                  <img
+                    src={selectedFace.photoUrl}
+                    alt={selectedFace.name}
+                    className="w-48 h-48 rounded-2xl object-cover shadow-card"
+                  />
+                ) : (
+                  <div className="w-48 h-48 bg-warm-bronze rounded-2xl flex items-center justify-center">
+                    <span className="text-6xl text-white font-medium">{selectedFace.name[0]}</span>
+                  </div>
+                )}
+              </div>
+              
+              {/* Voice Message Button */}
+              <Button 
+                onClick={() => alert(`Playing message from ${selectedFace.name}...`)}
+                className="w-full bg-soft-sage hover:bg-soft-sage/90 text-white rounded-xl py-6"
+              >
+                <Volume2 className="w-5 h-5 mr-2" />
+                Play Voice Message
+              </Button>
+              
+              {/* Video Call Button */}
+              <Button 
+                variant="outline"
+                onClick={() => alert(`Starting video call with ${selectedFace.name}...`)}
+                className="w-full rounded-xl py-6"
+              >
+                <Phone className="w-5 h-5 mr-2" />
+                Video Call
+              </Button>
+              
+              {selectedFace.phone && (
                 <Button 
                   variant="outline"
-                  onClick={() => alert(`Starting video call with ${selectedFace.name}...`)}
+                  onClick={() => window.location.href = `tel:${selectedFace.phone}`}
                   className="w-full rounded-xl py-6"
                 >
                   <Phone className="w-5 h-5 mr-2" />
-                  Video Call
+                  Call {selectedFace.phone}
                 </Button>
-                
-                {selectedFace.phone && (
-                  <Button 
-                    variant="outline"
-                    onClick={() => window.location.href = `tel:${selectedFace.phone}`}
-                    className="w-full rounded-xl py-6"
-                  >
-                    <Phone className="w-5 h-5 mr-2" />
-                    Call {selectedFace.phone}
-                  </Button>
-                )}
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Slideshow Dialog */}
+      <Dialog open={showSlideshow} onOpenChange={() => { setShowSlideshow(false); setSlideshowAuto(false); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="text-center flex items-center justify-center gap-2">
+              <Heart className="w-5 h-5 text-gentle-coral" />
+              People Who Love You
+            </DialogTitle>
+          </DialogHeader>
+          <div className="relative">
+            {slideshowImages.length > 0 ? (
+              <div className="relative">
+                <motion.img
+                  key={currentSlide}
+                  src={slideshowImages[currentSlide]?.url}
+                  alt={slideshowImages[currentSlide]?.caption}
+                  initial={{ opacity: 0, scale: 1.03 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.6 }}
+                  className="w-full h-80 object-cover rounded-2xl"
+                />
+                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent rounded-b-2xl">
+                  <p className="text-white text-xl font-bold">{slideshowImages[currentSlide]?.caption}</p>
+                  <p className="text-white/70 text-sm">{currentSlide + 1} of {slideshowImages.length}</p>
+                </div>
+                {/* Dot indicators */}
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                  {slideshowImages.map((_, i) => (
+                    <button key={i} onClick={() => setCurrentSlide(i)}
+                      className={`w-2 h-2 rounded-full transition-all ${i === currentSlide ? 'bg-white w-4' : 'bg-white/50'}`} />
+                  ))}
+                </div>
+                <button onClick={() => setCurrentSlide(s => (s - 1 + slideshowImages.length) % slideshowImages.length)}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-all">
+                  <ChevronLeft className="w-6 h-6" />
+                </button>
+                <button onClick={() => setCurrentSlide(s => (s + 1) % slideshowImages.length)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-all">
+                  <ChevronRight className="w-6 h-6" />
+                </button>
+              </div>
+            ) : (
+              <div className="h-48 bg-soft-taupe/20 rounded-2xl flex flex-col items-center justify-center gap-3 text-medium-gray">
+                <ImageIcon className="w-10 h-10 opacity-40" />
+                <p className="text-sm">No photos yet — add some below!</p>
               </div>
             )}
-          </DialogContent>
-        </Dialog>
 
-        {/* Slideshow Dialog */}
-        <Dialog open={showSlideshow} onOpenChange={() => { setShowSlideshow(false); setSlideshowAuto(false); }}>
-          <DialogContent className="sm:max-w-2xl max-h-[90vh]">
-            <DialogHeader>
-              <DialogTitle className="text-center flex items-center justify-center gap-2">
-                <Heart className="w-5 h-5 text-gentle-coral" />
-                People Who Love You
-              </DialogTitle>
-            </DialogHeader>
-            <div className="relative">
-              {slideshowImages.length > 0 ? (
-                <div className="relative">
-                  <motion.img
-                    key={currentSlide}
-                    src={slideshowImages[currentSlide]?.url}
-                    alt={slideshowImages[currentSlide]?.caption}
-                    initial={{ opacity: 0, scale: 1.03 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.6 }}
-                    className="w-full h-80 object-cover rounded-2xl"
-                  />
-                  <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent rounded-b-2xl">
-                    <p className="text-white text-xl font-bold">{slideshowImages[currentSlide]?.caption}</p>
-                    <p className="text-white/70 text-sm">{currentSlide + 1} of {slideshowImages.length}</p>
-                  </div>
-                  {/* Dot indicators */}
-                  <div className="absolute top-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                    {slideshowImages.map((_, i) => (
-                      <button key={i} onClick={() => setCurrentSlide(i)}
-                        className={`w-2 h-2 rounded-full transition-all ${i === currentSlide ? 'bg-white w-4' : 'bg-white/50'}`} />
-                    ))}
-                  </div>
-                  <button onClick={() => setCurrentSlide(s => (s - 1 + slideshowImages.length) % slideshowImages.length)}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-all">
-                    <ChevronLeft className="w-6 h-6" />
-                  </button>
-                  <button onClick={() => setCurrentSlide(s => (s + 1) % slideshowImages.length)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white rounded-full flex items-center justify-center shadow transition-all">
-                    <ChevronRight className="w-6 h-6" />
-                  </button>
-                </div>
+            <div className="flex justify-center gap-3 mt-4">
+              <Button variant="outline" size="sm"
+                onClick={() => setSlideshowAuto(a => !a)}
+                className={slideshowAuto ? 'bg-warm-bronze text-white border-warm-bronze' : ''}>
+                {slideshowAuto ? <><Pause className="w-4 h-4 mr-1" />Stop</> : <><Play className="w-4 h-4 mr-1" />Auto Play</>}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => { setShowSlideshow(false); setSlideshowAuto(false); }}>
+                <X className="w-4 h-4 mr-1" />Close
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Calm Me Dialog ────────────────────────────────────────────────── */}
+      <CalmMeDialog open={showComfortMenu} onClose={() => setShowComfortMenu(false)} />
+
+      {/* ── Show Me Home Dialog ───────────────────────────────────────────── */}
+      <ShowMeHomeDialog open={showHomePhoto} onClose={() => setShowHomePhoto(false)} patientName={patient?.preferredName || patient?.firstName || 'you'} />
+
+      {/* ── Tell Me a Story Dialog ────────────────────────────────────────── */}
+      <TellMeAStoryDialog open={showStoryDialog} onClose={() => setShowStoryDialog(false)} />
+
+      {/* ── Voice Recorder Dialog ─────────────────────────────────────────── */}
+      <VoiceRecorderDialog
+        open={showRecorder}
+        onClose={() => setShowRecorder(false)}
+        existingUrl={customVoiceUrl}
+        onSave={(url, label) => {
+          setCustomVoiceUrl(url);
+          setCustomVoiceLabel(label);
+          localStorage.setItem('customVoiceUrl', url);
+          localStorage.setItem('customVoiceLabel', label);
+        }}
+      />
+
+      {/* Emergency Help Dialog */}
+      <Dialog open={showEmergencyDialog} onOpenChange={() => setShowEmergencyDialog(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-center text-2xl text-red-800 flex items-center justify-center gap-2">
+              <Heart className="w-8 h-8" />
+              Help is Coming
+            </DialogTitle>
+            <DialogDescription className="text-center text-lg">
+              You're safe. Help is on the way.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Show familiar face */}
+            <div className="flex justify-center">
+              {patient?.familiarFaces?.[0]?.photoUrl ? (
+                <img
+                  src={patient.familiarFaces[0].photoUrl}
+                  alt={patient.familiarFaces[0].name}
+                  className="w-32 h-32 rounded-2xl object-cover shadow-card"
+                />
               ) : (
-                <div className="h-48 bg-soft-taupe/20 rounded-2xl flex flex-col items-center justify-center gap-3 text-medium-gray">
-                  <ImageIcon className="w-10 h-10 opacity-40" />
-                  <p className="text-sm">No photos yet — add some below!</p>
+                <div className="w-32 h-32 bg-warm-bronze rounded-2xl flex items-center justify-center">
+                  <Phone className="w-12 h-12 text-white" />
                 </div>
               )}
-
-              <div className="flex justify-center gap-3 mt-4">
-                <Button variant="outline" size="sm"
-                  onClick={() => setSlideshowAuto(a => !a)}
-                  className={slideshowAuto ? 'bg-warm-bronze text-white border-warm-bronze' : ''}>
-                  {slideshowAuto ? <><Pause className="w-4 h-4 mr-1" />Stop</> : <><Play className="w-4 h-4 mr-1" />Auto Play</>}
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => { setShowSlideshow(false); setSlideshowAuto(false); }}>
-                  <X className="w-4 h-4 mr-1" />Close
-                </Button>
-              </div>
             </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* ── Calm Me Dialog ────────────────────────────────────────────────── */}
-        <CalmMeDialog open={showComfortMenu} onClose={() => setShowComfortMenu(false)} />
-        
-        // ─────────────────────────────────────────────────────────────────────────────
-
-        // SUB-COMPONENT: CalmMeDialog (with editable titles & popup player)
-        
-        // ─────────────────────────────────────────────────────────────────────────────
-
-interface MediaItem {
-  id: string;
-  category: 'videos' | 'nature';
-  title: string;
-  file_path: string;
-  file_url: string;
-  emoji: string;
-  color: string;
-}
-
-function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { state } = useApp();
-  const BUCKET = 'music-files';
-  const VIDEO_FOLDER = 'videos';
-  const NATURE_FOLDER = 'nature';
-
-  const patientId =
-    state.currentPatient?.id ||
-    state.patient?.id ||
-    state.user?.id ||
-    '';
-
-  const [tab, setTab] = useState<FamilyVideoTab>('videos');
-  const [playing, setPlaying] = useState<string | null>(null);
-  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [videoError, setVideoError] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const [selectedVideo, setSelectedVideo] = useState<MediaItem | null>(null);
-  const [showVideoPopup, setShowVideoPopup] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const popupVideoRef = useRef<HTMLVideoElement | null>(null);
-
-  const stopPlayback = () => {
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-    }
-    if (popupVideoRef.current) {
-      popupVideoRef.current.pause();
-      popupVideoRef.current.currentTime = 0;
-    }
-    audioRef.current?.pause();
-    audioRef.current = null;
-    setPlaying(null);
-  };
-
-  const getSignedUrl = async (path: string) => {
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(path, 60 * 60);
-
-    if (error) throw error;
-    return data.signedUrl;
-  };
-
-  const loadNature = async (): Promise<MediaItem[]> => {
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .list(NATURE_FOLDER, { limit: 200, sortBy: { column: 'name', order: 'asc' } });
-
-    if (error) throw error;
-
-    const filtered = (data || []).filter(f => f.id && !f.name.startsWith('.'));
-    const urls = await Promise.all(
-      filtered.map(async (f) => {
-        const path = `${NATURE_FOLDER}/${f.name}`;
-        const signedUrl = await getSignedUrl(path);
-        // Load custom title from localStorage if exists
-        const storedTitle = localStorage.getItem(`video_title_${path}`);
-        return {
-          id: path,
-          category: 'nature' as const,
-          title: storedTitle || mediaTitle(f.name),
-          file_path: path,
-          file_url: signedUrl,
-          emoji: MEDIA_FOLDER_META.nature.emoji,
-          color: MEDIA_FOLDER_META.nature.color,
-        };
-      })
-    );
-
-    return urls;
-  };
-
-  const loadVideos = async (): Promise<MediaItem[]> => {
-    if (!patientId) return [];
-
-    const patientFolder = `${VIDEO_FOLDER}/${patientId}`;
-
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .list(patientFolder, { limit: 200, sortBy: { column: 'name', order: 'desc' } });
-
-    if (error) {
-      if (error.message?.toLowerCase().includes('not found')) return [];
-      throw error;
-    }
-
-    const filtered = (data || []).filter(f => f.id && !f.name.startsWith('.'));
-    const urls = await Promise.all(
-      filtered.map(async (f) => {
-        const path = `${patientFolder}/${f.name}`;
-        const signedUrl = await getSignedUrl(path);
-        // Load custom title from localStorage if exists
-        const storedTitle = localStorage.getItem(`video_title_${path}`);
-        return {
-          id: path,
-          category: 'videos' as const,
-          title: storedTitle || mediaTitle(f.name),
-          file_path: path,
-          file_url: signedUrl,
-          emoji: MEDIA_FOLDER_META.videos.emoji,
-          color: MEDIA_FOLDER_META.videos.color,
-        };
-      })
-    );
-
-    return urls;
-  };
-
-  const refreshMedia = async () => {
-    if (!open) return;
-    setLoading(true);
-    setVideoError(null);
-
-    try {
-      const [videos, nature] = await Promise.all([
-        loadVideos(),
-        loadNature(),
-      ]);
-      setMediaItems([...videos, ...nature]);
-    } catch (err: any) {
-      setVideoError(err.message || 'Failed to load media');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    refreshMedia();
-  }, [open, patientId]);
-
-  useEffect(() => {
-    if (!open) stopPlayback();
-  }, [open]);
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!patientId) {
-      setVideoError('No patient account is loaded.');
-      e.target.value = '';
-      return;
-    }
-
-    if (!file.type.startsWith('video/')) {
-      setVideoError('Only video files are allowed here.');
-      e.target.value = '';
-      return;
-    }
-
-    const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
-    if (file.size > MAX_VIDEO_SIZE) {
-      setVideoError('Video exceeds the 100MB limit.');
-      e.target.value = '';
-      return;
-    }
-
-    setUploading(true);
-    setVideoError(null);
-
-    try {
-      const safeName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-      const path = `${VIDEO_FOLDER}/${patientId}/${safeName}`;
-
-      const { error } = await supabase.storage
-        .from(BUCKET)
-        .upload(path, file, {
-          upsert: false,
-          contentType: file.type,
-        });
-
-      if (error) throw error;
-
-      await refreshMedia();
-      setTab('videos');
-    } catch (err: any) {
-      setVideoError(err.message || 'Upload failed');
-    } finally {
-      setUploading(false);
-      e.target.value = '';
-    }
-  };
-
-  const handleDeleteVideo = async (item: MediaItem) => {
-    if (item.category !== 'videos') return;
-    if (!confirm(`Delete "${item.title}"?`)) return;
-
-    try {
-      const { error } = await supabase.storage.from(BUCKET).remove([item.file_path]);
-      if (error) throw error;
-
-      // Remove stored title
-      localStorage.removeItem(`video_title_${item.file_path}`);
-
-      if (playing === item.id) stopPlayback();
-      await refreshMedia();
-    } catch (err: any) {
-      setVideoError(err.message || 'Delete failed');
-    }
-  };
-
-  const handleRename = (item: MediaItem) => {
-    setEditingTitle(item.id);
-    setEditValue(item.title);
-  };
-
-  const saveTitle = (item: MediaItem) => {
-    if (editValue.trim()) {
-      const newTitle = editValue.trim();
-      // Save to localStorage
-      localStorage.setItem(`video_title_${item.file_path}`, newTitle);
-      
-      // Update local state
-      setMediaItems(prev =>
-        prev.map(i =>
-          i.id === item.id ? { ...i, title: newTitle } : i
-        )
-      );
-    }
-    setEditingTitle(null);
-    setEditValue('');
-  };
-
-  const playNatureAudio = (item: MediaItem) => {
-    stopPlayback();
-
-    const a = new Audio();
-    a.crossOrigin = 'anonymous';
-    a.src = item.file_url;
-    a.onended = () => setPlaying(null);
-    a.onerror = () => setPlaying(null);
-    a.play().catch(() => setPlaying(null));
-
-    audioRef.current = a;
-    setPlaying(item.id);
-  };
-
-  const openVideoPopup = (item: MediaItem) => {
-    setSelectedVideo(item);
-    setShowVideoPopup(true);
-    stopPlayback();
-  };
-
-  const videos = mediaItems.filter(i => i.category === 'videos');
-  const natureTracks = mediaItems.filter(i => i.category === 'nature');
-
-  const tabs: { id: FamilyVideoTab; label: string; emoji: string }[] = [
-    { id: 'videos', label: 'Family Videos', emoji: '🎥' },
-    { id: 'nature', label: 'Nature', emoji: '🌿' },
-  ];
-
-  return (
-    <>
-      <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col" onInteractOutside={e => e.preventDefault()}>
-          <DialogHeader>
-            <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
-              <Music className="w-6 h-6 text-soft-sage" />
-              Family Videos
-            </DialogTitle>
-            <DialogDescription className="text-center">
-              Watch familiar videos anytime. Click any video to play in a larger window.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex gap-1 bg-soft-taupe/20 rounded-xl p-1 flex-shrink-0">
-            {tabs.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`flex-1 flex flex-col items-center py-2 rounded-lg text-xs font-medium transition-all ${
-                  tab === t.id ? 'bg-white shadow text-charcoal' : 'text-medium-gray hover:text-charcoal'
-                }`}
+            
+            <div className="p-4 bg-soft-sage/10 rounded-xl text-center">
+              <p className="text-charcoal font-medium">Calling {patient?.emergencyContact?.phone || '911'}...</p>
+              <p className="text-medium-gray text-sm mt-1">Stay calm. Someone will be with you soon.</p>
+            </div>
+            
+            <div className="flex gap-3">
+              <Button 
+                variant="outline"
+                onClick={() => setShowEmergencyDialog(false)}
+                className="flex-1 rounded-xl"
               >
-                <span className="text-base">{t.emoji}</span>
-                <span>{t.label}</span>
-              </button>
-            ))}
-          </div>
-
-          {videoError && (
-            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {videoError}
+                I'm Okay Now
+              </Button>
+              <Button 
+                onClick={() => window.location.href = `tel:${patient?.emergencyContact?.phone || '911'}`}
+                className="flex-1 bg-red-800 hover:bg-red-900 text-white rounded-xl"
+              >
+                <Phone className="w-4 h-4 mr-2" />
+                Call Now
+              </Button>
             </div>
-          )}
-
-          <div className="overflow-y-auto flex-1 space-y-3 pr-1 mt-3">
-            {loading && (
-              <div className="flex justify-center py-8">
-                <div className="w-6 h-6 border-2 border-soft-sage border-t-transparent rounded-full animate-spin" />
-              </div>
-            )}
-
-            {!loading && tab === 'videos' && (
-              <>
-                <label className="flex items-center gap-3 p-3 rounded-xl border-2 border-dashed border-soft-taupe hover:border-warm-bronze bg-warm-ivory hover:bg-warm-bronze/5 cursor-pointer transition-all">
-                  <input
-                    type="file"
-                    accept="video/*"
-                    className="hidden"
-                    onChange={handleUpload}
-                    disabled={uploading}
-                  />
-                  <span className="w-10 h-10 rounded-xl bg-warm-bronze/10 flex items-center justify-center flex-shrink-0">
-                    <Upload className="w-5 h-5 text-warm-bronze" />
-                  </span>
-                  <div>
-                    <p className="font-medium text-warm-bronze text-sm">
-                      {uploading ? 'Uploading…' : 'Upload Family Video'}
-                    </p>
-                    <p className="text-xs text-medium-gray">MP4, MOV, WEBM and other video files</p>
-                  </div>
-                </label>
-
-                {videos.length === 0 ? (
-                  <div className="py-8 text-center text-medium-gray">
-                    <Headphones className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No family videos uploaded yet</p>
-                    <p className="text-xs mt-1">Videos uploaded here will stay in this patient account</p>
-                  </div>
-                ) : (
-                  videos.map(item => (
-                    <div key={item.id} className="rounded-xl border bg-warm-ivory p-3 space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          {editingTitle === item.id ? (
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="text"
-                                value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && saveTitle(item)}
-                                className="flex-1 px-2 py-1 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-warm-bronze"
-                                autoFocus
-                              />
-                              <button
-                                onClick={() => saveTitle(item)}
-                                className="px-2 py-1 text-xs bg-soft-sage text-white rounded-md hover:bg-green-600"
-                              >
-                                Save
-                              </button>
-                              <button
-                                onClick={() => setEditingTitle(null)}
-                                className="px-2 py-1 text-xs bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium text-charcoal text-sm truncate">{item.title}</p>
-                              <button
-                                onClick={() => handleRename(item)}
-                                className="text-xs text-warm-bronze hover:text-deep-bronze opacity-60 hover:opacity-100"
-                              >
-                                ✏️ Rename
-                              </button>
-                            </div>
-                          )}
-                          <p className="text-xs text-medium-gray">Stored in music-files/videos</p>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteVideo(item)}
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-gentle-coral hover:bg-gentle-coral/10 flex-shrink-0"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {/* Video thumbnail preview */}
-                      <div className="relative">
-                        <video
-                          ref={playing === item.id ? videoRef : null}
-                          src={item.file_url}
-                          className="w-full rounded-xl bg-black max-h-[200px] cursor-pointer"
-                          onClick={() => openVideoPopup(item)}
-                        />
-                        <button
-                          onClick={() => openVideoPopup(item)}
-                          className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-all rounded-xl"
-                        >
-                          <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center shadow-lg">
-                            <Play className="w-6 h-6 ml-1 text-warm-bronze" />
-                          </div>
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </>
-            )}
-
-            {!loading && tab === 'nature' && (
-              <>
-                {natureTracks.length === 0 ? (
-                  <div className="text-center py-8 text-medium-gray text-sm">
-                    <p>No nature tracks available in this category yet.</p>
-                  </div>
-                ) : (
-                  natureTracks.map(item => (
-                    <button
-                      key={item.id}
-                      onClick={() => playNatureAudio(item)}
-                      className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                        playing === item.id
-                          ? 'border-soft-sage bg-soft-sage/10'
-                          : 'border-transparent bg-warm-ivory hover:border-soft-taupe'
-                      }`}
-                    >
-                      <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0 ${item.color}`}>
-                        {item.emoji}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-charcoal text-sm truncate">{item.title}</p>
-                        <p className="text-xs text-medium-gray">Nature</p>
-                      </div>
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        playing === item.id ? 'bg-soft-sage text-white' : 'bg-soft-taupe/40 text-medium-gray'
-                      }`}>
-                        {playing === item.id
-                          ? <Pause className="w-3.5 h-3.5" />
-                          : <Play className="w-3.5 h-3.5 ml-0.5" />}
-                      </div>
-                    </button>
-                  ))
-                )}
-              </>
-            )}
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Video Popup Player */}
-      <Dialog open={showVideoPopup} onOpenChange={() => { setShowVideoPopup(false); setSelectedVideo(null); }}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh]" onInteractOutside={e => e.preventDefault()}>
+      {/* ── Loved One Photo Popup ─────────────────────────────────── */}
+      <Dialog open={!!showPhotoPopup} onOpenChange={() => setShowPhotoPopup(null)}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-center text-xl">
-              {selectedVideo?.title}
-            </DialogTitle>
-            <DialogDescription className="text-center">
-              Family memory video
-            </DialogDescription>
+            <DialogTitle className="text-center text-2xl">{showPhotoPopup?.name}</DialogTitle>
+            <DialogDescription className="text-center">Someone who loves you</DialogDescription>
           </DialogHeader>
-          {selectedVideo && (
+          {showPhotoPopup && (
             <div className="space-y-4">
-              <video
-                ref={popupVideoRef}
-                src={selectedVideo.file_url}
-                controls
-                autoPlay
-                className="w-full rounded-xl bg-black max-h-[60vh]"
-                controlsList="nodownload"
-              />
-              <div className="flex justify-center gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowVideoPopup(false)}
-                  className="rounded-xl"
-                >
-                  Close
-                </Button>
+              <div className="flex justify-center">
+                <img src={showPhotoPopup.url} alt={showPhotoPopup.name}
+                  className="w-56 h-56 rounded-2xl object-cover shadow-card" />
               </div>
+              <p className="text-center text-lg font-semibold text-charcoal">
+                {showPhotoPopup.name} loves you very much 💛
+              </p>
+              <Button variant="outline"
+                onClick={() => {
+                  const updated = lovedOnePhotos.filter(p => p.id !== showPhotoPopup.id);
+                  setLovedOnePhotos(updated);
+                  localStorage.setItem('lovedOnePhotos', JSON.stringify(updated));
+                  setShowPhotoPopup(null);
+                }}
+                className="w-full text-gentle-coral border-gentle-coral/30 hover:bg-gentle-coral/10 rounded-xl">
+                Remove Photo
+              </Button>
             </div>
           )}
         </DialogContent>
       </Dialog>
-    </>
-  );
-}
 
-        {/* ── Show Me Home Dialog ───────────────────────────────────────────── */}
-        <ShowMeHomeDialog open={showHomePhoto} onClose={() => setShowHomePhoto(false)} patientName={patient?.preferredName || patient?.firstName || 'you'} />
-
-        {/* ── Tell Me a Story Dialog ────────────────────────────────────────── */}
-        <TellMeAStoryDialog open={showStoryDialog} onClose={() => setShowStoryDialog(false)} />
-
-        {/* ── Voice Recorder Dialog (updated to use base64) ──────────────────── */}
-        <VoiceRecorderDialog
-          open={showRecorder}
-          onClose={() => setShowRecorder(false)}
-          existingBase64={customVoiceBase64}
-          onSave={(base64, label) => {
-            setCustomVoiceBase64(base64);
-            setCustomVoiceLabel(label);
-            localStorage.setItem('customVoiceBase64', base64);
-            localStorage.setItem('customVoiceLabel', label);
-          }}
-        />
-
-        {/* Emergency Help Dialog */}
-        <Dialog open={showEmergencyDialog} onOpenChange={() => setShowEmergencyDialog(false)}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-center text-2xl text-red-800 flex items-center justify-center gap-2">
-                <Heart className="w-8 h-8" />
-                Help is Coming
-              </DialogTitle>
-              <DialogDescription className="text-center text-lg">
-                You're safe. Help is on the way.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              {/* Show familiar face */}
-              <div className="flex justify-center">
-                {patient?.familiarFaces?.[0]?.photoUrl ? (
-                  <img
-                    src={patient.familiarFaces[0].photoUrl}
-                    alt={patient.familiarFaces[0].name}
-                    className="w-32 h-32 rounded-2xl object-cover shadow-card"
-                  />
-                ) : (
-                  <div className="w-32 h-32 bg-warm-bronze rounded-2xl flex items-center justify-center">
-                    <Phone className="w-12 h-12 text-white" />
-                  </div>
-                )}
-              </div>
-              
-              <div className="p-4 bg-soft-sage/10 rounded-xl text-center">
-                <p className="text-charcoal font-medium">Calling {patient?.emergencyContact?.phone || '911'}...</p>
-                <p className="text-medium-gray text-sm mt-1">Stay calm. Someone will be with you soon.</p>
-              </div>
-              
-              <div className="flex gap-3">
-                <Button 
-                  variant="outline"
-                  onClick={() => setShowEmergencyDialog(false)}
-                  className="flex-1 rounded-xl"
-                >
-                  I'm Okay Now
-                </Button>
-                <Button 
-                  onClick={() => window.location.href = `tel:${patient?.emergencyContact?.phone || '911'}`}
-                  className="flex-1 bg-red-800 hover:bg-red-900 text-white rounded-xl"
-                >
-                  <Phone className="w-4 h-4 mr-2" />
-                  Call Now
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* ── Loved One Photo Popup ─────────────────────────────────── */}
-        <Dialog open={!!showPhotoPopup} onOpenChange={() => setShowPhotoPopup(null)}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-center text-2xl">{showPhotoPopup?.name}</DialogTitle>
-              <DialogDescription className="text-center">Someone who loves you</DialogDescription>
-            </DialogHeader>
-            {showPhotoPopup && (
-              <div className="space-y-4">
-                <div className="flex justify-center">
-                  <img src={showPhotoPopup.url} alt={showPhotoPopup.name}
-                    className="w-56 h-56 rounded-2xl object-cover shadow-card" />
-                </div>
-                <p className="text-center text-lg font-semibold text-charcoal">
-                  {showPhotoPopup.name} loves you very much 💛
-                </p>
-                <Button variant="outline"
-                  onClick={() => {
-                    const updated = lovedOnePhotos.filter(p => p.id !== showPhotoPopup.id);
-                    setLovedOnePhotos(updated);
-                    localStorage.setItem('lovedOnePhotos', JSON.stringify(updated));
-                    setShowPhotoPopup(null);
-                  }}
-                  className="w-full text-gentle-coral border-gentle-coral/30 hover:bg-gentle-coral/10 rounded-xl">
-                  Remove Photo
-                </Button>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-      </div>
+      {/* ── Voice Upload Dialog (accessible from Tap to Hear long-press area) ── */}
+      {/* This dialog is triggered from the CaregiverVoiceManager component      */}
     </div>
   );
 }
