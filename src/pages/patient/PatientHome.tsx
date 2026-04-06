@@ -514,55 +514,82 @@ function CalmMeDialog({ open, onClose }: { open: boolean; onClose: () => void })
     if (!open) stopPlayback();
   }, [open]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    if (!patientId) {
-      setVideoError('No patient account is loaded.');
-      e.target.value = '';
-      return;
+  if (!patientId) {
+    setVideoError('No patient account is loaded. Please log in again.');
+    e.target.value = '';
+    return;
+  }
+
+  if (!file.type.startsWith('video/')) {
+    setVideoError('Only video files are allowed here.');
+    e.target.value = '';
+    return;
+  }
+
+  const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
+  if (file.size > MAX_VIDEO_SIZE) {
+    setVideoError('Video exceeds the 100MB limit.');
+    e.target.value = '';
+    return;
+  }
+
+  setUploading(true);
+  setVideoError(null);
+
+  try {
+    // Check if user is authenticated
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('You must be logged in to upload videos.');
     }
 
-    if (!file.type.startsWith('video/')) {
-      setVideoError('Only video files are allowed here.');
-      e.target.value = '';
-      return;
+    // Create a safe filename
+    const timestamp = Date.now();
+    const safeName = `${timestamp}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const path = `${VIDEO_FOLDER}/${patientId}/${safeName}`;
+
+    console.log('Uploading to path:', path); // Debug log
+
+    const { error: uploadError, data } = await supabase.storage
+      .from(BUCKET)
+      .upload(path, file, {
+        upsert: false,
+        contentType: file.type,
+        cacheControl: '3600',
+      });
+
+    if (uploadError) {
+      console.error('Upload error details:', uploadError);
+      
+      // Provide user-friendly error messages
+      if (uploadError.message.includes('row-level security')) {
+        throw new Error('Storage permission error. Please contact support.');
+      } else if (uploadError.message.includes('bucket not found')) {
+        throw new Error('Storage bucket not configured. Please contact support.');
+      } else {
+        throw new Error(uploadError.message);
+      }
     }
 
-    const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
-    if (file.size > MAX_VIDEO_SIZE) {
-      setVideoError('Video exceeds the 100MB limit.');
-      e.target.value = '';
-      return;
-    }
-
-    setUploading(true);
+    console.log('Upload successful:', data);
+    await refreshMedia();
+    setTab('videos');
+    
+    // Clear any previous errors
     setVideoError(null);
-
-    try {
-      const ext = file.name.split('.').pop() || 'mp4';
-      const safeName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-      const path = `${VIDEO_FOLDER}/${patientId}/${safeName}`;
-
-      const { error } = await supabase.storage
-        .from(BUCKET)
-        .upload(path, file, {
-          upsert: false,
-          contentType: file.type,
-        });
-
-      if (error) throw error;
-
-      await refreshMedia();
-      setTab('videos');
-    } catch (err: any) {
-      setVideoError(err.message || 'Upload failed');
-    } finally {
-      setUploading(false);
-      e.target.value = '';
-    }
-  };
+    
+  } catch (err: any) {
+    console.error('Upload failed:', err);
+    setVideoError(err.message || 'Upload failed. Please try again.');
+  } finally {
+    setUploading(false);
+    e.target.value = '';
+  }
+};
 
   const handleDeleteVideo = async (item: MediaItem) => {
     if (item.category !== 'videos') return;
