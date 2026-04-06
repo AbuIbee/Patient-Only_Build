@@ -542,6 +542,7 @@ export default function PatientHome() {
               <span className="text-xs text-medium-gray text-center leading-tight">Your safe place</span>
             </button>
 
+            {/* Tell Me a Story - Updated button */}
             <button
               onClick={() => setShowStoryDialog(true)}
               className="group h-auto py-4 px-2 flex flex-col items-center gap-2 rounded-2xl bg-white border border-soft-taupe shadow-sm hover:shadow-md hover:-translate-y-1 transition-all"
@@ -549,11 +550,9 @@ export default function PatientHome() {
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-300 to-calm-blue flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
                 <span className="text-3xl">📖</span>
               </div>
-              <span className="text-sm font-semibold text-charcoal">Tell Me a Story</span>
-              <span className="text-xs text-medium-gray text-center leading-tight">Stories &amp; nature sounds</span>
+              <span className="text-sm font-semibold text-charcoal">Stories &amp; Nature Sounds</span>
+              <span className="text-xs text-medium-gray text-center leading-tight">Relax &amp; listen</span>
             </button>
-          </div>
-        </motion.div>
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
