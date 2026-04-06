@@ -303,9 +303,9 @@ export default function MediaUploader({ patientId, patientName, readOnly = false
               </div>
               <div className="flex-1 overflow-auto flex items-center justify-center bg-black p-4">
                 {preview.file_type === 'video' ? (
-                  <video src={preview.file_url} controls autoPlay className="max-w-full max-h-[60vh] rounded-lg" />
+                  <video src={preview.signedUrl || preview.file_url} controls autoPlay className="max-w-full max-h-[60vh] rounded-lg" />
                 ) : (
-                  <img src={preview.file_url} alt={preview.caption} className="max-w-full max-h-[60vh] object-contain rounded-lg" />
+                  <img src={preview.signedUrl || preview.file_url} alt={preview.caption} className="max-w-full max-h-[60vh] object-contain rounded-lg" />
                 )}
               </div>
             </motion.div>

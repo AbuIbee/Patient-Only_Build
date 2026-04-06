@@ -103,13 +103,13 @@ function SignInForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
 
       <Field label="Email Address" error={errors.email} required>
         <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-          placeholder="you@example.com" className={inp(errors.email)} autoComplete="email" />
+          placeholder="you@example.com" className={inp(errors.email)} autoComplete="email" onKeyDown={e => e.key === 'Enter' && handleSignIn()} />
       </Field>
 
       <Field label="Password" error={errors.password} required>
         <div className="relative">
           <input type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
-            placeholder="Your password" className={inp(errors.password) + ' pr-10'} autoComplete="current-password" />
+            placeholder="Your password" className={inp(errors.password) + ' pr-10'} autoComplete="current-password" onKeyDown={e => e.key === 'Enter' && handleSignIn()} />
           <button type="button" onClick={() => setShowPw(p => !p)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-medium-gray hover:text-charcoal">
             {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}

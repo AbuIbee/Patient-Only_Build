@@ -387,9 +387,9 @@ export default function PatientLayout() {
               <button
                 key={item.id}
                 onClick={() => setCurrentView(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isActive ? 'bg-warm-bronze text-white shadow-soft' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isActive ? 'bg-warm-bronze/15 text-charcoal font-semibold' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}
               >
-                <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-white' : ''}`} />
+                <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-warm-bronze' : ''}`} />
                 {!sidebarCollapsed && !simplifiedMode && (
                   <span className="font-medium text-sm">{item.label}</span>
                 )}
@@ -435,7 +435,7 @@ export default function PatientLayout() {
                       <button
                         key={item.id}
                         onClick={() => setCurrentView(item.id)}
-                        className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${isActive ? 'bg-warm-bronze/80 text-white' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}
+                        className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${isActive ? 'bg-warm-bronze/15 text-charcoal font-semibold' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}
                       >
                         <Icon className="w-5 h-5 flex-shrink-0" />
                         {!sidebarCollapsed && <span className="font-medium text-sm">{item.label}</span>}
