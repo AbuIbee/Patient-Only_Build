@@ -87,7 +87,7 @@ const TREE: StoryNode[] = [
 
 export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const BUCKET = 'audio-files';
-  const NATURE_FOLDER = 'nature sounds';
+  const NATURE_FOLDER = 'nature sounds'; // This matches your bucket folder name exactly
   
   const [activeTab, setActiveTab] = useState<'stories' | 'nature'>('stories');
   const [currentPath, setCurrentPath] = useState<string | null>(null);
@@ -97,6 +97,7 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
   const [natureSounds, setNatureSounds] = useState<{ id: string; title: string; url: string }[]>([]);
   const [loadingNature, setLoadingNature] = useState(false);
   const [playingNature, setPlayingNature] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const natureAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -167,7 +168,7 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
   };
 
   const getCurrentDisplayName = () => {
-    if (!currentPath) return 'Tell Me a Story';
+    if (!currentPath) return 'Stories & Nature Sounds';
     const node = findNode(currentPath);
     return node ? node.label : currentPath.split('/').pop() || currentPath;
   };
@@ -181,22 +182,47 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
 
   const loadNatureSounds = async () => {
     setLoadingNature(true);
+    setError(null);
     try {
+      console.log('Loading nature sounds from bucket:', BUCKET, 'folder:', NATURE_FOLDER);
+      
       const { data, error } = await supabase.storage
         .from(BUCKET)
         .list(NATURE_FOLDER, { limit: 200, sortBy: { column: 'name', order: 'asc' } });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error listing nature sounds:', error);
+        setError(`Failed to load nature sounds: ${error.message}`);
+        return;
+      }
 
-      const filtered = (data || []).filter(f => f.id && !f.name.startsWith('.') && f.name.endsWith('.mp3'));
+      console.log('Raw data from storage:', data);
+
+      if (!data || data.length === 0) {
+        console.log('No files found in nature sounds folder');
+        setNatureSounds([]);
+        return;
+      }
+
+      const filtered = (data || []).filter(f => f.id && !f.name.startsWith('.') && (f.name.endsWith('.mp3') || f.name.endsWith('.wav') || f.name.endsWith('.ogg')));
+      console.log('Filtered MP3 files:', filtered.length, filtered);
+      
       const sounds = await Promise.all(
         filtered.map(async (f) => {
           const path = `${NATURE_FOLDER}/${f.name}`;
           const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path);
-          const title = f.name
-            .replace(/\.mp3$/, '')
+          console.log('Generated URL for:', f.name, urlData.publicUrl);
+          
+          // Format title nicely
+          let title = f.name
+            .replace(/\.(mp3|wav|ogg)$/, '')
             .replace(/[-_]/g, ' ')
             .replace(/\b\w/g, (l: string) => l.toUpperCase());
+          
+          // Truncate long titles
+          if (title.length > 50) {
+            title = title.substring(0, 47) + '...';
+          }
           
           return {
             id: path,
@@ -206,9 +232,15 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
         })
       );
       
+      console.log('Final nature sounds array:', sounds.length);
       setNatureSounds(sounds);
+      
+      if (sounds.length === 0) {
+        setError('No MP3 files found in the "nature sounds" folder. Please add some.');
+      }
     } catch (err: any) {
       console.error('Failed to load nature sounds:', err);
+      setError(err.message || 'Failed to load nature sounds');
     } finally {
       setLoadingNature(false);
     }
@@ -225,8 +257,14 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
     
     const audio = new Audio(sound.url);
     audio.onended = () => setPlayingNature(null);
-    audio.onerror = () => setPlayingNature(null);
-    audio.play().catch(console.error);
+    audio.onerror = (e) => {
+      console.error('Audio playback error:', e);
+      setPlayingNature(null);
+    };
+    audio.play().catch((err) => {
+      console.error('Failed to play:', err);
+      setPlayingNature(null);
+    });
     
     natureAudioRef.current = audio;
     setPlayingNature(sound.id);
@@ -247,10 +285,10 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
         <DialogHeader>
           <DialogTitle className="text-center flex items-center justify-center gap-2 text-xl">
             <BookOpen className="w-6 h-6 text-calm-blue" />
-            Tell Me a Story
+            Stories & Nature Sounds
           </DialogTitle>
           <DialogDescription className="text-center">
-            Choose stories to listen to or relaxing nature sounds
+            Listen to audio stories or relax with calming nature sounds
           </DialogDescription>
         </DialogHeader>
 
@@ -274,6 +312,12 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
             <span>Nature Sounds</span>
           </button>
         </div>
+
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
 
         {activeTab === 'stories' && (
           <>
@@ -407,11 +451,12 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
               </div>
             )}
             
-            {!loadingNature && natureSounds.length === 0 && (
+            {!loadingNature && natureSounds.length === 0 && !error && (
               <div className="text-center py-8 text-medium-gray">
                 <Waves className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p className="text-sm">No nature sounds available yet.</p>
                 <p className="text-xs mt-1">MP3 files added to "nature sounds" folder will appear here.</p>
+                <p className="text-xs mt-2 text-warm-bronze">Current folder: audio-files/nature sounds/</p>
               </div>
             )}
             
