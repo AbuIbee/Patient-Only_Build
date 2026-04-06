@@ -553,6 +553,8 @@ export default function PatientHome() {
               <span className="text-sm font-semibold text-charcoal">Stories &amp; Nature Sounds</span>
               <span className="text-xs text-medium-gray text-center leading-tight">Relax &amp; listen</span>
             </button>
+          </div>
+        </motion.div>
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
