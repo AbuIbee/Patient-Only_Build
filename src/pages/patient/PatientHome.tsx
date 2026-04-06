@@ -108,6 +108,186 @@ interface FamiliarFace {
   phone?: string;
 }
 
+// ── Mood score helper (higher = more positive) ─────────────────────────────
+const MOOD_SCORE: Record<string, number> = {
+  happy: 5, calm: 4, confused: 3, sad: 2, scared: 2, anxious: 1, angry: 1,
+};
+const MOOD_COLOR: Record<string, string> = {
+  happy: '#7dbf7d', calm: '#6baed6', confused: '#f0c040',
+  sad: '#aaa', scared: '#b07ec8', anxious: '#f4a460', angry: '#e05c5c',
+};
+
+type MoodEntry = { timestamp: string; mood: string; note?: string };
+
+function MoodProgressGraph({ moodEntries }: { moodEntries: MoodEntry[] }) {
+  type FilterKey = '7d' | '1m' | '2m' | '3m';
+  const [filter, setFilter] = useState<FilterKey>('7d');
+
+  const FILTERS: { key: FilterKey; label: string; days: number }[] = [
+    { key: '7d', label: '1 Week',   days: 7  },
+    { key: '1m', label: '1 Month',  days: 30 },
+    { key: '2m', label: '2 Months', days: 60 },
+    { key: '3m', label: '3 Months', days: 90 },
+  ];
+
+  const days = FILTERS.find(f => f.key === filter)!.days;
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  // Filter and bucket by day
+  const filtered = moodEntries
+    .filter(e => new Date(e.timestamp) >= cutoff)
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+  // Build daily buckets
+  const bucketMap = new Map<string, number[]>();
+  filtered.forEach(e => {
+    const day = e.timestamp.slice(0, 10);
+    const score = MOOD_SCORE[e.mood] ?? 3;
+    if (!bucketMap.has(day)) bucketMap.set(day, []);
+    bucketMap.get(day)!.push(score);
+  });
+
+  // Fill all days in range
+  const allDays: { date: string; avg: number | null }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    const key = d.toISOString().slice(0, 10);
+    const scores = bucketMap.get(key);
+    allDays.push({
+      date: key,
+      avg: scores ? scores.reduce((a, b) => a + b, 0) / scores.length : null,
+    });
+  }
+
+  const hasData = allDays.some(d => d.avg !== null);
+  const maxScore = 5;
+  const chartHeight = 80;
+  const chartWidth = 280;
+  const pointsWithVal = allDays.filter(d => d.avg !== null);
+
+  // Build SVG path
+  let pathD = '';
+  let areaD = '';
+  if (pointsWithVal.length > 0) {
+    const xStep = chartWidth / Math.max(allDays.length - 1, 1);
+    const toXY = (i: number, avg: number) => ({
+      x: i * xStep,
+      y: chartHeight - (avg / maxScore) * chartHeight,
+    });
+
+    const pts = allDays.map((d, i) => ({ ...d, x: i * xStep }));
+    const valPts = pts.filter(p => p.avg !== null) as { date:string; avg:number; x:number }[];
+
+    pathD = valPts.map((p, i) => {
+      const y = chartHeight - (p.avg / maxScore) * chartHeight;
+      return `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+
+    const first = valPts[0];
+    const last  = valPts[valPts.length - 1];
+    areaD = `${pathD} L${last.x.toFixed(1)},${chartHeight} L${first.x.toFixed(1)},${chartHeight} Z`;
+  }
+
+  const moodLabels = ['😠', '😰', '😢', '😕', '😌', '😊'];
+
+  return (
+    <Card className="border-0 shadow-card">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-semibold text-charcoal">Today's Progress</h3>
+          <span className="text-xs text-medium-gray">Mood over time</span>
+        </div>
+
+        {/* Filter tabs */}
+        <div className="flex gap-1 mb-4">
+          {FILTERS.map(f => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={`flex-1 text-xs py-1.5 rounded-lg font-medium transition-colors ${
+                filter === f.key
+                  ? 'bg-soft-sage text-white shadow-sm'
+                  : 'bg-soft-taupe/30 text-medium-gray hover:bg-soft-taupe/50'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {!hasData ? (
+          <div className="flex flex-col items-center justify-center py-8 gap-2">
+            <span className="text-3xl">💛</span>
+            <p className="text-sm text-medium-gray text-center">
+              No mood entries yet.<br />Use <strong>How I Feel</strong> to track your daily mood.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Y-axis labels + chart */}
+            <div className="flex gap-2 items-end">
+              <div className="flex flex-col justify-between h-20 text-sm pb-0.5">
+                {moodLabels.slice().reverse().map((e, i) => (
+                  <span key={i} className="leading-none">{e}</span>
+                ))}
+              </div>
+              <svg width="100%" viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="overflow-visible">
+                {/* Grid lines */}
+                {[1,2,3,4,5].map(v => (
+                  <line key={v}
+                    x1="0" y1={chartHeight - (v/maxScore)*chartHeight}
+                    x2={chartWidth} y2={chartHeight - (v/maxScore)*chartHeight}
+                    stroke="#e5e0d5" strokeWidth="0.5" strokeDasharray="3,3"
+                  />
+                ))}
+                {/* Area fill */}
+                {areaD && (
+                  <path d={areaD} fill="url(#moodGrad)" opacity="0.25" />
+                )}
+                {/* Line */}
+                {pathD && (
+                  <path d={pathD} fill="none" stroke="#7dbf7d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                )}
+                {/* Dots */}
+                {allDays.map((d, i) => {
+                  if (d.avg === null) return null;
+                  const xStep = chartWidth / Math.max(allDays.length - 1, 1);
+                  const x = i * xStep;
+                  const y = chartHeight - (d.avg / maxScore) * chartHeight;
+                  const col = d.avg >= 4 ? '#7dbf7d' : d.avg >= 3 ? '#f0c040' : '#e05c5c';
+                  return <circle key={d.date} cx={x.toFixed(1)} cy={y.toFixed(1)} r="3.5" fill={col} stroke="white" strokeWidth="1.5" />;
+                })}
+                <defs>
+                  <linearGradient id="moodGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#7dbf7d" />
+                    <stop offset="100%" stopColor="#7dbf7d" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+
+            {/* X-axis date labels */}
+            <div className="flex justify-between mt-1 px-6">
+              {[allDays[0], allDays[Math.floor(allDays.length / 2)], allDays[allDays.length - 1]].map(d => (
+                <span key={d.date} className="text-[10px] text-medium-gray">
+                  {new Date(d.date + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </span>
+              ))}
+            </div>
+
+            {/* Legend */}
+            <div className="flex gap-3 mt-3 justify-center text-[11px] text-medium-gray">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#7dbf7d] inline-block"/>Good</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#f0c040] inline-block"/>Neutral</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#e05c5c] inline-block"/>Struggling</span>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function PatientHome() {
   const { state } = useApp();
   const patient = state.patient;
@@ -556,32 +736,55 @@ export default function PatientHome() {
           </div>
         </motion.div>
 
+        {/* ── Games & Brain Training Grid ────────────────────── */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.4 }}
         >
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-charcoal">Today's Progress</h3>
-            <span className="text-sm text-warm-bronze font-medium">
-              {state.dashboardStats?.tasksCompleted || 0} of {state.dashboardStats?.tasksTotal || 0} done
-            </span>
+            <h3 className="text-lg font-semibold text-charcoal">Games & Brain Training</h3>
+            <span className="text-xs text-medium-gray">Fun activities to keep your mind active</span>
           </div>
-          <Card className="border-0 shadow-card">
-            <CardContent className="p-4">
-              <div className="h-3 bg-soft-taupe/30 rounded-full overflow-hidden mb-4">
-                <motion.div 
-                  className="h-full bg-gradient-to-r from-soft-sage to-warm-bronze rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${((state.dashboardStats?.tasksCompleted || 0) / (state.dashboardStats?.tasksTotal || 1)) * 100}%` }}
-                  transition={{ duration: 1, delay: 0.5 }}
-                />
-              </div>
-              <p className="text-center text-medium-gray">
-                You're doing great! Keep it up!
-              </p>
-            </CardContent>
-          </Card>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { id:'matching',   title:'Matching Pairs',      desc:'Flip cards and find matching emoji pairs',  emoji:'🃏', color:'from-warm-bronze to-warm-amber', tag:'Memory',   tagColor:'bg-warm-amber/20 text-warm-bronze'  },
+              { id:'crossword',  title:'Crossword Puzzle',    desc:'Fill in the grid using the given clues',   emoji:'📰', color:'from-calm-blue to-blue-500',     tag:'Language', tagColor:'bg-blue-100 text-blue-600'          },
+              { id:'checkers',   title:'Checkers',            desc:'Classic board game — you play red vs AI',  emoji:'🔴', color:'from-red-400 to-orange-500',     tag:'Strategy', tagColor:'bg-orange-100 text-orange-600'      },
+              { id:'chess',      title:'Chess',               desc:'Play white pieces against the AI',         emoji:'♟️', color:'from-slate-500 to-gray-700',     tag:'Strategy', tagColor:'bg-gray-100 text-gray-600'          },
+              { id:'wordsearch', title:'Word Search',         desc:'Find hidden words in the letter grid',     emoji:'🔤', color:'from-teal-400 to-cyan-500',      tag:'Language', tagColor:'bg-teal-100 text-teal-600'          },
+              { id:'solitaire',  title:'Solitaire',           desc:'Classic Klondike card game — relax & win', emoji:'🂡', color:'from-emerald-400 to-green-500',   tag:'Cards',    tagColor:'bg-green-100 text-green-600'        },
+              { id:'hangman',    title:'Hangman',             desc:'Guess the word one letter at a time',      emoji:'🔡', color:'from-rose-400 to-pink-500',      tag:'Language', tagColor:'bg-pink-100 text-pink-600'          },
+              { id:'brainlinks', title:'Brain Training Apps', desc:'Lumosity, BrainHQ & more',                emoji:'🧠', color:'from-purple-400 to-violet-500',  tag:'External', tagColor:'bg-purple-100 text-purple-600'      },
+            ].map((game, i) => (
+              <motion.button
+                key={game.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05 * i }}
+                onClick={() => { window.location.href = '/games'; }}
+                className="group text-left bg-white rounded-2xl border border-soft-taupe/40 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all p-3 flex flex-col gap-2"
+              >
+                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${game.color} flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform`}>
+                  {game.emoji}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-charcoal leading-tight">{game.title}</p>
+                  <span className={`inline-block text-[10px] font-medium px-2 py-0.5 rounded-full mt-1 ${game.tagColor}`}>{game.tag}</span>
+                  <p className="text-[11px] text-medium-gray mt-1 leading-tight">{game.desc}</p>
+                </div>
+              </motion.button>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* ── Today's Progress — Mood Graph ───────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.5 }}
+        >
+          <MoodProgressGraph moodEntries={state.moodEntries ?? []} />
         </motion.div>
 
         <motion.button
