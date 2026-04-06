@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Phone, Sun, Cloud, Moon, CheckCircle2, Volume2, Play, ChevronRight, ChevronLeft, X, Music, Home, BookOpen, Wind, Heart, Upload, Camera, Pause, ImageIcon, Mic, Bot, Leaf, Waves, Bird, Piano, Headphones, FileAudio, PlusCircle, Star } from 'lucide-react';
+import { Phone, Sun, Cloud, Moon, CheckCircle2, Volume2, Play, ChevronRight, ChevronLeft, X, Music, Home, BookOpen, Wind, Heart, Upload, Camera, Pause, ImageIcon, Mic, Bot, Leaf, Waves, Bird, Piano, Headphones, FileAudio, PlusCircle, Star, Gamepad2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 
@@ -108,169 +108,24 @@ interface FamiliarFace {
   phone?: string;
 }
 
-// Mood score helper
-const MOOD_SCORE: Record<string, number> = {
-  happy: 5, calm: 4, confused: 3, sad: 2, scared: 2, anxious: 1, angry: 1,
-};
+// Game definitions with instructions
+const GAMES = [
+  { id: 'matching', title: 'Matching Pairs', icon: '🃏', color: 'from-amber-500 to-orange-500', instruction: 'Flip over two cards at a time to find matching emoji pairs. Try to match all pairs in as few moves as possible!' },
+  { id: 'crossword', title: 'Crossword Puzzle', icon: '📝', color: 'from-blue-500 to-indigo-500', instruction: 'Read the clues and fill in the words in the grid. Tap a square to select it, then use the keyboard to type your answer.' },
+  { id: 'wordsearch', title: 'Word Search', icon: '🔍', color: 'from-teal-500 to-emerald-500', instruction: 'Find hidden words in the letter grid. Drag your finger across the letters to highlight a word when you find it.' },
+  { id: 'solitaire', title: 'Solitaire', icon: '🃟', color: 'from-green-500 to-lime-500', instruction: 'Classic Klondike Solitaire. Build stacks in alternating colors and arrange all cards by suit from Ace to King.' },
+  { id: 'checkers', title: 'Checkers', icon: '🔴', color: 'from-red-500 to-rose-500', instruction: 'You play as red pieces against the AI. Move diagonally forward and capture opponent pieces by jumping over them.' },
+  { id: 'chess', title: 'Chess', icon: '♜', color: 'from-gray-600 to-slate-700', instruction: 'Play as white against the AI. Move your pieces strategically to checkmate the black king.' },
+  { id: 'hangman', title: 'Hangman', icon: '🔡', color: 'from-purple-500 to-pink-500', instruction: 'Guess the hidden word one letter at a time. Each wrong guess adds a part to the hangman. Solve it before the drawing is complete!' },
+  { id: 'brainapps', title: 'Brain Training', icon: '🧠', color: 'from-violet-500 to-purple-600', instruction: 'Try brain training exercises from apps like Lumosity, BrainHQ, and Elevate to keep your mind sharp.' }
+];
 
-type MoodEntry = { timestamp: string; mood: string; note?: string };
-
-function MoodProgressGraph({ moodEntries }: { moodEntries: MoodEntry[] }) {
-  type FilterKey = '7d' | '1m' | '2m' | '3m';
-  const [filter, setFilter] = useState<FilterKey>('7d');
-
-  const FILTERS: { key: FilterKey; label: string; days: number }[] = [
-    { key: '7d', label: '1 Week',   days: 7  },
-    { key: '1m', label: '1 Month',  days: 30 },
-    { key: '2m', label: '2 Months', days: 60 },
-    { key: '3m', label: '3 Months', days: 90 },
-  ];
-
-  const days = FILTERS.find(f => f.key === filter)!.days;
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-
-  const filtered = moodEntries
-    .filter(e => new Date(e.timestamp) >= cutoff)
-    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-  const bucketMap = new Map<string, number[]>();
-  filtered.forEach(e => {
-    const day = e.timestamp.slice(0, 10);
-    const score = MOOD_SCORE[e.mood] ?? 3;
-    if (!bucketMap.has(day)) bucketMap.set(day, []);
-    bucketMap.get(day)!.push(score);
-  });
-
-  const allDays: { date: string; avg: number | null }[] = [];
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-    const key = d.toISOString().slice(0, 10);
-    const scores = bucketMap.get(key);
-    allDays.push({
-      date: key,
-      avg: scores ? scores.reduce((a, b) => a + b, 0) / scores.length : null,
-    });
-  }
-
-  const hasData = allDays.some(d => d.avg !== null);
-  const maxScore = 5;
-  const chartHeight = 80;
-  const chartWidth = 280;
-  const pointsWithVal = allDays.filter(d => d.avg !== null);
-
-  let pathD = '';
-  let areaD = '';
-  if (pointsWithVal.length > 0) {
-    const xStep = chartWidth / Math.max(allDays.length - 1, 1);
-    const valPts = allDays.map((d, i) => ({ ...d, x: i * xStep })).filter(p => p.avg !== null) as { date:string; avg:number; x:number }[];
-
-    pathD = valPts.map((p, i) => {
-      const y = chartHeight - (p.avg / maxScore) * chartHeight;
-      return `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(' ');
-
-    const first = valPts[0];
-    const last  = valPts[valPts.length - 1];
-    areaD = `${pathD} L${last.x.toFixed(1)},${chartHeight} L${first.x.toFixed(1)},${chartHeight} Z`;
-  }
-
-  const moodLabels = ['😠', '😰', '😢', '😕', '😌', '😊'];
-
-  return (
-    <Card className="border-0 shadow-card">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-base font-semibold text-charcoal">Today's Progress</h3>
-          <span className="text-xs text-medium-gray">Mood over time</span>
-        </div>
-
-        <div className="flex gap-1 mb-4">
-          {FILTERS.map(f => (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={`flex-1 text-xs py-1.5 rounded-lg font-medium transition-colors ${
-                filter === f.key
-                  ? 'bg-soft-sage text-white shadow-sm'
-                  : 'bg-soft-taupe/30 text-medium-gray hover:bg-soft-taupe/50'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        {!hasData ? (
-          <div className="flex flex-col items-center justify-center py-8 gap-2">
-            <span className="text-3xl">💛</span>
-            <p className="text-sm text-medium-gray text-center">
-              No mood entries yet.<br />Use <strong>How I Feel</strong> to track your daily mood.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="flex gap-2 items-end">
-              <div className="flex flex-col justify-between h-20 text-sm pb-0.5">
-                {moodLabels.slice().reverse().map((e, i) => (
-                  <span key={i} className="leading-none">{e}</span>
-                ))}
-              </div>
-              <svg width="100%" viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="overflow-visible">
-                {[1,2,3,4,5].map(v => (
-                  <line key={v}
-                    x1="0" y1={chartHeight - (v/maxScore)*chartHeight}
-                    x2={chartWidth} y2={chartHeight - (v/maxScore)*chartHeight}
-                    stroke="#e5e0d5" strokeWidth="0.5" strokeDasharray="3,3"
-                  />
-                ))}
-                {areaD && (
-                  <path d={areaD} fill="url(#moodGrad)" opacity="0.25" />
-                )}
-                {pathD && (
-                  <path d={pathD} fill="none" stroke="#7dbf7d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                )}
-                {allDays.map((d, i) => {
-                  if (d.avg === null) return null;
-                  const xStep = chartWidth / Math.max(allDays.length - 1, 1);
-                  const x = i * xStep;
-                  const y = chartHeight - (d.avg / maxScore) * chartHeight;
-                  const col = d.avg >= 4 ? '#7dbf7d' : d.avg >= 3 ? '#f0c040' : '#e05c5c';
-                  return <circle key={d.date} cx={x.toFixed(1)} cy={y.toFixed(1)} r="3.5" fill={col} stroke="white" strokeWidth="1.5" />;
-                })}
-                <defs>
-                  <linearGradient id="moodGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#7dbf7d" />
-                    <stop offset="100%" stopColor="#7dbf7d" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-              </svg>
-            </div>
-
-            <div className="flex justify-between mt-1 px-6">
-              {[allDays[0], allDays[Math.floor(allDays.length / 2)], allDays[allDays.length - 1]].map(d => (
-                <span key={d.date} className="text-[10px] text-medium-gray">
-                  {new Date(d.date + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                </span>
-              ))}
-            </div>
-
-            <div className="flex gap-3 mt-3 justify-center text-[11px] text-medium-gray">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#7dbf7d] inline-block"/>Good</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#f0c040] inline-block"/>Neutral</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#e05c5c] inline-block"/>Struggling</span>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// Game instruction dialog component
-function GameInstructionDialog({ game, open, onClose }: { 
-  game: { title: string; icon: string; color: string; instruction: string } | null; 
+// Game Instruction Dialog Component
+function GameInstructionDialog({ game, open, onClose, onPlay }: { 
+  game: typeof GAMES[0] | null; 
   open: boolean; 
   onClose: () => void;
+  onPlay: () => void;
 }) {
   if (!game) return null;
   
@@ -291,28 +146,13 @@ function GameInstructionDialog({ game, open, onClose }: {
         
         <div className="space-y-4">
           <div className="p-4 bg-soft-taupe/10 rounded-xl">
-            <p className="text-charcoal leading-relaxed">
-              {game.instruction}
-            </p>
+            <p className="text-charcoal leading-relaxed">{game.instruction}</p>
           </div>
           
           <div className="flex gap-3">
-            <Button 
-              variant="outline"
-              onClick={onClose}
-              className="flex-1 rounded-xl"
-            >
-              Close
-            </Button>
-            <Button 
-              onClick={() => {
-                onClose();
-                alert(`🎮 Let's play ${game.title}!\n\n${game.instruction.substring(0, 100)}...`);
-              }}
-              className="flex-1 bg-gradient-to-r from-warm-bronze to-warm-amber text-white rounded-xl hover:shadow-md transition-all"
-            >
-              <Play className="w-4 h-4 mr-2" />
-              Play Game
+            <Button variant="outline" onClick={onClose} className="flex-1 rounded-xl">Close</Button>
+            <Button onClick={onPlay} className="flex-1 bg-gradient-to-r from-warm-bronze to-warm-amber text-white rounded-xl hover:shadow-md transition-all">
+              <Play className="w-4 h-4 mr-2" /> Play Game
             </Button>
           </div>
         </div>
@@ -321,26 +161,25 @@ function GameInstructionDialog({ game, open, onClose }: {
   );
 }
 
-// Game card component - rectangular playing card style
-function GameCard({ game, onClick }: { 
-  game: { title: string; icon: string; color: string; instruction: string };
-  onClick: () => void;
-}) {
+// Game Card Component - Rectangular Playing Card Style (like attachment)
+function GameCard({ game, onClick }: { game: typeof GAMES[0]; onClick: () => void }) {
   return (
     <motion.button
-      whileHover={{ scale: 1.02, y: -2 }}
+      whileHover={{ scale: 1.02, y: -3 }}
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
-      className="group bg-white rounded-xl border-2 border-soft-taupe/40 shadow-md hover:shadow-lg transition-all p-3 flex flex-col items-center text-center gap-2 relative overflow-hidden"
+      className="group bg-white rounded-xl border-2 border-soft-taupe/50 shadow-md hover:shadow-xl transition-all p-4 flex flex-col items-center text-center gap-3 relative overflow-hidden"
     >
-      {/* Decorative card corner accents */}
-      <div className="absolute top-1 left-2 text-xs font-serif text-soft-taupe/30">♠</div>
-      <div className="absolute bottom-1 right-2 text-xs font-serif text-soft-taupe/30 rotate-180">♠</div>
+      {/* Decorative corner accents - like playing cards */}
+      <div className="absolute top-2 left-2 text-xs font-serif text-soft-taupe/40">♠</div>
+      <div className="absolute bottom-2 right-2 text-xs font-serif text-soft-taupe/40 rotate-180">♠</div>
       
+      {/* Game Icon */}
       <div className={`w-20 h-20 rounded-xl bg-gradient-to-br ${game.color} flex items-center justify-center text-4xl shadow-md group-hover:scale-110 transition-transform duration-200`}>
         {game.icon}
       </div>
       
+      {/* Game Title */}
       <p className="text-sm font-bold text-charcoal mt-1 tracking-wide">{game.title}</p>
       <span className="text-[10px] text-medium-gray">Tap to play</span>
     </motion.button>
@@ -370,7 +209,7 @@ export default function PatientHome() {
   const [showPhotoPopup, setShowPhotoPopup] = useState<{id:string;name:string;url:string}|null>(null);
   
   // Game dialog state
-  const [selectedGame, setSelectedGame] = useState<{ title: string; icon: string; color: string; instruction: string } | null>(null);
+  const [selectedGame, setSelectedGame] = useState<typeof GAMES[0] | null>(null);
   const [gameDialogOpen, setGameDialogOpen] = useState(false);
 
   const tasks = state.tasks.filter(t => t.status !== 'completed').slice(0, 3);
@@ -489,78 +328,22 @@ export default function PatientHome() {
     setShowEmergencyDialog(true);
   };
 
-  // Game definitions with instructions
-  const games = {
-    topRow: [
-      { 
-        id: 'matching', 
-        title: 'Matching Pairs', 
-        icon: '🃏', 
-        color: 'from-amber-500 to-orange-500',
-        instruction: 'Flip over two cards at a time to find matching emoji pairs. Try to match all pairs in as few moves as possible!'
-      },
-      { 
-        id: 'crossword', 
-        title: 'Crossword Puzzle', 
-        icon: '📝', 
-        color: 'from-blue-500 to-indigo-500',
-        instruction: 'Read the clues and fill in the words in the grid. Tap a square to select it, then use the keyboard to type your answer.'
-      },
-      { 
-        id: 'wordsearch', 
-        title: 'Word Search', 
-        icon: '🔍', 
-        color: 'from-teal-500 to-emerald-500',
-        instruction: 'Find hidden words in the letter grid. Drag your finger across the letters to highlight a word when you find it.'
-      },
-      { 
-        id: 'solitaire', 
-        title: 'Solitaire', 
-        icon: '🃟', 
-        color: 'from-green-500 to-lime-500',
-        instruction: 'Classic Klondike Solitaire. Build stacks in alternating colors and arrange all cards by suit from Ace to King.'
-      }
-    ],
-    bottomRow: [
-      { 
-        id: 'checkers', 
-        title: 'Checkers', 
-        icon: '🔴', 
-        color: 'from-red-500 to-rose-500',
-        instruction: 'You play as red pieces against the AI. Move diagonally forward and capture opponent pieces by jumping over them.'
-      },
-      { 
-        id: 'chess', 
-        title: 'Chess', 
-        icon: '♜', 
-        color: 'from-gray-600 to-slate-700',
-        instruction: 'Play as white against the AI. Move your pieces strategically to checkmate the black king.'
-      },
-      { 
-        id: 'hangman', 
-        title: 'Hangman', 
-        icon: '🔡', 
-        color: 'from-purple-500 to-pink-500',
-        instruction: 'Guess the hidden word one letter at a time. Each wrong guess adds a part to the hangman. Solve it before the drawing is complete!'
-      },
-      { 
-        id: 'brainapps', 
-        title: 'Brain Training', 
-        icon: '🧠', 
-        color: 'from-violet-500 to-purple-600',
-        instruction: 'Try brain training exercises from apps like Lumosity, BrainHQ, and Elevate to keep your mind sharp.'
-      }
-    ]
-  };
-
-  const openGame = (game: typeof games.topRow[0]) => {
+  const openGame = (game: typeof GAMES[0]) => {
     setSelectedGame(game);
     setGameDialogOpen(true);
+  };
+
+  const handlePlayGame = () => {
+    setGameDialogOpen(false);
+    if (selectedGame) {
+      alert(`🎮 Let's play ${selectedGame.title}!\n\n${selectedGame.instruction}`);
+    }
   };
 
   return (
     <div className={`min-h-screen transition-all duration-1000 ${getBackgroundClass()}`}>
       <div className="space-y-6 p-6">
+        {/* Main Welcome Card with Weather */}
         <motion.div
           initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -713,6 +496,7 @@ export default function PatientHome() {
           </Card>
         </motion.div>
 
+        {/* People Who Love You Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -825,6 +609,7 @@ export default function PatientHome() {
           </div>
         </motion.div>
 
+        {/* Things to Help You Feel Better */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -867,7 +652,7 @@ export default function PatientHome() {
           </div>
         </motion.div>
 
-        {/* GAMES SECTION - 4x2 rectangular playing card style */}
+        {/* GAMES SECTION - 4x2 Rectangular Playing Card Style */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -875,36 +660,21 @@ export default function PatientHome() {
         >
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-bold text-charcoal flex items-center gap-2">
-              <span className="text-2xl">🎮</span>
+              <Gamepad2 className="w-5 h-5 text-warm-bronze" />
               Games & Brain Training
             </h3>
             <span className="text-xs text-medium-gray">Fun activities to keep your mind active</span>
           </div>
           
-          {/* Top row - 4 games */}
-          <div className="grid grid-cols-4 gap-4 mb-4">
-            {games.topRow.map((game, idx) => (
-              <GameCard key={game.id} game={game} onClick={() => openGame(game)} />
-            ))}
-          </div>
-          
-          {/* Bottom row - 4 games */}
+          {/* 4x2 Grid - 4 across, 2 down */}
           <div className="grid grid-cols-4 gap-4">
-            {games.bottomRow.map((game, idx) => (
+            {GAMES.map((game, idx) => (
               <GameCard key={game.id} game={game} onClick={() => openGame(game)} />
             ))}
           </div>
         </motion.div>
 
-        {/* Today's Progress - Mood Graph */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.5 }}
-        >
-          <MoodProgressGraph moodEntries={state.moodEntries ?? []} />
-        </motion.div>
-
+        {/* Emergency Button */}
         <motion.button
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
@@ -920,8 +690,10 @@ export default function PatientHome() {
           game={selectedGame}
           open={gameDialogOpen}
           onClose={() => setGameDialogOpen(false)}
+          onPlay={handlePlayGame}
         />
 
+        {/* Familiar Face Dialog */}
         <Dialog open={!!selectedFace} onOpenChange={() => setSelectedFace(null)}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -976,6 +748,7 @@ export default function PatientHome() {
           </DialogContent>
         </Dialog>
 
+        {/* Slideshow Dialog */}
         <Dialog open={showSlideshow} onOpenChange={() => { setShowSlideshow(false); setSlideshowAuto(false); }}>
           <DialogContent className="sm:max-w-2xl max-h-[90vh]">
             <DialogHeader>
