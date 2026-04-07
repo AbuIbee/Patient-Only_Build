@@ -108,25 +108,51 @@ export default function LandingPage() {
             </p>
           </motion.div>
 
-          {/* Visual card */}
+          {/* Brand story card */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-gradient-to-br from-warm-bronze/20 to-calm-blue/20 rounded-3xl p-8"
+            className="bg-gradient-to-br from-warm-bronze/10 to-calm-blue/10 rounded-3xl p-8 space-y-5"
           >
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white p-6 rounded-xl">
-                <p className="text-xl font-bold">10:30 AM</p>
-                <p className="text-sm text-medium-gray">Monday</p>
-              </div>
-              <div className="bg-white p-6 rounded-xl">
-                <p className="text-xl font-bold">✔ On Track</p>
-                <p className="text-sm text-medium-gray">Daily progress</p>
-              </div>
-              <div className="bg-white p-6 rounded-xl col-span-2">
-                <p className="text-charcoal font-semibold">"You are safe. You are at home."</p>
-              </div>
+            {/* Opening line */}
+            <p className="text-lg font-semibold text-charcoal leading-snug">
+              My Memoria Ally was created for the{' '}
+              <span className="text-warm-bronze">quiet heroes</span> — the daughters, sons,
+              husbands, and wives who wake up every day ready to care for an aging loved one.
+            </p>
+
+            <p className="text-medium-gray leading-relaxed">
+              We know you're not a doctor or a nurse. You're just someone who loves deeply
+              and wants to do right by them. That's where we come in.
+            </p>
+
+            {/* Feature pills */}
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { icon: '💊', text: 'Medication reminders' },
+                { icon: '🩺', text: 'Doctor visit tracking' },
+                { icon: '💛', text: 'Mood & symptom log' },
+                { icon: '💬', text: 'Message your care team' },
+              ].map(item => (
+                <div key={item.text} className="bg-white rounded-xl px-4 py-3 flex items-center gap-2 shadow-sm">
+                  <span className="text-lg leading-none">{item.icon}</span>
+                  <span className="text-sm font-medium text-charcoal">{item.text}</span>
+                </div>
+              ))}
             </div>
+
+            {/* Closer */}
+            <div className="bg-warm-bronze/10 rounded-2xl px-5 py-4 border border-warm-bronze/20">
+              <p className="text-sm text-charcoal leading-relaxed">
+                For <strong>senior living facilities</strong>, My Memoria Ally extends your care
+                outside your walls. Families feel supported. Nurses spend less time on repeat
+                questions. Your brand becomes the one families trust for life.
+              </p>
+            </div>
+
+            <p className="text-sm text-warm-bronze font-semibold text-center italic">
+              "Because memory is precious. And so are you."
+            </p>
           </motion.div>
         </div>
       </section>
