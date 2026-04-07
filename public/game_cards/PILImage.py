@@ -8,8 +8,8 @@ SOURCE_IMAGE = "GoodImages.png"
 OUTPUT_DIR = "cards_output"
 
 # final app image size
-FINAL_WIDTH = 600
-FINAL_HEIGHT = 900
+FINAL_WIDTH = 900
+FINAL_HEIGHT = 1200
 
 # card names in reading order:
 # top row left -> right, then bottom row left -> right
