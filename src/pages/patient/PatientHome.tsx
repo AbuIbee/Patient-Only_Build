@@ -168,14 +168,19 @@ function GameCard({ game, onClick }: { game: typeof GAMES[0]; onClick: () => voi
       whileHover={{ scale: 1.04, y: -2 }}
       whileTap={{ scale: 0.97 }}
       onClick={onClick}
-      className="group bg-white rounded-xl border border-soft-taupe/50 shadow-sm hover:shadow-md transition-all p-1.5 flex flex-col items-center text-center gap-1 relative overflow-hidden"
+      className="group bg-white rounded-lg border border-soft-taupe/50 shadow-sm hover:shadow-md transition-all p-1.5 flex flex-col items-center text-center gap-1 relative overflow-hidden"
     >
-      {/* Game Icon — 30% smaller than w-20: use w-14 h-14 */}
-      <div className={`w-14 h-14 rounded-lg bg-gradient-to-br ${game.color} flex items-center justify-center text-2xl shadow-sm group-hover:scale-105 transition-transform duration-200`}>
+      {/* Decorative corner accents */}
+      <div className="absolute top-1 left-1 text-[8px] font-serif text-soft-taupe/40">♠</div>
+      <div className="absolute bottom-1 right-1 text-[8px] font-serif text-soft-taupe/40 rotate-180">♠</div>
+
+      {/* Game Icon — 30% smaller than w-20 */}
+      <div className={`w-14 h-14 rounded-lg bg-gradient-to-br ${game.color} flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform duration-200`}>
         {game.icon}
       </div>
+
       {/* Game Title */}
-      <p className="text-[10px] font-bold text-charcoal leading-tight tracking-wide px-0.5">{game.title}</p>
+      <p className="text-[10px] font-bold text-charcoal leading-tight px-0.5">{game.title}</p>
     </motion.button>
   );
 }
@@ -661,7 +666,7 @@ export default function PatientHome() {
           </div>
           
           {/* 4x2 Grid - 4 across, 2 down */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-4 gap-4">
             {GAMES.map((game, idx) => (
               <GameCard key={game.id} game={game} onClick={() => openGame(game)} />
             ))}
