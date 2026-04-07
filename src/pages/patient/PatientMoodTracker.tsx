@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Wind, Music, BookOpen, Sun, TrendingUp, Clock, Calendar, BarChart3, ChevronLeft, ChevronRight, Activity, Utensils, Droplets, Shield, Brain, Heart, ThumbsUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { ADLProgressChart} from "@/components/charts/ADLProgressChart";
+import ADLProgressChart from "@/components/charts/ADLProgressChart";
 import { format, subDays, subWeeks, subMonths, isSameDay, parseISO } from 'date-fns';
 import type { MoodType } from '@/types';
 
@@ -188,7 +188,7 @@ function SectionCombinedGraph({
   <ADLProgressChart />
 </div>
 
-  
+
   const PAD_L  = 36;   // Y-axis: just tick numbers, not category names
   const PAD_R  = 16;
   const PAD_T  = 20;
