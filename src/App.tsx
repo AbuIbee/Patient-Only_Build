@@ -173,7 +173,7 @@ function AppContent() {
   useEffect(() => {
     if (!state.isAuthenticated || isPublicPatientIntakeRoute) return;
 
-    const TIMEOUT = 5 * 60 * 1000; // HIPAA: 5-minute inactivity logout
+    const TIMEOUT = 10 * 60 * 1000; // 10-minute inactivity logout
     let timeoutId: ReturnType<typeof setTimeout>;
 
     const resetTimeout = () => {

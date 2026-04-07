@@ -14,7 +14,6 @@ import PatientEmergencyContacts from './PatientEmergencyContacts';
 import PatientGames from './PatientGames';
 import PatientIntakeForm from './PatientIntakeForm';
 import PatientCareTeam from './PatientCareTeam';
-import PatientProgressTimeline from './PatientProgressTimeline';
 import MediaUploader from '@/components/MediaUploader';
 import {
   LayoutDashboard, Calendar, Pill, FileText, Bell,
@@ -37,12 +36,10 @@ type PatientView =
   | 'emergency_contacts'
   | 'careteam'
   | 'media'
-  | 'games'
-  | 'progress_timeline';
+  | 'games';
 
 export default function PatientLayout() {
   const [currentView, setCurrentView] = useState<PatientView>('dashboard');
-  const [initialGame, setInitialGame] = useState<string | undefined>(undefined);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -54,7 +51,6 @@ export default function PatientLayout() {
   const hour = new Date().getHours();
   const isSundowningTime = hour >= 16 && hour <= 19;
   const isEvening = hour >= 19;
-  const [simplifiedMode, setSimplifiedMode] = useState(false);
   const [intakeCompleted, setIntakeCompleted] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -265,7 +261,7 @@ export default function PatientLayout() {
     { id: 'intake'             as PatientView, label: 'Patient Intake Form',  icon: ClipboardPlus },
     { id: 'emergency_contacts' as PatientView, label: 'Emergency Contacts',   icon: Phone },
     { id: 'memories'           as PatientView, label: 'Family',               icon: Users },
-    { id: 'mood'               as PatientView, label: 'Feeling Timeline',      icon: Smile },
+    { id: 'mood'               as PatientView, label: 'How I Feel',           icon: Smile },
     { id: 'reminders'          as PatientView, label: 'Reminders',            icon: Bell },
   ];
 
@@ -274,8 +270,7 @@ export default function PatientLayout() {
     { id: 'routines'    as PatientView, label: 'My Day',         icon: Calendar },
     { id: 'documents'   as PatientView, label: 'Papers',         icon: FileText },
     { id: 'media'       as PatientView, label: 'Videos & Media', icon: Film },
-    { id: 'games'              as PatientView, label: 'Memory Games',   icon: Gamepad2 },
-    { id: 'progress_timeline'  as PatientView, label: 'Patient Progress', icon: ClipboardCheck },
+    { id: 'games'       as PatientView, label: 'Memory Games',   icon: Gamepad2 },
   ];
 
   const allNavItems = [...navItems, ...moreNavItems];
@@ -283,7 +278,7 @@ export default function PatientLayout() {
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
-        return <PatientHome onNavigateToGame={(id) => { setInitialGame(id); setCurrentView('games'); }} />;
+        return <PatientHome />;
       case 'medications':
         return <PatientMedications />;
       case 'routines':
@@ -307,9 +302,7 @@ export default function PatientLayout() {
       case 'media':
         return <MediaUploader readOnly={false} patientId={state.currentUser?.id} />;
       case 'games':
-        return <PatientGames initialGame={initialGame as any} key={initialGame || 'default'} onNavigateHome={() => { setInitialGame(undefined); setCurrentView('dashboard'); }} />;
-      case 'progress_timeline':
-        return <PatientProgressTimeline />;
+        return <PatientGames />;
       default:
         return <PatientHome />;
     }
@@ -347,7 +340,7 @@ export default function PatientLayout() {
   return (
     <div className="h-screen bg-warm-ivory flex overflow-hidden">
       <aside
-        className={`fixed left-0 top-0 bottom-0 ${getSidebarBg()} border-r border-soft-taupe z-40 transition-all duration-300 hidden md:flex flex-col ${sidebarCollapsed || simplifiedMode ? 'w-20' : 'w-64'}`}
+        className={`fixed left-0 top-0 bottom-0 ${getSidebarBg()} border-r border-soft-taupe z-40 transition-all duration-300 hidden md:flex flex-col ${sidebarCollapsed ? 'w-20' : 'w-64'}`}
       >
         <div className="h-14 flex items-center px-4 border-b border-soft-taupe flex-shrink-0">
           <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center flex-shrink-0">
@@ -396,10 +389,10 @@ export default function PatientLayout() {
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isActive ? 'bg-warm-bronze/15 text-charcoal font-semibold' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}
               >
                 <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-warm-bronze' : ''}`} />
-                {!sidebarCollapsed && !simplifiedMode && (
+                {!sidebarCollapsed && (
                   <span className="font-medium text-sm">{item.label}</span>
                 )}
-                {isActive && !sidebarCollapsed && !simplifiedMode && (
+                {isActive && !sidebarCollapsed && (
                   <motion.div
                     layoutId="activeIndicator"
                     className="ml-auto w-2 h-2 bg-white rounded-full"
@@ -414,10 +407,10 @@ export default function PatientLayout() {
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${showMoreMenu ? 'bg-calm-blue/20 text-calm-blue' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}
           >
             <MoreHorizontal className="w-5 h-5 flex-shrink-0" />
-            {!sidebarCollapsed && !simplifiedMode && (
+            {!sidebarCollapsed && (
               <span className="font-medium text-sm">More</span>
             )}
-            {!sidebarCollapsed && !simplifiedMode && (
+            {!sidebarCollapsed && (
               <motion.div animate={{ rotate: showMoreMenu ? 180 : 0 }} className="ml-auto">
                 <ChevronRight className="w-4 h-4" />
               </motion.div>
@@ -478,22 +471,6 @@ export default function PatientLayout() {
           </button>
 
           <button
-            onClick={() => setSimplifiedMode(!simplifiedMode)}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-medium-gray hover:bg-soft-taupe transition-colors"
-          >
-            {simplifiedMode ? (
-              <Sun className="w-5 h-5 flex-shrink-0" />
-            ) : (
-              <Moon className="w-5 h-5 flex-shrink-0" />
-            )}
-            {!sidebarCollapsed && (
-              <span className="font-medium text-sm">
-                {simplifiedMode ? 'Normal Mode' : 'Simplified Mode'}
-              </span>
-            )}
-          </button>
-
-          <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-gentle-coral hover:bg-gentle-coral/10 transition-colors"
           >
@@ -503,7 +480,7 @@ export default function PatientLayout() {
         </div>
       </aside>
 
-      <main className={`flex-1 transition-all duration-300 ${sidebarCollapsed || simplifiedMode ? 'md:ml-20' : 'md:ml-64'} overflow-y-auto pb-16 md:pb-0`}>
+      <main className={`flex-1 transition-all duration-300 ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} overflow-y-auto pb-16 md:pb-0`}>
         <div className="min-h-screen">
           {isSundowningTime && (
             <div className="bg-warm-amber/10 border-b border-warm-amber/20 px-4 py-3">
@@ -512,16 +489,7 @@ export default function PatientLayout() {
                   <p className="text-sm font-medium text-charcoal">
                     Evening hours can feel harder. Everything is okay.
                   </p>
-                  <p className="text-xs text-medium-gray">
-                    You can switch to a calmer, simpler view at any time.
-                  </p>
                 </div>
-                <button
-                  onClick={() => setSimplifiedMode(!simplifiedMode)}
-                  className="px-4 py-2 bg-warm-bronze text-white rounded-xl text-sm font-medium hover:opacity-90 transition-opacity"
-                >
-                  {simplifiedMode ? 'Turn Off Simple View' : 'Turn On Simple View'}
-                </button>
               </div>
             </div>
           )}
