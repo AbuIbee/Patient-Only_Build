@@ -340,15 +340,6 @@ function SectionCombinedGraph({
       )}
     </div>
   );
-
-<div className="bg-white rounded-xl p-6 shadow">
-  <h2 className="text-lg font-semibold mb-4">
-    A — Daily Function
-  </h2>
-
-  <ADLProgressChart />
-</div>
-
 }
 
 
@@ -681,6 +672,89 @@ export default function PatientProgressTimeline() {
   const sectionGMetrics = [
     { key: 'sy_symptoms', label: 'Symptoms Present', color: '#dc2626' },
   ];
+
+
+return (
+  <div className="space-y-6">
+
+    {/* A — Daily Function */}
+    <ADLProgressChart
+      title="A — Daily Function"
+      patientId={state.currentUser?.id}
+      metrics={[
+        { key: "fn_dressing", label: "Dressing", color: "#2563eb" },
+        { key: "fn_bathing", label: "Bathing", color: "#16a34a" },
+        { key: "fn_toileting", label: "Toileting", color: "#dc2626" },
+        { key: "fn_transfers", label: "Transfers", color: "#7c3aed" },
+        { key: "fn_mobility", label: "Mobility", color: "#ea580c" },
+        { key: "fn_medication", label: "Medication", color: "#0891b2" }
+      ]}
+    />
+
+    {/* B — Nutrition */}
+    <ADLProgressChart
+      title="B — Nutrition & Hydration"
+      patientId={state.currentUser?.id}
+      metrics={[
+        { key: "nu_appetite", label: "Appetite", color: "#22c55e" },
+        { key: "nu_meal_pct", label: "Meal %", color: "#3b82f6" },
+        { key: "nu_fluids", label: "Fluids", color: "#06b6d4" },
+        { key: "nu_swallowing", label: "Swallowing", color: "#f97316" }
+      ]}
+    />
+
+    {/* C — Continence */}
+    <ADLProgressChart
+      title="C — Continence"
+      patientId={state.currentUser?.id}
+      metrics={[
+        { key: "co_urinary", label: "Urinary", color: "#2563eb" },
+        { key: "co_bowel", label: "Bowel", color: "#16a34a" },
+        { key: "co_skin", label: "Skin", color: "#dc2626" }
+      ]}
+    />
+
+    {/* D — Safety */}
+    <ADLProgressChart
+      title="D — Safety Events"
+      patientId={state.currentUser?.id}
+      metrics={[
+        { key: "sa_falls", label: "Falls", color: "#ef4444" },
+        { key: "sa_wandering", label: "Wandering", color: "#f97316" },
+        { key: "sa_safety_concerns", label: "Safety Concerns", color: "#8b5cf6" }
+      ]}
+    />
+
+    {/* E — Behavior */}
+    <ADLProgressChart
+      title="E — Behavior"
+      patientId={state.currentUser?.id}
+      metrics={[
+        { key: "be_behaviors", label: "Behaviors", color: "#ec4899" }
+      ]}
+    />
+
+    {/* F — Mood */}
+    <ADLProgressChart
+      title="F — Mood & Social"
+      patientId={state.currentUser?.id}
+      metrics={[
+        { key: "mo_mood", label: "Mood", color: "#06b6d4" },
+        { key: "mo_sleep", label: "Sleep", color: "#6366f1" }
+      ]}
+    />
+
+    {/* G — Symptoms */}
+    <ADLProgressChart
+      title="G — Symptoms"
+      patientId={state.currentUser?.id}
+      metrics={[
+        { key: "sy_symptoms", label: "Symptoms", color: "#f43f5e" }
+      ]}
+    />
+
+  </div>
+);
 
   if (loading) {
     return (

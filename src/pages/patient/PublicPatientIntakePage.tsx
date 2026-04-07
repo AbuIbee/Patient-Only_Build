@@ -56,11 +56,11 @@ export default function PublicPatientIntakePage() {
     // Medications
     medicationsAndDosage: '',
 
-    // Emergency Contact
-    emergencyContactFullName: '',
-    emergencyContactPhone: '',
-    emergencyContactEmail: '',
-    emergencyContactRelationship: '',
+    // Closest Relative
+    closestRelativeFullName: '',
+    closestRelativePhone: '',
+    closestRelativeEmail: '',
+    closestRelativeRelationship: '',
   });
 
   const handleInputChange = (field: keyof PatientIntakeFormData, value: string) => {
@@ -133,10 +133,10 @@ export default function PublicPatientIntakePage() {
         caregiverRelationship: '',
         caregiverPhone: '',
         medicationsAndDosage: '',
-        emergencyContactFullName: '',
-        emergencyContactPhone: '',
-        emergencyContactEmail: '',
-        emergencyContactRelationship: '',
+        closestRelativeFullName: '',
+        closestRelativePhone: '',
+        closestRelativeEmail: '',
+        closestRelativeRelationship: '',
       });
 
       console.log('Public intake submitted:', intakeId);
@@ -470,50 +470,50 @@ export default function PublicPatientIntakePage() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Phone className="w-5 h-5 text-warm-bronze" />
-                Emergency Contact
+                Closest Relative Contact
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="emergencyContactFullName">Contact Full Name</Label>
+                <Label htmlFor="closestRelativeFullName">Contact Full Name</Label>
                 <Input
-                  id="emergencyContactFullName"
-                  value={formData.emergencyContactFullName}
-                  onChange={(e) => handleInputChange('emergencyContactFullName', e.target.value)}
-                  placeholder="Emergency contact name"
+                  id="closestRelativeFullName"
+                  value={formData.closestRelativeFullName}
+                  onChange={(e) => handleInputChange('closestRelativeFullName', e.target.value)}
+                  placeholder="Closest Relative contact name"
                 />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="emergencyContactPhone">Contact Phone Number</Label>
+                  <Label htmlFor="closestRelativePhone">Contact Phone Number</Label>
                   <Input
-                    id="emergencyContactPhone"
+                    id="closestRelativePhone"
                     type="tel"
-                    value={formData.emergencyContactPhone}
-                    onChange={(e) => handleInputChange('emergencyContactPhone', e.target.value)}
+                    value={formData.closestRelativePhone}
+                    onChange={(e) => handleInputChange('closestRelativePhone', e.target.value)}
                     placeholder="(555) 123-4567"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="emergencyContactEmail">Contact Email Address</Label>
+                  <Label htmlFor="closestRelativeEmail">Contact Email Address</Label>
                   <Input
-                    id="emergencyContactEmail"
+                    id="closestRelativeEmail"
                     type="email"
-                    value={formData.emergencyContactEmail}
-                    onChange={(e) => handleInputChange('emergencyContactEmail', e.target.value)}
+                    value={formData.closestRelativeEmail}
+                    onChange={(e) => handleInputChange('closestRelativeEmail', e.target.value)}
                     placeholder="contact@example.com"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="emergencyContactRelationship">Relationship</Label>
+                <Label htmlFor="closestRelativeRelationship">Relationship</Label>
                 <Input
-                  id="emergencyContactRelationship"
-                  value={formData.emergencyContactRelationship}
-                  onChange={(e) => handleInputChange('emergencyContactRelationship', e.target.value)}
-                  placeholder="e.g., Family friend, Neighbor"
+                  id="closestRelativeRelationship"
+                  value={formData.closestRelativeRelationship}
+                  onChange={(e) => handleInputChange('closestRelativeRelationship', e.target.value)}
+                  placeholder="e.g., Son, Daughter, Parent"
                 />
               </div>
             </CardContent>
