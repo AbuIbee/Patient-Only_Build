@@ -127,7 +127,8 @@ function scoreMetric(row: any, key: string): number | null {
   return map ? (map[raw] ?? null) : null;
 }
 
-// One combined graph: Y-axis rows = metric names, X-axis = dates, lines per metric
+// CORRECTED: X-axis = timeline (dates), Y-axis = categories (metrics)
+// Each metric gets its own line across time
 function SectionGraph({ section, rows, allDates }: {
   section: SectionDef; rows: any[]; allDates: string[];
 }) {
@@ -155,143 +156,260 @@ function SectionGraph({ section, rows, allDates }: {
     );
   }
 
-  const N = section.metrics.length;
-  const ROW_H = 46;
-  const LEFT_W = 84;
-  const RIGHT_PAD = 14;
-  const TOP_PAD = 10;
-  const BOT_PAD = 26;
-  const CHART_W = 300;
-  const SVG_W = LEFT_W + CHART_W + RIGHT_PAD;
-  const SVG_H = TOP_PAD + N * ROW_H + BOT_PAD;
-
-  const xOf = (i: number) =>
-    allDates.length <= 1 ? CHART_W / 2 : (i / (allDates.length - 1)) * CHART_W;
-
-  const yCentre = (mi: number) => TOP_PAD + mi * ROW_H + ROW_H / 2;
-
-  // Map score 1-4 to y within the row band (leave 6px margin top/bottom)
-  const yOfScore = (mi: number, s: number) => {
-    const top = TOP_PAD + mi * ROW_H + 6;
-    const bot = TOP_PAD + mi * ROW_H + ROW_H - 6;
-    return bot - ((s - 1) / 3) * (bot - top);
+  const N = allDates.length; // X-axis points
+  const M = section.metrics.length; // Y-axis rows (categories)
+  
+  // Chart dimensions
+  const LEFT_MARGIN = 72;  // Space for Y-axis labels (category names)
+  const RIGHT_MARGIN = 16;
+  const TOP_MARGIN = 16;
+  const BOTTOM_MARGIN = 32; // Space for X-axis date labels
+  const ROW_HEIGHT = 38;     // Height per category row
+  
+  const CHART_WIDTH = 420;   // Width of the plotting area
+  const TOTAL_WIDTH = LEFT_MARGIN + CHART_WIDTH + RIGHT_MARGIN;
+  const TOTAL_HEIGHT = TOP_MARGIN + M * ROW_HEIGHT + BOTTOM_MARGIN;
+  
+  // X position for each date (timeline)
+  const xPos = (idx: number) => 
+    N === 1 ? CHART_WIDTH / 2 : (idx / (N - 1)) * CHART_WIDTH;
+  
+  // Y position for each category row center
+  const yCenter = (metricIdx: number) => 
+    TOP_MARGIN + metricIdx * ROW_HEIGHT + ROW_HEIGHT / 2;
+  
+  // Y position for a specific score value within a row (1-4 scale)
+  const yForScore = (metricIdx: number, score: number) => {
+    const rowTop = TOP_MARGIN + metricIdx * ROW_HEIGHT;
+    const rowBottom = rowTop + ROW_HEIGHT;
+    // Score 4 = top of row, Score 1 = bottom of row
+    return rowBottom - ((score - 1) / 3) * ROW_HEIGHT;
   };
 
-  // Up to 5 x-axis labels
-  const nLabels = Math.min(allDates.length, allDates.length <= 7 ? allDates.length : 5);
-  const xLabelIdx = Array.from({ length: nLabels }, (_, i) =>
-    Math.round(i * (allDates.length - 1) / Math.max(nLabels - 1, 1))
-  );
+  // Select which dates to show labels for (max 6)
+  const labelIndices = [];
+  if (N <= 6) {
+    for (let i = 0; i < N; i++) labelIndices.push(i);
+  } else {
+    const step = (N - 1) / 5;
+    for (let i = 0; i <= 5; i++) {
+      labelIndices.push(Math.round(i * step));
+    }
+  }
 
-  const gid = (key: string) => `g${key.replace(/[^a-z0-9]/gi, '')}`;
+  // Score legend (1-4)
+  const scoreLabels = [
+    { value: 4, label: 'Excellent', y: TOP_MARGIN - 8 },
+    { value: 3, label: 'Good', y: TOP_MARGIN + (ROW_HEIGHT * M) / 4 - 8 },
+    { value: 2, label: 'Fair', y: TOP_MARGIN + (ROW_HEIGHT * M) / 2 - 8 },
+    { value: 1, label: 'Needs Support', y: TOP_MARGIN + (ROW_HEIGHT * M) * 0.75 - 8 },
+  ];
 
   return (
-    <div className="overflow-x-auto -mx-1">
-      <svg width={SVG_W} height={SVG_H} className="block mx-auto">
-        <defs>
-          {metricSeries.map(m => (
-            <linearGradient key={m.key} id={gid(m.key)} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={m.color} stopOpacity="0.2" />
-              <stop offset="100%" stopColor={m.color} stopOpacity="0" />
-            </linearGradient>
-          ))}
-        </defs>
-
-        {/* Row backgrounds + separators + Y-axis labels */}
-        {section.metrics.map((m, mi) => {
-          const rowTop = TOP_PAD + mi * ROW_H;
-          const yc = yCentre(mi);
+    <div className="overflow-x-auto">
+      <svg width={TOTAL_WIDTH} height={TOTAL_HEIGHT} className="block mx-auto" style={{ fontFamily: 'system-ui, sans-serif' }}>
+        
+        {/* Background grid - horizontal lines between rows */}
+        {Array.from({ length: M + 1 }, (_, i) => {
+          const y = TOP_MARGIN + i * ROW_HEIGHT;
           return (
-            <g key={m.key}>
-              {mi % 2 === 1 && (
-                <rect x={LEFT_W} y={rowTop} width={CHART_W + RIGHT_PAD} height={ROW_H}
-                  fill="rgba(0,0,0,0.016)" />
-              )}
-              <line x1={LEFT_W} y1={rowTop} x2={LEFT_W + CHART_W + RIGHT_PAD} y2={rowTop}
-                stroke="#ece8e0" strokeWidth="1" />
-              {/* mid-row dashed guide */}
-              <line x1={LEFT_W} y1={yc} x2={LEFT_W + CHART_W} y2={yc}
-                stroke="#ece8e0" strokeWidth="0.5" strokeDasharray="3,5" />
-              {/* colour dot */}
-              <circle cx={LEFT_W - 10} cy={yc} r="3.5" fill={m.color} />
-              {/* label */}
-              <text x={LEFT_W - 17} y={yc + 4} textAnchor="end"
-                fontSize="10" fontWeight="500" fill="#706b65">{m.label}</text>
+            <line
+              key={`grid-${i}`}
+              x1={LEFT_MARGIN}
+              y1={y}
+              x2={LEFT_MARGIN + CHART_WIDTH}
+              y2={y}
+              stroke="#e5e0d5"
+              strokeWidth="0.8"
+              strokeDasharray={i === 0 || i === M ? "0" : "4,4"}
+            />
+          );
+        })}
+        
+        {/* Vertical grid lines for dates */}
+        {labelIndices.map(idx => {
+          const x = LEFT_MARGIN + xPos(idx);
+          return (
+            <line
+              key={`vline-${idx}`}
+              x1={x}
+              y1={TOP_MARGIN}
+              x2={x}
+              y2={TOP_MARGIN + M * ROW_HEIGHT}
+              stroke="#e5e0d5"
+              strokeWidth="0.5"
+              strokeDasharray="3,3"
+            />
+          );
+        })}
+        
+        {/* Y-axis category labels */}
+        {section.metrics.map((metric, idx) => {
+          const y = yCenter(idx);
+          return (
+            <g key={metric.key}>
+              {/* Color dot */}
+              <circle cx={LEFT_MARGIN - 12} cy={y} r="4" fill={metric.color} />
+              {/* Label text */}
+              <text
+                x={LEFT_MARGIN - 18}
+                y={y + 4}
+                textAnchor="end"
+                fontSize="10"
+                fontWeight="500"
+                fill="#5a5a5a"
+              >
+                {metric.label}
+              </text>
             </g>
           );
         })}
-        {/* Bottom separator */}
-        <line x1={LEFT_W} y1={TOP_PAD + N * ROW_H}
-          x2={LEFT_W + CHART_W + RIGHT_PAD} y2={TOP_PAD + N * ROW_H}
-          stroke="#ece8e0" strokeWidth="1" />
-
-        {/* Vertical date grid lines */}
-        {xLabelIdx.map(di => (
-          <line key={di}
-            x1={LEFT_W + xOf(di)} y1={TOP_PAD}
-            x2={LEFT_W + xOf(di)} y2={TOP_PAD + N * ROW_H}
-            stroke="#ece8e0" strokeWidth="0.5" strokeDasharray="2,5" />
-        ))}
-
-        {/* Lines + dots per metric */}
-        {metricSeries.map((m, mi) => {
-          const pts = m.scores.map((s, i) => ({
-            x: LEFT_W + xOf(i),
-            y: s !== null ? yOfScore(mi, s) : null,
-            s,
-          }));
-
-          // Build path string with gaps at nulls
-          const segments: string[] = [];
-          let cur = '';
-          pts.forEach(pt => {
-            if (pt.y === null) {
-              if (cur) { segments.push(cur); cur = ''; }
-            } else {
-              cur += cur ? ` L${pt.x.toFixed(1)},${pt.y.toFixed(1)}` : `M${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
-            }
-          });
-          if (cur) segments.push(cur);
-
-          // Area fill
-          const valid = pts.filter(p => p.y !== null) as { x: number; y: number }[];
-          const rowBot = TOP_PAD + mi * ROW_H + ROW_H - 6;
-          let area = '';
-          if (valid.length >= 2) {
-            area = valid.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-              + ` L${valid[valid.length - 1].x.toFixed(1)},${rowBot}`
-              + ` L${valid[0].x.toFixed(1)},${rowBot} Z`;
-          }
-
+        
+        {/* Score value guide lines (horizontal dotted lines within each row) */}
+        {[1, 2, 3, 4].map(score => {
+          const y = TOP_MARGIN + M * ROW_HEIGHT - ((score - 1) / 3) * (M * ROW_HEIGHT);
           return (
-            <g key={m.key}>
-              {area && <path d={area} fill={`url(#${gid(m.key)})`} />}
-              {segments.map((d, i) => (
-                <path key={i} d={d} fill="none" stroke={m.color}
-                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              ))}
-              {pts.map((pt, i) => pt.y !== null ? (
-                <g key={i}>
-                  <circle cx={pt.x} cy={pt.y as number} r="5" fill={m.color} opacity="0.15" />
-                  <circle cx={pt.x} cy={pt.y as number} r="3" fill={m.color} stroke="white" strokeWidth="1.5" />
-                </g>
-              ) : null)}
-            </g>
+            <line
+              key={`score-guide-${score}`}
+              x1={LEFT_MARGIN - 25}
+              y1={y}
+              x2={LEFT_MARGIN - 5}
+              y2={y}
+              stroke="#c0c0c0"
+              strokeWidth="0.5"
+              strokeDasharray="2,2"
+            />
           );
         })}
-
-        {/* X-axis date labels */}
-        {xLabelIdx.map(di => (
-          <text key={di}
-            x={LEFT_W + xOf(di)} y={TOP_PAD + N * ROW_H + 18}
-            textAnchor="middle" fontSize="9" fill="#9a9490">
-            {new Date(allDates[di] + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        
+        {/* Score legend on left side */}
+        <text x={LEFT_MARGIN - 45} y={scoreLabels[0].y} fontSize="8" fill="#888" textAnchor="start">↑ Better</text>
+        {scoreLabels.map(s => (
+          <text key={s.value} x={LEFT_MARGIN - 42} y={s.y} fontSize="7" fill="#999" textAnchor="start">
+            {s.label}
           </text>
         ))}
+        
+        {/* Draw lines and points for each metric */}
+        {metricSeries.map((metric, metricIdx) => {
+          // Build line path
+          let pathD = '';
+          let firstPoint = true;
+          
+          metric.scores.forEach((score, dateIdx) => {
+            if (score !== null) {
+              const x = LEFT_MARGIN + xPos(dateIdx);
+              const y = yForScore(metricIdx, score);
+              if (firstPoint) {
+                pathD += `M ${x} ${y}`;
+                firstPoint = false;
+              } else {
+                pathD += ` L ${x} ${y}`;
+              }
+            } else if (!firstPoint) {
+              // Break the line on null values
+              pathD += ` M ${LEFT_MARGIN + xPos(dateIdx)} ${yForScore(metricIdx, 2.5)}`; // temporary, will be overwritten
+            }
+          });
+          
+          // Area under the line
+          let areaD = '';
+          const validPoints: { x: number; y: number }[] = [];
+          metric.scores.forEach((score, dateIdx) => {
+            if (score !== null) {
+              validPoints.push({
+                x: LEFT_MARGIN + xPos(dateIdx),
+                y: yForScore(metricIdx, score),
+              });
+            }
+          });
+          
+          if (validPoints.length >= 2) {
+            const bottomY = TOP_MARGIN + (metricIdx + 1) * ROW_HEIGHT;
+            areaD = validPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') +
+              ` L ${validPoints[validPoints.length - 1].x} ${bottomY}` +
+              ` L ${validPoints[0].x} ${bottomY} Z`;
+          }
+          
+          return (
+            <g key={metric.key}>
+              {/* Area fill */}
+              {areaD && (
+                <path
+                  d={areaD}
+                  fill={metric.color}
+                  fillOpacity="0.12"
+                />
+              )}
+              {/* Line */}
+              {pathD && (
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke={metric.color}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
+              {/* Data points */}
+              {metric.scores.map((score, dateIdx) => {
+                if (score === null) return null;
+                const x = LEFT_MARGIN + xPos(dateIdx);
+                const y = yForScore(metricIdx, score);
+                return (
+                  <g key={`${metric.key}-${dateIdx}`}>
+                    <circle cx={x} cy={y} r="5" fill={metric.color} fillOpacity="0.2" />
+                    <circle cx={x} cy={y} r="3" fill={metric.color} stroke="white" strokeWidth="1.5" />
+                  </g>
+                );
+              })}
+            </g>
+          );
+        })}
+        
+        {/* X-axis date labels */}
+        {labelIndices.map(idx => {
+          const x = LEFT_MARGIN + xPos(idx);
+          const date = allDates[idx];
+          const formatted = new Date(date + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          return (
+            <text
+              key={`xlabel-${idx}`}
+              x={x}
+              y={TOP_MARGIN + M * ROW_HEIGHT + 18}
+              textAnchor="middle"
+              fontSize="9"
+              fill="#888"
+            >
+              {formatted}
+            </text>
+          );
+        })}
+        
+        {/* X-axis label line */}
+        <line
+          x1={LEFT_MARGIN}
+          y1={TOP_MARGIN + M * ROW_HEIGHT}
+          x2={LEFT_MARGIN + CHART_WIDTH}
+          y2={TOP_MARGIN + M * ROW_HEIGHT}
+          stroke="#ccc"
+          strokeWidth="1"
+        />
+        
+        {/* Y-axis line */}
+        <line
+          x1={LEFT_MARGIN}
+          y1={TOP_MARGIN}
+          x2={LEFT_MARGIN}
+          y2={TOP_MARGIN + M * ROW_HEIGHT}
+          stroke="#ccc"
+          strokeWidth="1"
+        />
       </svg>
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 pl-2">
+      
+      {/* Color legend for metrics */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 pl-2">
         {section.metrics.map(m => (
           <span key={m.key} className="flex items-center gap-1 text-[10px] text-medium-gray">
             <span className="w-2.5 h-2.5 rounded-full inline-block flex-shrink-0" style={{ background: m.color }} />
@@ -420,8 +538,8 @@ export default function PatientProgressTimeline() {
       <div className="bg-white rounded-2xl border border-soft-taupe px-4 py-3 shadow-sm flex items-start gap-3">
         <TrendingUp className="w-4 h-4 text-warm-bronze flex-shrink-0 mt-0.5" />
         <p className="text-[11px] text-medium-gray leading-snug">
-          Each section has <strong className="text-charcoal">one graph</strong>. The <strong className="text-charcoal">Y-axis rows</strong> are the individual topics (e.g. Dressing, Bathing…).
-          Lines track scores over time — <span className="font-medium" style={{ color: '#41ab5d' }}>higher = more independent / better</span>. Tap a section to expand.
+          Each graph shows <strong className="text-charcoal">progress over time</strong>. The <strong className="text-charcoal">Y-axis rows</strong> are the individual topics (e.g. Dressing, Bathing…).
+          Lines track scores across dates — <span className="font-medium" style={{ color: '#41ab5d' }}>higher = more independent / better</span>. Tap a section to expand.
         </p>
       </div>
 
