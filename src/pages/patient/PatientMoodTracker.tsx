@@ -111,7 +111,63 @@ interface CheckInData {
   sy_symptoms: string[];
 }
 
-type FilterDays = 7 | 30 | 60 | 90 | 180 | 365;
+type FilterKey = '7d' | '1m' | '2m' | '3m' | '6m' | '1y';
+
+function startOfCurrentWeekSunday(): Date {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  d.setDate(d.getDate() - d.getDay()); // Sunday = 0
+  return d;
+}
+
+function startOfMonthOffset(monthsBack: number): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
+}
+
+function startOfCurrentYear(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), 0, 1);
+}
+
+function getRangeStart(filterKey: FilterKey): Date {
+  switch (filterKey) {
+    case '7d':
+      return startOfCurrentWeekSunday();
+    case '1m':
+      return startOfMonthOffset(0);
+    case '2m':
+      return startOfMonthOffset(1);
+    case '3m':
+      return startOfMonthOffset(2);
+    case '6m':
+      return startOfMonthOffset(5);
+    case '1y':
+      return startOfCurrentYear();
+    default:
+      return startOfCurrentWeekSunday();
+  }
+}
+
+function formatDateKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function buildCalendarDates(filterKey: FilterKey): string[] {
+  const now = new Date();
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const start = getRangeStart(filterKey);
+
+  const dates: string[] = [];
+  const cursor = new Date(start);
+
+  while (cursor <= end) {
+    dates.push(formatDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
+}
 
 // ── SectionCombinedGraph ──────────────────────────────────────────────────────
 function SectionCombinedGraph({
@@ -120,39 +176,26 @@ function SectionCombinedGraph({
   color,
   metrics,
   allCheckIns,
-  filterDays,
+  filterKey,
 }: {
   title: string;
   icon: React.ElementType;
   color: string;
   metrics: { key: string; label: string; color: string }[];
   allCheckIns: CheckInData[];
-  filterDays: FilterDays;
+  filterKey: FilterKey;
 }) {
-  const cutoff = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - filterDays);
-    return d;
-  }, [filterDays]);
+const rangeStart = useMemo(() => getRangeStart(filterKey), [filterKey]);
 
-  const sortedCheckIns = useMemo(
-    () =>
-      allCheckIns
-        .filter(d => new Date(d.check_in_date) >= cutoff)
-        .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date)),
-    [allCheckIns, cutoff]
-  );
+const sortedCheckIns = useMemo(
+  () =>
+    allCheckIns
+      .filter(d => new Date(d.check_in_date + 'T00:00:00') >= rangeStart)
+      .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date)),
+  [allCheckIns, rangeStart]
+);
 
-  const dates = useMemo(() => {
-    const all: string[] = [];
-    const now = new Date();
-    for (let i = filterDays - 1; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      all.push(d.toISOString().slice(0, 10));
-    }
-    return all;
-  }, [filterDays]);
+const dates = useMemo(() => buildCalendarDates(filterKey), [filterKey]);
 
   const byDate = useMemo(() => {
     const m = new Map<string, CheckInData>();
@@ -230,11 +273,11 @@ function SectionCombinedGraph({
     dates.length <= 1 ? PAD_L + CW / 2 : PAD_L + (i / (dates.length - 1)) * CW;
 
   const maxLabels =
-    filterDays === 7 ? 7 :
-    filterDays === 30 ? 6 :
-    filterDays === 60 ? 6 :
-    filterDays === 90 ? 5 :
-    filterDays === 180 ? 6 : 6;
+    filterKey === '7d' ? 7 :
+    filterKey === '1m' ? 6 :
+    filterKey === '2m' ? 6 :
+    filterKey === '3m' ? 6 :
+    filterKey === '6m' ? 6 : 6;
 
   const labelIdx: number[] =
     dates.length <= maxLabels
@@ -246,7 +289,7 @@ function SectionCombinedGraph({
 
   const fmtDate = (d: string) => {
     const dt = new Date(d + 'T12:00');
-    if (filterDays === 7) {
+    if (filterKey === '7d') {
       return dt.toLocaleDateString('en-US', { weekday: 'short' });
     }
     return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -421,26 +464,26 @@ function FilterButtons({
   current,
   onChange,
 }: {
-  current: FilterDays;
-  onChange: (days: FilterDays) => void;
+  current: FilterKey;
+  onChange: (key: FilterKey) => void;
 }) {
-  const filters: { days: FilterDays; label: string }[] = [
-    { days: 7, label: '1 Week' },
-    { days: 30, label: '1 Month' },
-    { days: 60, label: '2 Months' },
-    { days: 90, label: '3 Months' },
-    { days: 180, label: '6 Months' },
-    { days: 365, label: '1 Year' },
+  const filters: { key: FilterKey; label: string }[] = [
+    { key: '7d', label: '1 Week' },
+    { key: '1m', label: '1 Month' },
+    { key: '2m', label: '2 Months' },
+    { key: '3m', label: '3 Months' },
+    { key: '6m', label: '6 Months' },
+    { key: '1y', label: '1 Year' },
   ];
 
   return (
     <div className="flex gap-2 mb-4 flex-wrap justify-end">
       {filters.map(f => (
         <button
-          key={f.days}
-          onClick={() => onChange(f.days)}
+          key={f.key}
+          onClick={() => onChange(f.key)}
           className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
-            current === f.days
+            current === f.key
               ? 'bg-warm-bronze text-white shadow-sm'
               : 'bg-soft-taupe/30 text-medium-gray hover:bg-soft-taupe'
           }`}
@@ -473,7 +516,7 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
     if (view === 'day') return format(baseDate, 'EEEE, MMMM d');
     if (view === 'week') {
       const start = new Date(baseDate);
-      start.setDate(start.getDate() - start.getDay() + 1);
+      start.setDate(start.getDate() - start.getDay());
       return `${format(start, 'MMM d')} – ${format(new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000), 'MMM d, yyyy')}`;
     }
     return format(baseDate, 'MMMM yyyy');
@@ -510,7 +553,7 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
 
   const WeekView = () => {
     const start = new Date(baseDate);
-    start.setDate(start.getDate() - start.getDay() + 1);
+    start.setDate(start.getDate() - start.getDay());
     const days = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
@@ -559,7 +602,7 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
     const lastDay = new Date(year, month + 1, 0);
     const startDow = firstDay.getDay();
     const daysInMonth = lastDay.getDate();
-    const blanks = Array(startDow === 0 ? 6 : startDow - 1).fill(null);
+    const blanks = Array(startDow).fill(null);
     const days = Array.from({ length: daysInMonth }, (_, i) => new Date(year, month, i + 1));
     const allDays = [...blanks, ...days];
 
@@ -572,7 +615,7 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
     return (
       <div>
         <div className="grid grid-cols-7 mb-1">
-          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(d => (
+          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => (
             <div key={d} className="text-center text-xs font-semibold text-medium-gray py-1">
               {d}
             </div>
@@ -677,7 +720,7 @@ export default function PatientMoodTracker() {
   const [moodNote, setMoodNote] = useState('');
   const [showCalmTools, setShowCalmTools] = useState(false);
   const [checkInData, setCheckInData] = useState<CheckInData[]>([]);
-  const [filterDays, setFilterDays] = useState<FilterDays>(30);
+  const [filterDays, setFilterDays] = useState<FilterDays>('1m');
   const [loading, setLoading] = useState(true);
 
   const moodEntries = state.moodEntries ?? [];
@@ -971,7 +1014,7 @@ useEffect(() => {
             <Activity className="w-5 h-5 text-warm-bronze" />
             <h2 className="text-lg font-bold text-charcoal">Care Partner Progress</h2>
           </div>
-          <FilterButtons current={filterDays} onChange={setFilterDays} />
+          <FilterButtons current={filterKey} onChange={setFilterKey} />
         </div>
 
         <p className="text-xs text-medium-gray mb-4">
@@ -984,7 +1027,7 @@ useEffect(() => {
           color="bg-warm-bronze"
           metrics={sectionAMetrics}
           allCheckIns={checkInData}
-          filterDays={filterDays}
+          filterKey={filterKey}
         />
 
         <SectionCombinedGraph
@@ -993,7 +1036,7 @@ useEffect(() => {
           color="bg-soft-sage"
           metrics={sectionBMetrics}
           allCheckIns={checkInData}
-          filterDays={filterDays}
+          filterKey={filterKey}
         />
 
         <SectionCombinedGraph
@@ -1002,7 +1045,7 @@ useEffect(() => {
           color="bg-calm-blue"
           metrics={sectionCMetrics}
           allCheckIns={checkInData}
-          filterDays={filterDays}
+          filterKey={filterKey}
         />
 
         <SectionCombinedGraph
@@ -1011,7 +1054,7 @@ useEffect(() => {
           color="bg-gentle-coral"
           metrics={sectionDMetrics}
           allCheckIns={checkInData}
-          filterDays={filterDays}
+          filterKey={filterKey}
         />
 
         <SectionCombinedGraph
@@ -1020,7 +1063,7 @@ useEffect(() => {
           color="bg-deep-bronze"
           metrics={sectionEMetrics}
           allCheckIns={checkInData}
-          filterDays={filterDays}
+          filterKey={filterKey}
         />
 
         <SectionCombinedGraph
@@ -1029,7 +1072,7 @@ useEffect(() => {
           color="bg-warm-amber"
           metrics={sectionFMetrics}
           allCheckIns={checkInData}
-          filterDays={filterDays}
+          filterKey={filterKey}
         />
 
         <SectionCombinedGraph
@@ -1038,7 +1081,7 @@ useEffect(() => {
           color="bg-purple-500"
           metrics={sectionGMetrics}
           allCheckIns={checkInData}
-          filterDays={filterDays}
+          filterKey={filterKey}
         />
       </div>
     </div>
