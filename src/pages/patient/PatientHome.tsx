@@ -108,84 +108,47 @@ interface FamiliarFace {
   phone?: string;
 }
 
-// Game definitions with instructions
+// Game definitions — image paths map to /public/game-cards/ folder
 const GAMES = [
-  { id: 'matching', title: 'Matching Pairs', icon: '🃏', color: 'from-amber-500 to-orange-500', instruction: 'Flip over two cards at a time to find matching emoji pairs. Try to match all pairs in as few moves as possible!' },
-  { id: 'crossword', title: 'Crossword Puzzle', icon: '📝', color: 'from-blue-500 to-indigo-500', instruction: 'Read the clues and fill in the words in the grid. Tap a square to select it, then use the keyboard to type your answer.' },
-  { id: 'wordsearch', title: 'Word Search', icon: '🔍', color: 'from-teal-500 to-emerald-500', instruction: 'Find hidden words in the letter grid. Drag your finger across the letters to highlight a word when you find it.' },
-  { id: 'solitaire', title: 'Solitaire', icon: '🃟', color: 'from-green-500 to-lime-500', instruction: 'Classic Klondike Solitaire. Build stacks in alternating colors and arrange all cards by suit from Ace to King.' },
-  { id: 'checkers', title: 'Checkers', icon: '🔴', color: 'from-red-500 to-rose-500', instruction: 'You play as red pieces against the AI. Move diagonally forward and capture opponent pieces by jumping over them.' },
-  { id: 'chess', title: 'Chess', icon: '♜', color: 'from-gray-600 to-slate-700', instruction: 'Play as white against the AI. Move your pieces strategically to checkmate the black king.' },
-  { id: 'hangman', title: 'Hangman', icon: '🔡', color: 'from-purple-500 to-pink-500', instruction: 'Guess the hidden word one letter at a time. Each wrong guess adds a part to the hangman. Solve it before the drawing is complete!' },
-  { id: 'brainapps', title: 'Brain Training', icon: '🧠', color: 'from-violet-500 to-purple-600', instruction: 'Try brain training exercises from apps like Lumosity, BrainHQ, and Elevate to keep your mind sharp.' }
+  { id: 'matching',   title: 'Matching Pairs',  img: '/game-cards/matching_pairs.png'       },
+  { id: 'crossword',  title: 'Crossword Puzzle', img: '/game-cards/crossword_puzzle.png'     },
+  { id: 'checkers',   title: 'Checkers',         img: '/game-cards/checkers.png'             },
+  { id: 'chess',      title: 'Chess',            img: '/game-cards/chess.png'                },
+  { id: 'wordsearch', title: 'Word Search',      img: '/game-cards/word_search.png'          },
+  { id: 'solitaire',  title: 'Solitaire',        img: '/game-cards/solitaire.png'            },
+  { id: 'hangman',    title: 'Hangman',          img: '/game-cards/hangman.png'              },
+  { id: 'brainapps',  title: 'Brain Training',   img: '/game-cards/brain_training_apps.png'  },
 ];
 
-// Game Instruction Dialog Component
-function GameInstructionDialog({ game, open, onClose, onPlay }: { 
-  game: typeof GAMES[0] | null; 
-  open: boolean; 
-  onClose: () => void;
-  onPlay: () => void;
-}) {
-  if (!game) return null;
-  
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${game.color} flex items-center justify-center text-2xl shadow-md`}>
-              {game.icon}
-            </div>
-            <DialogTitle className="text-xl text-charcoal">{game.title}</DialogTitle>
-          </div>
-          <DialogDescription className="text-medium-gray pt-2">
-            How to play
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="space-y-4">
-          <div className="p-4 bg-soft-taupe/10 rounded-xl">
-            <p className="text-charcoal leading-relaxed">{game.instruction}</p>
-          </div>
-          
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={onClose} className="flex-1 rounded-xl">Close</Button>
-            <Button onClick={onPlay} className="flex-1 bg-gradient-to-r from-warm-bronze to-warm-amber text-white rounded-xl hover:shadow-md transition-all">
-              <Play className="w-4 h-4 mr-2" /> Play Game
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Game Card Component - Rectangular Playing Card Style (like attachment)
-function GameCard({ game, onClick }: { game: typeof GAMES[0]; onClick: () => void }) {
+// GameCard — uses generated PNG image, 30% smaller (w-14 aspect ratio 2/3), no whitespace
+function GameCard({ game, onPlay }: { game: typeof GAMES[0]; onPlay: () => void }) {
   return (
     <motion.button
-      whileHover={{ scale: 1.04, y: -2 }}
+      whileHover={{ scale: 1.05, y: -3 }}
       whileTap={{ scale: 0.97 }}
-      onClick={onClick}
-      className="group bg-white rounded-lg border border-soft-taupe/50 shadow-sm hover:shadow-md transition-all p-1.5 flex flex-col items-center text-center gap-1 relative overflow-hidden"
+      onClick={onPlay}
+      className="group flex flex-col items-center gap-1 focus:outline-none"
     >
-      {/* Decorative corner accents */}
-      <div className="absolute top-1 left-1 text-[8px] font-serif text-soft-taupe/40">♠</div>
-      <div className="absolute bottom-1 right-1 text-[8px] font-serif text-soft-taupe/40 rotate-180">♠</div>
-
-      {/* Game Icon — 30% smaller than w-20 */}
-      <div className={`w-14 h-14 rounded-lg bg-gradient-to-br ${game.color} flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform duration-200`}>
-        {game.icon}
+      {/* Card image — 600×900 source, displayed at ~56×84px (3/4 aspect, 30% smaller than w-20) */}
+      <div className="w-14 overflow-hidden rounded-lg shadow-md group-hover:shadow-xl transition-shadow duration-200"
+        style={{ aspectRatio: '2/3' }}>
+        <img
+          src={game.img}
+          alt={game.title}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+          draggable={false}
+        />
       </div>
-
-      {/* Game Title */}
-      <p className="text-[10px] font-bold text-charcoal leading-tight px-0.5">{game.title}</p>
+      {/* Title below the card */}
+      <p className="text-[9px] font-semibold text-charcoal text-center leading-tight w-14">
+        {game.title}
+      </p>
     </motion.button>
   );
 }
 
-export default function PatientHome() {
+
+export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (id: string) => void } = {}) {
   const { state } = useApp();
   const patient = state.patient;
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -207,9 +170,6 @@ export default function PatientHome() {
   });
   const [showPhotoPopup, setShowPhotoPopup] = useState<{id:string;name:string;url:string}|null>(null);
   
-  // Game dialog state
-  const [selectedGame, setSelectedGame] = useState<typeof GAMES[0] | null>(null);
-  const [gameDialogOpen, setGameDialogOpen] = useState(false);
 
   const tasks = state.tasks.filter(t => t.status !== 'completed').slice(0, 3);
 
@@ -328,15 +288,7 @@ export default function PatientHome() {
   };
 
   const openGame = (game: typeof GAMES[0]) => {
-    setSelectedGame(game);
-    setGameDialogOpen(true);
-  };
-
-  const handlePlayGame = () => {
-    setGameDialogOpen(false);
-    if (selectedGame) {
-      alert(`🎮 Let's play ${selectedGame.title}!\n\n${selectedGame.instruction}`);
-    }
+    if (onNavigateToGame) onNavigateToGame(game.id);
   };
 
   return (
@@ -668,7 +620,7 @@ export default function PatientHome() {
           {/* 4x2 Grid - 4 across, 2 down */}
           <div className="grid grid-cols-4 gap-4">
             {GAMES.map((game, idx) => (
-              <GameCard key={game.id} game={game} onClick={() => openGame(game)} />
+              <GameCard key={game.id} game={game} onPlay={() => openGame(game)} />
             ))}
           </div>
         </motion.div>
@@ -683,14 +635,6 @@ export default function PatientHome() {
         >
           <span className="text-white text-xs font-bold">HELP</span>
         </motion.button>
-
-        {/* Game Instruction Dialog */}
-        <GameInstructionDialog 
-          game={selectedGame}
-          open={gameDialogOpen}
-          onClose={() => setGameDialogOpen(false)}
-          onPlay={handlePlayGame}
-        />
 
         {/* Familiar Face Dialog */}
         <Dialog open={!!selectedFace} onOpenChange={() => setSelectedFace(null)}>

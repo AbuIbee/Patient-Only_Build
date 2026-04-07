@@ -14,6 +14,7 @@ import PatientEmergencyContacts from './PatientEmergencyContacts';
 import PatientGames from './PatientGames';
 import PatientIntakeForm from './PatientIntakeForm';
 import PatientCareTeam from './PatientCareTeam';
+import PatientProgressTimeline from './PatientProgressTimeline';
 import MediaUploader from '@/components/MediaUploader';
 import {
   LayoutDashboard, Calendar, Pill, FileText, Bell,
@@ -264,7 +265,7 @@ export default function PatientLayout() {
     { id: 'intake'             as PatientView, label: 'Patient Intake Form',  icon: ClipboardPlus },
     { id: 'emergency_contacts' as PatientView, label: 'Emergency Contacts',   icon: Phone },
     { id: 'memories'           as PatientView, label: 'Family',               icon: Users },
-    { id: 'mood'               as PatientView, label: 'How I Feel',           icon: Smile },
+    { id: 'mood'               as PatientView, label: 'Feeling Timeline',      icon: Smile },
     { id: 'reminders'          as PatientView, label: 'Reminders',            icon: Bell },
   ];
 
@@ -273,7 +274,8 @@ export default function PatientLayout() {
     { id: 'routines'    as PatientView, label: 'My Day',         icon: Calendar },
     { id: 'documents'   as PatientView, label: 'Papers',         icon: FileText },
     { id: 'media'       as PatientView, label: 'Videos & Media', icon: Film },
-    { id: 'games'       as PatientView, label: 'Memory Games',   icon: Gamepad2 },
+    { id: 'games'              as PatientView, label: 'Memory Games',   icon: Gamepad2 },
+    { id: 'progress_timeline'  as PatientView, label: 'Patient Progress', icon: ClipboardCheck },
   ];
 
   const allNavItems = [...navItems, ...moreNavItems];
@@ -306,6 +308,8 @@ export default function PatientLayout() {
         return <MediaUploader readOnly={false} patientId={state.currentUser?.id} />;
       case 'games':
         return <PatientGames initialGame={initialGame as any} key={initialGame || 'default'} onNavigateHome={() => { setInitialGame(undefined); setCurrentView('dashboard'); }} />;
+      case 'progress_timeline':
+        return <PatientProgressTimeline />;
       default:
         return <PatientHome />;
     }

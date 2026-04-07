@@ -84,34 +84,13 @@ function MatchingGame({ onBack }: { onBack: () => void }) {
       <div className={`grid ${gridCols} gap-2`}>
         {cards.map(card => (
           <motion.button key={card.id} onClick={() => flip(card.id)}
-            whileHover={!card.flipped && !card.matched ? { scale: 1.06, y: -2 } : {}}
-            whileTap={!card.flipped && !card.matched ? { scale: 0.94 } : {}}
-            className={`${cardSize} rounded-2xl flex items-center justify-center shadow-md transition-all duration-200 relative overflow-hidden
-              ${card.matched
-                ? 'cursor-default border-2 border-emerald-400'
-                : card.flipped
-                  ? 'cursor-default border-2 border-warm-bronze shadow-warm-bronze/30'
-                  : 'cursor-pointer hover:shadow-lg'}`}
-            style={{
-              background: card.matched
-                ? 'linear-gradient(135deg,#d1fae5,#6ee7b7)'
-                : card.flipped
-                  ? 'linear-gradient(135deg,#fffbeb,#fde68a)'
-                  : 'linear-gradient(135deg,#c8820a,#7a4a04)',
-            }}>
-            {/* Card face-down pattern */}
-            {!card.flipped && !card.matched && (
-              <div className="absolute inset-0 opacity-20 pointer-events-none"
-                style={{ backgroundImage: 'repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,0.3) 4px,rgba(255,255,255,0.3) 5px)' }} />
-            )}
+            whileHover={!card.flipped && !card.matched ? { scale: 1.05 } : {}}
+            whileTap={!card.flipped && !card.matched ? { scale: 0.95 } : {}}
+            className={`${cardSize} rounded-2xl flex items-center justify-center shadow-sm transition-all duration-300 ${card.matched ? 'bg-soft-sage/30 border-2 border-soft-sage cursor-default' : card.flipped ? 'bg-warm-ivory border-2 border-warm-bronze cursor-default' : 'bg-gradient-to-br from-warm-bronze to-warm-amber text-white cursor-pointer hover:shadow-md'}`}>
             <AnimatePresence mode="wait">
               {card.flipped || card.matched
-                ? <motion.span key="e"
-                    initial={{ rotateY: 90, scale: 0.5, opacity: 0 }}
-                    animate={{ rotateY: 0, scale: 1, opacity: 1 }}
-                    transition={{ duration: 0.25 }}
-                    className={`${textSize} drop-shadow`}>{card.emoji}</motion.span>
-                : <motion.span key="b" className="text-white/90 font-black text-2xl select-none">?</motion.span>}
+                ? <motion.span key="e" initial={{ rotateY: 90, opacity: 0 }} animate={{ rotateY: 0, opacity: 1 }} className={textSize}>{card.emoji}</motion.span>
+                : <motion.span key="b" className="text-xl text-white/80 font-bold">?</motion.span>}
             </AnimatePresence>
           </motion.button>
         ))}
@@ -393,49 +372,22 @@ function CheckersGame({ onBack }: { onBack: () => void }) {
       </div>
       <p className="text-sm text-medium-gray font-medium">{message}</p>
 
-      {/* Rich checkers board */}
-      <div className="rounded-2xl overflow-hidden shadow-2xl border-4 border-amber-900 inline-block" style={{ background: '#1a0a00' }}>
+      <div className="border-4 border-gray-800 rounded-xl overflow-hidden inline-block shadow-xl">
         {board.map((row, r) => (
           <div key={r} className="flex">
             {row.map((piece, c) => {
               const dark   = (r+c)%2===1;
               const isSel  = selected?.[0]===r && selected?.[1]===c;
               const isMove = validMoves.some(([mr,mc])=>mr===r&&mc===c);
-              const cellBg = dark
-                ? (isSel ? '#d97706' : isMove ? '#92400e' : '#92400e')
-                : '#fef3c7';
               return (
                 <div key={c} onClick={() => handleClick(r,c)}
-                  style={{ backgroundColor: cellBg, width: 44, height: 44 }}
-                  className="flex items-center justify-center cursor-pointer relative transition-colors">
-                  {/* Row/col labels on edges */}
-                  {c===0 && <span className="absolute left-0.5 top-0.5 text-[7px] font-bold opacity-40 text-amber-900">{8-r}</span>}
-                  {r===7 && <span className="absolute bottom-0.5 right-0.5 text-[7px] font-bold opacity-40 text-amber-900">{String.fromCharCode(97+c)}</span>}
-                  {/* Move indicator dot */}
-                  {isMove && !piece && (
-                    <div className="w-4 h-4 rounded-full bg-yellow-400/70 border-2 border-yellow-300 shadow" />
-                  )}
-                  {/* Piece with 3-D look */}
+                  className={`w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center cursor-pointer relative transition-colors
+                    ${dark ? (isSel ? 'bg-yellow-500' : isMove ? 'bg-yellow-700/80' : 'bg-amber-800') : 'bg-amber-100'}`}>
+                  {isMove && !piece && <div className="w-3 h-3 rounded-full bg-yellow-300 border-2 border-yellow-500" />}
                   {piece && (
-                    <div className="relative" style={{ width: 36, height: 36 }}>
-                      {/* Shadow layer */}
-                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-2 rounded-full opacity-40"
-                        style={{ background: '#000', filter: 'blur(3px)', bottom: -2 }} />
-                      {/* Bottom rim */}
-                      <div className={`absolute inset-0 rounded-full ${piece.color==='red'?'bg-red-900':'bg-gray-950'}`}
-                        style={{ top: 4 }} />
-                      {/* Top face */}
-                      <div className={`absolute inset-0 rounded-full flex items-center justify-center border-2 transition-transform
-                        ${isSel ? 'scale-110 ring-4 ring-yellow-300' : 'hover:scale-105'}
-                        ${piece.color==='red'
-                          ? 'bg-gradient-to-br from-red-400 via-red-500 to-red-800 border-red-700'
-                          : 'bg-gradient-to-br from-gray-500 via-gray-700 to-gray-950 border-gray-600'}`}>
-                        {/* Highlight glare */}
-                        <div className="absolute top-1 left-2 w-3 h-1.5 rounded-full opacity-40 bg-white" />
-                        {piece.king && (
-                          <span className="text-yellow-300 text-base leading-none drop-shadow font-bold">♛</span>
-                        )}
-                      </div>
+                    <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full border-4 flex items-center justify-center shadow-lg transition-transform ${isSel?'scale-110':'hover:scale-105'}
+                      ${piece.color==='red' ? 'bg-red-500 border-red-700' : 'bg-gray-900 border-gray-600'}`}>
+                      {piece.king && <span className="text-yellow-300 text-sm leading-none">♛</span>}
                     </div>
                   )}
                 </div>
@@ -1295,7 +1247,7 @@ const GAMES = [
 export default function PatientGames({ initialGame, onNavigateHome }: { initialGame?: GameId; onNavigateHome?: () => void } = {}) {
   const [activeGame, setActiveGame] = useState<GameId>(initialGame || 'menu');
 
-  // Back from a game goes to home page if onNavigateHome provided, otherwise menu
+  // Back from any game → home page if onNavigateHome provided, else menu
   const handleBack = () => {
     if (onNavigateHome) onNavigateHome();
     else setActiveGame('menu');
