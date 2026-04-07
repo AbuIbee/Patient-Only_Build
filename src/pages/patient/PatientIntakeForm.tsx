@@ -30,8 +30,8 @@ interface IntakeForm {
   caregiverName: string; caregiverRelationship: string; caregiverPhone: string;
   // Medications
   medications: string;
-  // Emergency Contact
-  ecFullName: string; ecPhone: string; ecEmail: string; ecRelationship: string;
+  // Closest Relative Contact
+  crFullName: string; crPhone: string; crEmail: string; crRelationship: string;
 }
 
 const EMPTY: IntakeForm = {
@@ -42,7 +42,7 @@ const EMPTY: IntakeForm = {
   doctorName: '', doctorPhone: '', preferredHospital: '',
   caregiverName: '', caregiverRelationship: '', caregiverPhone: '',
   medications: '',
-  ecFullName: '', ecPhone: '', ecEmail: '', ecRelationship: '',
+  crFullName: '', crPhone: '', crEmail: '', crRelationship: '',
 };
 
 const US_STATES = [
@@ -130,10 +130,10 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
           caregiverRelationship: intake?.caregiver_relationship || '',
           caregiverPhone:     intake?.caregiver_phone        || '',
           medications:        intake?.medications_and_dosage || '',
-          ecFullName:         intake?.emergency_contact_full_name    || '',
-          ecPhone:            intake?.emergency_contact_phone        || '',
-          ecEmail:            intake?.emergency_contact_email        || '',
-          ecRelationship:     intake?.emergency_contact_relationship || '',
+          crFullName:         intake?.closest_relative_full_name    || '',
+          crPhone:            intake?.closest_relative_phone        || '',
+          crEmail:            intake?.closest_relative_email        || '',
+          crRelationship:     intake?.closest_relative_relationship || '',
         });
 
         if (intake?.id) setIntakeId(intake.id);
@@ -194,10 +194,10 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
         dementia_stage:   form.dementiaStage || null,
         location:         form.city.trim() || null,
         address:          [form.streetAddress, form.city, form.state, form.zipCode].filter(Boolean).join(', ') || null,
-        emergency_contact_name:         form.ecFullName.trim() || null,
-        emergency_contact_phone:        form.ecPhone.trim() || null,
-        emergency_contact_relationship: form.ecRelationship.trim() || null,
-        emergency_contact_email:        form.ecEmail.trim() || null,
+        closest_relative_name:         form.crFullName.trim() || null,
+        closest_relative_phone:        form.crPhone.trim() || null,
+        closest_relative_relationship: form.crRelationship.trim() || null,
+        closest_relative_email:        form.crEmail.trim() || null,
         updated_at: now,
       }, { onConflict: 'id' });
 
@@ -225,10 +225,10 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
         caregiver_relationship:         form.caregiverRelationship.trim() || null,
         caregiver_phone:                form.caregiverPhone.trim() || null,
         medications_and_dosage:         form.medications.trim() || null,
-        emergency_contact_full_name:    form.ecFullName.trim() || null,
-        emergency_contact_phone:        form.ecPhone.trim() || null,
-        emergency_contact_email:        form.ecEmail.trim() || null,
-        emergency_contact_relationship: form.ecRelationship.trim() || null,
+        closest_relative_full_name:    form.crFullName.trim() || null,
+        closest_relative_phone:        form.crPhone.trim() || null,
+        closest_relative_email:        form.crEmail.trim() || null,
+        closest_relative_relationship: form.crRelationship.trim() || null,
         intake_completed:               true,
         updated_at:                     now,
       };
@@ -379,24 +379,24 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
         </div>
       </div>
 
-      {/* Section 6: Emergency Contact */}
+      {/* Section 6: Closest Relative Contact */}
       <div className="bg-white rounded-2xl border border-soft-taupe shadow-sm p-6">
-        <Section icon={Shield} title="Emergency Contact" color="bg-amber-500" />
+        <Section icon={Shield} title="Closest Relative Contact" color="bg-amber-500" />
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Field label="Full Name">
-              <input value={form.ecFullName} onChange={set('ecFullName')} className={inp()} />
+              <input value={form.crFullName} onChange={set('crFullName')} className={inp()} />
             </Field>
             <Field label="Relationship">
-              <input value={form.ecRelationship} onChange={set('ecRelationship')} className={inp()} />
+              <input value={form.crRelationship} onChange={set('crRelationship')} className={inp()} />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Phone">
-              <input type="tel" value={form.ecPhone} onChange={set('ecPhone')} className={inp()} />
+              <input type="tel" value={form.crPhone} onChange={set('crPhone')} className={inp()} />
             </Field>
             <Field label="Email">
-              <input type="email" value={form.ecEmail} onChange={set('ecEmail')} className={inp()} />
+              <input type="email" value={form.crEmail} onChange={set('crEmail')} className={inp()} />
             </Field>
           </div>
         </div>

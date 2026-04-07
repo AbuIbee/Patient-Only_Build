@@ -1,14 +1,30 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useApp } from '@/store/AppContext';
 import { supabase } from '@/lib/supabase';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Wind, Music, BookOpen, Sun, TrendingUp, Clock, Calendar, BarChart3, ChevronLeft, ChevronRight, Activity, Utensils, Droplets, Shield, Brain, Heart, ThumbsUp } from 'lucide-react';
+import {
+  Wind,
+  Music,
+  BookOpen,
+  Sun,
+  TrendingUp,
+  Clock,
+  Calendar,
+  BarChart3,
+  ChevronLeft,
+  ChevronRight,
+  Activity,
+  Utensils,
+  Droplets,
+  Shield,
+  Brain,
+  Heart,
+  ThumbsUp
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import ADLProgressChart from "@/components/charts/ADLProgressChart";
-import { format, subDays, subWeeks, subMonths, isSameDay, parseISO } from 'date-fns';
+import { format, isSameDay } from 'date-fns';
 import type { MoodType } from '@/types';
 
 // ── Mood definitions ──────────────────────────────────────────────────────────
@@ -24,23 +40,27 @@ const MOODS: { type: MoodType; emoji: string; label: string; bg: string; ring: s
 
 const moodOf = (type: MoodType) => MOODS.find(m => m.type === type) ?? MOODS[0];
 
-// ── Score mapping for Care Partner fields (5 levels: 0=worst, 4=best) ─────────
+// ── Score mapping for Care Partner fields (5 levels: 0=worst, 4=best) ───────
 const SCORE_MAP: Record<string, number> = {
   // Daily Function
   'Independent': 4, 'Needs cues': 3, 'Needs hands-on help': 2, 'Dependent': 1,
   'Needs help': 2, 'Refused': 1, 'Incontinent episode': 1, 'Supervision': 3,
   'Assist': 2, 'Unable': 1, 'Walker': 2, 'Wheelchair': 1, 'Bedbound': 0,
   'Took as directed': 4, 'Missed': 1, 'Refused (meds)': 1, 'Unknown': 2,
+
   // Nutrition
   'Normal': 4, 'Decreased': 2, 'Increased': 3, '0%': 0, '25%': 1, '50%': 2,
   '75%': 3, '100%': 4, 'Adequate': 4, 'Low': 2, 'No issues': 4,
   'Coughing/choking': 1, 'Pocketing food': 1, 'Needs soft diet': 2,
+
   // Continence
   'Continent': 4, 'Occasional accidents': 2, 'Frequent accidents': 1,
   'None (skin)': 4, 'Redness': 2, 'Rash': 1, 'Breakdown': 0,
+
   // Safety
   'None (falls)': 4, 'Near-fall': 3, 'Fall — no injury': 1, 'Fall — injury': 0,
   'None (wandering)': 4, 'Attempted': 2, 'Left home': 0,
+
   // Mood
   'Calm': 4, 'Anxious': 2, 'Depressed': 1, 'Irritable': 2, 'Elevated': 3, 'Labile': 1,
   'Normal (sleep)': 4, 'Slept too much': 2, 'Slept too little': 2, 'Day-night reversal': 0,
@@ -55,6 +75,7 @@ function getScore(value: string | null, defaultValue: number = 2): number {
 interface CheckInData {
   id: string;
   check_in_date: string;
+
   // A - Daily Function
   fn_dressing: string | null;
   fn_bathing: string | null;
@@ -62,38 +83,41 @@ interface CheckInData {
   fn_transfers: string | null;
   fn_mobility: string | null;
   fn_medication: string | null;
+
   // B - Nutrition
   nu_appetite: string | null;
   nu_meal_pct: string | null;
   nu_fluids: string | null;
   nu_swallowing: string | null;
+
   // C - Continence
   co_urinary: string | null;
   co_bowel: string | null;
   co_skin: string | null;
+
   // D - Safety
   sa_falls: string | null;
   sa_wandering: string | null;
   sa_safety_concerns: boolean;
-  // E - Behavior (count of behaviors)
+
+  // E - Behavior
   be_behaviors: string[];
+
   // F - Mood & Social
   mo_mood: string | null;
   mo_sleep: string | null;
-  // G - Symptoms (count)
+
+  // G - Symptoms
   sy_symptoms: string[];
 }
 
-type FilterDays = 7 | 30 | 60 | 90;
+type FilterDays = 7 | 30 | 60 | 90 | 180 | 365;
 
-// ── SectionCombinedGraph: X = dates over time, Y = score 0-4 ─────────────────
-// One coloured line per metric, all sharing the same Y-axis score scale.
-// X-axis labels: days for 7d, dates for 1m/2m/3m.
+// ── SectionCombinedGraph ──────────────────────────────────────────────────────
 function SectionCombinedGraph({
   title,
   icon: Icon,
   color,
-  accentColor,
   metrics,
   allCheckIns,
   filterDays,
@@ -101,24 +125,24 @@ function SectionCombinedGraph({
   title: string;
   icon: React.ElementType;
   color: string;
-  accentColor: string;
   metrics: { key: string; label: string; color: string }[];
   allCheckIns: CheckInData[];
   filterDays: FilterDays;
 }) {
-  // ── Build sorted date list for the selected window ──────────────────────────
   const cutoff = useMemo(() => {
-    const d = new Date(); d.setDate(d.getDate() - filterDays); return d;
+    const d = new Date();
+    d.setDate(d.getDate() - filterDays);
+    return d;
   }, [filterDays]);
 
-  const sortedCheckIns = useMemo(() =>
-    allCheckIns
-      .filter(d => new Date(d.check_in_date) >= cutoff)
-      .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date)),
+  const sortedCheckIns = useMemo(
+    () =>
+      allCheckIns
+        .filter(d => new Date(d.check_in_date) >= cutoff)
+        .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date)),
     [allCheckIns, cutoff]
   );
 
-  // Unique dates in range
   const dates = useMemo(() => {
     const all: string[] = [];
     const now = new Date();
@@ -130,89 +154,108 @@ function SectionCombinedGraph({
     return all;
   }, [filterDays]);
 
-  // Index check-ins by date (latest per day wins)
   const byDate = useMemo(() => {
     const m = new Map<string, CheckInData>();
     sortedCheckIns.forEach(c => m.set(c.check_in_date, c));
     return m;
   }, [sortedCheckIns]);
 
-  // Per-metric score getter
   const getVal = (c: CheckInData, key: string): number | null => {
     switch (key) {
-      case 'fn_dressing':   return c.fn_dressing   ? getScore(c.fn_dressing)   : null;
-      case 'fn_bathing':    return c.fn_bathing     ? getScore(c.fn_bathing)    : null;
-      case 'fn_toileting':  return c.fn_toileting   ? getScore(c.fn_toileting)  : null;
-      case 'fn_transfers':  return c.fn_transfers   ? getScore(c.fn_transfers)  : null;
-      case 'fn_mobility':   return c.fn_mobility    ? getScore(c.fn_mobility)   : null;
-      case 'fn_medication': return c.fn_medication  ? getScore(c.fn_medication) : null;
-      case 'nu_appetite':   return c.nu_appetite    ? getScore(c.nu_appetite)   : null;
-      case 'nu_meal_pct':   return c.nu_meal_pct    ? getScore(c.nu_meal_pct)   : null;
-      case 'nu_fluids':     return c.nu_fluids      ? getScore(c.nu_fluids)     : null;
-      case 'nu_swallowing': return c.nu_swallowing  ? getScore(c.nu_swallowing) : null;
-      case 'co_urinary':    return c.co_urinary     ? getScore(c.co_urinary)    : null;
-      case 'co_bowel':      return c.co_bowel       ? getScore(c.co_bowel)      : null;
-      case 'co_skin':       return c.co_skin        ? getScore(c.co_skin)       : null;
-      case 'sa_falls':      return c.sa_falls       ? getScore(c.sa_falls)      : null;
-      case 'sa_wandering':  return c.sa_wandering   ? getScore(c.sa_wandering)  : null;
-      case 'sa_safety_concerns': return c.sa_safety_concerns !== undefined ? (c.sa_safety_concerns ? 1 : 4) : null;
-      case 'be_behaviors':  { const n = (c.be_behaviors||[]).filter(b=>b!=='None observed').length; return Math.max(0, 4-Math.min(4,n)); }
-      case 'mo_mood':       return c.mo_mood        ? getScore(c.mo_mood)       : null;
-      case 'mo_sleep':      return c.mo_sleep       ? getScore(c.mo_sleep)      : null;
-      case 'sy_symptoms':   { const n = (c.sy_symptoms||[]).length; return Math.max(0, 4-Math.min(4,n)); }
-      default: return null;
+      case 'fn_dressing':   return c.fn_dressing ? getScore(c.fn_dressing) : null;
+      case 'fn_bathing':    return c.fn_bathing ? getScore(c.fn_bathing) : null;
+      case 'fn_toileting':  return c.fn_toileting ? getScore(c.fn_toileting) : null;
+      case 'fn_transfers':  return c.fn_transfers ? getScore(c.fn_transfers) : null;
+      case 'fn_mobility':   return c.fn_mobility ? getScore(c.fn_mobility) : null;
+      case 'fn_medication': return c.fn_medication ? getScore(c.fn_medication) : null;
+
+      case 'nu_appetite':   return c.nu_appetite ? getScore(c.nu_appetite) : null;
+      case 'nu_meal_pct':   return c.nu_meal_pct ? getScore(c.nu_meal_pct) : null;
+      case 'nu_fluids':     return c.nu_fluids ? getScore(c.nu_fluids) : null;
+      case 'nu_swallowing': return c.nu_swallowing ? getScore(c.nu_swallowing) : null;
+
+      case 'co_urinary':    return c.co_urinary ? getScore(c.co_urinary) : null;
+      case 'co_bowel':      return c.co_bowel ? getScore(c.co_bowel) : null;
+      case 'co_skin':       return c.co_skin ? getScore(c.co_skin) : null;
+
+      case 'sa_falls':      return c.sa_falls ? getScore(c.sa_falls) : null;
+      case 'sa_wandering':  return c.sa_wandering ? getScore(c.sa_wandering) : null;
+      case 'sa_safety_concerns':
+        return c.sa_safety_concerns !== undefined ? (c.sa_safety_concerns ? 1 : 4) : null;
+
+      case 'be_behaviors': {
+        const n = (c.be_behaviors || []).filter(b => b !== 'None observed').length;
+        return Math.max(0, 4 - Math.min(4, n));
+      }
+
+      case 'mo_mood':  return c.mo_mood ? getScore(c.mo_mood) : null;
+      case 'mo_sleep': return c.mo_sleep ? getScore(c.mo_sleep) : null;
+
+      case 'sy_symptoms': {
+        const n = (c.sy_symptoms || []).length;
+        return Math.max(0, 4 - Math.min(4, n));
+      }
+
+      default:
+        return null;
     }
   };
 
-  // Build per-metric time series
-  const series = useMemo(() =>
-    metrics.map(m => ({
-      ...m,
-      points: dates.map((d, i) => ({
-        i, date: d,
-        score: byDate.has(d) ? getVal(byDate.get(d)!, m.key) : null,
+  const series = useMemo(
+    () =>
+      metrics.map(m => ({
+        ...m,
+        points: dates.map((d, i) => ({
+          i,
+          date: d,
+          score: byDate.has(d) ? getVal(byDate.get(d)!, m.key) : null,
+        })),
       })),
-    })),
     [metrics, dates, byDate]
   );
 
   const hasData = series.some(s => s.points.some(p => p.score !== null));
 
-  // ── SVG layout ──────────────────────────────────────────────────────────────
+  const PAD_L = 36;
+  const PAD_R = 16;
+  const PAD_T = 20;
+  const PAD_B = 32;
+  const VB_W = 860;
+  const VB_H = 200;
+  const CW = VB_W - PAD_L - PAD_R;
+  const CH = VB_H - PAD_T - PAD_B;
 
-  const PAD_L  = 36;   // Y-axis: just tick numbers, not category names
-  const PAD_R  = 16;
-  const PAD_T  = 20;
-  const PAD_B  = 32;   // X-axis date labels
-  const VB_W   = 860;
-  const VB_H   = 200;
-  const CW     = VB_W - PAD_L - PAD_R;
-  const CH     = VB_H - PAD_T - PAD_B;
-
-  // Score 4 = top, 0 = bottom
   const sy = (score: number) => PAD_T + CH - (score / 4) * CH;
-  // Date index → X
   const sx = (i: number) =>
     dates.length <= 1 ? PAD_L + CW / 2 : PAD_L + (i / (dates.length - 1)) * CW;
 
-  // Pick evenly-spaced label indices
-  const maxLabels = filterDays === 7 ? 7 : 6;
-  const labelIdx: number[] = dates.length <= maxLabels
-    ? dates.map((_, i) => i)
-    : Array.from({ length: maxLabels }, (_, k) => Math.round(k * (dates.length - 1) / (maxLabels - 1)));
+  const maxLabels =
+    filterDays === 7 ? 7 :
+    filterDays === 30 ? 6 :
+    filterDays === 60 ? 6 :
+    filterDays === 90 ? 5 :
+    filterDays === 180 ? 6 : 6;
 
-  // X-axis date label format
+  const labelIdx: number[] =
+    dates.length <= maxLabels
+      ? dates.map((_, i) => i)
+      : Array.from(
+          { length: maxLabels },
+          (_, k) => Math.round((k * (dates.length - 1)) / (maxLabels - 1))
+        );
+
   const fmtDate = (d: string) => {
     const dt = new Date(d + 'T12:00');
-    if (filterDays === 7) return dt.toLocaleDateString('en-US', { weekday: 'short' });
+    if (filterDays === 7) {
+      return dt.toLocaleDateString('en-US', { weekday: 'short' });
+    }
     return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const gid = (key: string) => 'sg' + title.replace(/\s/g,'') + key.replace(/[^a-z0-9]/gi,'');
+  const gid = (key: string) => 'sg' + title.replace(/\s/g, '') + key.replace(/[^a-z0-9]/gi, '');
 
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4 mb-5 border border-soft-taupe/40">
-      {/* Header */}
       <div className="flex items-center gap-2 mb-3 pb-2 border-b border-soft-taupe/30">
         <div className={`w-8 h-8 rounded-xl ${color} flex items-center justify-center flex-shrink-0`}>
           <Icon className="w-4 h-4 text-white" />
@@ -241,66 +284,89 @@ function SectionCombinedGraph({
               ))}
             </defs>
 
-            {/* Chart background */}
             <rect x={PAD_L} y={PAD_T} width={CW} height={CH} fill="#fafaf8" rx="2" />
 
-            {/* Y-axis grid lines + numeric labels (0–4) */}
-            {[0, 1, 2, 3, 4, 5].map(v => (
+            {[0, 1, 2, 3, 4].map(v => (
               <g key={v}>
                 <line
-                  x1={PAD_L} y1={sy(v)} x2={PAD_L + CW} y2={sy(v)}
-                  stroke={v === 0 ? '#c8c4bc' : '#e8e4dc'} strokeWidth={v === 0 ? 1.2 : 0.7}
+                  x1={PAD_L}
+                  y1={sy(v)}
+                  x2={PAD_L + CW}
+                  y2={sy(v)}
+                  stroke={v === 0 ? '#c8c4bc' : '#e8e4dc'}
+                  strokeWidth={v === 0 ? 1.2 : 0.7}
                   strokeDasharray={v === 0 ? '0' : '4,5'}
                 />
-                <text x={PAD_L - 5} y={sy(v) + 4} textAnchor="end" fontSize="10" fill="#aaa">{v}</text>
+                <text x={PAD_L - 5} y={sy(v) + 4} textAnchor="end" fontSize="10" fill="#aaa">
+                  {v}
+                </text>
               </g>
             ))}
 
-            {/* Y-axis border */}
             <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + CH} stroke="#c8c4bc" strokeWidth="1.2" />
 
-            {/* X-axis vertical grid lines */}
             {labelIdx.map(di => (
-              <line key={di}
-                x1={sx(di)} y1={PAD_T} x2={sx(di)} y2={PAD_T + CH}
-                stroke="#e8e4dc" strokeWidth="0.5" strokeDasharray="3,5"
+              <line
+                key={di}
+                x1={sx(di)}
+                y1={PAD_T}
+                x2={sx(di)}
+                y2={PAD_T + CH}
+                stroke="#e8e4dc"
+                strokeWidth="0.5"
+                strokeDasharray="3,5"
               />
             ))}
 
-            {/* Per-metric lines and dots */}
             {series.map(s => {
-              const valid = s.points.filter(p => p.score !== null) as { i:number; date:string; score:number }[];
+              const valid = s.points.filter(p => p.score !== null) as { i: number; date: string; score: number }[];
 
-              // Line path with gap handling
               const segs: string[] = [];
               let cur = '';
+
               s.points.forEach(p => {
-                if (p.score === null) { if (cur) { segs.push(cur); cur = ''; } }
-                else {
-                  const x = sx(p.i), y = sy(p.score);
+                if (p.score === null) {
+                  if (cur) {
+                    segs.push(cur);
+                    cur = '';
+                  }
+                } else {
+                  const x = sx(p.i);
+                  const y = sy(p.score);
                   cur += cur ? ` L${x.toFixed(1)},${y.toFixed(1)}` : `M${x.toFixed(1)},${y.toFixed(1)}`;
                 }
               });
+
               if (cur) segs.push(cur);
 
-              // Area fill
               let area = '';
               if (valid.length >= 2) {
-                area = valid.map((p,i) => `${i===0?'M':'L'}${sx(p.i).toFixed(1)},${sy(p.score).toFixed(1)}`).join(' ')
-                  + ` L${sx(valid[valid.length-1].i).toFixed(1)},${(PAD_T+CH).toFixed(1)}`
-                  + ` L${sx(valid[0].i).toFixed(1)},${(PAD_T+CH).toFixed(1)} Z`;
+                area =
+                  valid
+                    .map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.i).toFixed(1)},${sy(p.score).toFixed(1)}`)
+                    .join(' ') +
+                  ` L${sx(valid[valid.length - 1].i).toFixed(1)},${(PAD_T + CH).toFixed(1)}` +
+                  ` L${sx(valid[0].i).toFixed(1)},${(PAD_T + CH).toFixed(1)} Z`;
               }
 
               return (
                 <g key={s.key}>
                   {area && <path d={area} fill={`url(#${gid(s.key)})`} />}
                   {segs.map((d, j) => (
-                    <path key={j} d={d} fill="none" stroke={s.color}
-                      strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <path
+                      key={j}
+                      d={d}
+                      fill="none"
+                      stroke={s.color}
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   ))}
                   {s.points.map(p => {
                     if (p.score === null) return null;
-                    const x = sx(p.i), y = sy(p.score);
+                    const x = sx(p.i);
+                    const y = sy(p.score);
                     return (
                       <g key={p.i}>
                         <circle cx={x} cy={y} r="6" fill={s.color} fillOpacity="0.15" />
@@ -315,20 +381,28 @@ function SectionCombinedGraph({
               );
             })}
 
-            {/* X-axis date labels */}
             {labelIdx.map(di => (
-              <text key={di} x={sx(di)} y={PAD_T + CH + 20}
-                textAnchor="middle" fontSize="10.5" fill="#7a7670" fontWeight="500">
+              <text
+                key={di}
+                x={sx(di)}
+                y={PAD_T + CH + 20}
+                textAnchor="middle"
+                fontSize="10.5"
+                fill="#7a7670"
+                fontWeight="500"
+              >
                 {fmtDate(dates[di])}
               </text>
             ))}
           </svg>
 
-          {/* Colour legend */}
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 pt-2 border-t border-soft-taupe/20">
             {metrics.map(m => (
-              <span key={m.key} className="flex items-center gap-1.5 text-[11px] font-semibold"
-                style={{ color: m.color }}>
+              <span
+                key={m.key}
+                className="flex items-center gap-1.5 text-[11px] font-semibold"
+                style={{ color: m.color }}
+              >
                 <svg width="10" height="10" viewBox="0 0 10 10" className="flex-shrink-0">
                   <circle cx="5" cy="5" r="4" fill={m.color} />
                 </svg>
@@ -342,20 +416,25 @@ function SectionCombinedGraph({
   );
 }
 
-
-
-
 // ── Filter Buttons Component ──────────────────────────────────────────────────
-function FilterButtons({ current, onChange }: { current: FilterDays; onChange: (days: FilterDays) => void }) {
+function FilterButtons({
+  current,
+  onChange,
+}: {
+  current: FilterDays;
+  onChange: (days: FilterDays) => void;
+}) {
   const filters: { days: FilterDays; label: string }[] = [
     { days: 7, label: '1 Week' },
     { days: 30, label: '1 Month' },
     { days: 60, label: '2 Months' },
     { days: 90, label: '3 Months' },
+    { days: 180, label: '6 Months' },
+    { days: 365, label: '1 Year' },
   ];
-  
+
   return (
-    <div className="flex gap-2 mb-4">
+    <div className="flex gap-2 mb-4 flex-wrap justify-end">
       {filters.map(f => (
         <button
           key={f.days}
@@ -373,9 +452,7 @@ function FilterButtons({ current, onChange }: { current: FilterDays; onChange: (
   );
 }
 
-
-
-// ── Simple Mood Timeline (Feeling Timeline) ───────────────────────────────────
+// ── Simple Mood Timeline ──────────────────────────────────────────────────────
 type TimelineView = 'day' | 'week' | 'month';
 
 function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodType; note?: string }[] }) {
@@ -397,40 +474,40 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
     if (view === 'week') {
       const start = new Date(baseDate);
       start.setDate(start.getDate() - start.getDay() + 1);
-      return `${format(start, 'MMM d')} – ${format(new Date(start.getTime() + 6*24*60*60*1000), 'MMM d, yyyy')}`;
+      return `${format(start, 'MMM d')} – ${format(new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000), 'MMM d, yyyy')}`;
     }
     return format(baseDate, 'MMMM yyyy');
   };
 
-  // Day view: show entries for selected day
   const DayView = () => {
     const dayStr = format(baseDate, 'yyyy-MM-dd');
     const dayEntries = entries.filter(e => e.timestamp.startsWith(dayStr));
-    
+
     return (
       <div className="space-y-3">
         {dayEntries.length === 0 ? (
           <p className="text-sm text-medium-gray italic text-center py-4">No mood entries for this day.</p>
         ) : (
-          dayEntries.sort((a,b) => b.timestamp.localeCompare(a.timestamp)).map((e, i) => {
-            const m = moodOf(e.mood);
-            return (
-              <div key={i} className={`flex items-center gap-3 p-3 rounded-xl ${m.bg}`}>
-                <span className="text-xl">{m.emoji}</span>
-                <div className="flex-1">
-                  <span className="font-semibold text-charcoal capitalize text-sm">{m.label}</span>
-                  {e.note && <p className="text-xs text-medium-gray truncate">{e.note}</p>}
+          dayEntries
+            .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+            .map((e, i) => {
+              const m = moodOf(e.mood);
+              return (
+                <div key={i} className={`flex items-center gap-3 p-3 rounded-xl ${m.bg}`}>
+                  <span className="text-xl">{m.emoji}</span>
+                  <div className="flex-1">
+                    <span className="font-semibold text-charcoal capitalize text-sm">{m.label}</span>
+                    {e.note && <p className="text-xs text-medium-gray truncate">{e.note}</p>}
+                  </div>
+                  <span className="text-xs text-medium-gray">{format(new Date(e.timestamp), 'h:mm a')}</span>
                 </div>
-                <span className="text-xs text-medium-gray">{format(new Date(e.timestamp), 'h:mm a')}</span>
-              </div>
-            );
-          })
+              );
+            })
         )}
       </div>
     );
   };
 
-  // Week view: show emoji per day
   const WeekView = () => {
     const start = new Date(baseDate);
     start.setDate(start.getDate() - start.getDay() + 1);
@@ -439,20 +516,25 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
       d.setDate(start.getDate() + i);
       return d;
     });
-    
+
     return (
       <div className="space-y-2">
         {days.map(day => {
           const ds = format(day, 'yyyy-MM-dd');
           const de = entries.filter(e => e.timestamp.startsWith(ds));
           const isToday = isSameDay(day, new Date());
-          const mood = de.length > 0 ? moodOf(de[de.length-1].mood) : null;
+          const mood = de.length > 0 ? moodOf(de[de.length - 1].mood) : null;
+
           return (
-            <div key={ds} className={`flex items-center gap-3 p-3 rounded-xl ${isToday ? 'bg-warm-bronze/10' : 'bg-soft-taupe/20'}`}>
+            <div
+              key={ds}
+              className={`flex items-center gap-3 p-3 rounded-xl ${isToday ? 'bg-warm-bronze/10' : 'bg-soft-taupe/20'}`}
+            >
               <div className="w-16 flex-shrink-0">
                 <p className={`text-xs font-bold ${isToday ? 'text-warm-bronze' : 'text-medium-gray'}`}>{format(day, 'EEE')}</p>
                 <p className="text-sm font-semibold text-charcoal">{format(day, 'd')}</p>
               </div>
+
               {mood ? (
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">{mood.emoji}</span>
@@ -461,6 +543,7 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
               ) : (
                 <p className="text-xs text-medium-gray italic">—</p>
               )}
+
               {de.length > 1 && <span className="text-xs text-medium-gray ml-auto">{de.length} entries</span>}
             </div>
           );
@@ -469,7 +552,6 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
     );
   };
 
-  // Month view: calendar grid
   const MonthView = () => {
     const year = baseDate.getFullYear();
     const month = baseDate.getMonth();
@@ -480,20 +562,23 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
     const blanks = Array(startDow === 0 ? 6 : startDow - 1).fill(null);
     const days = Array.from({ length: daysInMonth }, (_, i) => new Date(year, month, i + 1));
     const allDays = [...blanks, ...days];
-    
+
     const moodPerDay = new Map<string, MoodType>();
     entries.forEach(e => {
       const ds = e.timestamp.split('T')[0];
       moodPerDay.set(ds, e.mood);
     });
-    
+
     return (
       <div>
         <div className="grid grid-cols-7 mb-1">
           {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(d => (
-            <div key={d} className="text-center text-xs font-semibold text-medium-gray py-1">{d}</div>
+            <div key={d} className="text-center text-xs font-semibold text-medium-gray py-1">
+              {d}
+            </div>
           ))}
         </div>
+
         <div className="grid grid-cols-7 gap-1">
           {allDays.map((day, i) => {
             if (!day) return <div key={i} className="h-12" />;
@@ -501,14 +586,21 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
             const mood = moodPerDay.get(ds);
             const m = mood ? moodOf(mood) : null;
             const isToday = isSameDay(day, new Date());
+
             return (
-              <div key={i} className={`flex flex-col items-center justify-center rounded-xl min-h-[52px] p-1 ${isToday ? 'ring-2 ring-warm-bronze' : ''} ${m ? m.bg : 'bg-soft-taupe/20'}`}>
+              <div
+                key={i}
+                className={`flex flex-col items-center justify-center rounded-xl min-h-[52px] p-1 ${
+                  isToday ? 'ring-2 ring-warm-bronze' : ''
+                } ${m ? m.bg : 'bg-soft-taupe/20'}`}
+              >
                 <span className="text-xs font-bold text-charcoal">{format(day, 'd')}</span>
                 {m && <span className="text-lg leading-none">{m.emoji}</span>}
               </div>
             );
           })}
         </div>
+
         <div className="mt-4 flex flex-wrap gap-3 justify-center">
           {MOODS.map(m => (
             <div key={m.type} className="flex items-center gap-1.5">
@@ -532,21 +624,42 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
           ]).map(v => {
             const Icon = v.icon;
             return (
-              <button key={v.id} onClick={() => { setView(v.id); setBaseDate(new Date()); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${view === v.id ? 'bg-white shadow text-charcoal' : 'text-medium-gray hover:text-charcoal'}`}>
-                <Icon className="w-3.5 h-3.5" />{v.label}
+              <button
+                key={v.id}
+                onClick={() => {
+                  setView(v.id);
+                  setBaseDate(new Date());
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                  view === v.id ? 'bg-white shadow text-charcoal' : 'text-medium-gray hover:text-charcoal'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {v.label}
               </button>
             );
           })}
         </div>
+
         <div className="flex items-center gap-1">
-          <button onClick={() => nav(-1)} className="w-8 h-8 rounded-lg hover:bg-soft-taupe/50 flex items-center justify-center"><ChevronLeft className="w-4 h-4 text-charcoal" /></button>
+          <button onClick={() => nav(-1)} className="w-8 h-8 rounded-lg hover:bg-soft-taupe/50 flex items-center justify-center">
+            <ChevronLeft className="w-4 h-4 text-charcoal" />
+          </button>
           <span className="text-sm font-semibold text-charcoal min-w-[160px] text-center">{label()}</span>
-          <button onClick={() => nav(1)} className="w-8 h-8 rounded-lg hover:bg-soft-taupe/50 flex items-center justify-center"><ChevronRight className="w-4 h-4 text-charcoal" /></button>
+          <button onClick={() => nav(1)} className="w-8 h-8 rounded-lg hover:bg-soft-taupe/50 flex items-center justify-center">
+            <ChevronRight className="w-4 h-4 text-charcoal" />
+          </button>
         </div>
       </div>
+
       <AnimatePresence mode="wait">
-        <motion.div key={view + format(baseDate, 'yyyy-MM-dd')} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+        <motion.div
+          key={view + format(baseDate, 'yyyy-MM-dd')}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.25 }}
+        >
           {view === 'day' && <DayView />}
           {view === 'week' && <WeekView />}
           {view === 'month' && <MonthView />}
@@ -557,8 +670,9 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
 }
 
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
-export default function PatientProgressTimeline() {
+export default function PatientMoodTracker() {
   const { state, dispatch } = useApp();
+
   const [selectedMood, setSelectedMood] = useState<MoodType | null>(null);
   const [moodNote, setMoodNote] = useState('');
   const [showCalmTools, setShowCalmTools] = useState(false);
@@ -569,34 +683,82 @@ export default function PatientProgressTimeline() {
   const moodEntries = state.moodEntries ?? [];
   const patientId = state.currentUser?.id;
 
-  // Load Care Partner Check-in data
-  useEffect(() => {
-    if (!patientId) return;
-    const loadCheckIns = async () => {
-      setLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('care_partner_checkins')
-          .select('*')
-          .eq('patient_id', patientId)
-          .order('check_in_date', { ascending: false });
-        
-        if (error) throw error;
+useEffect(() => {
+  if (!patientId) return;
+
+  let isActive = true;
+
+  const loadCheckIns = async () => {
+    if (isActive) setLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('care_partner_checkins')
+        .select('*')
+        .eq('patient_id', patientId)
+        .order('check_in_date', { ascending: false });
+
+      if (error) throw error;
+
+      if (isActive) {
         setCheckInData((data || []) as CheckInData[]);
-      } catch (err) {
-        console.error('Error loading check-ins:', err);
-      } finally {
-        setLoading(false);
       }
-    };
-    loadCheckIns();
-  }, [patientId]);
+    } catch (err) {
+      console.error('Error loading check-ins:', err);
+    } finally {
+      if (isActive) setLoading(false);
+    }
+  };
+
+  loadCheckIns();
+
+  const channel = supabase
+    .channel(`care_partner_checkins_${patientId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'care_partner_checkins',
+        filter: `patient_id=eq.${patientId}`,
+      },
+      async () => {
+        await loadCheckIns();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    isActive = false;
+    supabase.removeChannel(channel);
+  };
+}, [patientId]);
 
   const calmTools = [
-    { icon: Wind, title: 'Deep Breathing', description: 'Breathe along with the guide', action: () => toast.success('Breathing exercise started') },
-    { icon: Music, title: 'Calming Music', description: 'Listen to soothing sounds', action: () => toast.success('Playing calming music') },
-    { icon: BookOpen, title: 'Memory Book', description: 'Look at happy memories', action: () => toast.success('Opening memory book') },
-    { icon: Sun, title: 'Gentle Stretch', description: 'Easy movements to relax', action: () => toast.success('Starting gentle stretches') },
+    {
+      icon: Wind,
+      title: 'Deep Breathing',
+      description: 'Breathe along with the guide',
+      action: () => toast.success('Breathing exercise started'),
+    },
+    {
+      icon: Music,
+      title: 'Calming Music',
+      description: 'Listen to soothing sounds',
+      action: () => toast.success('Playing calming music'),
+    },
+    {
+      icon: BookOpen,
+      title: 'Memory Book',
+      description: 'Look at happy memories',
+      action: () => toast.success('Opening memory book'),
+    },
+    {
+      icon: Sun,
+      title: 'Gentle Stretch',
+      description: 'Easy movements to relax',
+      action: () => toast.success('Starting gentle stretches'),
+    },
   ];
 
   const handleMoodSelect = (mood: MoodType) => {
@@ -607,6 +769,7 @@ export default function PatientProgressTimeline() {
 
   const submitMood = () => {
     if (!selectedMood) return;
+
     dispatch({
       type: 'ADD_MOOD_ENTRY',
       payload: {
@@ -615,49 +778,51 @@ export default function PatientProgressTimeline() {
         mood: selectedMood,
         intensity: 7,
         note: moodNote,
-        timeOfDay: (format(new Date(), 'a').toLowerCase().includes('am') ? 'morning' : 'afternoon') as 'morning' | 'afternoon' | 'evening' | 'night',
+        timeOfDay: (
+          format(new Date(), 'a').toLowerCase().includes('am') ? 'morning' : 'afternoon'
+        ) as 'morning' | 'afternoon' | 'evening' | 'night',
         timestamp: new Date().toISOString(),
         recordedBy: state.patient?.preferredName || 'Patient',
       },
     });
+
     toast.success('Thank you for sharing how you feel 💛');
     setSelectedMood(null);
     setMoodNote('');
     setShowCalmTools(false);
   };
 
-  const timelineEntries = useMemo(() =>
-    moodEntries.map(e => ({ timestamp: e.timestamp, mood: e.mood as MoodType, note: e.note })),
+  const timelineEntries = useMemo(
+    () => moodEntries.map(e => ({ timestamp: e.timestamp, mood: e.mood as MoodType, note: e.note })),
     [moodEntries]
   );
 
-  // Define metrics for each section — each metric has a distinct color
   const sectionAMetrics = [
-    { key: 'fn_dressing',  label: 'Dressing',   color: '#2563eb' },
-    { key: 'fn_bathing',   label: 'Bathing',     color: '#16a34a' },
-    { key: 'fn_toileting', label: 'Toileting',   color: '#dc2626' },
-    { key: 'fn_transfers', label: 'Transfers',   color: '#7c3aed' },
-    { key: 'fn_mobility',  label: 'Mobility',    color: '#ea580c' },
-    { key: 'fn_medication',label: 'Medication',  color: '#0891b2' },
+    { key: 'fn_dressing', label: 'Dressing', color: '#2563eb' },
+    { key: 'fn_bathing', label: 'Bathing', color: '#16a34a' },
+    { key: 'fn_toileting', label: 'Toileting', color: '#dc2626' },
+    { key: 'fn_transfers', label: 'Transfers', color: '#7c3aed' },
+    { key: 'fn_mobility', label: 'Mobility', color: '#ea580c' },
+    { key: 'fn_medication', label: 'Medication', color: '#0891b2' },
   ];
 
   const sectionBMetrics = [
-    { key: 'nu_appetite',   label: 'Appetite',   color: '#16a34a' },
-    { key: 'nu_meal_pct',   label: 'Meal %',     color: '#ca8a04' },
-    { key: 'nu_fluids',     label: 'Fluids',     color: '#2563eb' },
+    { key: 'nu_appetite', label: 'Appetite', color: '#16a34a' },
+    { key: 'nu_meal_pct', label: 'Meal %', color: '#ca8a04' },
+    { key: 'nu_fluids', label: 'Fluids', color: '#2563eb' },
     { key: 'nu_swallowing', label: 'Swallowing', color: '#dc2626' },
   ];
 
   const sectionCMetrics = [
     { key: 'co_urinary', label: 'Urinary', color: '#2563eb' },
-    { key: 'co_bowel',   label: 'Bowel',   color: '#16a34a' },
-    { key: 'co_skin',    label: 'Skin',    color: '#dc2626' },
+    { key: 'co_bowel', label: 'Bowel', color: '#16a34a' },
+    { key: 'co_skin', label: 'Skin', color: '#dc2626' },
   ];
 
   const sectionDMetrics = [
-    { key: 'sa_falls',          label: 'Falls',           color: '#dc2626' },
-    { key: 'sa_wandering',      label: 'Wandering',       color: '#ea580c' },
-    { key: 'sa_safety_concerns',label: 'Safety Concerns', color: '#7c3aed' },
+    { key: 'sa_falls', label: 'Falls', color: '#dc2626' },
+    { key: 'sa_wandering', label: 'Wandering', color: '#ea580c' },
+    { key: 'sa_safety_concerns', label: 'Safety Concerns', color: '#7c3aed' },
   ];
 
   const sectionEMetrics = [
@@ -665,96 +830,13 @@ export default function PatientProgressTimeline() {
   ];
 
   const sectionFMetrics = [
-    { key: 'mo_mood',  label: 'Mood',  color: '#db2777' },
+    { key: 'mo_mood', label: 'Mood', color: '#db2777' },
     { key: 'mo_sleep', label: 'Sleep', color: '#2563eb' },
   ];
 
   const sectionGMetrics = [
     { key: 'sy_symptoms', label: 'Symptoms Present', color: '#dc2626' },
   ];
-
-
-return (
-  <div className="space-y-6">
-
-    {/* A — Daily Function */}
-    <ADLProgressChart
-      title="A — Daily Function"
-      patientId={state.currentUser?.id}
-      metrics={[
-        { key: "fn_dressing", label: "Dressing", color: "#2563eb" },
-        { key: "fn_bathing", label: "Bathing", color: "#16a34a" },
-        { key: "fn_toileting", label: "Toileting", color: "#dc2626" },
-        { key: "fn_transfers", label: "Transfers", color: "#7c3aed" },
-        { key: "fn_mobility", label: "Mobility", color: "#ea580c" },
-        { key: "fn_medication", label: "Medication", color: "#0891b2" }
-      ]}
-    />
-
-    {/* B — Nutrition */}
-    <ADLProgressChart
-      title="B — Nutrition & Hydration"
-      patientId={state.currentUser?.id}
-      metrics={[
-        { key: "nu_appetite", label: "Appetite", color: "#22c55e" },
-        { key: "nu_meal_pct", label: "Meal %", color: "#3b82f6" },
-        { key: "nu_fluids", label: "Fluids", color: "#06b6d4" },
-        { key: "nu_swallowing", label: "Swallowing", color: "#f97316" }
-      ]}
-    />
-
-    {/* C — Continence */}
-    <ADLProgressChart
-      title="C — Continence"
-      patientId={state.currentUser?.id}
-      metrics={[
-        { key: "co_urinary", label: "Urinary", color: "#2563eb" },
-        { key: "co_bowel", label: "Bowel", color: "#16a34a" },
-        { key: "co_skin", label: "Skin", color: "#dc2626" }
-      ]}
-    />
-
-    {/* D — Safety */}
-    <ADLProgressChart
-      title="D — Safety Events"
-      patientId={state.currentUser?.id}
-      metrics={[
-        { key: "sa_falls", label: "Falls", color: "#ef4444" },
-        { key: "sa_wandering", label: "Wandering", color: "#f97316" },
-        { key: "sa_safety_concerns", label: "Safety Concerns", color: "#8b5cf6" }
-      ]}
-    />
-
-    {/* E — Behavior */}
-    <ADLProgressChart
-      title="E — Behavior"
-      patientId={state.currentUser?.id}
-      metrics={[
-        { key: "be_behaviors", label: "Behaviors", color: "#ec4899" }
-      ]}
-    />
-
-    {/* F — Mood */}
-    <ADLProgressChart
-      title="F — Mood & Social"
-      patientId={state.currentUser?.id}
-      metrics={[
-        { key: "mo_mood", label: "Mood", color: "#06b6d4" },
-        { key: "mo_sleep", label: "Sleep", color: "#6366f1" }
-      ]}
-    />
-
-    {/* G — Symptoms */}
-    <ADLProgressChart
-      title="G — Symptoms"
-      patientId={state.currentUser?.id}
-      metrics={[
-        { key: "sy_symptoms", label: "Symptoms", color: "#f43f5e" }
-      ]}
-    />
-
-  </div>
-);
 
   if (loading) {
     return (
@@ -766,7 +848,7 @@ return (
 
   return (
     <div className="space-y-8">
-      {/* ── SECTION 1: How Are You Feeling? (Mood Entry) ─────────────────── */}
+      {/* ── SECTION 1: How Are You Feeling? ─────────────────────────────── */}
       <div className="bg-white rounded-3xl shadow-card p-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <h1 className="text-2xl font-bold text-charcoal mb-1">How Are You Feeling?</h1>
@@ -788,11 +870,11 @@ return (
               whileHover={{ scale: 1.08, y: -4 }}
               whileTap={{ scale: 0.94 }}
               onClick={() => handleMoodSelect(mood.type)}
-              className={`flex flex-col items-center gap-3 p-4 rounded-2xl transition-all
-                ${selectedMood === mood.type
+              className={`flex flex-col items-center gap-3 p-4 rounded-2xl transition-all ${
+                selectedMood === mood.type
                   ? `${mood.bg} ring-2 ${mood.ring} shadow-md`
                   : 'hover:bg-soft-taupe/40 bg-warm-ivory'
-                }`}
+              }`}
             >
               <span className="text-5xl sm:text-6xl leading-none">{mood.emoji}</span>
               <span className="text-sm font-semibold text-charcoal">{mood.label}</span>
@@ -802,11 +884,17 @@ return (
 
         <AnimatePresence>
           {selectedMood && (
-            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className="mt-6 space-y-4">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              className="mt-6 space-y-4"
+            >
               <div className={`p-4 rounded-2xl ${moodOf(selectedMood).bg} flex items-center gap-3`}>
                 <span className="text-4xl">{moodOf(selectedMood).emoji}</span>
                 <p className="font-semibold text-charcoal text-lg capitalize">You feel {selectedMood}</p>
               </div>
+
               <div>
                 <p className="text-sm text-medium-gray mb-2">Would you like to add a note? (optional)</p>
                 <Textarea
@@ -817,7 +905,11 @@ return (
                   rows={3}
                 />
               </div>
-              <Button onClick={submitMood} className="w-full bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl py-4 text-base font-semibold">
+
+              <Button
+                onClick={submitMood}
+                className="w-full bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl py-4 text-base font-semibold"
+              >
                 Share How I Feel
               </Button>
             </motion.div>
@@ -849,7 +941,7 @@ return (
         </AnimatePresence>
       </div>
 
-      {/* ── SECTION 2: Feeling Timeline ──────────────────────────────────── */}
+      {/* ── SECTION 2: Feeling Timeline ─────────────────────────────────── */}
       <div className="bg-white rounded-3xl shadow-card p-6">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 bg-calm-blue/10 rounded-xl flex items-center justify-center">
@@ -872,89 +964,78 @@ return (
         )}
       </div>
 
-      {/* ── SECTION 3: Care Partner Progress Graphs ───────────────────────── */}
+      {/* ── SECTION 3: Care Partner Progress Graphs ─────────────────────── */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <Activity className="w-5 h-5 text-warm-bronze" />
             <h2 className="text-lg font-bold text-charcoal">Care Partner Progress</h2>
           </div>
           <FilterButtons current={filterDays} onChange={setFilterDays} />
         </div>
-        <p className="text-xs text-medium-gray mb-4">Track progress over time from daily care partner check-ins</p>
 
-        {/* Section A — Daily Function */}
+        <p className="text-xs text-medium-gray mb-4">
+          Track progress over time from daily care partner check-ins
+        </p>
+
         <SectionCombinedGraph
           title="A — Daily Function"
           icon={Activity}
           color="bg-warm-bronze"
-          accentColor="#c17a3a"
           metrics={sectionAMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
         />
 
-        {/* Section B — Nutrition & Hydration */}
         <SectionCombinedGraph
           title="B — Nutrition & Hydration"
           icon={Utensils}
           color="bg-soft-sage"
-          accentColor="#7dbf7d"
           metrics={sectionBMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
         />
 
-        {/* Section C — Continence */}
         <SectionCombinedGraph
           title="C — Continence"
           icon={Droplets}
           color="bg-calm-blue"
-          accentColor="#6baed6"
           metrics={sectionCMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
         />
 
-        {/* Section D — Safety Events */}
         <SectionCombinedGraph
           title="D — Safety Events"
           icon={Shield}
           color="bg-gentle-coral"
-          accentColor="#e07b5a"
           metrics={sectionDMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
         />
 
-        {/* Section E — Behavior & Responsiveness */}
         <SectionCombinedGraph
           title="E — Behavior & Responsiveness"
           icon={Brain}
           color="bg-deep-bronze"
-          accentColor="#8B6914"
           metrics={sectionEMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
         />
 
-        {/* Section F — Mood & Social Engagement */}
         <SectionCombinedGraph
           title="F — Mood & Social Engagement"
           icon={Heart}
           color="bg-warm-amber"
-          accentColor="#f0a030"
           metrics={sectionFMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
         />
 
-        {/* Section G — Symptoms & Comfort */}
         <SectionCombinedGraph
           title="G — Symptoms & Comfort"
           icon={ThumbsUp}
           color="bg-purple-500"
-          accentColor="#9b59b6"
           metrics={sectionGMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
