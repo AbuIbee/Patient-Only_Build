@@ -720,7 +720,7 @@ export default function PatientMoodTracker() {
   const [moodNote, setMoodNote] = useState('');
   const [showCalmTools, setShowCalmTools] = useState(false);
   const [checkInData, setCheckInData] = useState<CheckInData[]>([]);
-  const [filterDays, setFilterDays] = useState<FilterDays>('1m');
+  const [filterKey, setFilterKey] = useState<FilterKey>('1m');
   const [loading, setLoading] = useState(true);
 
   const moodEntries = state.moodEntries ?? [];
