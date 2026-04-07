@@ -180,15 +180,6 @@ function SectionCombinedGraph({
 
   // ── SVG layout ──────────────────────────────────────────────────────────────
 
-<div className="bg-white rounded-xl p-6 shadow">
-  <h2 className="text-lg font-semibold mb-4">
-    A — Daily Function
-  </h2>
-
-  <ADLProgressChart />
-</div>
-
-
   const PAD_L  = 36;   // Y-axis: just tick numbers, not category names
   const PAD_R  = 16;
   const PAD_T  = 20;
@@ -349,7 +340,17 @@ function SectionCombinedGraph({
       )}
     </div>
   );
+
+<div className="bg-white rounded-xl p-6 shadow">
+  <h2 className="text-lg font-semibold mb-4">
+    A — Daily Function
+  </h2>
+
+  <ADLProgressChart />
+</div>
+
 }
+
 
 
 
