@@ -40,6 +40,7 @@ type PatientView =
 
 export default function PatientLayout() {
   const [currentView, setCurrentView] = useState<PatientView>('dashboard');
+  const [initialGame, setInitialGame] = useState<string | undefined>(undefined);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -279,7 +280,7 @@ export default function PatientLayout() {
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
-        return <PatientHome />;
+        return <PatientHome onNavigateToGame={(gameId) => { setInitialGame(gameId); setCurrentView('games'); }} />;
       case 'medications':
         return <PatientMedications />;
       case 'routines':
@@ -303,7 +304,7 @@ export default function PatientLayout() {
       case 'media':
         return <MediaUploader readOnly={false} patientId={state.currentUser?.id} />;
       case 'games':
-        return <PatientGames />;
+        return <PatientGames initialGame={initialGame as any} key={initialGame || 'menu'} />;
       default:
         return <PatientHome />;
     }

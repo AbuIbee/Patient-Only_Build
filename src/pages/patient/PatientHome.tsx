@@ -108,318 +108,272 @@ interface FamiliarFace {
   phone?: string;
 }
 
-// Game definitions with instructions
+// Game definitions
 const GAMES = [
-  { id: 'matching',   title: 'Matching Pairs',   abbr: 'MP', instruction: 'Flip over two cards at a time to find matching emoji pairs. Try to match all pairs in as few moves as possible!' },
-  { id: 'crossword',  title: 'Crossword Puzzle',  abbr: 'XW', instruction: 'Read the clues and fill in the words in the grid. Tap a square to select it, then use the keyboard to type your answer.' },
-  { id: 'checkers',   title: 'Checkers',          abbr: 'CK', instruction: 'You play as red pieces against the AI. Move diagonally forward and capture opponent pieces by jumping over them.' },
-  { id: 'chess',      title: 'Chess',             abbr: 'CH', instruction: 'Play as white against the AI. Move your pieces strategically to checkmate the black king.' },
-  { id: 'wordsearch', title: 'Word Search',       abbr: 'WS', instruction: 'Find hidden words in the letter grid. Drag your finger across the letters to highlight a word when you find it.' },
-  { id: 'solitaire',  title: 'Solitaire',         abbr: 'SL', instruction: 'Classic Klondike Solitaire. Build stacks in alternating colors and arrange all cards by suit from Ace to King.' },
-  { id: 'hangman',    title: 'Hangman',           abbr: 'HM', instruction: 'Guess the hidden word one letter at a time. Each wrong guess adds a part to the hangman. Solve it before the drawing is complete!' },
-  { id: 'brainapps',  title: 'Brain Training',    abbr: 'BT', instruction: 'Try brain training exercises from apps like Lumosity, BrainHQ, and Elevate to keep your mind sharp.' },
+  { id: 'matching',   title: 'Matching Pairs'  },
+  { id: 'crossword',  title: 'Crossword Puzzle' },
+  { id: 'checkers',   title: 'Checkers'         },
+  { id: 'chess',      title: 'Chess'            },
+  { id: 'wordsearch', title: 'Word Search'      },
+  { id: 'solitaire',  title: 'Solitaire'        },
+  { id: 'hangman',    title: 'Hangman'          },
+  { id: 'brainapps',  title: 'Brain Training'   },
 ];
 
-// SVG illustrations for each game card
-function GameIllustration({ id }: { id: string }) {
+// Card color themes
+const CARD_THEME: Record<string, { bg: string; border: string; label: string; labelTxt: string }> = {
+  matching:   { bg: 'linear-gradient(155deg,#d4940c 0%,#8a5c04 100%)', border: '#f5c842', label: 'MP', labelTxt: '#ffe082' },
+  crossword:  { bg: 'linear-gradient(155deg,#1e4db0 0%,#0d2055 100%)', border: '#5588ee', label: 'XW', labelTxt: '#aaccff' },
+  checkers:   { bg: 'linear-gradient(155deg,#cc1a1a 0%,#6e0606 100%)', border: '#ff6060', label: 'CK', labelTxt: '#ffbbbb' },
+  chess:      { bg: 'linear-gradient(155deg,#1a4d28 0%,#081e10 100%)', border: '#4a9a5a', label: 'CH', labelTxt: '#f5c842' },
+  wordsearch: { bg: 'linear-gradient(155deg,#1244a8 0%,#091840 100%)', border: '#5588ee', label: 'WS', labelTxt: '#aaccff' },
+  solitaire:  { bg: 'linear-gradient(155deg,#bb1a1a 0%,#600505 100%)', border: '#ff7070', label: 'SL', labelTxt: '#ffbbbb' },
+  hangman:    { bg: 'linear-gradient(155deg,#52118a 0%,#220840 100%)', border: '#9955ee', label: 'HM', labelTxt: '#ddaaff' },
+  brainapps:  { bg: 'linear-gradient(155deg,#282828 0%,#101010 100%)', border: '#888888', label: 'BT', labelTxt: '#dddddd' },
+};
+
+// Per-game SVG artwork (fits inside the card, no emoji)
+function GameArt({ id }: { id: string }) {
   switch (id) {
-    case 'matching':
-      return (
-        <svg viewBox="0 0 80 80" className="w-full h-full">
-          <defs>
-            <linearGradient id="mg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#f5c842"/><stop offset="100%" stopColor="#e8a020"/></linearGradient>
-            <linearGradient id="mg2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#fada6a"/><stop offset="100%" stopColor="#c8820a"/></linearGradient>
-            <filter id="mgs"><feDropShadow dx="1" dy="2" stdDeviation="2" floodOpacity="0.35"/></filter>
-          </defs>
-          {/* Left diamond */}
-          <g filter="url(#mgs)"><polygon points="28,20 10,40 28,60 46,40" fill="url(#mg1)"/><polygon points="28,26 16,40 28,54 40,40" fill="url(#mg2)"/></g>
-          {/* Right diamond */}
-          <g filter="url(#mgs)"><polygon points="52,20 34,40 52,60 70,40" fill="url(#mg1)"/><polygon points="52,26 40,40 52,54 64,40" fill="url(#mg2)"/></g>
-        </svg>
-      );
-    case 'crossword':
-      return (
-        <svg viewBox="0 0 80 80" className="w-full h-full">
-          <defs><filter id="xws"><feDropShadow dx="1" dy="2" stdDeviation="1.5" floodOpacity="0.4"/></filter></defs>
-          {/* Crossword tiles */}
-          {[
-            { x:25, y:12, letter:'C', fill:'#e8d8a0', txt:'#1a3a6e' },
-            { x:25, y:32, letter:'A', fill:'#e8d8a0', txt:'#1a3a6e' },
-            { x:25, y:52, letter:'E', fill:'#3a5fa0', txt:'#e8d8a0' },
-            { x:45, y:32, letter:'W', fill:'#e8d8a0', txt:'#1a3a6e' },
-          ].map(({x,y,letter,fill,txt}) => (
-            <g key={letter+x} filter="url(#xws)">
-              <rect x={x} y={y} width="18" height="18" rx="3" fill={fill}/>
-              <text x={x+9} y={y+13} textAnchor="middle" fontSize="11" fontWeight="bold" fill={txt}>{letter}</text>
-            </g>
-          ))}
-        </svg>
-      );
-    case 'checkers':
-      return (
-        <svg viewBox="0 0 80 80" className="w-full h-full">
-          <defs>
-            <radialGradient id="ck1" cx="40%" cy="35%"><stop offset="0%" stopColor="#ff6b6b"/><stop offset="100%" stopColor="#cc0000"/></radialGradient>
-            <radialGradient id="ck2" cx="40%" cy="35%"><stop offset="0%" stopColor="#555"/><stop offset="100%" stopColor="#111"/></radialGradient>
-            <filter id="cks"><feDropShadow dx="0" dy="3" stdDeviation="3" floodOpacity="0.5"/></filter>
-          </defs>
-          {/* Black piece base */}
-          <g filter="url(#cks)">
-            <ellipse cx="40" cy="56" rx="22" ry="8" fill="url(#ck2)"/>
-            <rect x="18" y="48" width="44" height="8" rx="2" fill="#333"/>
-            <ellipse cx="40" cy="48" rx="22" ry="8" fill="#444"/>
+    // ── Matching Pairs: two interlocked 3-D diamonds ─────────────────────────
+    case 'matching': return (
+      <svg viewBox="0 0 60 60" className="w-full h-full" overflow="visible">
+        <defs>
+          <linearGradient id="mgA" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#ffe566"/><stop offset="100%" stopColor="#b87a00"/></linearGradient>
+          <linearGradient id="mgB" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#ffd700"/><stop offset="100%" stopColor="#7a5000"/></linearGradient>
+          <filter id="mgS"><feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.5"/></filter>
+        </defs>
+        <g filter="url(#mgS)">
+          <polygon points="20,8  4,30 20,52 36,30"  fill="url(#mgA)"/>
+          <polygon points="20,14 10,30 20,46 30,30" fill="url(#mgB)"/>
+          <polygon points="40,8  24,30 40,52 56,30" fill="url(#mgA)"/>
+          <polygon points="40,14 30,30 40,46 50,30" fill="url(#mgB)"/>
+        </g>
+        <line x1="36" y1="30" x2="24" y2="30" stroke="#ffe082" strokeWidth="1" opacity="0.6"/>
+      </svg>
+    );
+    // ── Crossword: 3 letter tiles in cross formation ──────────────────────────
+    case 'crossword': return (
+      <svg viewBox="0 0 60 60" className="w-full h-full">
+        <defs><filter id="xwS"><feDropShadow dx="0" dy="2" stdDeviation="1.5" floodOpacity="0.5"/></filter></defs>
+        {/* vertical: C A E */}
+        {[{x:22,y:4,l:'C',f:'#ddd0a0',t:'#1a2e6e'},{x:22,y:22,l:'A',f:'#3060b0',t:'#ffffff'},{x:22,y:40,l:'E',f:'#ddd0a0',t:'#1a2e6e'}].map(({x,y,l,f,t})=>(
+          <g key={l} filter="url(#xwS)">
+            <rect x={x} y={y} width="16" height="16" rx="3" fill={f}/>
+            <text x={x+8} y={y+12} textAnchor="middle" fontSize="10" fontWeight="bold" fill={t}>{l}</text>
           </g>
-          {/* Red piece on top */}
-          <g filter="url(#cks)">
-            <ellipse cx="40" cy="42" rx="22" ry="8" fill="url(#ck1)"/>
-            <rect x="18" y="32" width="44" height="10" rx="2" fill="#cc2222"/>
-            <ellipse cx="40" cy="32" rx="22" ry="8" fill="url(#ck1)"/>
-            <ellipse cx="40" cy="32" rx="14" ry="4" fill="#ff8888" opacity="0.5"/>
+        ))}
+        {/* horizontal: W */}
+        <g filter="url(#xwS)">
+          <rect x="40" y="22" width="16" height="16" rx="3" fill="#ddd0a0"/>
+          <text x="48" y="34" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#1a2e6e">W</text>
+        </g>
+        {/* XW labels in corners */}
+        <text x="4" y="11" fontSize="7" fontWeight="bold" fill="rgba(170,200,255,0.6)">XW</text>
+        <text x="56" y="56" fontSize="7" fontWeight="bold" fill="rgba(170,200,255,0.6)" textAnchor="end">XW</text>
+      </svg>
+    );
+    // ── Checkers: stacked red disc on black disc ──────────────────────────────
+    case 'checkers': return (
+      <svg viewBox="0 0 60 60" className="w-full h-full">
+        <defs>
+          <radialGradient id="ckR" cx="38%" cy="30%"><stop offset="0%" stopColor="#ff7070"/><stop offset="100%" stopColor="#990000"/></radialGradient>
+          <radialGradient id="ckB" cx="38%" cy="30%"><stop offset="0%" stopColor="#555"/><stop offset="100%" stopColor="#111"/></radialGradient>
+          <filter id="ckS"><feDropShadow dx="0" dy="3" stdDeviation="3" floodOpacity="0.6"/></filter>
+        </defs>
+        {/* checker board hint squares */}
+        {[0,1,2,3].map(c=>[0,1].map(r=>(r+c)%2===0&&
+          <rect key={r*4+c} x={4+c*13} y={48+r*6} width="13" height="6" fill="rgba(200,50,50,0.25)" rx="1"/>
+        ))}
+        <g filter="url(#ckS)">
+          {/* black disc */}
+          <ellipse cx="30" cy="42" rx="19" ry="7" fill="url(#ckB)"/>
+          <rect x="11" y="36" width="38" height="7" fill="#333"/>
+          <ellipse cx="30" cy="36" rx="19" ry="7" fill="#3a3a3a"/>
+          {/* red disc */}
+          <ellipse cx="30" cy="30" rx="19" ry="7" fill="url(#ckR)"/>
+          <rect x="11" y="22" width="38" height="9" fill="#bb1111"/>
+          <ellipse cx="30" cy="22" rx="19" ry="7" fill="url(#ckR)"/>
+          <ellipse cx="30" cy="22" rx="12" ry="3.5" fill="rgba(255,160,160,0.45)"/>
+        </g>
+      </svg>
+    );
+    // ── Chess: white knight on dark board ────────────────────────────────────
+    case 'chess': return (
+      <svg viewBox="0 0 60 60" className="w-full h-full">
+        <defs>
+          <linearGradient id="chW" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ffffff"/><stop offset="100%" stopColor="#bbbbb0"/></linearGradient>
+          <filter id="chS"><feDropShadow dx="1" dy="2" stdDeviation="2" floodOpacity="0.5"/></filter>
+        </defs>
+        {/* board squares */}
+        {[0,1,2,3].map(r=>[0,1,2,3].map(c=>(r+c)%2===0&&
+          <rect key={r*4+c} x={4+c*13} y={44+r*4} width="13" height="4" fill="rgba(255,255,255,0.12)" rx="1"/>
+        ))}
+        {/* crown */}
+        <g transform="translate(38,6)" opacity="0.9">
+          {[-6,0,6].map((ox,i)=>(<polygon key={i} points={`${ox},-1 ${ox+3},5 ${ox+6},-1`} fill="#f5c842"/>))}
+          <rect x="-6" y="5" width="18" height="4" rx="1.5" fill="#f5c842"/>
+        </g>
+        {/* knight */}
+        <g filter="url(#chS)" transform="translate(30,38) scale(0.7)">
+          <ellipse cx="0" cy="18" rx="14" ry="5" fill="url(#chW)" opacity="0.5"/>
+          <path d="M-7,16 Q-9,2 -4,-6 Q0,-12 7,-14 Q13,-15 14,-8 Q15,-2 10,3 Q7,7 8,11 Q9,14 6,15 Q2,16 0,16 Q-3,16 -7,16Z" fill="url(#chW)"/>
+          <circle cx="9" cy="-7" r="2.5" fill="#999"/>
+          <path d="M4,-11 Q8,-13 11,-9" stroke="#ccc" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+        </g>
+      </svg>
+    );
+    // ── Word Search: letter grid with diagonal highlight + magnifier ──────────
+    case 'wordsearch': return (
+      <svg viewBox="0 0 60 60" className="w-full h-full">
+        <defs><filter id="wsS"><feDropShadow dx="0" dy="1" stdDeviation="1" floodOpacity="0.4"/></filter></defs>
+        {/* letter grid */}
+        {[['A','B','C','D'],['E','J','W','O'],['K','O','R','D'],['P','Q','R','T']].map((row,r)=>
+          row.map((l,c)=>(
+            <text key={r*4+c} x={10+c*12} y={16+r*13} fontSize="9" fontWeight="bold" textAnchor="middle"
+              fill={((r===1||r===2)&&c>=1)?"#ffe082":"rgba(255,255,255,0.65)"}>{l}</text>
+          ))
+        )}
+        {/* highlight line */}
+        <line x1="10" y1="29" x2="46" y2="55" stroke="#ffe082" strokeWidth="5" strokeLinecap="round" opacity="0.45"/>
+        {/* magnifying glass */}
+        <g filter="url(#wsS)" transform="translate(46,10)">
+          <circle cx="0" cy="0" r="7" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2.5"/>
+          <line x1="5" y1="5" x2="11" y2="11" stroke="rgba(255,255,255,0.85)" strokeWidth="2.5" strokeLinecap="round"/>
+        </g>
+      </svg>
+    );
+    // ── Solitaire: three fanned cards with suit icons ─────────────────────────
+    case 'solitaire': return (
+      <svg viewBox="0 0 60 60" className="w-full h-full">
+        <defs>
+          <linearGradient id="slC" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fffbf0"/><stop offset="100%" stopColor="#ddd0b8"/></linearGradient>
+          <filter id="slS"><feDropShadow dx="1" dy="2" stdDeviation="2" floodOpacity="0.5"/></filter>
+        </defs>
+        {[{r:-18,x:-10,suit:'♥',sc:'#cc1111'},{r:-5,x:0,suit:'♠',sc:'#111'},{r:8,x:10,suit:'♥',sc:'#cc1111'}].map(({r,x,suit,sc},i)=>(
+          <g key={i} filter="url(#slS)" transform={`translate(${30+x},42) rotate(${r})`}>
+            <rect x="-11" y="-20" width="22" height="32" rx="3" fill="url(#slC)" stroke="#bbb" strokeWidth="0.5"/>
+            <text x="-7" y="-11" fontSize="8" fontWeight="bold" fill={sc}>A</text>
+            <text x="0" y="6" fontSize="15" fill={sc} textAnchor="middle">{suit}</text>
           </g>
-        </svg>
-      );
-    case 'chess':
-      return (
-        <svg viewBox="0 0 80 80" className="w-full h-full">
-          <defs>
-            <linearGradient id="chg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ffffff"/><stop offset="100%" stopColor="#cccccc"/></linearGradient>
-            <filter id="chs"><feDropShadow dx="1" dy="2" stdDeviation="2" floodOpacity="0.4"/></filter>
-          </defs>
-          {/* Chess board squares hint */}
-          {[0,1,2,3].map(r => [0,1,2,3].map(c => (r+c)%2===0 &&
-            <rect key={r*4+c} x={5+c*18} y={52+r*6} width="18" height="6" fill="rgba(255,255,255,0.15)" rx="1"/>
-          ))}
-          {/* Knight piece */}
-          <g filter="url(#chs)" transform="translate(40,38) scale(0.72)">
-            <ellipse cx="0" cy="22" rx="16" ry="5" fill="url(#chg)" opacity="0.6"/>
-            <path d="M-8,20 Q-10,5 -6,-5 Q-2,-15 6,-18 Q14,-20 16,-12 Q18,-4 12,2 Q8,6 10,10 Q12,14 8,16 Q4,18 0,18 Q-4,18 -8,20 Z" fill="url(#chg)"/>
-            <circle cx="10" cy="-10" r="3" fill="#888"/>
-            <path d="M4,-14 Q8,-16 12,-12" stroke="#aaa" strokeWidth="1.5" fill="none"/>
+        ))}
+      </svg>
+    );
+    // ── Hangman: gallows + figure + word blanks ───────────────────────────────
+    case 'hangman': return (
+      <svg viewBox="0 0 60 60" className="w-full h-full">
+        {/* checkered bg */}
+        {[0,1,2,3,4].map(r=>[0,1,2,3,4].map(c=>(r+c)%2===0&&
+          <rect key={r*5+c} x={c*12} y={r*12} width="12" height="12" fill="rgba(80,20,120,0.4)"/>
+        ))}
+        {/* gallows */}
+        <line x1="10" y1="52" x2="50" y2="52" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round"/>
+        <line x1="20" y1="52" x2="20" y2="10" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round"/>
+        <line x1="20" y1="10" x2="38" y2="10" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round"/>
+        <line x1="38" y1="10" x2="38" y2="16" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round"/>
+        {/* stick figure (partial) */}
+        <circle cx="38" cy="20" r="4" fill="none" stroke="rgba(255,220,100,0.9)" strokeWidth="1.8"/>
+        <line x1="38" y1="24" x2="38" y2="36" stroke="rgba(255,220,100,0.9)" strokeWidth="1.8" strokeLinecap="round"/>
+        <line x1="38" y1="28" x2="33" y2="33" stroke="rgba(255,220,100,0.9)" strokeWidth="1.8" strokeLinecap="round"/>
+        <line x1="38" y1="28" x2="43" y2="33" stroke="rgba(255,220,100,0.9)" strokeWidth="1.8" strokeLinecap="round"/>
+        {/* word blanks _ _ E _ _ */}
+        {['_','_','E','_','_'].map((ch,i)=>(
+          <text key={i} x={6+i*12} y={58} fontSize="10" fontWeight="bold" textAnchor="middle"
+            fill={ch==='E'?"#ffffff":"rgba(255,255,255,0.55)"}>{ch}</text>
+        ))}
+      </svg>
+    );
+    // ── Brain Training: faceted low-poly brain with sparkles ──────────────────
+    case 'brainapps': return (
+      <svg viewBox="0 0 60 60" className="w-full h-full">
+        <defs>
+          <radialGradient id="brG" cx="48%" cy="38%"><stop offset="0%" stopColor="#e5c8ff"/><stop offset="55%" stopColor="#9b44f0"/><stop offset="100%" stopColor="#55108a"/></radialGradient>
+          <filter id="brS"><feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#7b22ce" floodOpacity="0.7"/></filter>
+        </defs>
+        {/* sparkles */}
+        {[[8,10],[52,14],[55,46],[10,50],[30,4]].map(([cx,cy],i)=>(
+          <g key={i} opacity="0.8">
+            <line x1={cx-4} y1={cy} x2={cx+4} y2={cy} stroke="#ddbfff" strokeWidth="1.5" strokeLinecap="round"/>
+            <line x1={cx} y1={cy-4} x2={cx} y2={cy+4} stroke="#ddbfff" strokeWidth="1.5" strokeLinecap="round"/>
           </g>
-          {/* Crown */}
-          <g transform="translate(54,8)">
-            {[0,1,2].map(i=><polygon key={i} points={`${i*7-7},10 ${i*7-4},2 ${i*7-1},10`} fill="#f5c842" opacity="0.9"/>)}
-            <rect x="-8" y="10" width="22" height="5" rx="2" fill="#f5c842" opacity="0.9"/>
-          </g>
-        </svg>
-      );
-    case 'wordsearch':
-      return (
-        <svg viewBox="0 0 80 80" className="w-full h-full">
-          <defs><filter id="wss"><feDropShadow dx="0" dy="1" stdDeviation="1" floodOpacity="0.3"/></filter></defs>
-          {/* Grid of letters */}
-          {[
-            ['A','B','C','D'],['E','J','W','O'],['K','O','R','D'],['P','Q','R','T'],
-          ].map((row, r) => row.map((letter, c) => (
-            <text key={r*4+c} x={14+c*14} y={22+r*14} fontSize="9" fontWeight="bold"
-              fill={((r===1||r===2)&&(c===1||c===2||c===3))?"#ffe082":"rgba(255,255,255,0.7)"}
-              textAnchor="middle">{letter}</text>
-          )))}
-          {/* Diagonal highlight line */}
-          <line x1="14" y1="36" x2="56" y2="64" stroke="#ffe082" strokeWidth="5" strokeLinecap="round" opacity="0.5"/>
-          {/* Magnifying glass */}
-          <g filter="url(#wss)" transform="translate(58,12)">
-            <circle cx="0" cy="0" r="7" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="2.5"/>
-            <line x1="5" y1="5" x2="10" y2="10" stroke="rgba(255,255,255,0.8)" strokeWidth="2.5" strokeLinecap="round"/>
-          </g>
-        </svg>
-      );
-    case 'solitaire':
-      return (
-        <svg viewBox="0 0 80 80" className="w-full h-full">
-          <defs>
-            <filter id="sls"><feDropShadow dx="1" dy="2" stdDeviation="2" floodOpacity="0.4"/></filter>
-            <linearGradient id="slcg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fff9f0"/><stop offset="100%" stopColor="#e8dcc8"/></linearGradient>
-          </defs>
-          {/* Three fanned playing cards */}
-          {[
-            { rotate:-18, x:-12, fill:'url(#slcg)', suit:'♥', suitColor:'#cc2222' },
-            { rotate:-6, x:0, fill:'url(#slcg)', suit:'♠', suitColor:'#111' },
-            { rotate:6, x:10, fill:'url(#slcg)', suit:'♥', suitColor:'#cc2222' },
-          ].map(({rotate,x,fill,suit,suitColor},i) => (
-            <g key={i} filter="url(#sls)" transform={`translate(${40+x},45) rotate(${rotate})`}>
-              <rect x="-14" y="-22" width="28" height="38" rx="4" fill={fill} stroke="#ccc" strokeWidth="0.5"/>
-              <text x="-10" y="-14" fontSize="9" fontWeight="bold" fill={suitColor}>A</text>
-              <text x="0" y="6" fontSize="16" fill={suitColor} textAnchor="middle">{suit}</text>
-            </g>
-          ))}
-        </svg>
-      );
-    case 'hangman':
-      return (
-        <svg viewBox="0 0 80 80" className="w-full h-full">
-          <defs><filter id="hms"><feDropShadow dx="0" dy="1" stdDeviation="1" floodOpacity="0.3"/></filter></defs>
-          {/* Checkered background pattern */}
-          {[0,1,2,3,4,5].map(r=>[0,1,2,3,4,5].map(c=>(r+c)%2===0&&
-            <rect key={r*6+c} x={c*14} y={r*14} width="14" height="14" fill="rgba(100,40,140,0.4)"/>
-          ))}
-          {/* Word blanks _ _ E _ _ */}
-          <g filter="url(#hms)">
-            {['—','—','E','—','—'].map((ch,i) => (
-              <text key={i} x={8+i*15} y={52} fontSize="12" fontWeight="bold"
-                fill={ch==='E'?"#fff":"rgba(255,255,255,0.7)"} textAnchor="middle">{ch}</text>
-            ))}
-          </g>
-          {/* Corner A letters */}
-          <text x="6" y="15" fontSize="11" fontWeight="bold" fill="rgba(255,255,255,0.5)">A</text>
-          <text x="68" y="15" fontSize="11" fontWeight="bold" fill="rgba(255,255,255,0.5)" textAnchor="end">A</text>
-          <text x="6" y="72" fontSize="11" fontWeight="bold" fill="rgba(255,255,255,0.5)">A</text>
-          <text x="68" y="72" fontSize="11" fontWeight="bold" fill="rgba(255,255,255,0.5)" textAnchor="end">A</text>
-        </svg>
-      );
-    case 'brainapps':
-      return (
-        <svg viewBox="0 0 80 80" className="w-full h-full">
-          <defs>
-            <radialGradient id="brg" cx="50%" cy="40%"><stop offset="0%" stopColor="#e0c8ff"/><stop offset="60%" stopColor="#a855f7"/><stop offset="100%" stopColor="#6b21a8"/></radialGradient>
-            <filter id="brs"><feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#6b21a8" floodOpacity="0.6"/></filter>
-          </defs>
-          {/* Sparkle stars */}
-          {[[12,14],[62,18],[68,58],[14,64],[40,8]].map(([cx,cy],i)=>(
-            <g key={i} opacity="0.7">
-              <line x1={cx-4} y1={cy} x2={cx+4} y2={cy} stroke="#e0c8ff" strokeWidth="1.5"/>
-              <line x1={cx} y1={cy-4} x2={cx} y2={cy+4} stroke="#e0c8ff" strokeWidth="1.5"/>
-            </g>
-          ))}
-          {/* Low-poly brain */}
-          <g filter="url(#brs)" transform="translate(40,44) scale(0.9)">
-            <polygon points="0,-22 -15,-8 -18,8 -10,20 0,22 10,20 18,8 15,-8" fill="url(#brg)"/>
-            <polygon points="0,-22 -8,-14 0,-4 8,-14" fill="#c084fc" opacity="0.6"/>
-            <polygon points="-15,-8 -18,8 -8,14 -8,-2" fill="#a855f7" opacity="0.5"/>
-            <polygon points="15,-8 18,8 8,14 8,-2" fill="#a855f7" opacity="0.5"/>
-            <polygon points="-8,14 0,22 8,14 0,10" fill="#7e22ce" opacity="0.7"/>
-            <line x1="-1" y1="-20" x2="-1" y2="20" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8"/>
-          </g>
-        </svg>
-      );
-    default:
-      return <div className="w-full h-full flex items-center justify-center text-4xl">🎮</div>;
+        ))}
+        {/* low-poly brain */}
+        <g filter="url(#brS)" transform="translate(30,33)">
+          <polygon points="0,-18 -13,-6 -15,8 -8,18 0,20 8,18 15,8 13,-6" fill="url(#brG)"/>
+          <polygon points="0,-18 -6,-10 0,-2 6,-10" fill="#cc88ff" opacity="0.55"/>
+          <polygon points="-13,-6 -15,8 -6,12 -6,-2" fill="#9b44f0" opacity="0.45"/>
+          <polygon points="13,-6 15,8 6,12 6,-2"  fill="#9b44f0" opacity="0.45"/>
+          <polygon points="-6,12 0,20 6,12 0,8" fill="#6600cc" opacity="0.65"/>
+          <line x1="0" y1="-17" x2="0" y2="19" stroke="rgba(255,255,255,0.12)" strokeWidth="0.8"/>
+        </g>
+      </svg>
+    );
+    default: return <text x="30" y="35" textAnchor="middle" fontSize="20" fill="white">🎮</text>;
   }
 }
 
-// Card background gradients per game
-const CARD_STYLES: Record<string, { bg: string; border: string; titleBg: string; titleColor: string; abbr: string; cornerColor: string }> = {
-  matching:   { bg:'linear-gradient(160deg,#c8820a 0%,#a06008 40%,#7a4a04 100%)', border:'#f5c842', titleBg:'rgba(0,0,0,0.35)', titleColor:'#ffe082', abbr:'MP', cornerColor:'#f5c842' },
-  crossword:  { bg:'linear-gradient(160deg,#1a3a6e 0%,#0d2550 40%,#091830 100%)', border:'#4a7acc', titleBg:'rgba(0,0,0,0.35)', titleColor:'#a0c0ff', abbr:'XW', cornerColor:'#4a7acc' },
-  checkers:   { bg:'linear-gradient(160deg,#cc2020 0%,#991010 40%,#660808 100%)', border:'#ff6060', titleBg:'rgba(0,0,0,0.35)', titleColor:'#ffaaaa', abbr:'CK', cornerColor:'#ff8080' },
-  chess:      { bg:'linear-gradient(160deg,#1a4a2a 0%,#0d3018 40%,#081a0e 100%)', border:'#4a9a5a', titleBg:'rgba(0,0,0,0.35)', titleColor:'#a0e0a8', abbr:'CH', cornerColor:'#f5c842' },
-  wordsearch: { bg:'linear-gradient(160deg,#1a3a6e 0%,#0d2550 40%,#091830 100%)', border:'#4a7acc', titleBg:'rgba(0,0,0,0.35)', titleColor:'#a0c0ff', abbr:'WS', cornerColor:'#4a7acc' },
-  solitaire:  { bg:'linear-gradient(160deg,#cc2020 0%,#991010 40%,#660808 100%)', border:'#ff6060', titleBg:'rgba(0,0,0,0.35)', titleColor:'#ffaaaa', abbr:'SL', cornerColor:'#ff8080' },
-  hangman:    { bg:'linear-gradient(160deg,#4a1a7a 0%,#2d0f50 40%,#1a0830 100%)', border:'#8a50cc', titleBg:'rgba(0,0,0,0.35)', titleColor:'#d0a0ff', abbr:'HM', cornerColor:'#c084fc' },
-  brainapps:  { bg:'linear-gradient(160deg,#2a2a2a 0%,#1a1a1a 40%,#080808 100%)', border:'#888', titleBg:'rgba(0,0,0,0.35)', titleColor:'#e0e0e0', abbr:'BT', cornerColor:'#aaa' },
-};
-
-// Corner diamond ornament
-function CornerDiamond({ color }: { color: string }) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12">
-      <circle cx="6" cy="6" r="4" fill="none" stroke={color} strokeWidth="1.5" opacity="0.7"/>
-      <circle cx="6" cy="6" r="1.5" fill={color} opacity="0.7"/>
-    </svg>
-  );
-}
-
-// Game Instruction Dialog Component
-function GameInstructionDialog({ game, open, onClose, onPlay }: { 
-  game: typeof GAMES[0] | null; 
-  open: boolean; 
-  onClose: () => void;
-  onPlay: () => void;
-}) {
-  if (!game) return null;
-  const style = CARD_STYLES[game.id] || CARD_STYLES['matching'];
-  
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-xl shadow-md overflow-hidden flex-shrink-0" style={{ background: style.bg, border: `2px solid ${style.border}` }}>
-              <GameIllustration id={game.id} />
-            </div>
-            <DialogTitle className="text-xl text-charcoal">{game.title}</DialogTitle>
-          </div>
-          <DialogDescription className="text-medium-gray pt-2">
-            How to play
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="space-y-4">
-          <div className="p-4 bg-soft-taupe/10 rounded-xl">
-            <p className="text-charcoal leading-relaxed">{game.instruction}</p>
-          </div>
-          
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={onClose} className="flex-1 rounded-xl">Close</Button>
-            <Button onClick={onPlay} className="flex-1 bg-gradient-to-r from-warm-bronze to-warm-amber text-white rounded-xl hover:shadow-md transition-all">
-              <Play className="w-4 h-4 mr-2" /> Play Game
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Game Card — Rich illustrated playing card
-function GameCard({ game, onClick }: { game: typeof GAMES[0]; onClick: () => void }) {
-  const style = CARD_STYLES[game.id] || CARD_STYLES['matching'];
-  
+// Game Card — playing card style, 25% smaller than previous, title at top, direct launch
+function GameCard({ game, onPlay }: { game: typeof GAMES[0]; onPlay: () => void }) {
+  const theme = CARD_THEME[game.id] || CARD_THEME['matching'];
   return (
     <motion.button
-      whileHover={{ scale: 1.04, y: -4 }}
-      whileTap={{ scale: 0.97 }}
-      onClick={onClick}
-      className="group relative flex flex-col overflow-hidden rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200"
+      whileHover={{ scale: 1.05, y: -3 }}
+      whileTap={{ scale: 0.96 }}
+      onClick={onPlay}
+      className="relative flex flex-col overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-200 focus:outline-none"
       style={{
-        background: style.bg,
-        border: `2px solid ${style.border}`,
+        background: theme.bg,
+        border: `2px solid ${theme.border}44`,
+        borderRadius: '14px',
         aspectRatio: '3/4',
       }}
     >
-      {/* Title banner at top */}
-      <div className="relative z-10 px-2 py-1.5 flex items-center justify-between"
-        style={{ background: style.titleBg, backdropFilter: 'blur(4px)' }}>
-        <span className="text-[9px] font-bold tracking-widest uppercase"
-          style={{ color: style.abbr === 'MP' ? style.cornerColor : style.titleColor }}>
-          {style.abbr}
+      {/* ── Top banner: game abbreviation + ornament ── */}
+      <div className="flex items-center justify-between px-2 py-1.5 flex-shrink-0"
+        style={{ background: 'rgba(0,0,0,0.30)', backdropFilter: 'blur(2px)' }}>
+        <span className="text-[8px] font-black tracking-widest" style={{ color: theme.labelTxt }}>
+          {theme.label}
         </span>
-        <CornerDiamond color={style.cornerColor} />
+        {/* diamond ornament */}
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <polygon points="5,1 9,5 5,9 1,5" fill="none" stroke={theme.border} strokeWidth="1.2" opacity="0.7"/>
+          <polygon points="5,3 7,5 5,7 3,5" fill={theme.border} opacity="0.5"/>
+        </svg>
       </div>
 
-      {/* Illustration fills the card */}
-      <div className="flex-1 flex items-center justify-center px-2 pb-1">
-        <div className="w-full" style={{ maxHeight: '72%' }}>
-          <GameIllustration id={game.id} />
-        </div>
-      </div>
-
-      {/* Bottom mirror banner */}
-      <div className="relative z-10 px-2 py-1 flex items-center justify-between rotate-180"
-        style={{ background: style.titleBg, backdropFilter: 'blur(4px)' }}>
-        <span className="text-[9px] font-bold tracking-widest uppercase"
-          style={{ color: style.abbr === 'MP' ? style.cornerColor : style.titleColor }}>
-          {style.abbr}
-        </span>
-        <CornerDiamond color={style.cornerColor} />
-      </div>
-
-      {/* Game name overlay at bottom */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 px-2 pb-2 pt-4"
-        style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)' }}>
-        <p className="text-white text-[11px] font-bold text-center leading-tight drop-shadow">
+      {/* ── Title strip ── */}
+      <div className="px-1.5 py-1 flex-shrink-0" style={{ background: 'rgba(0,0,0,0.20)' }}>
+        <p className="text-white text-[9px] font-bold text-center leading-tight tracking-wide truncate drop-shadow">
           {game.title}
         </p>
       </div>
 
-      {/* Subtle inner vignette */}
-      <div className="absolute inset-0 rounded-2xl pointer-events-none"
-        style={{ boxShadow: 'inset 0 0 20px rgba(0,0,0,0.25)' }} />
+      {/* ── SVG art fills remaining space ── */}
+      <div className="flex-1 flex items-center justify-center p-2 min-h-0">
+        <div className="w-full h-full max-h-full">
+          <GameArt id={game.id} />
+        </div>
+      </div>
+
+      {/* ── Bottom mirror: rotated abbreviation + ornament ── */}
+      <div className="flex items-center justify-between px-2 py-1.5 flex-shrink-0 rotate-180"
+        style={{ background: 'rgba(0,0,0,0.30)', backdropFilter: 'blur(2px)' }}>
+        <span className="text-[8px] font-black tracking-widest" style={{ color: theme.labelTxt }}>
+          {theme.label}
+        </span>
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <polygon points="5,1 9,5 5,9 1,5" fill="none" stroke={theme.border} strokeWidth="1.2" opacity="0.7"/>
+          <polygon points="5,3 7,5 5,7 3,5" fill={theme.border} opacity="0.5"/>
+        </svg>
+      </div>
+
+      {/* inner vignette */}
+      <div className="absolute inset-0 pointer-events-none" style={{ borderRadius: '12px', boxShadow: 'inset 0 0 16px rgba(0,0,0,0.3)' }}/>
     </motion.button>
   );
 }
 
-export default function PatientHome() {
+export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (gameId: string) => void } = {}) {
   const { state } = useApp();
   const patient = state.patient;
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -441,9 +395,7 @@ export default function PatientHome() {
   });
   const [showPhotoPopup, setShowPhotoPopup] = useState<{id:string;name:string;url:string}|null>(null);
   
-  // Game dialog state
-  const [selectedGame, setSelectedGame] = useState<typeof GAMES[0] | null>(null);
-  const [gameDialogOpen, setGameDialogOpen] = useState(false);
+
 
   const tasks = state.tasks.filter(t => t.status !== 'completed').slice(0, 3);
 
@@ -562,14 +514,8 @@ export default function PatientHome() {
   };
 
   const openGame = (game: typeof GAMES[0]) => {
-    setSelectedGame(game);
-    setGameDialogOpen(true);
-  };
-
-  const handlePlayGame = () => {
-    setGameDialogOpen(false);
-    if (selectedGame) {
-      alert(`🎮 Let's play ${selectedGame.title}!\n\n${selectedGame.instruction}`);
+    if (onNavigateToGame) {
+      onNavigateToGame(game.id);
     }
   };
 
@@ -902,7 +848,7 @@ export default function PatientHome() {
           {/* 4x2 Grid - 4 across, 2 down */}
           <div className="grid grid-cols-4 gap-4">
             {GAMES.map((game, idx) => (
-              <GameCard key={game.id} game={game} onClick={() => openGame(game)} />
+              <GameCard key={game.id} game={game} onPlay={() => openGame(game)} />
             ))}
           </div>
         </motion.div>
@@ -918,13 +864,7 @@ export default function PatientHome() {
           <span className="text-white text-xs font-bold">HELP</span>
         </motion.button>
 
-        {/* Game Instruction Dialog */}
-        <GameInstructionDialog 
-          game={selectedGame}
-          open={gameDialogOpen}
-          onClose={() => setGameDialogOpen(false)}
-          onPlay={handlePlayGame}
-        />
+
 
         {/* Familiar Face Dialog */}
         <Dialog open={!!selectedFace} onOpenChange={() => setSelectedFace(null)}>

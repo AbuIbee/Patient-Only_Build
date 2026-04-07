@@ -1244,8 +1244,8 @@ const GAMES = [
   { id:'brainlinks' as GameId, title:'Brain Training Apps', desc:'Lumosity, BrainHQ & more',                emoji:'🧠', color:'from-purple-400 to-violet-500',  tag:'External', tagColor:'bg-purple-100 text-purple-600'      },
 ];
 
-export default function PatientGames() {
-  const [activeGame, setActiveGame] = useState<GameId>('menu');
+export default function PatientGames({ initialGame }: { initialGame?: GameId }) {
+  const [activeGame, setActiveGame] = useState<GameId>(initialGame || 'menu');
 
   const renderGame = () => {
     switch (activeGame) {
