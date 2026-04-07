@@ -165,20 +165,15 @@ function GameInstructionDialog({ game, open, onClose, onPlay }: {
 function GameCard({ game, onClick }: { game: typeof GAMES[0]; onClick: () => void }) {
   return (
     <motion.button
-      whileHover={{ scale: 1.02, y: -2 }}
-      whileTap={{ scale: 0.98 }}
+      whileHover={{ scale: 1.04, y: -2 }}
+      whileTap={{ scale: 0.97 }}
       onClick={onClick}
-      className="group bg-white rounded-xl border-2 border-soft-taupe/50 shadow-md hover:shadow-xl transition-all p-2 flex flex-col items-center text-center gap-1.5 relative overflow-hidden"
+      className="group bg-white rounded-xl border border-soft-taupe/50 shadow-sm hover:shadow-md transition-all p-1.5 flex flex-col items-center text-center gap-1 relative overflow-hidden"
     >
-      {/* Decorative corner accents */}
-      <div className="absolute top-1 left-1 text-[9px] font-serif text-soft-taupe/40">♠</div>
-      <div className="absolute bottom-1 right-1 text-[9px] font-serif text-soft-taupe/40 rotate-180">♠</div>
-
-      {/* Game Icon — 30% smaller: w-20→w-14 */}
-      <div className={`w-14 h-14 rounded-lg bg-gradient-to-br ${game.color} flex items-center justify-center text-2xl shadow-md group-hover:scale-110 transition-transform duration-200`}>
+      {/* Game Icon — 30% smaller than w-20: use w-14 h-14 */}
+      <div className={`w-14 h-14 rounded-lg bg-gradient-to-br ${game.color} flex items-center justify-center text-2xl shadow-sm group-hover:scale-105 transition-transform duration-200`}>
         {game.icon}
       </div>
-
       {/* Game Title */}
       <p className="text-[10px] font-bold text-charcoal leading-tight tracking-wide px-0.5">{game.title}</p>
     </motion.button>

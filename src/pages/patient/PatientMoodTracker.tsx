@@ -86,92 +86,215 @@ interface CheckInData {
 type FilterDays = 7 | 30 | 60 | 90;
 
 // ── Line Graph Component ──────────────────────────────────────────────────────
-function MetricLineGraph({ 
-  title, 
-  data, 
-  color = '#7dbf7d',
-  yMax = 4,
-}: { 
-  title: string; 
-  data: { date: string; value: number | null }[]; 
-  color?: string;
-  yMax?: number;
+// ── Combined Section Graph: one graph, metrics on X-axis ─────────────────────
+// Each metric becomes one data point (its latest value) plotted along X.
+// The graph shows the MOST RECENT check-in value for each metric as a connected line,
+// so the reader sees relative function across all metrics at a glance.
+// When multiple check-ins exist, dots represent the latest value per metric.
+function SectionCombinedGraph({
+  title,
+  icon: Icon,
+  color,
+  accentColor,
+  metrics,
+  allCheckIns,
+  filterDays,
+}: {
+  title: string;
+  icon: React.ElementType;
+  color: string;
+  accentColor: string;
+  metrics: { key: string; label: string }[];
+  allCheckIns: CheckInData[];
+  filterDays: FilterDays;
 }) {
-  const hasData = data.some(d => d.value !== null);
-  const chartHeight = 100;
-  const chartWidth = 280;
-  
-  if (!hasData) {
-    return (
-      <div className="bg-white rounded-xl p-3 border border-soft-taupe">
-        <p className="text-xs font-semibold text-charcoal mb-2">{title}</p>
-        <div className="h-[100px] flex items-center justify-center text-xs text-medium-gray">
-          No data available yet
-        </div>
-      </div>
-    );
-  }
-  
-  const points = data.map((d, i) => ({ ...d, x: i }));
-  const validPoints = points.filter(p => p.value !== null) as { date: string; value: number; x: number }[];
-  
-  if (validPoints.length === 0) {
-    return (
-      <div className="bg-white rounded-xl p-3 border border-soft-taupe">
-        <p className="text-xs font-semibold text-charcoal mb-2">{title}</p>
-        <div className="h-[100px] flex items-center justify-center text-xs text-medium-gray">
-          No data available yet
-        </div>
-      </div>
-    );
-  }
-  
-  const xStep = chartWidth / Math.max(data.length - 1, 1);
-  const toY = (value: number) => chartHeight - (value / yMax) * chartHeight;
-  
-  const pathD = validPoints.map((p, i) => {
-    const y = toY(p.value);
-    return `${i === 0 ? 'M' : 'L'}${(p.x * xStep).toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  
-  const areaD = validPoints.length > 0 
-    ? `${pathD} L${(validPoints[validPoints.length-1].x * xStep).toFixed(1)},${chartHeight} L${(validPoints[0].x * xStep).toFixed(1)},${chartHeight} Z`
+  const yMax = 4;
+  const chartH = 110;
+  const PAD_LEFT = 28;
+  const PAD_BOTTOM = 32;
+  const PAD_TOP = 10;
+  const PAD_RIGHT = 10;
+
+  // Filter check-ins to the selected date window
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - filterDays);
+  const filtered = allCheckIns
+    .filter(d => new Date(d.check_in_date) >= cutoff)
+    .sort((a, b) => new Date(a.check_in_date).getTime() - new Date(b.check_in_date).getTime());
+
+  // Build a value getter map (same as before)
+  const getters: Record<string, (e: CheckInData) => number | null> = {
+    fn_dressing:       (e) => e.fn_dressing   ? getScore(e.fn_dressing)   : null,
+    fn_bathing:        (e) => e.fn_bathing    ? getScore(e.fn_bathing)    : null,
+    fn_toileting:      (e) => e.fn_toileting  ? getScore(e.fn_toileting)  : null,
+    fn_transfers:      (e) => e.fn_transfers  ? getScore(e.fn_transfers)  : null,
+    fn_mobility:       (e) => e.fn_mobility   ? getScore(e.fn_mobility)   : null,
+    fn_medication:     (e) => e.fn_medication ? getScore(e.fn_medication) : null,
+    nu_appetite:       (e) => e.nu_appetite   ? getScore(e.nu_appetite)   : null,
+    nu_meal_pct:       (e) => e.nu_meal_pct   ? getScore(e.nu_meal_pct)   : null,
+    nu_fluids:         (e) => e.nu_fluids     ? getScore(e.nu_fluids)     : null,
+    nu_swallowing:     (e) => e.nu_swallowing ? getScore(e.nu_swallowing) : null,
+    co_urinary:        (e) => e.co_urinary    ? getScore(e.co_urinary)    : null,
+    co_bowel:          (e) => e.co_bowel      ? getScore(e.co_bowel)      : null,
+    co_skin:           (e) => e.co_skin       ? getScore(e.co_skin)       : null,
+    sa_falls:          (e) => e.sa_falls      ? getScore(e.sa_falls, 4)   : null,
+    sa_wandering:      (e) => e.sa_wandering  ? getScore(e.sa_wandering, 4) : null,
+    sa_safety_concerns:(e) => e.sa_safety_concerns !== undefined ? (e.sa_safety_concerns ? 1 : 4) : null,
+    be_behaviors:      (e) => { const c = (e.be_behaviors||[]).filter(b=>b!=='None observed').length; return Math.max(0, 4 - Math.min(4,c)); },
+    mo_mood:           (e) => e.mo_mood  ? getScore(e.mo_mood)  : null,
+    mo_sleep:          (e) => e.mo_sleep ? getScore(e.mo_sleep) : null,
+    sy_symptoms:       (e) => { const c = (e.sy_symptoms||[]).length; return Math.max(0, 4 - Math.min(4,c)); },
+  };
+
+  // For each metric, get the latest non-null value across filtered check-ins
+  const points: { label: string; value: number | null }[] = metrics.map(m => {
+    const getter = getters[m.key];
+    if (!getter) return { label: m.label, value: null };
+    // Walk from most recent to oldest, take first non-null
+    for (let i = filtered.length - 1; i >= 0; i--) {
+      const v = getter(filtered[i]);
+      if (v !== null) return { label: m.label, value: v };
+    }
+    return { label: m.label, value: null };
+  });
+
+  const hasData = points.some(p => p.value !== null);
+  const n = points.length;
+  const totalW = 320; // SVG coordinate width
+
+  // X positions: evenly spaced, one per metric
+  const xOf = (i: number) =>
+    n === 1 ? totalW / 2 : PAD_LEFT + (i / (n - 1)) * (totalW - PAD_LEFT - PAD_RIGHT);
+  const toY = (v: number) => PAD_TOP + chartH - (v / yMax) * chartH;
+
+  // Build path only through valid points
+  const validPts = points
+    .map((p, i) => ({ ...p, xi: xOf(i) }))
+    .filter(p => p.value !== null) as { label: string; value: number; xi: number }[];
+
+  const pathD = validPts.map((p, i) =>
+    `${i === 0 ? 'M' : 'L'}${p.xi.toFixed(1)},${toY(p.value).toFixed(1)}`
+  ).join(' ');
+
+  const areaD = validPts.length > 1
+    ? `${pathD} L${validPts[validPts.length-1].xi.toFixed(1)},${(PAD_TOP+chartH).toFixed(1)} L${validPts[0].xi.toFixed(1)},${(PAD_TOP+chartH).toFixed(1)} Z`
     : '';
-  
-  // Show only first, middle, last date labels
-  const dateLabels = [data[0], data[Math.floor(data.length/2)], data[data.length-1]];
-  
+
+  const svgH = PAD_TOP + chartH + PAD_BOTTOM;
+
   return (
-    <div className="bg-white rounded-xl p-3 border border-soft-taupe">
-      <p className="text-xs font-semibold text-charcoal mb-2">{title}</p>
-      <div className="flex gap-1 items-end">
-        <div className="flex flex-col justify-between h-[100px] text-[9px] text-medium-gray pr-1">
-          <span>{yMax}</span>
-          <span>{Math.floor(yMax/2)}</span>
-          <span>0</span>
+    <div className="bg-white rounded-2xl shadow-card p-4 mb-5 border border-soft-taupe/30">
+      {/* Section heading */}
+      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-soft-taupe/40">
+        <div className={`w-8 h-8 rounded-xl ${color} flex items-center justify-center flex-shrink-0`}>
+          <Icon className="w-4 h-4 text-white" />
         </div>
-        <svg width="100%" viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="overflow-visible">
-          {/* Grid lines */}
-          {[0, yMax/2, yMax].map(v => (
-            <line key={v} x1="0" y1={toY(v)} x2={chartWidth} y2={toY(v)} stroke="#e5e0d5" strokeWidth="0.5" strokeDasharray="3,3" />
+        <h3 className="font-bold text-charcoal text-sm">{title}</h3>
+      </div>
+
+      {!hasData ? (
+        <div className="h-24 flex items-center justify-center text-xs text-medium-gray">
+          No check-in data for this period yet
+        </div>
+      ) : (
+        <svg
+          width="100%"
+          viewBox={`0 0 ${totalW} ${svgH}`}
+          className="overflow-visible w-full"
+        >
+          {/* Y-axis gridlines + labels */}
+          {[0, 1, 2, 3, 4].map(v => (
+            <g key={v}>
+              <line
+                x1={PAD_LEFT} y1={toY(v)}
+                x2={totalW - PAD_RIGHT} y2={toY(v)}
+                stroke="#e5e0d5" strokeWidth="0.6" strokeDasharray="4,3"
+              />
+              <text
+                x={PAD_LEFT - 4} y={toY(v) + 3.5}
+                textAnchor="end" fontSize="8" fill="#aaa"
+              >{v}</text>
+            </g>
           ))}
-          {/* Area fill */}
-          {areaD && <path d={areaD} fill={color} opacity="0.15" />}
+
+          {/* Gradient area fill */}
+          {areaD && (
+            <>
+              <defs>
+                <linearGradient id={`grad-${title.replace(/\s/g,'')}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={accentColor} stopOpacity="0.25" />
+                  <stop offset="100%" stopColor={accentColor} stopOpacity="0.02" />
+                </linearGradient>
+              </defs>
+              <path d={areaD} fill={`url(#grad-${title.replace(/\s/g,'')})`} />
+            </>
+          )}
+
           {/* Line */}
-          {pathD && <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
-          {/* Dots */}
-          {validPoints.map((p, i) => (
-            <circle key={i} cx={(p.x * xStep).toFixed(1)} cy={toY(p.value).toFixed(1)} r="3" fill={color} stroke="white" strokeWidth="1.5" />
-          ))}
+          {pathD && (
+            <path
+              d={pathD} fill="none"
+              stroke={accentColor} strokeWidth="2.5"
+              strokeLinecap="round" strokeLinejoin="round"
+            />
+          )}
+
+          {/* Dots + X-axis labels */}
+          {points.map((p, i) => {
+            const cx = xOf(i);
+            const hasVal = p.value !== null;
+            return (
+              <g key={i}>
+                {/* Dot */}
+                {hasVal && (
+                  <>
+                    <circle
+                      cx={cx.toFixed(1)}
+                      cy={toY(p.value!).toFixed(1)}
+                      r="4.5" fill={accentColor} stroke="white" strokeWidth="2"
+                    />
+                    {/* Value label above dot */}
+                    <text
+                      x={cx.toFixed(1)}
+                      y={(toY(p.value!) - 7).toFixed(1)}
+                      textAnchor="middle" fontSize="8" fontWeight="bold" fill={accentColor}
+                    >{p.value!.toFixed(0)}</text>
+                  </>
+                )}
+                {/* Empty dot placeholder when no data */}
+                {!hasVal && (
+                  <circle
+                    cx={cx.toFixed(1)} cy={(PAD_TOP + chartH / 2).toFixed(1)}
+                    r="3" fill="#ddd" stroke="white" strokeWidth="1.5"
+                  />
+                )}
+                {/* X-axis label — wrap long labels */}
+                <text
+                  x={cx.toFixed(1)}
+                  y={(PAD_TOP + chartH + 14).toFixed(1)}
+                  textAnchor="middle" fontSize="8.5" fill="#666"
+                  fontWeight="500"
+                >
+                  {p.label}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Y-axis line */}
+          <line
+            x1={PAD_LEFT} y1={PAD_TOP}
+            x2={PAD_LEFT} y2={PAD_TOP + chartH}
+            stroke="#ccc" strokeWidth="0.8"
+          />
+          {/* X-axis line */}
+          <line
+            x1={PAD_LEFT} y1={PAD_TOP + chartH}
+            x2={totalW - PAD_RIGHT} y2={PAD_TOP + chartH}
+            stroke="#ccc" strokeWidth="0.8"
+          />
         </svg>
-      </div>
-      <div className="flex justify-between mt-1 px-2">
-        {dateLabels.map((d, i) => (
-          <span key={i} className="text-[8px] text-medium-gray">
-            {d?.date ? new Date(d.date + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
-          </span>
-        ))}
-      </div>
+      )}
     </div>
   );
 }
@@ -204,114 +327,7 @@ function FilterButtons({ current, onChange }: { current: FilterDays; onChange: (
   );
 }
 
-// ── Section Graph Component ───────────────────────────────────────────────────
-function SectionGraphs({ 
-  title, 
-  icon: Icon, 
-  color, 
-  metrics, 
-  allCheckIns, 
-  filterDays,
-  patientId
-}: { 
-  title: string; 
-  icon: React.ElementType; 
-  color: string;
-  metrics: { key: string; label: string; }[];
-  allCheckIns: CheckInData[];
-  filterDays: FilterDays;
-  patientId: string;
-}) {
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - filterDays);
-  
-  const filteredData = allCheckIns.filter(d => new Date(d.check_in_date) >= cutoffDate)
-    .sort((a, b) => new Date(a.check_in_date).getTime() - new Date(b.check_in_date).getTime());
-  
-  // Build date range
-  const allDates: string[] = [];
-  for (let i = filterDays - 1; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    allDates.push(d.toISOString().split('T')[0]);
-  }
-  
-  const getMetricData = (getValue: (entry: CheckInData) => number | null) => {
-    return allDates.map(date => {
-      const entry = filteredData.find(d => d.check_in_date === date);
-      return { date, value: entry ? getValue(entry) : null };
-    });
-  };
-  
-  // Define value extractors for each metric
-  const getters: Record<string, (entry: CheckInData) => number | null> = {
-    // A - Daily Function
-    fn_dressing: (e) => getScore(e.fn_dressing),
-    fn_bathing: (e) => getScore(e.fn_bathing),
-    fn_toileting: (e) => getScore(e.fn_toileting),
-    fn_transfers: (e) => getScore(e.fn_transfers),
-    fn_mobility: (e) => getScore(e.fn_mobility),
-    fn_medication: (e) => getScore(e.fn_medication),
-    // B - Nutrition
-    nu_appetite: (e) => getScore(e.nu_appetite),
-    nu_meal_pct: (e) => getScore(e.nu_meal_pct),
-    nu_fluids: (e) => getScore(e.nu_fluids),
-    nu_swallowing: (e) => getScore(e.nu_swallowing),
-    // C - Continence
-    co_urinary: (e) => getScore(e.co_urinary),
-    co_bowel: (e) => getScore(e.co_bowel),
-    co_skin: (e) => getScore(e.co_skin),
-    // D - Safety
-    sa_falls: (e) => getScore(e.sa_falls, 4),
-    sa_wandering: (e) => getScore(e.sa_wandering, 4),
-    sa_safety_concerns: (e) => e.sa_safety_concerns ? 1 : 4,
-    // E - Behavior (count of behaviors, inverted so lower is better)
-    be_behaviors: (e) => {
-      const count = (e.be_behaviors || []).filter(b => b !== 'None observed').length;
-      return Math.max(0, 4 - Math.min(4, count));
-    },
-    // F - Mood
-    mo_mood: (e) => getScore(e.mo_mood),
-    mo_sleep: (e) => getScore(e.mo_sleep),
-    // G - Symptoms (count of symptoms, inverted)
-    sy_symptoms: (e) => {
-      const count = (e.sy_symptoms || []).length;
-      return Math.max(0, 4 - Math.min(4, count));
-    },
-  };
-  
-  const getColorHex = () => {
-    if (color.includes('sage')) return '#7dbf7d';
-    if (color.includes('blue')) return '#6baed6';
-    if (color.includes('coral')) return '#e07b5a';
-    if (color.includes('bronze')) return '#c17a3a';
-    if (color.includes('amber')) return '#f0c040';
-    if (color.includes('purple')) return '#9b59b6';
-    return '#7dbf7d';
-  };
-  
-  return (
-    <div className="bg-white rounded-2xl shadow-card p-4 mb-6">
-      <div className="flex items-center gap-2 mb-4 pb-2 border-b border-soft-taupe">
-        <div className={`w-8 h-8 rounded-xl ${color} flex items-center justify-center`}>
-          <Icon className="w-4 h-4 text-white" />
-        </div>
-        <h3 className="font-bold text-charcoal">{title}</h3>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {metrics.map(metric => (
-          <MetricLineGraph
-            key={metric.key}
-            title={metric.label}
-            data={getMetricData(getters[metric.key])}
-            color={getColorHex()}
-            yMax={4}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
+
 
 // ── Simple Mood Timeline (Feeling Timeline) ───────────────────────────────────
 type TimelineView = 'day' | 'week' | 'month';
@@ -739,80 +755,80 @@ export default function PatientProgressTimeline() {
         <p className="text-xs text-medium-gray mb-4">Track progress over time from daily care partner check-ins</p>
 
         {/* Section A — Daily Function */}
-        <SectionGraphs
+        <SectionCombinedGraph
           title="A — Daily Function"
           icon={Activity}
           color="bg-warm-bronze"
+          accentColor="#c17a3a"
           metrics={sectionAMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
-          patientId={patientId || ''}
         />
 
         {/* Section B — Nutrition & Hydration */}
-        <SectionGraphs
+        <SectionCombinedGraph
           title="B — Nutrition & Hydration"
           icon={Utensils}
           color="bg-soft-sage"
+          accentColor="#7dbf7d"
           metrics={sectionBMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
-          patientId={patientId || ''}
         />
 
         {/* Section C — Continence */}
-        <SectionGraphs
+        <SectionCombinedGraph
           title="C — Continence"
           icon={Droplets}
           color="bg-calm-blue"
+          accentColor="#6baed6"
           metrics={sectionCMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
-          patientId={patientId || ''}
         />
 
         {/* Section D — Safety Events */}
-        <SectionGraphs
+        <SectionCombinedGraph
           title="D — Safety Events"
           icon={Shield}
           color="bg-gentle-coral"
+          accentColor="#e07b5a"
           metrics={sectionDMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
-          patientId={patientId || ''}
         />
 
         {/* Section E — Behavior & Responsiveness */}
-        <SectionGraphs
+        <SectionCombinedGraph
           title="E — Behavior & Responsiveness"
           icon={Brain}
           color="bg-deep-bronze"
+          accentColor="#8B6914"
           metrics={sectionEMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
-          patientId={patientId || ''}
         />
 
         {/* Section F — Mood & Social Engagement */}
-        <SectionGraphs
+        <SectionCombinedGraph
           title="F — Mood & Social Engagement"
           icon={Heart}
           color="bg-warm-amber"
+          accentColor="#f0a030"
           metrics={sectionFMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
-          patientId={patientId || ''}
         />
 
         {/* Section G — Symptoms & Comfort */}
-        <SectionGraphs
+        <SectionCombinedGraph
           title="G — Symptoms & Comfort"
           icon={ThumbsUp}
           color="bg-purple-500"
+          accentColor="#9b59b6"
           metrics={sectionGMetrics}
           allCheckIns={checkInData}
           filterDays={filterDays}
-          patientId={patientId || ''}
         />
       </div>
     </div>
