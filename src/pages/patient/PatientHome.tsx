@@ -108,16 +108,16 @@ interface FamiliarFace {
   phone?: string;
 }
 
-// Game definitions — image paths map to /public/game-cards/ folder
+// Game definitions — image paths map to /public/game_cards/ folder
 const GAMES = [
-  { id: 'matching',   title: 'Matching Pairs',  img: '/game-cards/matching_pairs.png'       },
-  { id: 'crossword',  title: 'Crossword Puzzle', img: '/game-cards/crossword_puzzle.png'     },
-  { id: 'checkers',   title: 'Checkers',         img: '/game-cards/checkers.png'             },
-  { id: 'chess',      title: 'Chess',            img: '/game-cards/chess.png'                },
-  { id: 'wordsearch', title: 'Word Search',      img: '/game-cards/word_search.png'          },
-  { id: 'solitaire',  title: 'Solitaire',        img: '/game-cards/solitaire.png'            },
-  { id: 'hangman',    title: 'Hangman',          img: '/game-cards/hangman.png'              },
-  { id: 'brainapps',  title: 'Brain Training',   img: '/game-cards/brain_training_apps.png'  },
+  { id: 'matching',   title: 'Matching Pairs',  img: '/game_cards/matching_pairs.png'       },
+  { id: 'crossword',  title: 'Crossword Puzzle', img: '/game_cards/crossword_puzzle.png'     },
+  { id: 'checkers',   title: 'Checkers',         img: '/game_cards/checkers.png'             },
+  { id: 'chess',      title: 'Chess',            img: '/game_cards/chess.png'                },
+  { id: 'wordsearch', title: 'Word Search',      img: '/game_cards/word_search.png'          },
+  { id: 'solitaire',  title: 'Solitaire',        img: '/game_cards/solitaire.png'            },
+  { id: 'hangman',    title: 'Hangman',          img: '/game_cards/hangman.png'              },
+  { id: 'brainapps',  title: 'Brain Training',   img: '/game_cards/brain_training_apps.png'  },
 ];
 
 // GameCard — uses generated PNG image, 30% smaller (w-14 aspect ratio 2/3), no whitespace
@@ -287,7 +287,7 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
     setShowEmergencyDialog(true);
   };
 
-  const openGame = (game: typeof GAMES[0]) => {
+    const openGame = (game: typeof GAMES[0]) => {
     if (onNavigateToGame) onNavigateToGame(game.id);
   };
 
@@ -619,7 +619,7 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
           
           {/* 4x2 Grid - 4 across, 2 down */}
           <div className="grid grid-cols-4 gap-4">
-            {GAMES.map((game, idx) => (
+            {GAMES.map((game) => (
               <GameCard key={game.id} game={game} onPlay={() => openGame(game)} />
             ))}
           </div>
@@ -633,7 +633,7 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
           onClick={handleEmergency}
           className="fixed top-20 right-6 z-50 w-16 h-16 bg-red-800 rounded-full shadow-elevated flex flex-col items-center justify-center hover:scale-110 transition-transform"
         >
-          <span className="text-white text-xs font-bold">HELP</span>
+          <span className="text-white text-xs font-bold">HELP 911</span>
         </motion.button>
 
         {/* Familiar Face Dialog */}
