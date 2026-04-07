@@ -108,318 +108,82 @@ interface FamiliarFace {
   phone?: string;
 }
 
-// Game definitions
+// Game definitions with instructions
 const GAMES = [
-  { id: 'matching',   title: 'Matching Pairs'   },
-  { id: 'crossword',  title: 'Crossword Puzzle'  },
-  { id: 'checkers',   title: 'Checkers'          },
-  { id: 'chess',      title: 'Chess'             },
-  { id: 'wordsearch', title: 'Word Search'       },
-  { id: 'solitaire',  title: 'Solitaire'         },
-  { id: 'hangman',    title: 'Hangman'           },
-  { id: 'brainapps',  title: 'Brain Training'    },
+  { id: 'matching', title: 'Matching Pairs', icon: '🃏', color: 'from-amber-500 to-orange-500', instruction: 'Flip over two cards at a time to find matching emoji pairs. Try to match all pairs in as few moves as possible!' },
+  { id: 'crossword', title: 'Crossword Puzzle', icon: '📝', color: 'from-blue-500 to-indigo-500', instruction: 'Read the clues and fill in the words in the grid. Tap a square to select it, then use the keyboard to type your answer.' },
+  { id: 'wordsearch', title: 'Word Search', icon: '🔍', color: 'from-teal-500 to-emerald-500', instruction: 'Find hidden words in the letter grid. Drag your finger across the letters to highlight a word when you find it.' },
+  { id: 'solitaire', title: 'Solitaire', icon: '🃟', color: 'from-green-500 to-lime-500', instruction: 'Classic Klondike Solitaire. Build stacks in alternating colors and arrange all cards by suit from Ace to King.' },
+  { id: 'checkers', title: 'Checkers', icon: '🔴', color: 'from-red-500 to-rose-500', instruction: 'You play as red pieces against the AI. Move diagonally forward and capture opponent pieces by jumping over them.' },
+  { id: 'chess', title: 'Chess', icon: '♜', color: 'from-gray-600 to-slate-700', instruction: 'Play as white against the AI. Move your pieces strategically to checkmate the black king.' },
+  { id: 'hangman', title: 'Hangman', icon: '🔡', color: 'from-purple-500 to-pink-500', instruction: 'Guess the hidden word one letter at a time. Each wrong guess adds a part to the hangman. Solve it before the drawing is complete!' },
+  { id: 'brainapps', title: 'Brain Training', icon: '🧠', color: 'from-violet-500 to-purple-600', instruction: 'Try brain training exercises from apps like Lumosity, BrainHQ, and Elevate to keep your mind sharp.' }
 ];
 
-// Card visual themes per game
-const CARD_THEME: Record<string, { bg: string; border: string; abbr: string; lblColor: string }> = {
-  matching:   { bg: 'linear-gradient(150deg,#d4940c 0%,#7a4a04 100%)', border: '#f5c842', abbr: 'MP', lblColor: '#ffe082' },
-  crossword:  { bg: 'linear-gradient(150deg,#1e4db0 0%,#091830 100%)', border: '#5588ee', abbr: 'XW', lblColor: '#aaccff' },
-  checkers:   { bg: 'linear-gradient(150deg,#cc1a1a 0%,#5a0303 100%)', border: '#ff6060', abbr: 'CK', lblColor: '#ffbbbb' },
-  chess:      { bg: 'linear-gradient(150deg,#1a4d28 0%,#051008 100%)', border: '#4a9a5a', abbr: 'CH', lblColor: '#f5c842' },
-  wordsearch: { bg: 'linear-gradient(150deg,#1244a8 0%,#060e30 100%)', border: '#5588ee', abbr: 'WS', lblColor: '#aaccff' },
-  solitaire:  { bg: 'linear-gradient(150deg,#bb1a1a 0%,#4a0202 100%)', border: '#ff7070', abbr: 'SL', lblColor: '#ffbbbb' },
-  hangman:    { bg: 'linear-gradient(150deg,#52118a 0%,#180530 100%)', border: '#9955ee', abbr: 'HM', lblColor: '#ddaaff' },
-  brainapps:  { bg: 'linear-gradient(150deg,#282828 0%,#080808 100%)', border: '#888888', abbr: 'BT', lblColor: '#dddddd' },
-};
-
-// Distinct SVG icon per game — all original, no emojis
-function GameIcon({ id }: { id: string }) {
-  switch (id) {
-
-    // Matching Pairs: two face-down playing cards with a question mark
-    case 'matching': return (
-      <svg viewBox="0 0 56 56" className="w-full h-full">
-        <defs>
-          <linearGradient id="mpG1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#ffd700"/><stop offset="100%" stopColor="#b8860b"/></linearGradient>
-          <linearGradient id="mpG2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#fffbe6"/><stop offset="100%" stopColor="#e8dcc8"/></linearGradient>
-          <filter id="mpS"><feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.5"/></filter>
-        </defs>
-        {/* Back card (slightly offset) */}
-        <g filter="url(#mpS)" transform="rotate(-8,28,28)">
-          <rect x="6" y="8" width="24" height="34" rx="3" fill="url(#mpG1)" stroke="#c8920a" strokeWidth="1"/>
-          <rect x="9" y="11" width="18" height="28" rx="2" fill="url(#mpG1)" opacity="0.5"/>
-          <line x1="15" y1="17" x2="21" y2="23" stroke="#fff8" strokeWidth="1.5" strokeLinecap="round"/>
-          <line x1="21" y1="17" x2="15" y2="23" stroke="#fff8" strokeWidth="1.5" strokeLinecap="round"/>
-        </g>
-        {/* Front card */}
-        <g filter="url(#mpS)" transform="rotate(6,28,28)">
-          <rect x="22" y="10" width="26" height="36" rx="3" fill="url(#mpG2)" stroke="#ccc" strokeWidth="1"/>
-          <text x="35" y="24" textAnchor="middle" fontSize="14" fontWeight="900" fill="#c8820a">?</text>
-          <text x="35" y="40" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#c8820a" transform="rotate(180,35,38)">?</text>
-        </g>
-      </svg>
-    );
-
-    // Crossword: a mini filled crossword grid
-    case 'crossword': return (
-      <svg viewBox="0 0 56 56" className="w-full h-full">
-        <defs><filter id="xwS"><feDropShadow dx="0" dy="1" stdDeviation="1.5" floodOpacity="0.4"/></filter></defs>
-        {/* 4×4 crossword grid with some black squares */}
-        {[
-          [1,1,1,1],[1,0,1,0],[1,1,1,1],[0,1,0,1]
-        ].map((row,r)=>row.map((filled,c)=>(
-          <g key={r*4+c} filter="url(#xwS)">
-            <rect x={8+c*10} y={8+r*10} width="9" height="9" rx="1.5"
-              fill={filled ? '#e8ddb0' : '#1a2e6e'} stroke={filled?'#c0a860':'#0d1e50'} strokeWidth="0.5"/>
-            {filled && r===0 && <text x={8+c*10+2} y={8+r*10+5} fontSize="4" fill="#8B6914" fontWeight="bold">{String.fromCharCode(65+c+r*4)}</text>}
-          </g>
-        )))}
-        {/* Pencil */}
-        <g transform="translate(36,30) rotate(-35)">
-          <rect x="-3" y="-14" width="6" height="20" rx="1" fill="#fde68a" stroke="#ca8a04" strokeWidth="1"/>
-          <polygon points="-3,6 3,6 0,12" fill="#fca5a5"/>
-          <rect x="-3" y="-16" width="6" height="4" rx="1" fill="#9ca3af"/>
-          <line x1="0" y1="-14" x2="0" y2="6" stroke="#ca8a04" strokeWidth="0.5" opacity="0.5"/>
-        </g>
-      </svg>
-    );
-
-    // Checkers: top-down view of 3 red and 3 black checkers on board squares
-    case 'checkers': return (
-      <svg viewBox="0 0 56 56" className="w-full h-full">
-        <defs>
-          <radialGradient id="ckR" cx="35%" cy="30%"><stop offset="0%" stopColor="#ff8080"/><stop offset="100%" stopColor="#8b0000"/></radialGradient>
-          <radialGradient id="ckB" cx="35%" cy="30%"><stop offset="0%" stopColor="#666"/><stop offset="100%" stopColor="#111"/></radialGradient>
-        </defs>
-        {/* 3×3 checkerboard section */}
-        {[0,1,2,3].map(r=>[0,1,2,3].map(c=>(
-          <rect key={r*4+c} x={4+c*12} y={4+r*12} width="12" height="12"
-            fill={(r+c)%2===0?'#f0d9b5':'#b58863'}/>
-        )))}
-        {/* Board border */}
-        <rect x="4" y="4" width="48" height="48" rx="2" fill="none" stroke="#7a4a14" strokeWidth="2"/>
-        {/* Red pieces */}
-        {[[1,0],[1,2],[3,0]].map(([r,c],i)=>(
-          <g key={i}>
-            <ellipse cx={4+c*12+6} cy={4+r*12+8} rx="5" ry="2" fill="rgba(0,0,0,0.25)"/>
-            <circle cx={4+c*12+6} cy={4+r*12+6} r="5" fill="url(#ckR)" stroke="#cc0000" strokeWidth="1"/>
-            <circle cx={4+c*12+4} cy={4+r*12+4} r="1.5" fill="rgba(255,255,255,0.35)"/>
-          </g>
-        ))}
-        {/* Black pieces */}
-        {[[0,1],[0,3],[2,1]].map(([r,c],i)=>(
-          <g key={i}>
-            <ellipse cx={4+c*12+6} cy={4+r*12+8} rx="5" ry="2" fill="rgba(0,0,0,0.25)"/>
-            <circle cx={4+c*12+6} cy={4+r*12+6} r="5" fill="url(#ckB)" stroke="#333" strokeWidth="1"/>
-            <circle cx={4+c*12+4} cy={4+r*12+4} r="1.5" fill="rgba(255,255,255,0.2)"/>
-          </g>
-        ))}
-      </svg>
-    );
-
-    // Chess: top-down board view with iconic king and queen
-    case 'chess': return (
-      <svg viewBox="0 0 56 56" className="w-full h-full">
-        {/* 4×4 board corner */}
-        {[0,1,2,3].map(r=>[0,1,2,3].map(c=>(
-          <rect key={r*4+c} x={2+c*13} y={2+r*13} width="13" height="13"
-            fill={(r+c)%2===0?'#f0d9b5':'#b58863'}/>
-        )))}
-        <rect x="2" y="2" width="52" height="52" rx="2" fill="none" stroke="#7a4a14" strokeWidth="2"/>
-        {/* White king on light square */}
-        <g transform="translate(15,15)">
-          <rect x="-6" y="2" width="12" height="3" rx="1.5" fill="#f5f5f5" stroke="#999" strokeWidth="0.5"/>
-          <rect x="-4" y="-2" width="8" height="5" rx="1" fill="#f5f5f5" stroke="#999" strokeWidth="0.5"/>
-          <rect x="-1" y="-6" width="2" height="5" rx="1" fill="#f5f5f5" stroke="#999" strokeWidth="0.5"/>
-          <rect x="-3" y="-4" width="6" height="2" rx="1" fill="#f5f5f5" stroke="#999" strokeWidth="0.5"/>
-          <ellipse cx="0" cy="5" rx="5" ry="1.5" fill="rgba(0,0,0,0.2)"/>
-        </g>
-        {/* Black queen on dark square */}
-        <g transform="translate(41,41)">
-          <ellipse cx="0" cy="5" rx="5" ry="1.5" fill="rgba(0,0,0,0.3)"/>
-          <rect x="-5" y="2" width="10" height="3" rx="1.5" fill="#222" stroke="#555" strokeWidth="0.5"/>
-          <path d="M-4,-2 L4,-2 L3,2 L-3,2 Z" fill="#222" stroke="#555" strokeWidth="0.5"/>
-          {[-3,0,3].map((x,i)=>(
-            <circle key={i} cx={x} cy={-4} r="1.5" fill="#222" stroke="#888" strokeWidth="0.5"/>
-          ))}
-        </g>
-      </svg>
-    );
-
-    // Word Search: letter grid with a highlighted diagonal word
-    case 'wordsearch': return (
-      <svg viewBox="0 0 56 56" className="w-full h-full">
-        <rect x="2" y="2" width="52" height="52" rx="4" fill="rgba(255,255,255,0.08)"/>
-        {/* Grid of letters */}
-        {[
-          ['G','A','M','E'],['R','E','S','T'],['F','U','N','O'],['J','O','Y','S']
-        ].map((row,r)=>row.map((l,c)=>{
-          const highlight = (r===0&&c===0)||(r===1&&c===1)||(r===2&&c===2)||(r===3&&c===3);
-          return (
-            <g key={r*4+c}>
-              {highlight && <rect x={6+c*12-2} y={6+r*12-2} width="10" height="10" rx="2" fill="rgba(255,220,80,0.35)"/>}
-              <text x={6+c*12+3} y={6+r*12+7} textAnchor="middle" fontSize="8" fontWeight={highlight?'900':'bold'}
-                fill={highlight?'#ffe082':'rgba(255,255,255,0.7)'}>{l}</text>
-            </g>
-          );
-        }))}
-        {/* Diagonal highlight oval */}
-        <ellipse cx="28" cy="28" rx="21" ry="8" fill="rgba(255,220,80,0.2)" transform="rotate(45,28,28)" stroke="#ffe082" strokeWidth="1" opacity="0.6"/>
-        {/* Magnifier */}
-        <g transform="translate(44,12)">
-          <circle cx="0" cy="0" r="6" fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="2"/>
-          <line x1="4" y1="4" x2="8" y2="8" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/>
-        </g>
-      </svg>
-    );
-
-    // Solitaire: fanned playing cards with suit symbols
-    case 'solitaire': return (
-      <svg viewBox="0 0 56 56" className="w-full h-full">
-        <defs>
-          <linearGradient id="slG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fff9f0"/><stop offset="100%" stopColor="#e0c8a8"/></linearGradient>
-          <filter id="slS"><feDropShadow dx="1" dy="2" stdDeviation="1.5" floodOpacity="0.5"/></filter>
-        </defs>
-        {/* Three fanned cards */}
-        {[{r:-20,x:-8,suit:'♠',sc:'#1a1a1a'},{r:-5,x:0,suit:'♥',sc:'#cc1111'},{r:12,x:9,suit:'♦',sc:'#cc1111'}].map(({r,x,suit,sc},i)=>(
-          <g key={i} filter="url(#slS)" transform={`translate(${28+x},34) rotate(${r})`}>
-            <rect x="-10" y="-18" width="22" height="30" rx="3" fill="url(#slG)" stroke="#ccc" strokeWidth="0.8"/>
-            <text x="-6" y="-9" fontSize="7" fontWeight="bold" fill={sc}>A</text>
-            <text x="1" y="6" fontSize="14" fill={sc} textAnchor="middle">{suit}</text>
-            <text x="6" y="9" fontSize="7" fontWeight="bold" fill={sc} transform="rotate(180,6,6)">A</text>
-          </g>
-        ))}
-      </svg>
-    );
-
-    // Hangman: clean gallows with stick figure
-    case 'hangman': return (
-      <svg viewBox="0 0 56 56" className="w-full h-full">
-        {/* Gallows structure */}
-        <rect x="8" y="50" width="24" height="4" rx="2" fill="#c4a882"/>
-        <rect x="14" y="10" width="7" height="42" rx="3.5" fill="#c4a882"/>
-        <rect x="14" y="10" width="28" height="7" rx="3.5" fill="#c4a882"/>
-        <line x1="38" y1="17" x2="38" y2="24" stroke="#c4a882" strokeWidth="2.5" strokeLinecap="round"/>
-        {/* Figure */}
-        <circle cx="38" cy="30" r="6" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2"/>
-        <line x1="38" y1="36" x2="38" y2="46" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round"/>
-        <line x1="38" y1="40" x2="31" y2="45" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round"/>
-        <line x1="38" y1="40" x2="45" y2="45" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round"/>
-        <line x1="38" y1="46" x2="32" y2="53" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round"/>
-        <line x1="38" y1="46" x2="44" y2="53" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round"/>
-        {/* Word blanks */}
-        {[0,1,2,3].map(i=>(
-          <line key={i} x1={6+i*11} y1="56" x2={13+i*11} y2="56" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round"/>
-        ))}
-      </svg>
-    );
-
-    // Brain Training: faceted brain with circuit lines
-    case 'brainapps': return (
-      <svg viewBox="0 0 56 56" className="w-full h-full">
-        <defs>
-          <radialGradient id="brG" cx="45%" cy="35%">
-            <stop offset="0%" stopColor="#e8d0ff"/>
-            <stop offset="50%" stopColor="#a855f7"/>
-            <stop offset="100%" stopColor="#581c87"/>
-          </radialGradient>
-          <filter id="brS"><feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#7c3aed" floodOpacity="0.6"/></filter>
-        </defs>
-        {/* Circuit lines */}
-        {[[6,28,18,28],[38,28,50,28],[28,6,28,16],[28,40,28,50],[10,10,18,18],[38,38,46,46]].map(([x1,y1,x2,y2],i)=>(
-          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(168,85,247,0.4)" strokeWidth="1.5" strokeLinecap="round"/>
-        ))}
-        {[[6,28],[50,28],[28,6],[28,50],[10,10],[46,46]].map(([cx,cy],i)=>(
-          <circle key={i} cx={cx} cy={cy} r="2" fill="rgba(168,85,247,0.6)"/>
-        ))}
-        {/* Brain */}
-        <g filter="url(#brS)" transform="translate(28,28)">
-          <polygon points="0,-16 -11,-5 -13,7 -6,16 0,18 6,16 13,7 11,-5" fill="url(#brG)"/>
-          <polygon points="0,-16 -5,-9 0,-1 5,-9" fill="#c084fc" opacity="0.5"/>
-          <polygon points="-11,-5 -13,7 -5,11 -5,-1" fill="#9333ea" opacity="0.4"/>
-          <polygon points="11,-5 13,7 5,11 5,-1" fill="#9333ea" opacity="0.4"/>
-          <polygon points="-5,11 0,18 5,11 0,7" fill="#6b21a8" opacity="0.6"/>
-          <line x1="0" y1="-15" x2="0" y2="17" stroke="rgba(255,255,255,0.12)" strokeWidth="1"/>
-          {/* Highlight */}
-          <ellipse cx="-3" cy="-8" rx="4" ry="3" fill="rgba(255,255,255,0.2)" transform="rotate(-20,-3,-8)"/>
-        </g>
-        {/* Sparkles */}
-        {[[8,8],[48,12],[50,44],[6,46]].map(([cx,cy],i)=>(
-          <g key={i}>
-            <line x1={cx-3} y1={cy} x2={cx+3} y2={cy} stroke="#ddd0ff" strokeWidth="1.2" strokeLinecap="round" opacity="0.7"/>
-            <line x1={cx} y1={cy-3} x2={cx} y2={cy+3} stroke="#ddd0ff" strokeWidth="1.2" strokeLinecap="round" opacity="0.7"/>
-          </g>
-        ))}
-      </svg>
-    );
-
-    default: return <text x="28" y="34" textAnchor="middle" fontSize="22" fill="white">🎮</text>;
-  }
-}
-
-// Game Card — playing card proportions, ~25% smaller than before
-function GameCard({ game, onPlay }: { game: typeof GAMES[0]; onPlay: () => void }) {
-  const theme = CARD_THEME[game.id] || CARD_THEME['matching'];
+// Game Instruction Dialog Component
+function GameInstructionDialog({ game, open, onClose, onPlay }: { 
+  game: typeof GAMES[0] | null; 
+  open: boolean; 
+  onClose: () => void;
+  onPlay: () => void;
+}) {
+  if (!game) return null;
+  
   return (
-    <motion.button
-      whileHover={{ scale: 1.06, y: -4 }}
-      whileTap={{ scale: 0.95 }}
-      onClick={onPlay}
-      className="relative flex flex-col overflow-hidden focus:outline-none"
-      style={{
-        background: theme.bg,
-        border: `2px solid ${theme.border}55`,
-        borderRadius: '12px',
-        aspectRatio: '3/4',
-        boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
-      }}
-    >
-      {/* Top banner */}
-      <div className="flex items-center justify-between px-1.5 py-1 flex-shrink-0"
-        style={{ background: 'rgba(0,0,0,0.32)' }}>
-        <span className="text-[7px] font-black tracking-widest" style={{ color: theme.lblColor }}>
-          {theme.abbr}
-        </span>
-        {/* Diamond ornament */}
-        <svg width="8" height="8" viewBox="0 0 8 8">
-          <polygon points="4,0 8,4 4,8 0,4" fill="none" stroke={theme.border} strokeWidth="1" opacity="0.6"/>
-          <polygon points="4,2 6,4 4,6 2,4" fill={theme.border} opacity="0.4"/>
-        </svg>
-      </div>
-
-      {/* Title strip */}
-      <div className="px-1 py-0.5 flex-shrink-0" style={{ background: 'rgba(0,0,0,0.18)' }}>
-        <p className="text-white text-[8px] font-bold text-center leading-tight tracking-wide truncate drop-shadow">
-          {game.title}
-        </p>
-      </div>
-
-      {/* SVG icon art */}
-      <div className="flex-1 flex items-center justify-center p-1.5 min-h-0">
-        <div className="w-full h-full">
-          <GameIcon id={game.id} />
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${game.color} flex items-center justify-center text-2xl shadow-md`}>
+              {game.icon}
+            </div>
+            <DialogTitle className="text-xl text-charcoal">{game.title}</DialogTitle>
+          </div>
+          <DialogDescription className="text-medium-gray pt-2">
+            How to play
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-4">
+          <div className="p-4 bg-soft-taupe/10 rounded-xl">
+            <p className="text-charcoal leading-relaxed">{game.instruction}</p>
+          </div>
+          
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={onClose} className="flex-1 rounded-xl">Close</Button>
+            <Button onClick={onPlay} className="flex-1 bg-gradient-to-r from-warm-bronze to-warm-amber text-white rounded-xl hover:shadow-md transition-all">
+              <Play className="w-4 h-4 mr-2" /> Play Game
+            </Button>
+          </div>
         </div>
-      </div>
-
-      {/* Bottom mirror banner (rotated) */}
-      <div className="flex items-center justify-between px-1.5 py-1 flex-shrink-0 rotate-180"
-        style={{ background: 'rgba(0,0,0,0.32)' }}>
-        <span className="text-[7px] font-black tracking-widest" style={{ color: theme.lblColor }}>
-          {theme.abbr}
-        </span>
-        <svg width="8" height="8" viewBox="0 0 8 8">
-          <polygon points="4,0 8,4 4,8 0,4" fill="none" stroke={theme.border} strokeWidth="1" opacity="0.6"/>
-          <polygon points="4,2 6,4 4,6 2,4" fill={theme.border} opacity="0.4"/>
-        </svg>
-      </div>
-
-      {/* Inner vignette */}
-      <div className="absolute inset-0 pointer-events-none"
-        style={{ borderRadius: '10px', boxShadow: 'inset 0 0 12px rgba(0,0,0,0.28)' }}/>
-    </motion.button>
+      </DialogContent>
+    </Dialog>
   );
 }
 
+// Game Card Component - Rectangular Playing Card Style (like attachment)
+function GameCard({ game, onClick }: { game: typeof GAMES[0]; onClick: () => void }) {
+  return (
+    <motion.button
+      whileHover={{ scale: 1.02, y: -2 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onClick}
+      className="group bg-white rounded-xl border-2 border-soft-taupe/50 shadow-md hover:shadow-xl transition-all p-2 flex flex-col items-center text-center gap-1.5 relative overflow-hidden"
+    >
+      {/* Decorative corner accents */}
+      <div className="absolute top-1 left-1 text-[9px] font-serif text-soft-taupe/40">♠</div>
+      <div className="absolute bottom-1 right-1 text-[9px] font-serif text-soft-taupe/40 rotate-180">♠</div>
+
+      {/* Game Icon — 30% smaller: w-20→w-14 */}
+      <div className={`w-14 h-14 rounded-lg bg-gradient-to-br ${game.color} flex items-center justify-center text-2xl shadow-md group-hover:scale-110 transition-transform duration-200`}>
+        {game.icon}
+      </div>
+
+      {/* Game Title */}
+      <p className="text-[10px] font-bold text-charcoal leading-tight tracking-wide px-0.5">{game.title}</p>
+    </motion.button>
+  );
+}
 
 export default function PatientHome() {
   const { state } = useApp();
@@ -443,6 +207,9 @@ export default function PatientHome() {
   });
   const [showPhotoPopup, setShowPhotoPopup] = useState<{id:string;name:string;url:string}|null>(null);
   
+  // Game dialog state
+  const [selectedGame, setSelectedGame] = useState<typeof GAMES[0] | null>(null);
+  const [gameDialogOpen, setGameDialogOpen] = useState(false);
 
   const tasks = state.tasks.filter(t => t.status !== 'completed').slice(0, 3);
 
@@ -561,7 +328,15 @@ export default function PatientHome() {
   };
 
   const openGame = (game: typeof GAMES[0]) => {
-    if (onNavigateToGame) onNavigateToGame(game.id);
+    setSelectedGame(game);
+    setGameDialogOpen(true);
+  };
+
+  const handlePlayGame = () => {
+    setGameDialogOpen(false);
+    if (selectedGame) {
+      alert(`🎮 Let's play ${selectedGame.title}!\n\n${selectedGame.instruction}`);
+    }
   };
 
   return (
@@ -891,9 +666,9 @@ export default function PatientHome() {
           </div>
           
           {/* 4x2 Grid - 4 across, 2 down */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-4 gap-2">
             {GAMES.map((game, idx) => (
-              <GameCard key={game.id} game={game} onPlay={() => openGame(game)} />
+              <GameCard key={game.id} game={game} onClick={() => openGame(game)} />
             ))}
           </div>
         </motion.div>
@@ -908,6 +683,14 @@ export default function PatientHome() {
         >
           <span className="text-white text-xs font-bold">HELP</span>
         </motion.button>
+
+        {/* Game Instruction Dialog */}
+        <GameInstructionDialog 
+          game={selectedGame}
+          open={gameDialogOpen}
+          onClose={() => setGameDialogOpen(false)}
+          onPlay={handlePlayGame}
+        />
 
         {/* Familiar Face Dialog */}
         <Dialog open={!!selectedFace} onOpenChange={() => setSelectedFace(null)}>
