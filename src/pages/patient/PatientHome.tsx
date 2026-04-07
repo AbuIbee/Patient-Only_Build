@@ -1,5 +1,3 @@
-// PatientHome.tsx - Complete file with playing card style game cards
-
 import { useEffect, useState, useMemo } from 'react';
 import { useApp } from '@/store/AppContext';
 import { supabase } from '@/lib/supabase';
@@ -122,52 +120,6 @@ const GAMES = [
   { id: 'brainapps', title: 'Brain Training', icon: '🧠', color: 'from-violet-500 to-purple-600', instruction: 'Try brain training exercises from apps like Lumosity, BrainHQ, and Elevate to keep your mind sharp.' }
 ];
 
-// PLAYING CARD STYLE GAME CARD COMPONENT
-// Size: approximately 1 inch x 0.75 inch (w-20 h-28 on mobile, scaled down on larger screens)
-function GameCard({ game, onClick }: { game: typeof GAMES[0]; onClick: () => void }) {
-  // Card suit symbols for corners
-  const cornerSuit = game.id === 'matching' ? '♥' : game.id === 'crossword' ? '♣' : game.id === 'wordsearch' ? '♦' : game.id === 'solitaire' ? '♠' : '♠';
-  const cornerColor = cornerSuit === '♥' || cornerSuit === '♦' ? 'text-red-500' : 'text-gray-700';
-  
-  return (
-    <motion.button
-      whileHover={{ scale: 1.03, y: -2 }}
-      whileTap={{ scale: 0.97 }}
-      onClick={onClick}
-      className="group relative bg-white rounded-md shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden"
-      style={{ width: '80px', height: '100px' }}
-    >
-      {/* Card border and inner border for vintage feel */}
-      <div className="absolute inset-0 rounded-md border border-amber-800/20" />
-      <div className="absolute inset-[2px] rounded-sm border border-amber-800/10" />
-      
-      {/* Top-left corner suit */}
-      <div className={`absolute top-1 left-1 text-[10px] font-bold ${cornerColor} opacity-60`}>
-        {cornerSuit}
-      </div>
-      
-      {/* Bottom-right corner suit (rotated) */}
-      <div className={`absolute bottom-1 right-1 text-[10px] font-bold ${cornerColor} opacity-60 rotate-180`}>
-        {cornerSuit}
-      </div>
-      
-      {/* Center game icon */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${game.color} flex items-center justify-center text-2xl shadow-inner`}>
-          {game.icon}
-        </div>
-        <p className="text-[9px] font-bold text-charcoal mt-1.5 leading-tight text-center px-1">
-          {game.title}
-        </p>
-      </div>
-      
-      {/* Subtle card texture lines */}
-      <div className="absolute inset-0 pointer-events-none opacity-5"
-        style={{ backgroundImage: 'repeating-linear-gradient(45deg, #000, #000 1px, transparent 1px, transparent 8px)' }} />
-    </motion.button>
-  );
-}
-
 // Game Instruction Dialog Component
 function GameInstructionDialog({ game, open, onClose, onPlay }: { 
   game: typeof GAMES[0] | null; 
@@ -206,6 +158,30 @@ function GameInstructionDialog({ game, open, onClose, onPlay }: {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Game Card Component - Rectangular Playing Card Style (like attachment)
+function GameCard({ game, onClick }: { game: typeof GAMES[0]; onClick: () => void }) {
+  return (
+    <motion.button
+      whileHover={{ scale: 1.04, y: -2 }}
+      whileTap={{ scale: 0.97 }}
+      onClick={onClick}
+      className="group bg-white rounded-lg border border-soft-taupe/50 shadow-sm hover:shadow-md transition-all p-1.5 flex flex-col items-center text-center gap-1 relative overflow-hidden"
+    >
+      {/* Decorative corner accents */}
+      <div className="absolute top-1 left-1 text-[8px] font-serif text-soft-taupe/40">♠</div>
+      <div className="absolute bottom-1 right-1 text-[8px] font-serif text-soft-taupe/40 rotate-180">♠</div>
+
+      {/* Game Icon — 30% smaller than w-20 */}
+      <div className={`w-14 h-14 rounded-lg bg-gradient-to-br ${game.color} flex items-center justify-center text-2xl shadow-sm group-hover:scale-110 transition-transform duration-200`}>
+        {game.icon}
+      </div>
+
+      {/* Game Title */}
+      <p className="text-[10px] font-bold text-charcoal leading-tight px-0.5">{game.title}</p>
+    </motion.button>
   );
 }
 
@@ -675,7 +651,7 @@ export default function PatientHome() {
           </div>
         </motion.div>
 
-        {/* GAMES SECTION - Playing Card Style - 4x2 Grid */}
+        {/* GAMES SECTION - 4x2 Rectangular Playing Card Style */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -689,9 +665,9 @@ export default function PatientHome() {
             <span className="text-xs text-medium-gray">Fun activities to keep your mind active</span>
           </div>
           
-          {/* 4x2 Grid - cards are 80x100px each, gap-2 gives ~340px total width on mobile */}
-          <div className="flex flex-wrap justify-start gap-2">
-            {GAMES.map((game) => (
+          {/* 4x2 Grid - 4 across, 2 down */}
+          <div className="grid grid-cols-4 gap-4">
+            {GAMES.map((game, idx) => (
               <GameCard key={game.id} game={game} onClick={() => openGame(game)} />
             ))}
           </div>
