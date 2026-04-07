@@ -110,270 +110,318 @@ interface FamiliarFace {
 
 // Game definitions
 const GAMES = [
-  { id: 'matching',   title: 'Matching Pairs'  },
-  { id: 'crossword',  title: 'Crossword Puzzle' },
-  { id: 'checkers',   title: 'Checkers'         },
-  { id: 'chess',      title: 'Chess'            },
-  { id: 'wordsearch', title: 'Word Search'      },
-  { id: 'solitaire',  title: 'Solitaire'        },
-  { id: 'hangman',    title: 'Hangman'          },
-  { id: 'brainapps',  title: 'Brain Training'   },
+  { id: 'matching',   title: 'Matching Pairs'   },
+  { id: 'crossword',  title: 'Crossword Puzzle'  },
+  { id: 'checkers',   title: 'Checkers'          },
+  { id: 'chess',      title: 'Chess'             },
+  { id: 'wordsearch', title: 'Word Search'       },
+  { id: 'solitaire',  title: 'Solitaire'         },
+  { id: 'hangman',    title: 'Hangman'           },
+  { id: 'brainapps',  title: 'Brain Training'    },
 ];
 
-// Card color themes
-const CARD_THEME: Record<string, { bg: string; border: string; label: string; labelTxt: string }> = {
-  matching:   { bg: 'linear-gradient(155deg,#d4940c 0%,#8a5c04 100%)', border: '#f5c842', label: 'MP', labelTxt: '#ffe082' },
-  crossword:  { bg: 'linear-gradient(155deg,#1e4db0 0%,#0d2055 100%)', border: '#5588ee', label: 'XW', labelTxt: '#aaccff' },
-  checkers:   { bg: 'linear-gradient(155deg,#cc1a1a 0%,#6e0606 100%)', border: '#ff6060', label: 'CK', labelTxt: '#ffbbbb' },
-  chess:      { bg: 'linear-gradient(155deg,#1a4d28 0%,#081e10 100%)', border: '#4a9a5a', label: 'CH', labelTxt: '#f5c842' },
-  wordsearch: { bg: 'linear-gradient(155deg,#1244a8 0%,#091840 100%)', border: '#5588ee', label: 'WS', labelTxt: '#aaccff' },
-  solitaire:  { bg: 'linear-gradient(155deg,#bb1a1a 0%,#600505 100%)', border: '#ff7070', label: 'SL', labelTxt: '#ffbbbb' },
-  hangman:    { bg: 'linear-gradient(155deg,#52118a 0%,#220840 100%)', border: '#9955ee', label: 'HM', labelTxt: '#ddaaff' },
-  brainapps:  { bg: 'linear-gradient(155deg,#282828 0%,#101010 100%)', border: '#888888', label: 'BT', labelTxt: '#dddddd' },
+// Card visual themes per game
+const CARD_THEME: Record<string, { bg: string; border: string; abbr: string; lblColor: string }> = {
+  matching:   { bg: 'linear-gradient(150deg,#d4940c 0%,#7a4a04 100%)', border: '#f5c842', abbr: 'MP', lblColor: '#ffe082' },
+  crossword:  { bg: 'linear-gradient(150deg,#1e4db0 0%,#091830 100%)', border: '#5588ee', abbr: 'XW', lblColor: '#aaccff' },
+  checkers:   { bg: 'linear-gradient(150deg,#cc1a1a 0%,#5a0303 100%)', border: '#ff6060', abbr: 'CK', lblColor: '#ffbbbb' },
+  chess:      { bg: 'linear-gradient(150deg,#1a4d28 0%,#051008 100%)', border: '#4a9a5a', abbr: 'CH', lblColor: '#f5c842' },
+  wordsearch: { bg: 'linear-gradient(150deg,#1244a8 0%,#060e30 100%)', border: '#5588ee', abbr: 'WS', lblColor: '#aaccff' },
+  solitaire:  { bg: 'linear-gradient(150deg,#bb1a1a 0%,#4a0202 100%)', border: '#ff7070', abbr: 'SL', lblColor: '#ffbbbb' },
+  hangman:    { bg: 'linear-gradient(150deg,#52118a 0%,#180530 100%)', border: '#9955ee', abbr: 'HM', lblColor: '#ddaaff' },
+  brainapps:  { bg: 'linear-gradient(150deg,#282828 0%,#080808 100%)', border: '#888888', abbr: 'BT', lblColor: '#dddddd' },
 };
 
-// Per-game SVG artwork (fits inside the card, no emoji)
-function GameArt({ id }: { id: string }) {
+// Distinct SVG icon per game — all original, no emojis
+function GameIcon({ id }: { id: string }) {
   switch (id) {
-    // ── Matching Pairs: two interlocked 3-D diamonds ─────────────────────────
+
+    // Matching Pairs: two face-down playing cards with a question mark
     case 'matching': return (
-      <svg viewBox="0 0 60 60" className="w-full h-full" overflow="visible">
+      <svg viewBox="0 0 56 56" className="w-full h-full">
         <defs>
-          <linearGradient id="mgA" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#ffe566"/><stop offset="100%" stopColor="#b87a00"/></linearGradient>
-          <linearGradient id="mgB" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#ffd700"/><stop offset="100%" stopColor="#7a5000"/></linearGradient>
-          <filter id="mgS"><feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.5"/></filter>
+          <linearGradient id="mpG1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#ffd700"/><stop offset="100%" stopColor="#b8860b"/></linearGradient>
+          <linearGradient id="mpG2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#fffbe6"/><stop offset="100%" stopColor="#e8dcc8"/></linearGradient>
+          <filter id="mpS"><feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.5"/></filter>
         </defs>
-        <g filter="url(#mgS)">
-          <polygon points="20,8  4,30 20,52 36,30"  fill="url(#mgA)"/>
-          <polygon points="20,14 10,30 20,46 30,30" fill="url(#mgB)"/>
-          <polygon points="40,8  24,30 40,52 56,30" fill="url(#mgA)"/>
-          <polygon points="40,14 30,30 40,46 50,30" fill="url(#mgB)"/>
+        {/* Back card (slightly offset) */}
+        <g filter="url(#mpS)" transform="rotate(-8,28,28)">
+          <rect x="6" y="8" width="24" height="34" rx="3" fill="url(#mpG1)" stroke="#c8920a" strokeWidth="1"/>
+          <rect x="9" y="11" width="18" height="28" rx="2" fill="url(#mpG1)" opacity="0.5"/>
+          <line x1="15" y1="17" x2="21" y2="23" stroke="#fff8" strokeWidth="1.5" strokeLinecap="round"/>
+          <line x1="21" y1="17" x2="15" y2="23" stroke="#fff8" strokeWidth="1.5" strokeLinecap="round"/>
         </g>
-        <line x1="36" y1="30" x2="24" y2="30" stroke="#ffe082" strokeWidth="1" opacity="0.6"/>
+        {/* Front card */}
+        <g filter="url(#mpS)" transform="rotate(6,28,28)">
+          <rect x="22" y="10" width="26" height="36" rx="3" fill="url(#mpG2)" stroke="#ccc" strokeWidth="1"/>
+          <text x="35" y="24" textAnchor="middle" fontSize="14" fontWeight="900" fill="#c8820a">?</text>
+          <text x="35" y="40" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#c8820a" transform="rotate(180,35,38)">?</text>
+        </g>
       </svg>
     );
-    // ── Crossword: 3 letter tiles in cross formation ──────────────────────────
+
+    // Crossword: a mini filled crossword grid
     case 'crossword': return (
-      <svg viewBox="0 0 60 60" className="w-full h-full">
-        <defs><filter id="xwS"><feDropShadow dx="0" dy="2" stdDeviation="1.5" floodOpacity="0.5"/></filter></defs>
-        {/* vertical: C A E */}
-        {[{x:22,y:4,l:'C',f:'#ddd0a0',t:'#1a2e6e'},{x:22,y:22,l:'A',f:'#3060b0',t:'#ffffff'},{x:22,y:40,l:'E',f:'#ddd0a0',t:'#1a2e6e'}].map(({x,y,l,f,t})=>(
-          <g key={l} filter="url(#xwS)">
-            <rect x={x} y={y} width="16" height="16" rx="3" fill={f}/>
-            <text x={x+8} y={y+12} textAnchor="middle" fontSize="10" fontWeight="bold" fill={t}>{l}</text>
+      <svg viewBox="0 0 56 56" className="w-full h-full">
+        <defs><filter id="xwS"><feDropShadow dx="0" dy="1" stdDeviation="1.5" floodOpacity="0.4"/></filter></defs>
+        {/* 4×4 crossword grid with some black squares */}
+        {[
+          [1,1,1,1],[1,0,1,0],[1,1,1,1],[0,1,0,1]
+        ].map((row,r)=>row.map((filled,c)=>(
+          <g key={r*4+c} filter="url(#xwS)">
+            <rect x={8+c*10} y={8+r*10} width="9" height="9" rx="1.5"
+              fill={filled ? '#e8ddb0' : '#1a2e6e'} stroke={filled?'#c0a860':'#0d1e50'} strokeWidth="0.5"/>
+            {filled && r===0 && <text x={8+c*10+2} y={8+r*10+5} fontSize="4" fill="#8B6914" fontWeight="bold">{String.fromCharCode(65+c+r*4)}</text>}
           </g>
-        ))}
-        {/* horizontal: W */}
-        <g filter="url(#xwS)">
-          <rect x="40" y="22" width="16" height="16" rx="3" fill="#ddd0a0"/>
-          <text x="48" y="34" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#1a2e6e">W</text>
+        )))}
+        {/* Pencil */}
+        <g transform="translate(36,30) rotate(-35)">
+          <rect x="-3" y="-14" width="6" height="20" rx="1" fill="#fde68a" stroke="#ca8a04" strokeWidth="1"/>
+          <polygon points="-3,6 3,6 0,12" fill="#fca5a5"/>
+          <rect x="-3" y="-16" width="6" height="4" rx="1" fill="#9ca3af"/>
+          <line x1="0" y1="-14" x2="0" y2="6" stroke="#ca8a04" strokeWidth="0.5" opacity="0.5"/>
         </g>
-        {/* XW labels in corners */}
-        <text x="4" y="11" fontSize="7" fontWeight="bold" fill="rgba(170,200,255,0.6)">XW</text>
-        <text x="56" y="56" fontSize="7" fontWeight="bold" fill="rgba(170,200,255,0.6)" textAnchor="end">XW</text>
       </svg>
     );
-    // ── Checkers: stacked red disc on black disc ──────────────────────────────
+
+    // Checkers: top-down view of 3 red and 3 black checkers on board squares
     case 'checkers': return (
-      <svg viewBox="0 0 60 60" className="w-full h-full">
+      <svg viewBox="0 0 56 56" className="w-full h-full">
         <defs>
-          <radialGradient id="ckR" cx="38%" cy="30%"><stop offset="0%" stopColor="#ff7070"/><stop offset="100%" stopColor="#990000"/></radialGradient>
-          <radialGradient id="ckB" cx="38%" cy="30%"><stop offset="0%" stopColor="#555"/><stop offset="100%" stopColor="#111"/></radialGradient>
-          <filter id="ckS"><feDropShadow dx="0" dy="3" stdDeviation="3" floodOpacity="0.6"/></filter>
+          <radialGradient id="ckR" cx="35%" cy="30%"><stop offset="0%" stopColor="#ff8080"/><stop offset="100%" stopColor="#8b0000"/></radialGradient>
+          <radialGradient id="ckB" cx="35%" cy="30%"><stop offset="0%" stopColor="#666"/><stop offset="100%" stopColor="#111"/></radialGradient>
         </defs>
-        {/* checker board hint squares */}
-        {[0,1,2,3].map(c=>[0,1].map(r=>(r+c)%2===0&&
-          <rect key={r*4+c} x={4+c*13} y={48+r*6} width="13" height="6" fill="rgba(200,50,50,0.25)" rx="1"/>
+        {/* 3×3 checkerboard section */}
+        {[0,1,2,3].map(r=>[0,1,2,3].map(c=>(
+          <rect key={r*4+c} x={4+c*12} y={4+r*12} width="12" height="12"
+            fill={(r+c)%2===0?'#f0d9b5':'#b58863'}/>
+        )))}
+        {/* Board border */}
+        <rect x="4" y="4" width="48" height="48" rx="2" fill="none" stroke="#7a4a14" strokeWidth="2"/>
+        {/* Red pieces */}
+        {[[1,0],[1,2],[3,0]].map(([r,c],i)=>(
+          <g key={i}>
+            <ellipse cx={4+c*12+6} cy={4+r*12+8} rx="5" ry="2" fill="rgba(0,0,0,0.25)"/>
+            <circle cx={4+c*12+6} cy={4+r*12+6} r="5" fill="url(#ckR)" stroke="#cc0000" strokeWidth="1"/>
+            <circle cx={4+c*12+4} cy={4+r*12+4} r="1.5" fill="rgba(255,255,255,0.35)"/>
+          </g>
         ))}
-        <g filter="url(#ckS)">
-          {/* black disc */}
-          <ellipse cx="30" cy="42" rx="19" ry="7" fill="url(#ckB)"/>
-          <rect x="11" y="36" width="38" height="7" fill="#333"/>
-          <ellipse cx="30" cy="36" rx="19" ry="7" fill="#3a3a3a"/>
-          {/* red disc */}
-          <ellipse cx="30" cy="30" rx="19" ry="7" fill="url(#ckR)"/>
-          <rect x="11" y="22" width="38" height="9" fill="#bb1111"/>
-          <ellipse cx="30" cy="22" rx="19" ry="7" fill="url(#ckR)"/>
-          <ellipse cx="30" cy="22" rx="12" ry="3.5" fill="rgba(255,160,160,0.45)"/>
-        </g>
+        {/* Black pieces */}
+        {[[0,1],[0,3],[2,1]].map(([r,c],i)=>(
+          <g key={i}>
+            <ellipse cx={4+c*12+6} cy={4+r*12+8} rx="5" ry="2" fill="rgba(0,0,0,0.25)"/>
+            <circle cx={4+c*12+6} cy={4+r*12+6} r="5" fill="url(#ckB)" stroke="#333" strokeWidth="1"/>
+            <circle cx={4+c*12+4} cy={4+r*12+4} r="1.5" fill="rgba(255,255,255,0.2)"/>
+          </g>
+        ))}
       </svg>
     );
-    // ── Chess: white knight on dark board ────────────────────────────────────
+
+    // Chess: top-down board view with iconic king and queen
     case 'chess': return (
-      <svg viewBox="0 0 60 60" className="w-full h-full">
-        <defs>
-          <linearGradient id="chW" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ffffff"/><stop offset="100%" stopColor="#bbbbb0"/></linearGradient>
-          <filter id="chS"><feDropShadow dx="1" dy="2" stdDeviation="2" floodOpacity="0.5"/></filter>
-        </defs>
-        {/* board squares */}
-        {[0,1,2,3].map(r=>[0,1,2,3].map(c=>(r+c)%2===0&&
-          <rect key={r*4+c} x={4+c*13} y={44+r*4} width="13" height="4" fill="rgba(255,255,255,0.12)" rx="1"/>
-        ))}
-        {/* crown */}
-        <g transform="translate(38,6)" opacity="0.9">
-          {[-6,0,6].map((ox,i)=>(<polygon key={i} points={`${ox},-1 ${ox+3},5 ${ox+6},-1`} fill="#f5c842"/>))}
-          <rect x="-6" y="5" width="18" height="4" rx="1.5" fill="#f5c842"/>
+      <svg viewBox="0 0 56 56" className="w-full h-full">
+        {/* 4×4 board corner */}
+        {[0,1,2,3].map(r=>[0,1,2,3].map(c=>(
+          <rect key={r*4+c} x={2+c*13} y={2+r*13} width="13" height="13"
+            fill={(r+c)%2===0?'#f0d9b5':'#b58863'}/>
+        )))}
+        <rect x="2" y="2" width="52" height="52" rx="2" fill="none" stroke="#7a4a14" strokeWidth="2"/>
+        {/* White king on light square */}
+        <g transform="translate(15,15)">
+          <rect x="-6" y="2" width="12" height="3" rx="1.5" fill="#f5f5f5" stroke="#999" strokeWidth="0.5"/>
+          <rect x="-4" y="-2" width="8" height="5" rx="1" fill="#f5f5f5" stroke="#999" strokeWidth="0.5"/>
+          <rect x="-1" y="-6" width="2" height="5" rx="1" fill="#f5f5f5" stroke="#999" strokeWidth="0.5"/>
+          <rect x="-3" y="-4" width="6" height="2" rx="1" fill="#f5f5f5" stroke="#999" strokeWidth="0.5"/>
+          <ellipse cx="0" cy="5" rx="5" ry="1.5" fill="rgba(0,0,0,0.2)"/>
         </g>
-        {/* knight */}
-        <g filter="url(#chS)" transform="translate(30,38) scale(0.7)">
-          <ellipse cx="0" cy="18" rx="14" ry="5" fill="url(#chW)" opacity="0.5"/>
-          <path d="M-7,16 Q-9,2 -4,-6 Q0,-12 7,-14 Q13,-15 14,-8 Q15,-2 10,3 Q7,7 8,11 Q9,14 6,15 Q2,16 0,16 Q-3,16 -7,16Z" fill="url(#chW)"/>
-          <circle cx="9" cy="-7" r="2.5" fill="#999"/>
-          <path d="M4,-11 Q8,-13 11,-9" stroke="#ccc" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+        {/* Black queen on dark square */}
+        <g transform="translate(41,41)">
+          <ellipse cx="0" cy="5" rx="5" ry="1.5" fill="rgba(0,0,0,0.3)"/>
+          <rect x="-5" y="2" width="10" height="3" rx="1.5" fill="#222" stroke="#555" strokeWidth="0.5"/>
+          <path d="M-4,-2 L4,-2 L3,2 L-3,2 Z" fill="#222" stroke="#555" strokeWidth="0.5"/>
+          {[-3,0,3].map((x,i)=>(
+            <circle key={i} cx={x} cy={-4} r="1.5" fill="#222" stroke="#888" strokeWidth="0.5"/>
+          ))}
         </g>
       </svg>
     );
-    // ── Word Search: letter grid with diagonal highlight + magnifier ──────────
+
+    // Word Search: letter grid with a highlighted diagonal word
     case 'wordsearch': return (
-      <svg viewBox="0 0 60 60" className="w-full h-full">
-        <defs><filter id="wsS"><feDropShadow dx="0" dy="1" stdDeviation="1" floodOpacity="0.4"/></filter></defs>
-        {/* letter grid */}
-        {[['A','B','C','D'],['E','J','W','O'],['K','O','R','D'],['P','Q','R','T']].map((row,r)=>
-          row.map((l,c)=>(
-            <text key={r*4+c} x={10+c*12} y={16+r*13} fontSize="9" fontWeight="bold" textAnchor="middle"
-              fill={((r===1||r===2)&&c>=1)?"#ffe082":"rgba(255,255,255,0.65)"}>{l}</text>
-          ))
-        )}
-        {/* highlight line */}
-        <line x1="10" y1="29" x2="46" y2="55" stroke="#ffe082" strokeWidth="5" strokeLinecap="round" opacity="0.45"/>
-        {/* magnifying glass */}
-        <g filter="url(#wsS)" transform="translate(46,10)">
-          <circle cx="0" cy="0" r="7" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2.5"/>
-          <line x1="5" y1="5" x2="11" y2="11" stroke="rgba(255,255,255,0.85)" strokeWidth="2.5" strokeLinecap="round"/>
+      <svg viewBox="0 0 56 56" className="w-full h-full">
+        <rect x="2" y="2" width="52" height="52" rx="4" fill="rgba(255,255,255,0.08)"/>
+        {/* Grid of letters */}
+        {[
+          ['G','A','M','E'],['R','E','S','T'],['F','U','N','O'],['J','O','Y','S']
+        ].map((row,r)=>row.map((l,c)=>{
+          const highlight = (r===0&&c===0)||(r===1&&c===1)||(r===2&&c===2)||(r===3&&c===3);
+          return (
+            <g key={r*4+c}>
+              {highlight && <rect x={6+c*12-2} y={6+r*12-2} width="10" height="10" rx="2" fill="rgba(255,220,80,0.35)"/>}
+              <text x={6+c*12+3} y={6+r*12+7} textAnchor="middle" fontSize="8" fontWeight={highlight?'900':'bold'}
+                fill={highlight?'#ffe082':'rgba(255,255,255,0.7)'}>{l}</text>
+            </g>
+          );
+        }))}
+        {/* Diagonal highlight oval */}
+        <ellipse cx="28" cy="28" rx="21" ry="8" fill="rgba(255,220,80,0.2)" transform="rotate(45,28,28)" stroke="#ffe082" strokeWidth="1" opacity="0.6"/>
+        {/* Magnifier */}
+        <g transform="translate(44,12)">
+          <circle cx="0" cy="0" r="6" fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="2"/>
+          <line x1="4" y1="4" x2="8" y2="8" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/>
         </g>
       </svg>
     );
-    // ── Solitaire: three fanned cards with suit icons ─────────────────────────
+
+    // Solitaire: fanned playing cards with suit symbols
     case 'solitaire': return (
-      <svg viewBox="0 0 60 60" className="w-full h-full">
+      <svg viewBox="0 0 56 56" className="w-full h-full">
         <defs>
-          <linearGradient id="slC" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fffbf0"/><stop offset="100%" stopColor="#ddd0b8"/></linearGradient>
-          <filter id="slS"><feDropShadow dx="1" dy="2" stdDeviation="2" floodOpacity="0.5"/></filter>
+          <linearGradient id="slG" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fff9f0"/><stop offset="100%" stopColor="#e0c8a8"/></linearGradient>
+          <filter id="slS"><feDropShadow dx="1" dy="2" stdDeviation="1.5" floodOpacity="0.5"/></filter>
         </defs>
-        {[{r:-18,x:-10,suit:'♥',sc:'#cc1111'},{r:-5,x:0,suit:'♠',sc:'#111'},{r:8,x:10,suit:'♥',sc:'#cc1111'}].map(({r,x,suit,sc},i)=>(
-          <g key={i} filter="url(#slS)" transform={`translate(${30+x},42) rotate(${r})`}>
-            <rect x="-11" y="-20" width="22" height="32" rx="3" fill="url(#slC)" stroke="#bbb" strokeWidth="0.5"/>
-            <text x="-7" y="-11" fontSize="8" fontWeight="bold" fill={sc}>A</text>
-            <text x="0" y="6" fontSize="15" fill={sc} textAnchor="middle">{suit}</text>
+        {/* Three fanned cards */}
+        {[{r:-20,x:-8,suit:'♠',sc:'#1a1a1a'},{r:-5,x:0,suit:'♥',sc:'#cc1111'},{r:12,x:9,suit:'♦',sc:'#cc1111'}].map(({r,x,suit,sc},i)=>(
+          <g key={i} filter="url(#slS)" transform={`translate(${28+x},34) rotate(${r})`}>
+            <rect x="-10" y="-18" width="22" height="30" rx="3" fill="url(#slG)" stroke="#ccc" strokeWidth="0.8"/>
+            <text x="-6" y="-9" fontSize="7" fontWeight="bold" fill={sc}>A</text>
+            <text x="1" y="6" fontSize="14" fill={sc} textAnchor="middle">{suit}</text>
+            <text x="6" y="9" fontSize="7" fontWeight="bold" fill={sc} transform="rotate(180,6,6)">A</text>
           </g>
         ))}
       </svg>
     );
-    // ── Hangman: gallows + figure + word blanks ───────────────────────────────
+
+    // Hangman: clean gallows with stick figure
     case 'hangman': return (
-      <svg viewBox="0 0 60 60" className="w-full h-full">
-        {/* checkered bg */}
-        {[0,1,2,3,4].map(r=>[0,1,2,3,4].map(c=>(r+c)%2===0&&
-          <rect key={r*5+c} x={c*12} y={r*12} width="12" height="12" fill="rgba(80,20,120,0.4)"/>
-        ))}
-        {/* gallows */}
-        <line x1="10" y1="52" x2="50" y2="52" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round"/>
-        <line x1="20" y1="52" x2="20" y2="10" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round"/>
-        <line x1="20" y1="10" x2="38" y2="10" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round"/>
-        <line x1="38" y1="10" x2="38" y2="16" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round"/>
-        {/* stick figure (partial) */}
-        <circle cx="38" cy="20" r="4" fill="none" stroke="rgba(255,220,100,0.9)" strokeWidth="1.8"/>
-        <line x1="38" y1="24" x2="38" y2="36" stroke="rgba(255,220,100,0.9)" strokeWidth="1.8" strokeLinecap="round"/>
-        <line x1="38" y1="28" x2="33" y2="33" stroke="rgba(255,220,100,0.9)" strokeWidth="1.8" strokeLinecap="round"/>
-        <line x1="38" y1="28" x2="43" y2="33" stroke="rgba(255,220,100,0.9)" strokeWidth="1.8" strokeLinecap="round"/>
-        {/* word blanks _ _ E _ _ */}
-        {['_','_','E','_','_'].map((ch,i)=>(
-          <text key={i} x={6+i*12} y={58} fontSize="10" fontWeight="bold" textAnchor="middle"
-            fill={ch==='E'?"#ffffff":"rgba(255,255,255,0.55)"}>{ch}</text>
+      <svg viewBox="0 0 56 56" className="w-full h-full">
+        {/* Gallows structure */}
+        <rect x="8" y="50" width="24" height="4" rx="2" fill="#c4a882"/>
+        <rect x="14" y="10" width="7" height="42" rx="3.5" fill="#c4a882"/>
+        <rect x="14" y="10" width="28" height="7" rx="3.5" fill="#c4a882"/>
+        <line x1="38" y1="17" x2="38" y2="24" stroke="#c4a882" strokeWidth="2.5" strokeLinecap="round"/>
+        {/* Figure */}
+        <circle cx="38" cy="30" r="6" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="2"/>
+        <line x1="38" y1="36" x2="38" y2="46" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round"/>
+        <line x1="38" y1="40" x2="31" y2="45" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round"/>
+        <line x1="38" y1="40" x2="45" y2="45" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round"/>
+        <line x1="38" y1="46" x2="32" y2="53" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round"/>
+        <line x1="38" y1="46" x2="44" y2="53" stroke="rgba(255,255,255,0.85)" strokeWidth="2" strokeLinecap="round"/>
+        {/* Word blanks */}
+        {[0,1,2,3].map(i=>(
+          <line key={i} x1={6+i*11} y1="56" x2={13+i*11} y2="56" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round"/>
         ))}
       </svg>
     );
-    // ── Brain Training: faceted low-poly brain with sparkles ──────────────────
+
+    // Brain Training: faceted brain with circuit lines
     case 'brainapps': return (
-      <svg viewBox="0 0 60 60" className="w-full h-full">
+      <svg viewBox="0 0 56 56" className="w-full h-full">
         <defs>
-          <radialGradient id="brG" cx="48%" cy="38%"><stop offset="0%" stopColor="#e5c8ff"/><stop offset="55%" stopColor="#9b44f0"/><stop offset="100%" stopColor="#55108a"/></radialGradient>
-          <filter id="brS"><feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#7b22ce" floodOpacity="0.7"/></filter>
+          <radialGradient id="brG" cx="45%" cy="35%">
+            <stop offset="0%" stopColor="#e8d0ff"/>
+            <stop offset="50%" stopColor="#a855f7"/>
+            <stop offset="100%" stopColor="#581c87"/>
+          </radialGradient>
+          <filter id="brS"><feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="#7c3aed" floodOpacity="0.6"/></filter>
         </defs>
-        {/* sparkles */}
-        {[[8,10],[52,14],[55,46],[10,50],[30,4]].map(([cx,cy],i)=>(
-          <g key={i} opacity="0.8">
-            <line x1={cx-4} y1={cy} x2={cx+4} y2={cy} stroke="#ddbfff" strokeWidth="1.5" strokeLinecap="round"/>
-            <line x1={cx} y1={cy-4} x2={cx} y2={cy+4} stroke="#ddbfff" strokeWidth="1.5" strokeLinecap="round"/>
+        {/* Circuit lines */}
+        {[[6,28,18,28],[38,28,50,28],[28,6,28,16],[28,40,28,50],[10,10,18,18],[38,38,46,46]].map(([x1,y1,x2,y2],i)=>(
+          <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(168,85,247,0.4)" strokeWidth="1.5" strokeLinecap="round"/>
+        ))}
+        {[[6,28],[50,28],[28,6],[28,50],[10,10],[46,46]].map(([cx,cy],i)=>(
+          <circle key={i} cx={cx} cy={cy} r="2" fill="rgba(168,85,247,0.6)"/>
+        ))}
+        {/* Brain */}
+        <g filter="url(#brS)" transform="translate(28,28)">
+          <polygon points="0,-16 -11,-5 -13,7 -6,16 0,18 6,16 13,7 11,-5" fill="url(#brG)"/>
+          <polygon points="0,-16 -5,-9 0,-1 5,-9" fill="#c084fc" opacity="0.5"/>
+          <polygon points="-11,-5 -13,7 -5,11 -5,-1" fill="#9333ea" opacity="0.4"/>
+          <polygon points="11,-5 13,7 5,11 5,-1" fill="#9333ea" opacity="0.4"/>
+          <polygon points="-5,11 0,18 5,11 0,7" fill="#6b21a8" opacity="0.6"/>
+          <line x1="0" y1="-15" x2="0" y2="17" stroke="rgba(255,255,255,0.12)" strokeWidth="1"/>
+          {/* Highlight */}
+          <ellipse cx="-3" cy="-8" rx="4" ry="3" fill="rgba(255,255,255,0.2)" transform="rotate(-20,-3,-8)"/>
+        </g>
+        {/* Sparkles */}
+        {[[8,8],[48,12],[50,44],[6,46]].map(([cx,cy],i)=>(
+          <g key={i}>
+            <line x1={cx-3} y1={cy} x2={cx+3} y2={cy} stroke="#ddd0ff" strokeWidth="1.2" strokeLinecap="round" opacity="0.7"/>
+            <line x1={cx} y1={cy-3} x2={cx} y2={cy+3} stroke="#ddd0ff" strokeWidth="1.2" strokeLinecap="round" opacity="0.7"/>
           </g>
         ))}
-        {/* low-poly brain */}
-        <g filter="url(#brS)" transform="translate(30,33)">
-          <polygon points="0,-18 -13,-6 -15,8 -8,18 0,20 8,18 15,8 13,-6" fill="url(#brG)"/>
-          <polygon points="0,-18 -6,-10 0,-2 6,-10" fill="#cc88ff" opacity="0.55"/>
-          <polygon points="-13,-6 -15,8 -6,12 -6,-2" fill="#9b44f0" opacity="0.45"/>
-          <polygon points="13,-6 15,8 6,12 6,-2"  fill="#9b44f0" opacity="0.45"/>
-          <polygon points="-6,12 0,20 6,12 0,8" fill="#6600cc" opacity="0.65"/>
-          <line x1="0" y1="-17" x2="0" y2="19" stroke="rgba(255,255,255,0.12)" strokeWidth="0.8"/>
-        </g>
       </svg>
     );
-    default: return <text x="30" y="35" textAnchor="middle" fontSize="20" fill="white">🎮</text>;
+
+    default: return <text x="28" y="34" textAnchor="middle" fontSize="22" fill="white">🎮</text>;
   }
 }
 
-// Game Card — playing card style, 25% smaller than previous, title at top, direct launch
+// Game Card — playing card proportions, ~25% smaller than before
 function GameCard({ game, onPlay }: { game: typeof GAMES[0]; onPlay: () => void }) {
   const theme = CARD_THEME[game.id] || CARD_THEME['matching'];
   return (
     <motion.button
-      whileHover={{ scale: 1.05, y: -3 }}
-      whileTap={{ scale: 0.96 }}
+      whileHover={{ scale: 1.06, y: -4 }}
+      whileTap={{ scale: 0.95 }}
       onClick={onPlay}
-      className="relative flex flex-col overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-200 focus:outline-none"
+      className="relative flex flex-col overflow-hidden focus:outline-none"
       style={{
         background: theme.bg,
-        border: `2px solid ${theme.border}44`,
-        borderRadius: '14px',
+        border: `2px solid ${theme.border}55`,
+        borderRadius: '12px',
         aspectRatio: '3/4',
+        boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
       }}
     >
-      {/* ── Top banner: game abbreviation + ornament ── */}
-      <div className="flex items-center justify-between px-2 py-1.5 flex-shrink-0"
-        style={{ background: 'rgba(0,0,0,0.30)', backdropFilter: 'blur(2px)' }}>
-        <span className="text-[8px] font-black tracking-widest" style={{ color: theme.labelTxt }}>
-          {theme.label}
+      {/* Top banner */}
+      <div className="flex items-center justify-between px-1.5 py-1 flex-shrink-0"
+        style={{ background: 'rgba(0,0,0,0.32)' }}>
+        <span className="text-[7px] font-black tracking-widest" style={{ color: theme.lblColor }}>
+          {theme.abbr}
         </span>
-        {/* diamond ornament */}
-        <svg width="10" height="10" viewBox="0 0 10 10">
-          <polygon points="5,1 9,5 5,9 1,5" fill="none" stroke={theme.border} strokeWidth="1.2" opacity="0.7"/>
-          <polygon points="5,3 7,5 5,7 3,5" fill={theme.border} opacity="0.5"/>
+        {/* Diamond ornament */}
+        <svg width="8" height="8" viewBox="0 0 8 8">
+          <polygon points="4,0 8,4 4,8 0,4" fill="none" stroke={theme.border} strokeWidth="1" opacity="0.6"/>
+          <polygon points="4,2 6,4 4,6 2,4" fill={theme.border} opacity="0.4"/>
         </svg>
       </div>
 
-      {/* ── Title strip ── */}
-      <div className="px-1.5 py-1 flex-shrink-0" style={{ background: 'rgba(0,0,0,0.20)' }}>
-        <p className="text-white text-[9px] font-bold text-center leading-tight tracking-wide truncate drop-shadow">
+      {/* Title strip */}
+      <div className="px-1 py-0.5 flex-shrink-0" style={{ background: 'rgba(0,0,0,0.18)' }}>
+        <p className="text-white text-[8px] font-bold text-center leading-tight tracking-wide truncate drop-shadow">
           {game.title}
         </p>
       </div>
 
-      {/* ── SVG art fills remaining space ── */}
-      <div className="flex-1 flex items-center justify-center p-2 min-h-0">
-        <div className="w-full h-full max-h-full">
-          <GameArt id={game.id} />
+      {/* SVG icon art */}
+      <div className="flex-1 flex items-center justify-center p-1.5 min-h-0">
+        <div className="w-full h-full">
+          <GameIcon id={game.id} />
         </div>
       </div>
 
-      {/* ── Bottom mirror: rotated abbreviation + ornament ── */}
-      <div className="flex items-center justify-between px-2 py-1.5 flex-shrink-0 rotate-180"
-        style={{ background: 'rgba(0,0,0,0.30)', backdropFilter: 'blur(2px)' }}>
-        <span className="text-[8px] font-black tracking-widest" style={{ color: theme.labelTxt }}>
-          {theme.label}
+      {/* Bottom mirror banner (rotated) */}
+      <div className="flex items-center justify-between px-1.5 py-1 flex-shrink-0 rotate-180"
+        style={{ background: 'rgba(0,0,0,0.32)' }}>
+        <span className="text-[7px] font-black tracking-widest" style={{ color: theme.lblColor }}>
+          {theme.abbr}
         </span>
-        <svg width="10" height="10" viewBox="0 0 10 10">
-          <polygon points="5,1 9,5 5,9 1,5" fill="none" stroke={theme.border} strokeWidth="1.2" opacity="0.7"/>
-          <polygon points="5,3 7,5 5,7 3,5" fill={theme.border} opacity="0.5"/>
+        <svg width="8" height="8" viewBox="0 0 8 8">
+          <polygon points="4,0 8,4 4,8 0,4" fill="none" stroke={theme.border} strokeWidth="1" opacity="0.6"/>
+          <polygon points="4,2 6,4 4,6 2,4" fill={theme.border} opacity="0.4"/>
         </svg>
       </div>
 
-      {/* inner vignette */}
-      <div className="absolute inset-0 pointer-events-none" style={{ borderRadius: '12px', boxShadow: 'inset 0 0 16px rgba(0,0,0,0.3)' }}/>
+      {/* Inner vignette */}
+      <div className="absolute inset-0 pointer-events-none"
+        style={{ borderRadius: '10px', boxShadow: 'inset 0 0 12px rgba(0,0,0,0.28)' }}/>
     </motion.button>
   );
 }
 
-export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (gameId: string) => void } = {}) {
+
+export default function PatientHome() {
   const { state } = useApp();
   const patient = state.patient;
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -395,7 +443,6 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
   });
   const [showPhotoPopup, setShowPhotoPopup] = useState<{id:string;name:string;url:string}|null>(null);
   
-
 
   const tasks = state.tasks.filter(t => t.status !== 'completed').slice(0, 3);
 
@@ -514,9 +561,7 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
   };
 
   const openGame = (game: typeof GAMES[0]) => {
-    if (onNavigateToGame) {
-      onNavigateToGame(game.id);
-    }
+    if (onNavigateToGame) onNavigateToGame(game.id);
   };
 
   return (
@@ -863,8 +908,6 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
         >
           <span className="text-white text-xs font-bold">HELP</span>
         </motion.button>
-
-
 
         {/* Familiar Face Dialog */}
         <Dialog open={!!selectedFace} onOpenChange={() => setSelectedFace(null)}>

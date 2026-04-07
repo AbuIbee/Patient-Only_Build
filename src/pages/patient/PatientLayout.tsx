@@ -36,7 +36,8 @@ type PatientView =
   | 'emergency_contacts'
   | 'careteam'
   | 'media'
-  | 'games';
+  | 'games'
+  | 'progress_timeline';
 
 export default function PatientLayout() {
   const [currentView, setCurrentView] = useState<PatientView>('dashboard');
@@ -280,7 +281,7 @@ export default function PatientLayout() {
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
-        return <PatientHome onNavigateToGame={(gameId) => { setInitialGame(gameId); setCurrentView('games'); }} />;
+        return <PatientHome onNavigateToGame={(id) => { setInitialGame(id); setCurrentView('games'); }} />;
       case 'medications':
         return <PatientMedications />;
       case 'routines':
@@ -304,7 +305,7 @@ export default function PatientLayout() {
       case 'media':
         return <MediaUploader readOnly={false} patientId={state.currentUser?.id} />;
       case 'games':
-        return <PatientGames initialGame={initialGame as any} key={initialGame || 'menu'} />;
+        return <PatientGames initialGame={initialGame as any} key={initialGame || 'default'} onNavigateHome={() => { setInitialGame(undefined); setCurrentView('dashboard'); }} />;
       default:
         return <PatientHome />;
     }
