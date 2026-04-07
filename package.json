@@ -9,7 +9,6 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "ionic:build": "npm install && vite build && npx cap sync android"
-
   },
   "dependencies": {
     "@awesome-cordova-plugins/in-app-purchase-2": "^9.1.2",

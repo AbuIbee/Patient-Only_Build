@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Wind, Music, BookOpen, Sun, TrendingUp, Clock, Calendar, BarChart3, ChevronLeft, ChevronRight, Activity, Utensils, Droplets, Shield, Brain, Heart, ThumbsUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { ADLProgressChart} from "@/components/charts/ADLProgressChart";
 import { format, subDays, subWeeks, subMonths, isSameDay, parseISO } from 'date-fns';
 import type { MoodType } from '@/types';
 
@@ -85,12 +86,9 @@ interface CheckInData {
 
 type FilterDays = 7 | 30 | 60 | 90;
 
-// ── Line Graph Component ──────────────────────────────────────────────────────
-// ── Combined Section Graph: one graph, metrics on X-axis ─────────────────────
-// Each metric becomes one data point (its latest value) plotted along X.
-// The graph shows the MOST RECENT check-in value for each metric as a connected line,
-// so the reader sees relative function across all metrics at a glance.
-// When multiple check-ins exist, dots represent the latest value per metric.
+// ── SectionCombinedGraph: X = dates over time, Y = score 0-4 ─────────────────
+// One coloured line per metric, all sharing the same Y-axis score scale.
+// X-axis labels: days for 7d, dates for 1m/2m/3m.
 function SectionCombinedGraph({
   title,
   icon: Icon,
@@ -104,88 +102,127 @@ function SectionCombinedGraph({
   icon: React.ElementType;
   color: string;
   accentColor: string;
-  metrics: { key: string; label: string }[];
+  metrics: { key: string; label: string; color: string }[];
   allCheckIns: CheckInData[];
   filterDays: FilterDays;
 }) {
-  const yMax = 4;
-  const chartH = 110;
-  const PAD_LEFT = 28;
-  const PAD_BOTTOM = 32;
-  const PAD_TOP = 10;
-  const PAD_RIGHT = 10;
+  // ── Build sorted date list for the selected window ──────────────────────────
+  const cutoff = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate() - filterDays); return d;
+  }, [filterDays]);
 
-  // Filter check-ins to the selected date window
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - filterDays);
-  const filtered = allCheckIns
-    .filter(d => new Date(d.check_in_date) >= cutoff)
-    .sort((a, b) => new Date(a.check_in_date).getTime() - new Date(b.check_in_date).getTime());
+  const sortedCheckIns = useMemo(() =>
+    allCheckIns
+      .filter(d => new Date(d.check_in_date) >= cutoff)
+      .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date)),
+    [allCheckIns, cutoff]
+  );
 
-  // Build a value getter map (same as before)
-  const getters: Record<string, (e: CheckInData) => number | null> = {
-    fn_dressing:       (e) => e.fn_dressing   ? getScore(e.fn_dressing)   : null,
-    fn_bathing:        (e) => e.fn_bathing    ? getScore(e.fn_bathing)    : null,
-    fn_toileting:      (e) => e.fn_toileting  ? getScore(e.fn_toileting)  : null,
-    fn_transfers:      (e) => e.fn_transfers  ? getScore(e.fn_transfers)  : null,
-    fn_mobility:       (e) => e.fn_mobility   ? getScore(e.fn_mobility)   : null,
-    fn_medication:     (e) => e.fn_medication ? getScore(e.fn_medication) : null,
-    nu_appetite:       (e) => e.nu_appetite   ? getScore(e.nu_appetite)   : null,
-    nu_meal_pct:       (e) => e.nu_meal_pct   ? getScore(e.nu_meal_pct)   : null,
-    nu_fluids:         (e) => e.nu_fluids     ? getScore(e.nu_fluids)     : null,
-    nu_swallowing:     (e) => e.nu_swallowing ? getScore(e.nu_swallowing) : null,
-    co_urinary:        (e) => e.co_urinary    ? getScore(e.co_urinary)    : null,
-    co_bowel:          (e) => e.co_bowel      ? getScore(e.co_bowel)      : null,
-    co_skin:           (e) => e.co_skin       ? getScore(e.co_skin)       : null,
-    sa_falls:          (e) => e.sa_falls      ? getScore(e.sa_falls, 4)   : null,
-    sa_wandering:      (e) => e.sa_wandering  ? getScore(e.sa_wandering, 4) : null,
-    sa_safety_concerns:(e) => e.sa_safety_concerns !== undefined ? (e.sa_safety_concerns ? 1 : 4) : null,
-    be_behaviors:      (e) => { const c = (e.be_behaviors||[]).filter(b=>b!=='None observed').length; return Math.max(0, 4 - Math.min(4,c)); },
-    mo_mood:           (e) => e.mo_mood  ? getScore(e.mo_mood)  : null,
-    mo_sleep:          (e) => e.mo_sleep ? getScore(e.mo_sleep) : null,
-    sy_symptoms:       (e) => { const c = (e.sy_symptoms||[]).length; return Math.max(0, 4 - Math.min(4,c)); },
+  // Unique dates in range
+  const dates = useMemo(() => {
+    const all: string[] = [];
+    const now = new Date();
+    for (let i = filterDays - 1; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      all.push(d.toISOString().slice(0, 10));
+    }
+    return all;
+  }, [filterDays]);
+
+  // Index check-ins by date (latest per day wins)
+  const byDate = useMemo(() => {
+    const m = new Map<string, CheckInData>();
+    sortedCheckIns.forEach(c => m.set(c.check_in_date, c));
+    return m;
+  }, [sortedCheckIns]);
+
+  // Per-metric score getter
+  const getVal = (c: CheckInData, key: string): number | null => {
+    switch (key) {
+      case 'fn_dressing':   return c.fn_dressing   ? getScore(c.fn_dressing)   : null;
+      case 'fn_bathing':    return c.fn_bathing     ? getScore(c.fn_bathing)    : null;
+      case 'fn_toileting':  return c.fn_toileting   ? getScore(c.fn_toileting)  : null;
+      case 'fn_transfers':  return c.fn_transfers   ? getScore(c.fn_transfers)  : null;
+      case 'fn_mobility':   return c.fn_mobility    ? getScore(c.fn_mobility)   : null;
+      case 'fn_medication': return c.fn_medication  ? getScore(c.fn_medication) : null;
+      case 'nu_appetite':   return c.nu_appetite    ? getScore(c.nu_appetite)   : null;
+      case 'nu_meal_pct':   return c.nu_meal_pct    ? getScore(c.nu_meal_pct)   : null;
+      case 'nu_fluids':     return c.nu_fluids      ? getScore(c.nu_fluids)     : null;
+      case 'nu_swallowing': return c.nu_swallowing  ? getScore(c.nu_swallowing) : null;
+      case 'co_urinary':    return c.co_urinary     ? getScore(c.co_urinary)    : null;
+      case 'co_bowel':      return c.co_bowel       ? getScore(c.co_bowel)      : null;
+      case 'co_skin':       return c.co_skin        ? getScore(c.co_skin)       : null;
+      case 'sa_falls':      return c.sa_falls       ? getScore(c.sa_falls)      : null;
+      case 'sa_wandering':  return c.sa_wandering   ? getScore(c.sa_wandering)  : null;
+      case 'sa_safety_concerns': return c.sa_safety_concerns !== undefined ? (c.sa_safety_concerns ? 1 : 4) : null;
+      case 'be_behaviors':  { const n = (c.be_behaviors||[]).filter(b=>b!=='None observed').length; return Math.max(0, 4-Math.min(4,n)); }
+      case 'mo_mood':       return c.mo_mood        ? getScore(c.mo_mood)       : null;
+      case 'mo_sleep':      return c.mo_sleep       ? getScore(c.mo_sleep)      : null;
+      case 'sy_symptoms':   { const n = (c.sy_symptoms||[]).length; return Math.max(0, 4-Math.min(4,n)); }
+      default: return null;
+    }
   };
 
-  // For each metric, get the latest non-null value across filtered check-ins
-  const points: { label: string; value: number | null }[] = metrics.map(m => {
-    const getter = getters[m.key];
-    if (!getter) return { label: m.label, value: null };
-    // Walk from most recent to oldest, take first non-null
-    for (let i = filtered.length - 1; i >= 0; i--) {
-      const v = getter(filtered[i]);
-      if (v !== null) return { label: m.label, value: v };
-    }
-    return { label: m.label, value: null };
-  });
+  // Build per-metric time series
+  const series = useMemo(() =>
+    metrics.map(m => ({
+      ...m,
+      points: dates.map((d, i) => ({
+        i, date: d,
+        score: byDate.has(d) ? getVal(byDate.get(d)!, m.key) : null,
+      })),
+    })),
+    [metrics, dates, byDate]
+  );
 
-  const hasData = points.some(p => p.value !== null);
-  const n = points.length;
-  const totalW = 320; // SVG coordinate width
+  const hasData = series.some(s => s.points.some(p => p.score !== null));
 
-  // X positions: evenly spaced, one per metric
-  const xOf = (i: number) =>
-    n === 1 ? totalW / 2 : PAD_LEFT + (i / (n - 1)) * (totalW - PAD_LEFT - PAD_RIGHT);
-  const toY = (v: number) => PAD_TOP + chartH - (v / yMax) * chartH;
+  // ── SVG layout ──────────────────────────────────────────────────────────────
 
-  // Build path only through valid points
-  const validPts = points
-    .map((p, i) => ({ ...p, xi: xOf(i) }))
-    .filter(p => p.value !== null) as { label: string; value: number; xi: number }[];
+<div className="bg-white rounded-xl p-6 shadow">
+  <h2 className="text-lg font-semibold mb-4">
+    A — Daily Function
+  </h2>
 
-  const pathD = validPts.map((p, i) =>
-    `${i === 0 ? 'M' : 'L'}${p.xi.toFixed(1)},${toY(p.value).toFixed(1)}`
-  ).join(' ');
+  <ADLProgressChart />
+</div>
 
-  const areaD = validPts.length > 1
-    ? `${pathD} L${validPts[validPts.length-1].xi.toFixed(1)},${(PAD_TOP+chartH).toFixed(1)} L${validPts[0].xi.toFixed(1)},${(PAD_TOP+chartH).toFixed(1)} Z`
-    : '';
+  
+  const PAD_L  = 36;   // Y-axis: just tick numbers, not category names
+  const PAD_R  = 16;
+  const PAD_T  = 20;
+  const PAD_B  = 32;   // X-axis date labels
+  const VB_W   = 860;
+  const VB_H   = 200;
+  const CW     = VB_W - PAD_L - PAD_R;
+  const CH     = VB_H - PAD_T - PAD_B;
 
-  const svgH = PAD_TOP + chartH + PAD_BOTTOM;
+  // Score 4 = top, 0 = bottom
+  const sy = (score: number) => PAD_T + CH - (score / 4) * CH;
+  // Date index → X
+  const sx = (i: number) =>
+    dates.length <= 1 ? PAD_L + CW / 2 : PAD_L + (i / (dates.length - 1)) * CW;
+
+  // Pick evenly-spaced label indices
+  const maxLabels = filterDays === 7 ? 7 : 6;
+  const labelIdx: number[] = dates.length <= maxLabels
+    ? dates.map((_, i) => i)
+    : Array.from({ length: maxLabels }, (_, k) => Math.round(k * (dates.length - 1) / (maxLabels - 1)));
+
+  // X-axis date label format
+  const fmtDate = (d: string) => {
+    const dt = new Date(d + 'T12:00');
+    if (filterDays === 7) return dt.toLocaleDateString('en-US', { weekday: 'short' });
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const gid = (key: string) => 'sg' + title.replace(/\s/g,'') + key.replace(/[^a-z0-9]/gi,'');
 
   return (
-    <div className="bg-white rounded-2xl shadow-card p-4 mb-5 border border-soft-taupe/30">
-      {/* Section heading */}
-      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-soft-taupe/40">
+    <div className="bg-white rounded-2xl shadow-sm p-4 mb-5 border border-soft-taupe/40">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-soft-taupe/30">
         <div className={`w-8 h-8 rounded-xl ${color} flex items-center justify-center flex-shrink-0`}>
           <Icon className="w-4 h-4 text-white" />
         </div>
@@ -193,111 +230,128 @@ function SectionCombinedGraph({
       </div>
 
       {!hasData ? (
-        <div className="h-24 flex items-center justify-center text-xs text-medium-gray">
+        <div className="h-24 flex items-center justify-center text-xs text-medium-gray italic">
           No check-in data for this period yet
         </div>
       ) : (
-        <svg
-          width="100%"
-          viewBox={`0 0 ${totalW} ${svgH}`}
-          className="overflow-visible w-full"
-        >
-          {/* Y-axis gridlines + labels */}
-          {[0, 1, 2, 3, 4].map(v => (
-            <g key={v}>
-              <line
-                x1={PAD_LEFT} y1={toY(v)}
-                x2={totalW - PAD_RIGHT} y2={toY(v)}
-                stroke="#e5e0d5" strokeWidth="0.6" strokeDasharray="4,3"
-              />
-              <text
-                x={PAD_LEFT - 4} y={toY(v) + 3.5}
-                textAnchor="end" fontSize="8" fill="#aaa"
-              >{v}</text>
-            </g>
-          ))}
-
-          {/* Gradient area fill */}
-          {areaD && (
-            <>
-              <defs>
-                <linearGradient id={`grad-${title.replace(/\s/g,'')}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={accentColor} stopOpacity="0.25" />
-                  <stop offset="100%" stopColor={accentColor} stopOpacity="0.02" />
+        <>
+          <svg
+            viewBox={`0 0 ${VB_W} ${VB_H}`}
+            className="w-full block overflow-visible"
+            style={{ height: 200 }}
+            preserveAspectRatio="none"
+          >
+            <defs>
+              {series.map(s => (
+                <linearGradient key={s.key} id={gid(s.key)} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={s.color} stopOpacity="0.18" />
+                  <stop offset="100%" stopColor={s.color} stopOpacity="0.02" />
                 </linearGradient>
-              </defs>
-              <path d={areaD} fill={`url(#grad-${title.replace(/\s/g,'')})`} />
-            </>
-          )}
+              ))}
+            </defs>
 
-          {/* Line */}
-          {pathD && (
-            <path
-              d={pathD} fill="none"
-              stroke={accentColor} strokeWidth="2.5"
-              strokeLinecap="round" strokeLinejoin="round"
-            />
-          )}
+            {/* Chart background */}
+            <rect x={PAD_L} y={PAD_T} width={CW} height={CH} fill="#fafaf8" rx="2" />
 
-          {/* Dots + X-axis labels */}
-          {points.map((p, i) => {
-            const cx = xOf(i);
-            const hasVal = p.value !== null;
-            return (
-              <g key={i}>
-                {/* Dot */}
-                {hasVal && (
-                  <>
-                    <circle
-                      cx={cx.toFixed(1)}
-                      cy={toY(p.value!).toFixed(1)}
-                      r="4.5" fill={accentColor} stroke="white" strokeWidth="2"
-                    />
-                    {/* Value label above dot */}
-                    <text
-                      x={cx.toFixed(1)}
-                      y={(toY(p.value!) - 7).toFixed(1)}
-                      textAnchor="middle" fontSize="8" fontWeight="bold" fill={accentColor}
-                    >{p.value!.toFixed(0)}</text>
-                  </>
-                )}
-                {/* Empty dot placeholder when no data */}
-                {!hasVal && (
-                  <circle
-                    cx={cx.toFixed(1)} cy={(PAD_TOP + chartH / 2).toFixed(1)}
-                    r="3" fill="#ddd" stroke="white" strokeWidth="1.5"
-                  />
-                )}
-                {/* X-axis label — wrap long labels */}
-                <text
-                  x={cx.toFixed(1)}
-                  y={(PAD_TOP + chartH + 14).toFixed(1)}
-                  textAnchor="middle" fontSize="8.5" fill="#666"
-                  fontWeight="500"
-                >
-                  {p.label}
-                </text>
+            {/* Y-axis grid lines + numeric labels (0–4) */}
+            {[0, 1, 2, 3, 4, 5].map(v => (
+              <g key={v}>
+                <line
+                  x1={PAD_L} y1={sy(v)} x2={PAD_L + CW} y2={sy(v)}
+                  stroke={v === 0 ? '#c8c4bc' : '#e8e4dc'} strokeWidth={v === 0 ? 1.2 : 0.7}
+                  strokeDasharray={v === 0 ? '0' : '4,5'}
+                />
+                <text x={PAD_L - 5} y={sy(v) + 4} textAnchor="end" fontSize="10" fill="#aaa">{v}</text>
               </g>
-            );
-          })}
+            ))}
 
-          {/* Y-axis line */}
-          <line
-            x1={PAD_LEFT} y1={PAD_TOP}
-            x2={PAD_LEFT} y2={PAD_TOP + chartH}
-            stroke="#ccc" strokeWidth="0.8"
-          />
-          {/* X-axis line */}
-          <line
-            x1={PAD_LEFT} y1={PAD_TOP + chartH}
-            x2={totalW - PAD_RIGHT} y2={PAD_TOP + chartH}
-            stroke="#ccc" strokeWidth="0.8"
-          />
-        </svg>
+            {/* Y-axis border */}
+            <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + CH} stroke="#c8c4bc" strokeWidth="1.2" />
+
+            {/* X-axis vertical grid lines */}
+            {labelIdx.map(di => (
+              <line key={di}
+                x1={sx(di)} y1={PAD_T} x2={sx(di)} y2={PAD_T + CH}
+                stroke="#e8e4dc" strokeWidth="0.5" strokeDasharray="3,5"
+              />
+            ))}
+
+            {/* Per-metric lines and dots */}
+            {series.map(s => {
+              const valid = s.points.filter(p => p.score !== null) as { i:number; date:string; score:number }[];
+
+              // Line path with gap handling
+              const segs: string[] = [];
+              let cur = '';
+              s.points.forEach(p => {
+                if (p.score === null) { if (cur) { segs.push(cur); cur = ''; } }
+                else {
+                  const x = sx(p.i), y = sy(p.score);
+                  cur += cur ? ` L${x.toFixed(1)},${y.toFixed(1)}` : `M${x.toFixed(1)},${y.toFixed(1)}`;
+                }
+              });
+              if (cur) segs.push(cur);
+
+              // Area fill
+              let area = '';
+              if (valid.length >= 2) {
+                area = valid.map((p,i) => `${i===0?'M':'L'}${sx(p.i).toFixed(1)},${sy(p.score).toFixed(1)}`).join(' ')
+                  + ` L${sx(valid[valid.length-1].i).toFixed(1)},${(PAD_T+CH).toFixed(1)}`
+                  + ` L${sx(valid[0].i).toFixed(1)},${(PAD_T+CH).toFixed(1)} Z`;
+              }
+
+              return (
+                <g key={s.key}>
+                  {area && <path d={area} fill={`url(#${gid(s.key)})`} />}
+                  {segs.map((d, j) => (
+                    <path key={j} d={d} fill="none" stroke={s.color}
+                      strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  ))}
+                  {s.points.map(p => {
+                    if (p.score === null) return null;
+                    const x = sx(p.i), y = sy(p.score);
+                    return (
+                      <g key={p.i}>
+                        <circle cx={x} cy={y} r="6" fill={s.color} fillOpacity="0.15" />
+                        <circle cx={x} cy={y} r="3.5" fill={s.color} stroke="white" strokeWidth="1.8" />
+                        <text x={x} y={y - 8} textAnchor="middle" fontSize="9" fontWeight="700" fill={s.color}>
+                          {p.score}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            })}
+
+            {/* X-axis date labels */}
+            {labelIdx.map(di => (
+              <text key={di} x={sx(di)} y={PAD_T + CH + 20}
+                textAnchor="middle" fontSize="10.5" fill="#7a7670" fontWeight="500">
+                {fmtDate(dates[di])}
+              </text>
+            ))}
+          </svg>
+
+          {/* Colour legend */}
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 pt-2 border-t border-soft-taupe/20">
+            {metrics.map(m => (
+              <span key={m.key} className="flex items-center gap-1.5 text-[11px] font-semibold"
+                style={{ color: m.color }}>
+                <svg width="10" height="10" viewBox="0 0 10 10" className="flex-shrink-0">
+                  <circle cx="5" cy="5" r="4" fill={m.color} />
+                </svg>
+                {m.label}
+              </span>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
 }
+
+
 
 // ── Filter Buttons Component ──────────────────────────────────────────────────
 function FilterButtons({ current, onChange }: { current: FilterDays; onChange: (days: FilterDays) => void }) {
@@ -585,46 +639,46 @@ export default function PatientProgressTimeline() {
     [moodEntries]
   );
 
-  // Define metrics for each section
+  // Define metrics for each section — each metric has a distinct color
   const sectionAMetrics = [
-    { key: 'fn_dressing', label: 'Dressing' },
-    { key: 'fn_bathing', label: 'Bathing' },
-    { key: 'fn_toileting', label: 'Toileting' },
-    { key: 'fn_transfers', label: 'Transfers' },
-    { key: 'fn_mobility', label: 'Mobility' },
-    { key: 'fn_medication', label: 'Medication' },
+    { key: 'fn_dressing',  label: 'Dressing',   color: '#2563eb' },
+    { key: 'fn_bathing',   label: 'Bathing',     color: '#16a34a' },
+    { key: 'fn_toileting', label: 'Toileting',   color: '#dc2626' },
+    { key: 'fn_transfers', label: 'Transfers',   color: '#7c3aed' },
+    { key: 'fn_mobility',  label: 'Mobility',    color: '#ea580c' },
+    { key: 'fn_medication',label: 'Medication',  color: '#0891b2' },
   ];
-  
+
   const sectionBMetrics = [
-    { key: 'nu_appetite', label: 'Appetite' },
-    { key: 'nu_meal_pct', label: 'Meal %' },
-    { key: 'nu_fluids', label: 'Fluids' },
-    { key: 'nu_swallowing', label: 'Swallowing' },
+    { key: 'nu_appetite',   label: 'Appetite',   color: '#16a34a' },
+    { key: 'nu_meal_pct',   label: 'Meal %',     color: '#ca8a04' },
+    { key: 'nu_fluids',     label: 'Fluids',     color: '#2563eb' },
+    { key: 'nu_swallowing', label: 'Swallowing', color: '#dc2626' },
   ];
-  
+
   const sectionCMetrics = [
-    { key: 'co_urinary', label: 'Urinary' },
-    { key: 'co_bowel', label: 'Bowel' },
-    { key: 'co_skin', label: 'Skin' },
+    { key: 'co_urinary', label: 'Urinary', color: '#2563eb' },
+    { key: 'co_bowel',   label: 'Bowel',   color: '#16a34a' },
+    { key: 'co_skin',    label: 'Skin',    color: '#dc2626' },
   ];
-  
+
   const sectionDMetrics = [
-    { key: 'sa_falls', label: 'Falls' },
-    { key: 'sa_wandering', label: 'Wandering' },
-    { key: 'sa_safety_concerns', label: 'Safety Concerns' },
+    { key: 'sa_falls',          label: 'Falls',           color: '#dc2626' },
+    { key: 'sa_wandering',      label: 'Wandering',       color: '#ea580c' },
+    { key: 'sa_safety_concerns',label: 'Safety Concerns', color: '#7c3aed' },
   ];
-  
+
   const sectionEMetrics = [
-    { key: 'be_behaviors', label: 'Behaviors Observed' },
+    { key: 'be_behaviors', label: 'Behaviors Observed', color: '#7c3aed' },
   ];
-  
+
   const sectionFMetrics = [
-    { key: 'mo_mood', label: 'Mood' },
-    { key: 'mo_sleep', label: 'Sleep' },
+    { key: 'mo_mood',  label: 'Mood',  color: '#db2777' },
+    { key: 'mo_sleep', label: 'Sleep', color: '#2563eb' },
   ];
-  
+
   const sectionGMetrics = [
-    { key: 'sy_symptoms', label: 'Symptoms Present' },
+    { key: 'sy_symptoms', label: 'Symptoms Present', color: '#dc2626' },
   ];
 
   if (loading) {
