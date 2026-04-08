@@ -336,7 +336,7 @@ export default function PricingPage({
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-charcoal mb-2">Choose Your Plan</h1>
               <p className="text-medium-gray">
-                Try free for 30 days — card required, not charged. Paid plans include a 7-day money-back guarantee.
+                Try free for 30 days — 7 day money-back guarantee on paid plans, cancle anytime.
               </p>
             </div>
 
@@ -396,7 +396,7 @@ export default function PricingPage({
                             </>
                           ) : (
                             // Companion in annual: no price label, just tagline below
-                            <span className="text-3xl font-bold text-charcoal">30 Day Free Trial</span>
+                            <span className="text-2xl font-bold text-charcoal">30 Day Free Trial</span>
                           )
                         ) : (
                           // Monthly mode
@@ -451,7 +451,7 @@ export default function PricingPage({
 
             {/* Trust badges */}
             <div className="flex flex-wrap justify-center gap-6 text-sm text-medium-gray">
-              <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-soft-sage" /> 30 days free — card required, not charged</span>
+              <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-soft-sage" /> 30 days free — card  required, not charged</span>
               <span className="flex items-center gap-1.5"><RefreshCw className="w-4 h-4 text-calm-blue" /> 7-day money-back on paid plans</span>
               <span className="flex items-center gap-1.5"><X className="w-4 h-4 text-gentle-coral" /> Cancel anytime</span>
             </div>
