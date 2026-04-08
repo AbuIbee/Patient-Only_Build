@@ -132,7 +132,7 @@ export const TIERS: Record<TierName, TierConfig> = {
     annualPrice: null,
     description: 'Free for 45 days',
     tagline: 'Try free for 45 days — no credit card needed',
-    stripePriceIdMonthly: '',   // free — no Stripe price needed
+    stripePriceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_COMPANION_MONTHLY || '',
     stripePriceIdAnnual: null,
     features: [
       { label: 'Daily time & orientation', included: true },

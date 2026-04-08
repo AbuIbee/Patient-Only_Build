@@ -233,34 +233,48 @@ export default function PricingPage({
         // Fall through to Stripe below
       }
 
-      if (selectedTier === 'companion' || subStatus === 'promo') {
-        const msg = promoApplied
-          ? `Welcome to My Memoria Ally! Your promo gives you free access until ${trialEnd.toLocaleDateString()}. 🎉`
-          : `Welcome to My Memoria Ally! Enjoy ${FREE_TRIAL_DAYS} days free. 🎉`;
+      // ── Promo codes bypass Stripe — grant access directly ──────────────────
+      if (subStatus === 'promo') {
+        const msg = `Welcome! Your promo gives you free access until ${trialEnd.toLocaleDateString()}. 🎉`;
         toast.success(msg);
         dispatch({ type: 'SET_USER', payload: { id: data.user.id, email: normalizedEmail, firstName, lastName, role: 'patient', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
         dispatch({ type: 'SET_ROLE',          payload: 'patient' });
         dispatch({ type: 'SET_AUTHENTICATED', payload: true });
         onClose?.();
       } else {
-        // Paid tier — redirect to Stripe Checkout
-        toast.success('Account created! Taking you to secure checkout…');
-
+        // ALL tiers (including free companion) go through Stripe Checkout
+        // Companion = $0/mo plan, card saved but not charged for FREE_TRIAL_DAYS days
         const tierConfig = TIERS[selectedTier];
         const priceId    = billingAnnual && tierConfig.stripePriceIdAnnual
           ? tierConfig.stripePriceIdAnnual
           : tierConfig.stripePriceIdMonthly;
+
+        if (!priceId) {
+          toast.error('Payment configuration is missing. Please contact support.', { duration: 8000 });
+          await supabase.auth.signOut();
+          setIsLoading(false);
+          return;
+        }
+
+        const checkoutMsg = selectedTier === 'companion'
+          ? `Account created! Your card won't be charged for ${FREE_TRIAL_DAYS} days — taking you to checkout…`
+          : 'Account created! Taking you to secure checkout…';
+        toast.success(checkoutMsg);
 
         const { data: checkoutData, error: checkoutErr } = await supabase.functions.invoke('create-checkout-session', {
           body: { priceId, tierName: selectedTier, userId: data.user.id, email: normalizedEmail, trialEnd: trialEnd.toISOString() },
         });
 
         if (checkoutErr || !checkoutData?.url) {
-          toast.error(`Checkout unavailable — you are on a ${FREE_TRIAL_DAYS}-day free trial. Upgrade from inside the app at any time.`);
-          dispatch({ type: 'SET_USER', payload: { id: data.user.id, email: normalizedEmail, firstName, lastName, role: 'patient', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
-          dispatch({ type: 'SET_ROLE',          payload: 'patient' });
-          dispatch({ type: 'SET_AUTHENTICATED', payload: true });
-          onClose?.();
+          const errDetail = checkoutErr?.message ?? 'No checkout URL returned';
+          console.error('Checkout session error:', errDetail);
+          toast.error(
+            'Unable to reach payment processor. Please try again in a moment.',
+            { duration: 8000 }
+          );
+          await supabase.auth.signOut();
+          setIsLoading(false);
+          return;
         } else {
           window.location.href = checkoutData.url;
         }
@@ -379,7 +393,7 @@ export default function PricingPage({
                           : 'bg-charcoal hover:bg-charcoal/90 text-white'
                       }`}
                     >
-                      {tierName === 'companion' ? `Start Free — ${FREE_TRIAL_DAYS} Days` : 'Start 7-Day Free Trial'}
+                      {tierName === 'companion' ? `Try Free — Card Required` : 'Start Free Trial'}
                     </button>
                   </motion.div>
                 );
@@ -388,7 +402,7 @@ export default function PricingPage({
 
             {/* Trust badges */}
             <div className="flex flex-wrap justify-center gap-6 text-sm text-medium-gray">
-              <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-soft-sage" /> 45 days free on Companion plan</span>
+              <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-soft-sage" /> 30 days free — card required, not charged</span>
               <span className="flex items-center gap-1.5"><RefreshCw className="w-4 h-4 text-calm-blue" /> 7-day money-back on paid plans</span>
               <span className="flex items-center gap-1.5"><X className="w-4 h-4 text-gentle-coral" /> Cancel anytime</span>
             </div>
@@ -431,7 +445,7 @@ export default function PricingPage({
             <h2 className="text-2xl font-bold text-charcoal mb-1">Create your account</h2>
             <p className="text-medium-gray text-sm mb-6">
               {selectedTier === 'companion'
-                ? `Free for ${FREE_TRIAL_DAYS} days — no credit card needed.`
+                ? `Your card is required but won't be charged for ${FREE_TRIAL_DAYS} days. Cancel anytime.`
                 : 'Your 7-day money-back guarantee starts now. You can cancel before it ends.'}
             </p>
 
@@ -587,7 +601,7 @@ export default function PricingPage({
 
               {selectedTier !== 'companion' && (
                 <p className="text-xs text-center text-medium-gray">
-                  Your card will not be charged until after your 7-day free trial ends.
+                  Your card will not be charged until after your free trial ends.
                   Cancel anytime before then at no cost.
                 </p>
               )}

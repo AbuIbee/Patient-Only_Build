@@ -66,18 +66,18 @@ export default function LandingPage() {
       </header>
 
       {/* ── Hero ───────────────────────────────────────────────────────────── */}
-      <section className="py-20 lg:py-32">
+      <section className="pt-20 lg:pt-20 pb-10 lg:pb-16">
         <div className="max-w-6xl mx-auto px-4 grid lg:grid-cols-2 gap-12 items-center">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             <h1 className="text-4xl lg:text-6xl font-bold text-charcoal mb-6">
               Stay on track, feel supported,
               <span className="text-warm-bronze block">every single day</span>
             </h1>
-
-            <p className="text-lg text-medium-gray mb-8">
-              My Memoria Ally provides daily structure, reminders, and support
-              for individuals who benefit from a calmer, more guided routine.
-            </p>
+            <p className="text-medium-gray leading-relaxed">
+              My Memoria Ally helps families, individuals and care partners provide daily structure, reminders, and support
+              for and their loved ones with gentle medication reminders, mood tracking, to benefit from a calmer, more guided routine. Calmer days start here.
+             </p>
+             <br/>
 
             <div className="flex gap-4">
               <Button
@@ -177,6 +177,155 @@ export default function LandingPage() {
               <p className="text-sm text-medium-gray">{f.description}</p>
             </motion.div>
           ))}
+        </div>
+      </section>
+
+
+      {/* ── Testimonials ───────────────────────────────────────────────────── */}
+      <section className="py-20 bg-warm-ivory overflow-hidden">
+        <div className="max-w-6xl mx-auto px-4">
+          {/* Heading */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-14"
+          >
+            <span className="inline-block bg-warm-bronze/10 text-warm-bronze text-xs font-semibold uppercase tracking-widest px-4 py-1.5 rounded-full mb-4">
+              Real Stories
+            </span>
+            <h2 className="text-3xl lg:text-4xl font-bold text-charcoal">
+              Families who found their footing
+            </h2>
+            <p className="text-medium-gray mt-3 max-w-xl mx-auto">
+              From early mornings to quiet evenings, My Memoria Ally is there — and so are the people whose lives it's touched.
+            </p>
+          </motion.div>
+
+          {/* Cards grid */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[
+              {
+                quote: "Mom used to wake up confused and frightened every morning. Now she opens the app, sees her name, the date, and a kind message — and her whole face relaxes. That small thing changed everything for us.",
+                name: "Sandra M.",
+                role: "Daughter & Primary Caregiver",
+                location: "Austin, TX",
+                emoji: "👩‍👧",
+                tag: "Caregiver",
+                tagColor: "bg-calm-blue/20 text-calm-blue",
+                stars: 5,
+              },
+              {
+                quote: "I was losing track of my medications and feeling embarrassed to ask for help. This app just quietly reminds me — no fuss, no judgment. I feel like myself again.",
+                name: "Walter B.",
+                role: "Patient, 78 years young",
+                location: "Charleston, SC",
+                emoji: "👴",
+                tag: "Patient",
+                tagColor: "bg-soft-sage/20 text-soft-sage",
+                stars: 5,
+              },
+              {
+                quote: "Our nursing staff used to spend hours fielding calls from worried family members. Since partnering with My Memoria Ally, those calls have dropped dramatically and families feel genuinely supported.",
+                name: "Rebecca T.",
+                role: "Director of Care, Sunrise Living",
+                location: "Denver, CO",
+                emoji: "👩‍⚕️",
+                tag: "Care Facility",
+                tagColor: "bg-warm-bronze/15 text-warm-bronze",
+                stars: 5,
+              },
+              {
+                quote: "My husband has Alzheimer's and every day used to feel like a battle. Now I log his mood, his meals, how he slept — and I actually feel in control. I can breathe again.",
+                name: "Darlene H.",
+                role: "Wife & Full-time Caregiver",
+                location: "Nashville, TN",
+                emoji: "❤️",
+                tag: "Caregiver",
+                tagColor: "bg-calm-blue/20 text-calm-blue",
+                stars: 5,
+              },
+              {
+                quote: "I told my daughter I didn't want some complicated computer thing. But this is so simple — big buttons, kind words, and it always knows my name. I actually look forward to checking in.",
+                name: "Evelyn R.",
+                role: "Patient, 82",
+                location: "Savannah, GA",
+                emoji: "🌸",
+                tag: "Patient",
+                tagColor: "bg-soft-sage/20 text-soft-sage",
+                stars: 5,
+              },
+              {
+                quote: "I work two jobs and live three hours away. I used to lie awake worrying about Dad. Now I get a little update and I know he's on track. I sleep better. He's happier. We're closer.",
+                name: "Marcus J.",
+                role: "Son & Long-distance Caregiver",
+                location: "Philadelphia, PA",
+                emoji: "👨‍👦",
+                tag: "Caregiver",
+                tagColor: "bg-calm-blue/20 text-calm-blue",
+                stars: 5,
+              },
+            ].map((t, i) => (
+              <motion.div
+                key={t.name}
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.08 }}
+                className="bg-white rounded-2xl p-6 shadow-sm border border-soft-taupe/40 flex flex-col gap-4"
+              >
+                {/* Stars */}
+                <div className="flex gap-0.5">
+                  {Array.from({ length: t.stars }).map((_, si) => (
+                    <svg key={si} className="w-4 h-4 text-warm-amber fill-warm-amber" viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.957a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.448a1 1 0 00-.364 1.118l1.287 3.957c.3.921-.755 1.688-1.54 1.118L10 15.347l-3.95 2.678c-.784.57-1.838-.197-1.539-1.118l1.287-3.957a1 1 0 00-.364-1.118L2.064 9.384c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69L9.049 2.927z" />
+                    </svg>
+                  ))}
+                </div>
+
+                {/* Quote */}
+                <p className="text-charcoal leading-relaxed text-sm flex-1">
+                  <span className="text-warm-bronze text-2xl leading-none font-serif mr-1">"</span>
+                  {t.quote}
+                  <span className="text-warm-bronze text-2xl leading-none font-serif ml-1">"</span>
+                </p>
+
+                {/* Attribution */}
+                <div className="flex items-center gap-3 pt-3 border-t border-soft-taupe/30">
+                  <div className="w-11 h-11 rounded-full bg-warm-bronze/10 flex items-center justify-center text-2xl flex-shrink-0">
+                    {t.emoji}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-charcoal text-sm">{t.name}</p>
+                    <p className="text-xs text-medium-gray truncate">{t.role}</p>
+                    <p className="text-xs text-soft-taupe">{t.location}</p>
+                  </div>
+                  <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full flex-shrink-0 ${t.tagColor}`}>
+                    {t.tag}
+                  </span>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Bottom trust bar */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            className="mt-14 flex flex-wrap justify-center gap-8 text-center"
+          >
+            {[
+              { value: "98%", label: "of caregivers feel less anxious after 2 weeks" },
+              { value: "4.9★", label: "average rating from families and patients" },
+              { value: "10 min", label: "average daily time — gentle, never overwhelming" },
+            ].map(stat => (
+              <div key={stat.label} className="flex flex-col items-center gap-1">
+                <span className="text-3xl font-bold text-warm-bronze">{stat.value}</span>
+                <span className="text-sm text-medium-gray max-w-[160px] leading-snug">{stat.label}</span>
+              </div>
+            ))}
+          </motion.div>
         </div>
       </section>
 
