@@ -83,6 +83,9 @@ export default function PricingPage({
   };
 
   const tierOrder: TierName[] = ['companion', 'daily_care', 'full_support'];
+  const visibleTiers = billingAnnual
+    ? tierOrder.filter(t => t !== 'companion')
+    : tierOrder;
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -356,7 +359,7 @@ export default function PricingPage({
 
             {/* Tier cards */}
             <div className="grid md:grid-cols-3 gap-6 mb-8">
-              {tierOrder.map((tierName, i) => {
+              {visibleTiers.map((tierName, i) => {
                 const cfg = TIERS[tierName];
                 const isPopular = tierName === 'daily_care';
                 const displayPrice = billingAnnual && cfg.annualPrice
