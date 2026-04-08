@@ -43,6 +43,8 @@ export default function PricingPage({
   const [email, setEmail]                 = useState('');
   const [password, setPassword]           = useState('');
   const [showPassword, setShowPassword]   = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeTerms, setAgreeTerms]       = useState(false);
   const [agreeComms, setAgreeComms]       = useState(false);
 
@@ -99,6 +101,7 @@ export default function PricingPage({
     if (!firstName.trim()) { toast.error('Please enter your first name.'); return; }
     if (!email.trim())      { toast.error('Please enter your email address.'); return; }
     if (password.length < 6) { toast.error('Password must be at least 6 characters.'); return; }
+    if (password !== confirmPassword) { toast.error('Passwords do not match. Please try again.'); return; }
     if (!agreeTerms)        { toast.error('Please agree to the Terms of Service.'); return; }
 
     if (selectedTier === 'companion') {
@@ -233,48 +236,34 @@ export default function PricingPage({
         // Fall through to Stripe below
       }
 
-      // ── Promo codes bypass Stripe — grant access directly ──────────────────
-      if (subStatus === 'promo') {
-        const msg = `Welcome! Your promo gives you free access until ${trialEnd.toLocaleDateString()}. 🎉`;
+      if (selectedTier === 'companion' || subStatus === 'promo') {
+        const msg = promoApplied
+          ? `Welcome to My Memoria Ally! Your promo gives you free access until ${trialEnd.toLocaleDateString()}. 🎉`
+          : `Welcome to My Memoria Ally! Enjoy ${FREE_TRIAL_DAYS} days free. 🎉`;
         toast.success(msg);
         dispatch({ type: 'SET_USER', payload: { id: data.user.id, email: normalizedEmail, firstName, lastName, role: 'patient', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
         dispatch({ type: 'SET_ROLE',          payload: 'patient' });
         dispatch({ type: 'SET_AUTHENTICATED', payload: true });
         onClose?.();
       } else {
-        // ALL tiers (including free companion) go through Stripe Checkout
-        // Companion = $0/mo plan, card saved but not charged for FREE_TRIAL_DAYS days
+        // Paid tier — redirect to Stripe Checkout
+        toast.success('Account created! Taking you to secure checkout…');
+
         const tierConfig = TIERS[selectedTier];
         const priceId    = billingAnnual && tierConfig.stripePriceIdAnnual
           ? tierConfig.stripePriceIdAnnual
           : tierConfig.stripePriceIdMonthly;
-
-        if (!priceId) {
-          toast.error('Payment configuration is missing. Please contact support.', { duration: 8000 });
-          await supabase.auth.signOut();
-          setIsLoading(false);
-          return;
-        }
-
-        const checkoutMsg = selectedTier === 'companion'
-          ? `Account created! Your card won't be charged for ${FREE_TRIAL_DAYS} days — taking you to checkout…`
-          : 'Account created! Taking you to secure checkout…';
-        toast.success(checkoutMsg);
 
         const { data: checkoutData, error: checkoutErr } = await supabase.functions.invoke('create-checkout-session', {
           body: { priceId, tierName: selectedTier, userId: data.user.id, email: normalizedEmail, trialEnd: trialEnd.toISOString() },
         });
 
         if (checkoutErr || !checkoutData?.url) {
-          const errDetail = checkoutErr?.message ?? 'No checkout URL returned';
-          console.error('Checkout session error:', errDetail);
-          toast.error(
-            'Unable to reach payment processor. Please try again in a moment.',
-            { duration: 8000 }
-          );
-          await supabase.auth.signOut();
-          setIsLoading(false);
-          return;
+          toast.error(`Checkout unavailable — you are on a ${FREE_TRIAL_DAYS}-day free trial. Upgrade from inside the app at any time.`);
+          dispatch({ type: 'SET_USER', payload: { id: data.user.id, email: normalizedEmail, firstName, lastName, role: 'patient', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
+          dispatch({ type: 'SET_ROLE',          payload: 'patient' });
+          dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+          onClose?.();
         } else {
           window.location.href = checkoutData.url;
         }
@@ -393,7 +382,7 @@ export default function PricingPage({
                           : 'bg-charcoal hover:bg-charcoal/90 text-white'
                       }`}
                     >
-                      {tierName === 'companion' ? `Try Free — Card Required` : 'Start Free Trial'}
+                      {tierName === 'companion' ? `Start Free — ${FREE_TRIAL_DAYS} Days` : 'Start 7-Day Free Trial'}
                     </button>
                   </motion.div>
                 );
@@ -402,7 +391,7 @@ export default function PricingPage({
 
             {/* Trust badges */}
             <div className="flex flex-wrap justify-center gap-6 text-sm text-medium-gray">
-              <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-soft-sage" /> 30 days free — card required, not charged</span>
+              <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-soft-sage" /> 45 days free on Companion plan</span>
               <span className="flex items-center gap-1.5"><RefreshCw className="w-4 h-4 text-calm-blue" /> 7-day money-back on paid plans</span>
               <span className="flex items-center gap-1.5"><X className="w-4 h-4 text-gentle-coral" /> Cancel anytime</span>
             </div>
@@ -445,7 +434,7 @@ export default function PricingPage({
             <h2 className="text-2xl font-bold text-charcoal mb-1">Create your account</h2>
             <p className="text-medium-gray text-sm mb-6">
               {selectedTier === 'companion'
-                ? `Your card is required but won't be charged for ${FREE_TRIAL_DAYS} days. Cancel anytime.`
+                ? `Free for ${FREE_TRIAL_DAYS} days — no credit card needed.`
                 : 'Your 7-day money-back guarantee starts now. You can cancel before it ends.'}
             </p>
 
@@ -511,6 +500,41 @@ export default function PricingPage({
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+              </div>
+
+              {/* Confirm Password */}
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-charcoal">Confirm Password</label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    placeholder="Re-enter your password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    autoComplete="new-password"
+                    className={`w-full h-12 px-3 pr-11 rounded-xl border focus:ring-1 outline-none text-sm transition-colors ${
+                      confirmPassword && confirmPassword !== password
+                        ? 'border-gentle-coral focus:border-gentle-coral focus:ring-gentle-coral'
+                        : confirmPassword && confirmPassword === password
+                        ? 'border-soft-sage focus:border-soft-sage focus:ring-soft-sage'
+                        : 'border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-medium-gray hover:text-charcoal"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {confirmPassword && confirmPassword !== password && (
+                  <p className="text-xs text-gentle-coral">Passwords do not match</p>
+                )}
+                {confirmPassword && confirmPassword === password && (
+                  <p className="text-xs text-soft-sage">✓ Passwords match</p>
+                )}
               </div>
 
               {/* Promo code */}
@@ -601,7 +625,7 @@ export default function PricingPage({
 
               {selectedTier !== 'companion' && (
                 <p className="text-xs text-center text-medium-gray">
-                  Your card will not be charged until after your free trial ends.
+                  Your card will not be charged until after your 7-day free trial ends.
                   Cancel anytime before then at no cost.
                 </p>
               )}

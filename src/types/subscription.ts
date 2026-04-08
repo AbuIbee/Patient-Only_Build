@@ -130,8 +130,8 @@ export const TIERS: Record<TierName, TierConfig> = {
     label: 'Companion',
     price: 0,
     annualPrice: null,
-    description: 'Free for 45 days',
-    tagline: 'Try free for 45 days — no credit card needed',
+    description: 'Free for 30 days',
+    tagline: 'Card required — not charged for 30 days. Cancel anytime.',
     stripePriceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_COMPANION_MONTHLY || '',
     stripePriceIdAnnual: null,
     features: [
@@ -153,12 +153,12 @@ export const TIERS: Record<TierName, TierConfig> = {
   daily_care: {
     name: 'daily_care',
     label: 'Daily Care',
-    price: 12.99,
-    annualPrice: null,
-    description: '$12.99 / month',
-    tagline: 'Full daily support — about $0.43 a day',
+    price: 14.99,
+    annualPrice: 155.99,
+    description: '$14.99 / month',
+    tagline: 'Full daily support — or $155.99/yr (save 13%)',
     stripePriceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_DAILY_CARE_MONTHLY || '',
-    stripePriceIdAnnual: null,
+    stripePriceIdAnnual: import.meta.env.VITE_STRIPE_PRICE_DAILY_CARE_ANNUAL || '',
     features: [
       { label: 'Everything in Companion', included: true },
       { label: 'Unlimited reminders', included: true, highlight: true },
@@ -177,11 +177,11 @@ export const TIERS: Record<TierName, TierConfig> = {
 
   full_support: {
     name: 'full_support',
-    label: 'Full Support',
+    label: 'Full Service Care',
     price: 24.99,
-    annualPrice: 254.90,
+    annualPrice: 264.99,
     description: '$24.99 / month',
-    tagline: 'Everything — or $254.90/yr (save 15%)',
+    tagline: 'Everything — or $264.99/yr (save 12%)',
     stripePriceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_FULL_SUPPORT_MONTHLY || '',
     stripePriceIdAnnual: import.meta.env.VITE_STRIPE_PRICE_FULL_SUPPORT_ANNUAL || '',
     features: [
