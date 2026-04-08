@@ -173,6 +173,71 @@ export default function PricingPage({
       if (error) { toast.error(error.message); return; }
       if (!data.user) { toast.error('Sign-up failed. Please try again.'); return; }
 
+              const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ ... })({
+          email: normalizedEmail,
+          password,
+          options: {
+            emailRedirectTo: import.meta.env.VITE_SITE_URL || window.location.origin,
+            data: { first_name: firstName, last_name: lastName, role: 'patient' },
+          },
+        });
+
+        if (error) {
+          toast.error(error.message);
+          return;
+        }
+        if (!data.user) {
+          toast.error('Sign-up failed. Please try again.');
+          return;
+        }
+
+        const uid = data.user.id;
+        const now = new Date().toISOString();
+
+        // profile
+        const { error: profileError } = await supabase.from('profiles').upsert({
+          id: uid,
+          email: normalizedEmail,
+          first_name: firstName,
+          last_name: lastName,
+          role: 'patient',
+          created_at: now,
+          updated_at: now,
+        }, { onConflict: 'id' });
+
+        if (profileError) {
+          throw profileError;
+        }
+
+        // patients row
+        const { error: patientError } = await supabase.from('patients').upsert({
+          id: uid,
+          first_name: firstName,
+          last_name: lastName,
+          location: '',
+          address: '',
+          updated_at: now,
+        }, { onConflict: 'id' });
+
+        if (patientError) {
+          throw patientError;
+        }
+
+        // patient intake seed
+        const { error: intakeError } = await supabase.from('patient_intake').upsert({
+          patient_profile_id: uid,
+          caregiver_profile_id: null,
+          created_by: uid,
+          patient_first_name: firstName,
+          patient_last_name: lastName,
+          patient_email: normalizedEmail,
+          updated_at: now,
+        }, { onConflict: 'patient_profile_id' });
+
+        if (intakeError) {
+          throw intakeError;
+        }
+
       // ── Write profile row ─────────────────────────────────────────────────
       await supabase.from('profiles').upsert({
         id:         data.user.id,
@@ -295,6 +360,11 @@ export default function PricingPage({
           // Show the payment confirmation step before redirecting to Stripe
           setStripeCheckoutUrl(checkoutData.url);
           setStep('payment');
+
+          setTimeout(() => {
+            window.location.href = checkoutData.url;
+          }, 400);
+          return;
         }
       }
     } catch {
