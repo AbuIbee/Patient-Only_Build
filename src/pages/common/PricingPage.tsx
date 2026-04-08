@@ -83,9 +83,7 @@ export default function PricingPage({
   };
 
   const tierOrder: TierName[] = ['companion', 'daily_care', 'full_support'];
-  const visibleTiers = billingAnnual
-    ? tierOrder.filter(t => t !== 'companion')
-    : tierOrder;
+  const visibleTiers = tierOrder; // companion always shown
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -388,25 +386,33 @@ export default function PricingPage({
                     <div className="mb-4">
                       <h3 className="text-xl font-bold text-charcoal">{cfg.label}</h3>
                       <div className="mt-2 flex items-baseline gap-1">
-                        {cfg.price === 0 && !billingAnnual ? (
-                          <span className="text-3xl font-bold text-charcoal">Free</span>
-                        ) : billingAnnual && cfg.annualPrice ? (
-                          <>
-                            <span className="text-3xl font-bold text-charcoal">${(cfg.annualPrice / 12).toFixed(2)}</span>
-                            <span className="text-medium-gray text-sm">/mo</span>
-                          </>
+                        {billingAnnual ? (
+                          // Annual mode
+                          cfg.annualPrice ? (
+                            // Paid tiers: show full annual price only, no /mo
+                            <>
+                              <span className="text-3xl font-bold text-charcoal">${cfg.annualPrice.toFixed(2)}</span>
+                              <span className="text-medium-gray text-sm">/yr</span>
+                            </>
+                          ) : (
+                            // Companion in annual: no price label, just tagline below
+                            <span className="text-3xl font-bold text-charcoal">30 Day Free Trial</span>
+                          )
                         ) : (
-                          <>
-                            <span className="text-3xl font-bold text-charcoal">
-                              {cfg.price === 0 ? '$0.00' : `$${cfg.price.toFixed(2)}`}
-                            </span>
-                            <span className="text-medium-gray text-sm">/mo</span>
-                          </>
+                          // Monthly mode
+                          cfg.price === 0 ? (
+                            <span className="text-3xl font-bold text-charcoal">Free</span>
+                          ) : (
+                            <>
+                              <span className="text-3xl font-bold text-charcoal">${cfg.price.toFixed(2)}</span>
+                              <span className="text-medium-gray text-sm">/mo</span>
+                            </>
+                          )
                         )}
                       </div>
                       {billingAnnual && cfg.annualPrice && (
-                        <p className="text-xs text-soft-sage font-semibold mt-0.5">
-                          ${cfg.annualPrice.toFixed(2)}/yr — save {Math.round((1 - cfg.annualPrice / (cfg.price * 12)) * 100)}%
+                        <p className="text-xs text-soft-sage font-semibold mt-1">
+                          Save {Math.round((1 - cfg.annualPrice / (cfg.price * 12)) * 100)}% vs monthly
                         </p>
                       )}
                       <p className="text-sm text-medium-gray mt-1">{cfg.tagline}</p>
