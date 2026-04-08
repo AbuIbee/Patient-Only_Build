@@ -552,19 +552,24 @@ export default function LoginPage() {
     }
 
     try {
-      const { data: checkoutData, error: checkoutErr } = await supabase.functions.invoke(
-        'create-checkout-session',
-        { body: { priceId, tierName: 'companion', userId, email, trialEnd } }
-      );
+      const fnRes = await fetch('https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
+        },
+        body: JSON.stringify({ priceId, tierName: 'companion', userId, email, trialEnd }),
+      });
+      const fnJson = await fnRes.json();
 
-      if (checkoutErr || !checkoutData?.url) {
-        console.error('Checkout error:', checkoutErr?.message ?? 'No URL');
+      if (!fnRes.ok || !fnJson.url) {
+        console.error('Checkout error:', fnJson.error ?? 'No URL returned');
         toast.error('Unable to reach payment processor. Please try again in a moment.', { duration: 8000 });
         await supabase.auth.signOut();
         return;
       }
 
-      window.location.href = checkoutData.url;
+      window.location.href = fnJson.url;
     } catch (err: any) {
       toast.error('Something went wrong. Please try again.');
       await supabase.auth.signOut();

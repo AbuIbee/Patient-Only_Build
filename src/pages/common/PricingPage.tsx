@@ -271,9 +271,18 @@ export default function PricingPage({
           : 'Account created! Taking you to secure checkout…';
         toast.success(checkoutMsg);
 
-        const { data: checkoutData, error: checkoutErr } = await supabase.functions.invoke('create-checkout-session', {
-          body: { priceId, tierName: selectedTier, userId: data.user.id, email: normalizedEmail, trialEnd: trialEnd.toISOString() },
+        // Use fetch with anon key — user has no session yet at this point
+        const fnRes = await fetch('https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
+          },
+          body: JSON.stringify({ priceId, tierName: selectedTier, userId: data.user.id, email: normalizedEmail, trialEnd: trialEnd.toISOString() }),
         });
+        const fnJson = await fnRes.json();
+        const checkoutData = fnRes.ok ? fnJson : null;
+        const checkoutErr = fnRes.ok ? null : (fnJson.error ?? 'Function error');
 
         if (checkoutErr || !checkoutData?.url) {
           const errDetail = checkoutErr?.message ?? 'No checkout URL returned';
