@@ -78,59 +78,6 @@ function SignInForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
         await supabase.auth.signOut(); return;
       }
 
-      // ── Check subscription status before granting access ─────────────────
-      const { data: sub } = await supabase
-        .from('subscriptions')
-        .select('status, tier, trial_ends_at, stripe_subscription_id')
-        .eq('user_id', profile.id)
-        .maybeSingle();
-
-      // Admin, caregivers, master accounts — always let through
-      const isPrivileged = ['admin', 'caregiver', 'master'].includes(profile.role);
-      const isMaster = sub?.tier === 'master';
-      const isActive = sub && (
-        sub.status === 'active' ||
-        sub.status === 'promo' ||
-        (sub.status === 'trialing' && new Date(sub.trial_ends_at) > new Date()) ||
-        isMaster
-      );
-
-      if (!isPrivileged && !isActive) {
-        // Trial expired or no payment — send to Stripe
-        const tierName = sub?.tier ?? 'companion';
-        const tierConfig = TIERS[tierName as keyof typeof TIERS] ?? TIERS['companion'];
-        const priceId = tierConfig.stripePriceIdMonthly;
-
-        if (!priceId) {
-          toast.error('Your trial has expired. Please contact support to reactivate your account.');
-          await supabase.auth.signOut();
-          return;
-        }
-
-        toast('Your trial has ended — completing payment setup…', { duration: 4000 });
-        const trialEnd = new Date(Date.now() + FREE_TRIAL_DAYS * 86400000).toISOString();
-
-        const fnRes = await fetch('https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
-          },
-          body: JSON.stringify({ priceId, tierName, userId: profile.id, email: profile.email, trialEnd }),
-        });
-        const fnJson = await fnRes.json();
-
-        if (!fnRes.ok || !fnJson.url) {
-          toast.error('Unable to reach payment processor. Please try again.');
-          await supabase.auth.signOut();
-          return;
-        }
-
-        window.location.href = fnJson.url;
-        return;
-      }
-
-      // Active subscription — grant access
       dispatch({ type: 'SET_USER', payload: {
         id: profile.id, email: profile.email,
         firstName: profile.first_name, lastName: profile.last_name,
@@ -187,7 +134,7 @@ function SignInForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
 }
 
 // ─── Sign Up Form ─────────────────────────────────────────────────────────────
-function SignUpForm({ onBack, onSignedIn }: { onBack: () => void; onSignedIn: (userId: string) => void }) {
+function SignUpForm({ onBack, onSignedIn }: { onBack: () => void; onSignedIn: (userId: string, email: string, trialEnd: string) => void }) {
   const [step, setStep]   = useState<1 | 2>(1);
   const [loading, setLoading] = useState(false);
   const [promoStatus, setPromoStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
@@ -343,8 +290,9 @@ function SignUpForm({ onBack, onSignedIn }: { onBack: () => void; onSignedIn: (u
         return;
       }
 
-      toast.success(`Welcome, ${form.firstName}! Your account is ready.`);
-      onSignedIn(uid);
+      toast.success(`Account created! Taking you to secure checkout…`);
+      const trialEnd = new Date(Date.now() + FREE_TRIAL_DAYS * 86400000).toISOString();
+      onSignedIn(uid, form.email.trim().toLowerCase(), trialEnd);
 
     } catch (err: any) {
       toast.error('Sign up failed: ' + err.message);
@@ -593,20 +541,39 @@ export default function LoginPage() {
     // Nothing — App.tsx detects auth state change and routes
   };
 
-  const handleNewUser = (userId: string) => {
-    // Dispatch login — App.tsx routes to PatientLayout which shows intake popup
-    supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-      .then(({ data: profile }) => {
-        if (!profile) return;
-        dispatch({ type: 'SET_USER', payload: {
-          id: profile.id, email: profile.email,
-          firstName: profile.first_name, lastName: profile.last_name,
-          role: 'patient', phone: profile.phone || undefined,
-          createdAt: profile.created_at, updatedAt: profile.updated_at,
-        }});
-        dispatch({ type: 'SET_ROLE',          payload: 'patient' });
-        dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+  const handleNewUser = async (userId: string, email: string, trialEnd: string) => {
+    // All new accounts go through Stripe — companion = $0 plan, card saved not charged
+    const priceId = TIERS['companion'].stripePriceIdMonthly;
+
+    if (!priceId) {
+      toast.error('Payment configuration is missing. Please contact support.', { duration: 8000 });
+      await supabase.auth.signOut();
+      return;
+    }
+
+    try {
+      const fnRes = await fetch('https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
+        },
+        body: JSON.stringify({ priceId, tierName: 'companion', userId, email, trialEnd }),
       });
+      const fnJson = await fnRes.json();
+
+      if (!fnRes.ok || !fnJson.url) {
+        console.error('Checkout error:', fnJson.error ?? 'No URL returned');
+        toast.error('Unable to reach payment processor. Please try again in a moment.', { duration: 8000 });
+        await supabase.auth.signOut();
+        return;
+      }
+
+      window.location.href = fnJson.url;
+    } catch (err: any) {
+      toast.error('Something went wrong. Please try again.');
+      await supabase.auth.signOut();
+    }
   };
 
   return (

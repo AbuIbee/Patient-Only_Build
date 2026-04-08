@@ -43,6 +43,8 @@ export default function PricingPage({
   const [email, setEmail]                 = useState('');
   const [password, setPassword]           = useState('');
   const [showPassword, setShowPassword]   = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeTerms, setAgreeTerms]       = useState(false);
   const [agreeComms, setAgreeComms]       = useState(false);
 
@@ -52,6 +54,7 @@ export default function PricingPage({
   const [promoError, setPromoError]         = useState('');
 
   const [isLoading, setIsLoading]         = useState(false);
+  const [stripeCheckoutUrl, setStripeCheckoutUrl] = useState('');
 
   const handlePromoCheck = async () => {
     setPromoError('');
@@ -98,7 +101,14 @@ export default function PricingPage({
 
     if (!firstName.trim()) { toast.error('Please enter your first name.'); return; }
     if (!email.trim())      { toast.error('Please enter your email address.'); return; }
-    if (password.length < 6) { toast.error('Password must be at least 6 characters.'); return; }
+    const pwUpper   = /[A-Z]/.test(password);
+    const pwNumber  = /[0-9]/.test(password);
+    const pwSpecial = /[^A-Za-z0-9]/.test(password);
+    if (password.length < 8)  { toast.error('Password must be at least 8 characters.'); return; }
+    if (!pwUpper)              { toast.error('Password must include at least one uppercase letter (A-Z).'); return; }
+    if (!pwNumber)             { toast.error('Password must include at least one number (0-9).'); return; }
+    if (!pwSpecial)            { toast.error('Password must include at least one special character (e.g. !@#$).'); return; }
+    if (password !== confirmPassword) { toast.error('Passwords do not match. Please try again.'); return; }
     if (!agreeTerms)        { toast.error('Please agree to the Terms of Service.'); return; }
 
     if (selectedTier === 'companion') {
@@ -164,35 +174,13 @@ export default function PricingPage({
       if (!data.user) { toast.error('Sign-up failed. Please try again.'); return; }
 
       // ── Write profile row ─────────────────────────────────────────────────
-      const now = new Date().toISOString();
       await supabase.from('profiles').upsert({
         id:         data.user.id,
         email:      normalizedEmail,
         first_name: firstName,
         last_name:  lastName,
         role:       'patient',
-        created_at: now,
-        updated_at: now,
       });
-
-      // ── Write patients row (required for app to work) ─────────────────────
-      await supabase.from('patients').upsert({
-        id:         data.user.id,
-        first_name: firstName,
-        last_name:  lastName,
-        updated_at: now,
-      });
-
-      // ── Seed patient_intake so intake form works ──────────────────────────
-      await supabase.from('patient_intake').upsert({
-        patient_profile_id: data.user.id,
-        caregiver_profile_id: null,
-        created_by:         data.user.id,
-        patient_first_name: firstName,
-        patient_last_name:  lastName,
-        patient_email:      normalizedEmail,
-        updated_at:         now,
-      }, { onConflict: 'patient_profile_id' });
 
       // ── Register trial ownership (email → userId, one-time) ──────────────
       // This INSERT will silently fail if a race condition occurred — in that
@@ -255,61 +243,60 @@ export default function PricingPage({
         // Fall through to Stripe below
       }
 
-      // ── Promo codes only bypass Stripe ──────────────────────────────────
+      // Promo codes bypass Stripe — grant direct access
       if (subStatus === 'promo') {
-        toast.success(`Welcome! Promo active until ${trialEnd.toLocaleDateString()} 🎉`);
+        const msg = `Welcome! Your promo gives you free access until ${trialEnd.toLocaleDateString()}. 🎉`;
+        toast.success(msg);
         dispatch({ type: 'SET_USER', payload: { id: data.user.id, email: normalizedEmail, firstName, lastName, role: 'patient', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
         dispatch({ type: 'SET_ROLE',          payload: 'patient' });
         dispatch({ type: 'SET_AUTHENTICATED', payload: true });
         onClose?.();
-        return;
+      } else {
+        // ALL tiers including companion go through Stripe
+        // Companion = $0 plan, card saved but not charged for FREE_TRIAL_DAYS
+        const tierConfig = TIERS[selectedTier];
+        const priceId    = billingAnnual && tierConfig.stripePriceIdAnnual
+          ? tierConfig.stripePriceIdAnnual
+          : tierConfig.stripePriceIdMonthly;
+
+        if (!priceId) {
+          toast.error('Payment configuration is missing. Please contact support.', { duration: 8000 });
+          await supabase.auth.signOut();
+          setIsLoading(false);
+          return;
+        }
+
+        const checkoutMsg = selectedTier === 'companion'
+          ? `Account created! Your card won't be charged for ${FREE_TRIAL_DAYS} days — taking you to checkout…`
+          : 'Account created! Taking you to secure checkout…';
+        toast.success(checkoutMsg);
+
+        // Use fetch with anon key — user has no session yet at this point
+        const fnRes = await fetch('https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
+          },
+          body: JSON.stringify({ priceId, tierName: selectedTier, userId: data.user.id, email: normalizedEmail, trialEnd: trialEnd.toISOString() }),
+        });
+        const fnJson = await fnRes.json();
+        const checkoutData = fnRes.ok ? fnJson : null;
+        const checkoutErr = fnRes.ok ? null : (fnJson.error ?? 'Function error');
+
+        if (checkoutErr || !checkoutData?.url) {
+          const errDetail = checkoutErr?.message ?? 'No checkout URL returned';
+          console.error('Checkout session error:', errDetail);
+          toast.error('Unable to reach payment processor. Please try again in a moment.', { duration: 8000 });
+          await supabase.auth.signOut();
+          setIsLoading(false);
+          return;
+        } else {
+          // Show the payment confirmation step before redirecting to Stripe
+          setStripeCheckoutUrl(checkoutData.url);
+          setStep('payment');
+        }
       }
-
-      // ── ALL tiers (including companion) go through Stripe ─────────────────
-      const tierConfig = TIERS[selectedTier];
-      const priceId = billingAnnual && tierConfig.stripePriceIdAnnual
-        ? tierConfig.stripePriceIdAnnual
-        : tierConfig.stripePriceIdMonthly;
-
-      if (!priceId) {
-        toast.error('Payment configuration is missing. Please contact support.', { duration: 8000 });
-        await supabase.auth.signOut();
-        setIsLoading(false);
-        return;
-      }
-
-      const checkoutMsg = selectedTier === 'companion'
-        ? `Account created! Your card won't be charged for ${FREE_TRIAL_DAYS} days — redirecting to checkout…`
-        : 'Account created! Redirecting to secure checkout…';
-      toast.success(checkoutMsg);
-
-      // Use fetch with anon key — user has no active session at this point
-      const fnRes = await fetch('https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
-        },
-        body: JSON.stringify({
-          priceId,
-          tierName: selectedTier,
-          userId: data.user.id,
-          email: normalizedEmail,
-          trialEnd: trialEnd.toISOString(),
-        }),
-      });
-      const fnJson = await fnRes.json();
-
-      if (!fnRes.ok || !fnJson.url) {
-        console.error('Checkout error:', fnJson.error ?? 'No URL returned');
-        toast.error('Unable to reach payment processor. Please try again.', { duration: 8000 });
-        await supabase.auth.signOut();
-        setIsLoading(false);
-        return;
-      }
-
-      // FIX 3: Redirect immediately — do not show intermediate step
-      window.location.href = fnJson.url;
     } catch {
       toast.error('Something went wrong. Please try again.');
     } finally {
@@ -542,6 +529,59 @@ export default function PricingPage({
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {/* Strength indicators */}
+                {password.length > 0 && (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
+                    {[
+                      { label: 'At least 8 characters',      ok: password.length >= 8 },
+                      { label: 'One uppercase letter (A-Z)',  ok: /[A-Z]/.test(password) },
+                      { label: 'One number (0-9)',            ok: /[0-9]/.test(password) },
+                      { label: 'One special character',       ok: /[^A-Za-z0-9]/.test(password) },
+                    ].map(({ label, ok }) => (
+                      <span key={label} className={`flex items-center gap-1 text-xs ${ok ? 'text-soft-sage' : 'text-medium-gray'}`}>
+                        <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${ok ? 'bg-soft-sage text-white' : 'bg-soft-taupe/40 text-medium-gray'}`}>
+                          {ok ? '✓' : '○'}
+                        </span>
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Confirm Password */}
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-charcoal">Confirm Password</label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    placeholder="Re-enter your password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    autoComplete="new-password"
+                    className={`w-full h-12 px-3 pr-11 rounded-xl border focus:ring-1 outline-none text-sm transition-colors ${
+                      confirmPassword && confirmPassword !== password
+                        ? 'border-gentle-coral focus:border-gentle-coral focus:ring-gentle-coral'
+                        : confirmPassword && confirmPassword === password
+                        ? 'border-soft-sage focus:border-soft-sage focus:ring-soft-sage'
+                        : 'border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-medium-gray hover:text-charcoal"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {confirmPassword && confirmPassword !== password && (
+                  <p className="text-xs text-gentle-coral">Passwords do not match</p>
+                )}
+                {confirmPassword && confirmPassword === password && (
+                  <p className="text-xs text-soft-sage">✓ Passwords match</p>
+                )}
               </div>
 
               {/* Promo code */}
@@ -646,6 +686,95 @@ export default function PricingPage({
                 </button>
               </p>
             )}
+          </motion.div>
+        )}
+
+        {/* ─── Step 3: Payment ─────────────────────────────────────────── */}
+        {step === 'payment' && (
+          <motion.div key="payment" initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} className="max-w-md mx-auto">
+
+            {/* Header */}
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-warm-bronze/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-warm-bronze" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-charcoal">Complete Your Setup</h2>
+              <p className="text-medium-gray text-sm mt-1">
+                One last step — secure payment details
+              </p>
+            </div>
+
+            {/* Plan summary */}
+            <div className="bg-warm-bronze/8 border border-warm-bronze/20 rounded-2xl p-5 mb-5">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-medium-gray uppercase tracking-wide">Your Plan</p>
+                <span className="text-xs bg-soft-sage/20 text-soft-sage font-semibold px-2.5 py-1 rounded-full">
+                  {selectedTier === 'companion' ? `${FREE_TRIAL_DAYS} days free` : '7-day money-back guarantee'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="font-bold text-charcoal text-lg">{TIERS[selectedTier].label}</p>
+                <p className="text-warm-bronze font-bold text-xl">
+                  {TIERS[selectedTier].price === 0
+                    ? `$0 for ${FREE_TRIAL_DAYS} days`
+                    : `$${billingAnnual && TIERS[selectedTier].annualPrice
+                        ? (TIERS[selectedTier].annualPrice! / 12).toFixed(2)
+                        : TIERS[selectedTier].price.toFixed(2)}/mo`}
+                </p>
+              </div>
+              {selectedTier === 'companion' && (
+                <p className="text-xs text-medium-gray mt-2 leading-relaxed">
+                  Your card will be securely saved but <strong>not charged</strong> for {FREE_TRIAL_DAYS} days.
+                  After that, you will be charged $0.00/mo unless you upgrade. Cancel anytime.
+                </p>
+              )}
+              {selectedTier !== 'companion' && (
+                <p className="text-xs text-medium-gray mt-2 leading-relaxed">
+                  Your {selectedTier === 'daily_care' ? '30' : '30'}-day free trial starts today.
+                  You won't be charged until the trial ends. Cancel anytime before then at no cost.
+                </p>
+              )}
+            </div>
+
+            {/* Security badges */}
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              {[
+                { icon: '🔒', label: '256-bit SSL', sub: 'Encrypted' },
+                { icon: '🏦', label: 'Stripe Secured', sub: 'PCI Compliant' },
+                { icon: '✕', label: 'Cancel Anytime', sub: 'No commitment' },
+              ].map(b => (
+                <div key={b.label} className="bg-white border border-soft-taupe rounded-xl p-3 text-center shadow-sm">
+                  <div className="text-xl mb-1">{b.icon}</div>
+                  <p className="text-[10px] font-bold text-charcoal leading-tight">{b.label}</p>
+                  <p className="text-[9px] text-medium-gray">{b.sub}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* CTA — redirects to Stripe */}
+            <button
+              onClick={() => { window.location.href = stripeCheckoutUrl; }}
+              className="w-full h-14 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl font-bold text-base transition-colors flex items-center justify-center gap-3 shadow-md"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+              Add Payment Details Securely
+            </button>
+
+            <p className="text-center text-xs text-medium-gray mt-3 leading-relaxed">
+              You will be taken to Stripe's secure checkout page.
+              We never store your card details on our servers.
+            </p>
+
+            <button
+              onClick={() => setStep('create-account')}
+              className="w-full mt-3 text-sm text-medium-gray hover:text-charcoal transition-colors py-2"
+            >
+              ← Go back
+            </button>
           </motion.div>
         )}
 
