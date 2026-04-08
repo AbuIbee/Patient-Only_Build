@@ -173,7 +173,7 @@ export default function PricingPage({
       if (error) { toast.error(error.message); return; }
       if (!data.user) { toast.error('Sign-up failed. Please try again.'); return; }
 
-              const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ ... })({
+              const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ 
           email: normalizedEmail,
           password,
           options: {
