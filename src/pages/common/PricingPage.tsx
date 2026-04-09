@@ -233,6 +233,13 @@ export default function PricingPage({
         };
       }
 
+      // When user has expired trial, sign them out
+      if (subscription.status === 'expired' || subscription.status === 'canceled') {
+        await supabase.auth.signOut();
+        toast.error('Your trial has ended. Please sign up again to continue.');
+        navigate('/pricing', { replace: true });
+      }
+
       const trialEnd = new Date(trialStart.getTime() + effectiveDays * 24 * 60 * 60 * 1000);
 
       await supabase.from('subscriptions').upsert({

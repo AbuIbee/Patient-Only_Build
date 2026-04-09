@@ -9,6 +9,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@/types';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { isTempUser } from '@/types/subscription';
 import './App.css';
 
