@@ -57,12 +57,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
         if (!hasValidAccess) {
           toast.error('Your trial has ended. Please complete payment setup to continue.');
-          navigate('/pricing', { replace: true });
-          return;
+          // Replace history to prevent back button bypass
           window.history.replaceState(null, '', '/pricing');
           navigate('/pricing', { replace: true });
           return;
-          }
         }
 
         // User has access
@@ -77,7 +75,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     };
 
     checkAccess();
-  }, [navigate, location.pathname]); // Re-run when path changes
+  }, [navigate, location.pathname]);
 
   if (isLoading) {
     return (

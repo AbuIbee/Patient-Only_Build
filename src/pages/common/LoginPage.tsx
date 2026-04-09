@@ -593,20 +593,47 @@ export default function LoginPage() {
     // Nothing — App.tsx detects auth state change and routes
   };
 
-  const handleNewUser = (userId: string) => {
-    // Dispatch login — App.tsx routes to PatientLayout which shows intake popup
-    supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-      .then(({ data: profile }) => {
-        if (!profile) return;
-        dispatch({ type: 'SET_USER', payload: {
-          id: profile.id, email: profile.email,
-          firstName: profile.first_name, lastName: profile.last_name,
-          role: 'patient', phone: profile.phone || undefined,
-          createdAt: profile.created_at, updatedAt: profile.updated_at,
-        }});
-        dispatch({ type: 'SET_ROLE',          payload: 'patient' });
-        dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+  const handleNewUser = async (userId: string) => {
+    // All new accounts must go through Stripe before accessing the app
+    try {
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+      if (!profile) { toast.error('Account setup failed. Please try again.'); return; }
+
+      const email = profile.email;
+      const tierName = 'companion';
+      const priceId = TIERS[tierName]?.stripePriceIdMonthly ?? '';
+
+      if (!priceId) {
+        toast.error('Payment configuration missing. Please contact support.', { duration: 8000 });
+        await supabase.auth.signOut();
+        return;
+      }
+
+      const trialEnd = new Date(Date.now() + FREE_TRIAL_DAYS * 86400000).toISOString();
+      toast.success(`Account created! Your card won't be charged for ${FREE_TRIAL_DAYS} days — redirecting to checkout…`);
+
+      const fnRes = await fetch('https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
+        },
+        body: JSON.stringify({ priceId, tierName, userId, email, trialEnd }),
       });
+      const fnJson = await fnRes.json();
+
+      if (!fnRes.ok || !fnJson.url) {
+        console.error('Checkout error:', fnJson.error ?? 'No URL');
+        toast.error('Unable to reach payment processor. Please try again.', { duration: 8000 });
+        await supabase.auth.signOut();
+        return;
+      }
+
+      window.location.href = fnJson.url;
+    } catch (err: any) {
+      toast.error('Something went wrong. Please try again.');
+      await supabase.auth.signOut();
+    }
   };
 
   return (
