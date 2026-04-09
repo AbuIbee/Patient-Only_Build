@@ -9,7 +9,6 @@ import { Toaster } from '@/components/ui/sonner';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@/types';
-import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { isTempUser, TIERS, FREE_TRIAL_DAYS } from '@/types/subscription';
 import './App.css';
 
@@ -49,12 +48,6 @@ function AppContent() {
   };
 
   useEffect(() => {
-    // HIPAA: auth token stored in sessionStorage only.
-    // sessionStorage is cleared when the tab/window closes, so a new browser
-    // window will never inherit a previous patient session. This prevents
-    // cross-session bypass without an explicit login.
-    // We still call restoreSession so same-tab refreshes (F5) keep the user
-    // logged in during their active session.
     const restoreSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -72,12 +65,12 @@ function AppContent() {
               dispatch({
                 type: 'SET_USER',
                 payload: {
-                  id:        profile.id,
-                  email:     profile.email,
+                  id: profile.id,
+                  email: profile.email,
                   firstName: profile.first_name,
-                  lastName:  profile.last_name,
-                  role:      (profile.role as UserRole) || 'patient',
-                  phone:     profile.phone || undefined,
+                  lastName: profile.last_name,
+                  role: (profile.role as UserRole) || 'patient',
+                  phone: profile.phone || undefined,
                   createdAt: profile.created_at,
                   updatedAt: profile.updated_at,
                 },
@@ -97,39 +90,26 @@ function AppContent() {
                 .maybeSingle();
 
               const isMaster = sub?.tier === 'master';
-              const needsPayment =
-                !sub ||
-                sub.status === 'pending_payment' ||
-                sub.status === 'expired' ||
-                (sub.status === 'trialing' && !sub.stripe_subscription_id && new Date(sub.trial_ends_at) <= new Date());
+              
+              const blockedStatuses = ['pending_payment', 'requires_payment', 'expired', 'canceled', 'past_due', 'incomplete'];
+              const isBlockedStatus = sub && blockedStatuses.includes(sub.status);
+              const isTrialExpired = sub?.status === 'trialing' && sub.trial_ends_at && new Date(sub.trial_ends_at) <= new Date();
+              const needsPayment = !sub || isBlockedStatus || isTrialExpired;
 
               if (!isMaster && needsPayment) {
-                // Sign out and redirect to Stripe
-                const tierName = sub?.tier ?? 'companion';
-                const tierConfig = (TIERS as any)[tierName] ?? TIERS['companion'];
-                const priceId = tierConfig.stripePriceIdMonthly || import.meta.env.VITE_STRIPE_PRICE_COMPANION_MONTHLY || '';
-
+                console.log(`Blocking access for user ${profile.id}: subscription status = ${sub?.status || 'none'}`);
+                
                 await supabase.auth.signOut();
-
-                if (priceId) {
-                  const trialEnd = new Date(Date.now() + FREE_TRIAL_DAYS * 86400000).toISOString();
-                  try {
-                    const fnRes = await fetch('https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session', {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
-                      },
-                      body: JSON.stringify({ priceId, tierName, userId: profile.id, email: profile.email, trialEnd }),
-                    });
-                    const fnJson = await fnRes.json();
-                    if (fnJson.url) {
-                      window.location.href = fnJson.url;
-                      return;
-                    }
-                  } catch {}
+                
+                let errorMessage = 'Please complete payment to access your account.';
+                if (sub?.status === 'expired' || isTrialExpired) {
+                  errorMessage = 'Your trial has ended. Please renew to continue.';
+                } else if (sub?.status === 'pending_payment') {
+                  errorMessage = 'Payment pending. Please complete checkout to access your account.';
                 }
-                setCheckingSession(false);
+                
+                sessionStorage.setItem('paymentRequiredMessage', errorMessage);
+                window.location.href = '/pricing';
                 return;
               }
             }
@@ -153,8 +133,6 @@ function AppContent() {
         dispatch({ type: 'LOGOUT' });
         setShowPasswordReset(false);
         setForcedChange(false);
-
-        // sessionStorage clears automatically on tab/window close — no manual cleanup needed
       }
 
       if (event === 'PASSWORD_RECOVERY') {
@@ -222,7 +200,7 @@ function AppContent() {
   useEffect(() => {
     if (!state.isAuthenticated || isPublicPatientIntakeRoute) return;
 
-    const TIMEOUT = 10 * 60 * 1000; // 10-minute inactivity logout
+    const TIMEOUT = 10 * 60 * 1000;
     let timeoutId: ReturnType<typeof setTimeout>;
 
     const resetTimeout = () => {
@@ -295,9 +273,6 @@ function AppContent() {
       return state.currentView === 'login' ? <LoginPage /> : <LandingPage />;
     }
 
-    // ── Temp users: always patient portal, always read-only ──────────────────
-    // This is a second enforcement layer — the primary layer is in PatientLayout
-    // via TempUserProvider. Temp users can NEVER reach AdminLayout.
     if (isTempUser(state.currentUser?.email)) {
       return <PatientLayout />;
     }

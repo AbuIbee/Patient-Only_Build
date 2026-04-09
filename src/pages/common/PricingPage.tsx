@@ -43,6 +43,8 @@ export default function PricingPage({
   const [email, setEmail]                 = useState('');
   const [password, setPassword]           = useState('');
   const [showPassword, setShowPassword]   = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeTerms, setAgreeTerms]       = useState(false);
   const [agreeComms, setAgreeComms]       = useState(false);
 
@@ -93,20 +95,26 @@ export default function PricingPage({
     setStep('create-account');
   };
 
-  /** Step 2: Validate, create account, write pending_payment, sign out, redirect to Stripe */
+  /** Step 2 → 3 (or complete for free tier): Submit account details */
   const handleAccountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!firstName.trim()) { toast.error('Please enter your first name.'); return; }
     if (!email.trim())      { toast.error('Please enter your email address.'); return; }
-    if (password.length < 8)            { toast.error('Password must be at least 8 characters.'); return; }
-    if (!/[A-Z]/.test(password))        { toast.error('Password must include at least one uppercase letter.'); return; }
-    if (!/[0-9]/.test(password))        { toast.error('Password must include at least one number.'); return; }
-    if (!/[^A-Za-z0-9]/.test(password)) { toast.error('Password must include at least one special character.'); return; }
-    if (password !== confirmPassword)   { toast.error('Passwords do not match.'); return; }
-    if (!agreeTerms)                    { toast.error('Please agree to the Terms of Service.'); return; }
+    if (password.length < 8)             { toast.error('Password must be at least 8 characters.'); return; }
+    if (!/[A-Z]/.test(password))         { toast.error('Password must include at least one uppercase letter (A-Z).'); return; }
+    if (!/[0-9]/.test(password))         { toast.error('Password must include at least one number (0-9).'); return; }
+    if (!/[^A-Za-z0-9]/.test(password))  { toast.error('Password must include at least one special character.'); return; }
+    if (password !== confirmPassword)    { toast.error('Passwords do not match.'); return; }
+    if (!agreeTerms)                     { toast.error('Please agree to the Terms of Service.'); return; }
 
-    await createAccount();
+    if (selectedTier === 'companion') {
+      // Free tier — create account and log straight in
+      await createAccount();
+    } else {
+      // Paid tier — create account then redirect to Stripe
+      await createAccount();
+    }
   };
 
   const createAccount = async () => {
@@ -219,6 +227,7 @@ export default function PricingPage({
       let promoFields: Record<string, unknown> = {};
 
       if (trialAlreadyUsed) {
+        // Email already registered — no free trial, expire immediately
         effectiveDays = 0;
         subStatus = 'expired';
       } else if (promoApplied) {
@@ -232,18 +241,28 @@ export default function PricingPage({
 
       const trialEnd = new Date(trialStart.getTime() + effectiveDays * 24 * 60 * 60 * 1000);
 
-      // ── Write subscription as pending_payment ─────────────────────────────
-      // Stripe webhook will update this to 'trialing' or 'active' on success
       await supabase.from('subscriptions').upsert({
         user_id:          data.user.id,
         tier:             selectedTier,
-        status:           subStatus,     // pending_payment or promo
+        status:           subStatus,
         trial_started_at: trialStart.toISOString(),
         trial_ends_at:    trialEnd.toISOString(),
         ...promoFields,
       }, { onConflict: 'user_id' });
 
-      // ── Promo: grant access directly, no Stripe needed ────────────────────
+      // ── Route to app or Stripe ────────────────────────────────────────────
+      if (subStatus === 'expired') {
+        // No trial available — must pay
+        toast.error('This email has already used the free trial. Taking you to checkout…', { duration: 5000 });
+        if (selectedTier === 'companion') {
+          setStep('plans');
+          setIsLoading(false);
+          return;
+        }
+        // Fall through to Stripe below
+      }
+
+      // ── Promo codes only bypass Stripe ──────────────────────────────────
       if (subStatus === 'promo') {
         toast.success(`Welcome! Promo active until ${trialEnd.toLocaleDateString()} 🎉`);
         dispatch({ type: 'SET_USER', payload: { id: data.user.id, email: normalizedEmail, firstName, lastName, role: 'patient', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
@@ -253,28 +272,25 @@ export default function PricingPage({
         return;
       }
 
-      // ── Expired trial: must pick a paid plan ──────────────────────────────
-      if (subStatus === 'expired') {
-        toast.error('This email has already used the free trial. Please choose a paid plan.');
-        setStep('plans');
-        setIsLoading(false);
-        return;
-      }
-
-      // ── ALL other tiers: get Stripe URL ───────────────────────────────────
+      // ── ALL tiers (including companion) go through Stripe ─────────────────
       const tierConfig = TIERS[selectedTier];
       const priceId = billingAnnual && tierConfig.stripePriceIdAnnual
         ? tierConfig.stripePriceIdAnnual
         : tierConfig.stripePriceIdMonthly;
 
       if (!priceId) {
-        toast.error('Payment configuration missing. Please contact support.', { duration: 8000 });
+        toast.error('Payment configuration is missing. Please contact support.', { duration: 8000 });
         await supabase.auth.signOut();
         setIsLoading(false);
         return;
       }
 
-      // ── Sign out BEFORE redirecting — back button cannot bypass payment ───
+      const checkoutMsg = selectedTier === 'companion'
+        ? `Account created! Your card won't be charged for ${FREE_TRIAL_DAYS} days — redirecting to checkout…`
+        : 'Account created! Redirecting to secure checkout…';
+      toast.success(checkoutMsg);
+
+      // Sign out BEFORE Stripe redirect — back button returns to landing, not app
       await supabase.auth.signOut();
 
       const fnRes = await fetch('https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session', {
@@ -294,13 +310,14 @@ export default function PricingPage({
       const fnJson = await fnRes.json();
 
       if (!fnRes.ok || !fnJson.url) {
-        console.error('Checkout error:', fnJson.error ?? 'No URL');
+        console.error('Checkout error:', fnJson.error ?? 'No URL returned');
         toast.error('Unable to reach payment processor. Please try again.', { duration: 8000 });
+        await supabase.auth.signOut();
         setIsLoading(false);
         return;
       }
 
-      // Redirect to Stripe — user is already signed out so back = pricing page
+      // FIX 3: Redirect immediately — do not show intermediate step
       window.location.href = fnJson.url;
     } catch {
       toast.error('Something went wrong. Please try again.');
@@ -536,7 +553,7 @@ export default function PricingPage({
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="At least 6 characters"
+                    placeholder="At least 8 characters"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
@@ -551,6 +568,59 @@ export default function PricingPage({
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {/* Live strength indicators */}
+                {password.length > 0 && (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
+                    {[
+                      { label: 'At least 8 characters',     ok: password.length >= 8 },
+                      { label: 'One uppercase letter (A-Z)', ok: /[A-Z]/.test(password) },
+                      { label: 'One number (0-9)',           ok: /[0-9]/.test(password) },
+                      { label: 'One special character',      ok: /[^A-Za-z0-9]/.test(password) },
+                    ].map(({ label, ok }) => (
+                      <span key={label} className={`flex items-center gap-1.5 text-xs ${ok ? 'text-soft-sage' : 'text-medium-gray'}`}>
+                        <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${ok ? 'bg-soft-sage text-white' : 'bg-soft-taupe/40 text-medium-gray'}`}>
+                          {ok ? '✓' : '○'}
+                        </span>
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Confirm Password */}
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-charcoal">Confirm Password</label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    placeholder="Re-enter your password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    autoComplete="new-password"
+                    className={`w-full h-12 px-3 pr-11 rounded-xl border focus:ring-1 outline-none text-sm transition-colors ${
+                      confirmPassword && confirmPassword !== password
+                        ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
+                        : confirmPassword && confirmPassword === password
+                        ? 'border-soft-sage focus:border-soft-sage focus:ring-soft-sage'
+                        : 'border-soft-taupe focus:border-warm-bronze focus:ring-warm-bronze'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-medium-gray hover:text-charcoal"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {confirmPassword && confirmPassword !== password && (
+                  <p className="text-xs text-red-500">Passwords do not match</p>
+                )}
+                {confirmPassword && confirmPassword === password && (
+                  <p className="text-xs text-soft-sage">✓ Passwords match</p>
+                )}
               </div>
 
               {/* Promo code */}
