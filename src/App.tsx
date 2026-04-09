@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@/types';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
-import { isTempUser } from '@/types/subscription';
+import { isTempUser, TIERS, FREE_TRIAL_DAYS } from '@/types/subscription';
 import './App.css';
 
 function AppContent() {
@@ -86,6 +86,54 @@ function AppContent() {
               setCheckingSession(false);
               return;
             }
+
+            // ── Block access if payment not yet collected ────────────────────
+            const isPrivileged = ['admin', 'caregiver', 'master', 'superadmin'].includes(profile.role);
+            if (!isPrivileged) {
+              const { data: sub } = await supabase
+                .from('subscriptions')
+                .select('status, tier, trial_ends_at, stripe_subscription_id')
+                .eq('user_id', profile.id)
+                .maybeSingle();
+
+              const isMaster = sub?.tier === 'master';
+              const needsPayment =
+                !sub ||
+                sub.status === 'pending_payment' ||
+                sub.status === 'expired' ||
+                (sub.status === 'trialing' && !sub.stripe_subscription_id && new Date(sub.trial_ends_at) <= new Date());
+
+              if (!isMaster && needsPayment) {
+                // Sign out and redirect to Stripe
+                const tierName = sub?.tier ?? 'companion';
+                const tierConfig = (TIERS as any)[tierName] ?? TIERS['companion'];
+                const priceId = tierConfig.stripePriceIdMonthly || import.meta.env.VITE_STRIPE_PRICE_COMPANION_MONTHLY || '';
+
+                await supabase.auth.signOut();
+
+                if (priceId) {
+                  const trialEnd = new Date(Date.now() + FREE_TRIAL_DAYS * 86400000).toISOString();
+                  try {
+                    const fnRes = await fetch('https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
+                      },
+                      body: JSON.stringify({ priceId, tierName, userId: profile.id, email: profile.email, trialEnd }),
+                    });
+                    const fnJson = await fnRes.json();
+                    if (fnJson.url) {
+                      window.location.href = fnJson.url;
+                      return;
+                    }
+                  } catch {}
+                }
+                setCheckingSession(false);
+                return;
+              }
+            }
+
             restoreUser(profile);
           }
         }

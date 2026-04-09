@@ -44,14 +44,21 @@ serve(async (req) => {
         // Fetch subscription to get period details
         const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
 
+        // Set trialing so App.tsx knows payment collected — trial runs for 30 days
+        const isFreeTier = tierName === 'companion';
+        const trialEndDate = sub.trial_end
+          ? new Date(sub.trial_end * 1000)
+          : new Date(Date.now() + 30 * 86400000);
+
         await supabase.from('subscriptions').upsert({
           user_id:               userId,
           tier:                  tierName,
-          status:                'active',
+          status:                isFreeTier ? 'trialing' : 'active',
           stripe_customer_id:    stripeCustomerId,
           stripe_subscription_id: stripeSubscriptionId,
           current_period_start:  new Date(sub.current_period_start * 1000).toISOString(),
           current_period_end:    new Date(sub.current_period_end   * 1000).toISOString(),
+          trial_ends_at:         trialEndDate.toISOString(),
           updated_at:            new Date().toISOString(),
         }, { onConflict: 'user_id' });
 

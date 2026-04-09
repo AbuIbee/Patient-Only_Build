@@ -312,11 +312,12 @@ function SignUpForm({ onBack, onSignedIn }: { onBack: () => void; onSignedIn: (u
       }, { onConflict: 'patient_profile_id' });
 
       // 5. Handle promo code / subscription
+      // Status = pending_payment until Stripe webhook confirms card collection
       const isPromo = promoStatus === 'valid' && form.promoCode.trim();
       await supabase.from('subscriptions').upsert({
         user_id: uid,
         tier: 'companion',
-        status: isPromo ? 'promo' : 'trialing',
+        status: isPromo ? 'promo' : 'pending_payment',
         trial_started_at: now,
         trial_ends_at: isPromo
           ? new Date(Date.now() + 45 * 86400000).toISOString()
@@ -594,14 +595,14 @@ export default function LoginPage() {
   };
 
   const handleNewUser = async (userId: string) => {
-    // All new accounts must go through Stripe before accessing the app
+    // Account created — now redirect to Stripe to collect payment
     try {
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+      const { data: profile } = await supabase.from('profiles').select('email').eq('id', userId).maybeSingle();
       if (!profile) { toast.error('Account setup failed. Please try again.'); return; }
 
-      const email = profile.email;
-      const tierName = 'companion';
-      const priceId = TIERS[tierName]?.stripePriceIdMonthly ?? '';
+      const priceId =
+        import.meta.env.VITE_STRIPE_PRICE_COMPANION_MONTHLY ||
+        TIERS['companion']?.stripePriceIdMonthly || '';
 
       if (!priceId) {
         toast.error('Payment configuration missing. Please contact support.', { duration: 8000 });
@@ -610,7 +611,7 @@ export default function LoginPage() {
       }
 
       const trialEnd = new Date(Date.now() + FREE_TRIAL_DAYS * 86400000).toISOString();
-      toast.success(`Account created! Your card won't be charged for ${FREE_TRIAL_DAYS} days — redirecting to checkout…`);
+      toast.success(`Account created! Redirecting to secure checkout…`);
 
       const fnRes = await fetch('https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session', {
         method: 'POST',
@@ -618,7 +619,7 @@ export default function LoginPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
         },
-        body: JSON.stringify({ priceId, tierName, userId, email, trialEnd }),
+        body: JSON.stringify({ priceId, tierName: 'companion', userId, email: profile.email, trialEnd }),
       });
       const fnJson = await fnRes.json();
 

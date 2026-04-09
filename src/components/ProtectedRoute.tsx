@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
@@ -10,72 +9,96 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
-  const navigate = useNavigate();
-  const location = useLocation();
 
   useEffect(() => {
     const checkAccess = async () => {
       try {
-        // Get current session
+        // ── 1. Must have an active session ───────────────────────────────────
         const { data: { session } } = await supabase.auth.getSession();
-        
         if (!session) {
-          // No user logged in
-          navigate('/pricing', { replace: true });
+          window.location.replace('/');
           return;
         }
 
-        // Check subscription status
-        const { data: subscription, error } = await supabase
+        // ── 2. Must have a subscription row ──────────────────────────────────
+        const { data: sub, error } = await supabase
           .from('subscriptions')
-          .select('status, trial_ends_at, tier')
+          .select('status, tier, trial_ends_at')
           .eq('user_id', session.user.id)
           .maybeSingle();
 
         if (error) {
           console.error('Subscription check error:', error);
-          navigate('/pricing', { replace: true });
+          await supabase.auth.signOut();
+          window.location.replace('/');
           return;
         }
 
-        // If no subscription record exists
-        if (!subscription) {
+        if (!sub) {
           toast.error('Please complete payment setup to continue.');
-          navigate('/pricing', { replace: true });
+          await supabase.auth.signOut();
+          window.location.replace('/');
           return;
         }
 
-        // Check if subscription is active or in trial
+        // ── 3. Master tier always gets access ────────────────────────────────
+        if (sub.tier === 'master') {
+          setHasAccess(true);
+          return;
+        }
+
+        // ── 4. Block statuses that mean payment not collected ─────────────────
+        const BLOCKED = [
+          'pending_payment',
+          'requires_payment',
+          'expired',
+          'canceled',
+          'past_due',
+          'incomplete',
+          'incomplete_expired',
+        ];
+
+        if (BLOCKED.includes(sub.status)) {
+          const msg =
+            sub.status === 'pending_payment' || sub.status === 'requires_payment'
+              ? 'Please complete checkout to access your account.'
+              : sub.status === 'expired'
+              ? 'Your trial has ended. Please renew to continue.'
+              : 'Payment required to access your account.';
+          toast.error(msg);
+          await supabase.auth.signOut();
+          window.location.replace('/');
+          return;
+        }
+
+        // ── 5. Allow only active / trialing (within window) / promo ──────────
         const now = new Date();
-        const trialEndsAt = subscription.trial_ends_at ? new Date(subscription.trial_ends_at) : null;
-        const isTrialing = trialEndsAt && trialEndsAt > now;
-        
-        const hasValidAccess = 
-          subscription.status === 'active' || 
-          subscription.status === 'trialing' || 
-          isTrialing;
+        const trialEnd = sub.trial_ends_at ? new Date(sub.trial_ends_at) : null;
+        const isTrialing = sub.status === 'trialing' && trialEnd !== null && trialEnd > now;
+        const isPromo    = sub.status === 'promo';
+        const isActive   = sub.status === 'active';
 
-        if (!hasValidAccess) {
-          toast.error('Your trial has ended. Please complete payment setup to continue.');
-          // Replace history to prevent back button bypass
-          window.history.replaceState(null, '', '/pricing');
-          navigate('/pricing', { replace: true });
+        if (!isActive && !isTrialing && !isPromo) {
+          toast.error('Your access has ended. Please complete payment to continue.');
+          await supabase.auth.signOut();
+          window.location.replace('/');
           return;
         }
 
-        // User has access
+        // ── 6. Grant access ───────────────────────────────────────────────────
         setHasAccess(true);
-        
+
       } catch (err) {
         console.error('Access check error:', err);
-        navigate('/pricing', { replace: true });
+        await supabase.auth.signOut();
+        window.location.replace('/');
       } finally {
         setIsLoading(false);
       }
     };
 
     checkAccess();
-  }, [navigate, location.pathname]);
+  }, []);
 
   if (isLoading) {
     return (
