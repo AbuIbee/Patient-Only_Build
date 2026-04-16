@@ -9,7 +9,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@/types';
-import { isTempUser, TIERS, FREE_TRIAL_DAYS } from '@/types/subscription';
+import { isTempUser, TIERS } from '@/types/subscription';
 import './App.css';
 
 function AppContent() {
@@ -85,7 +85,7 @@ function AppContent() {
             if (!isPrivileged) {
               const { data: sub } = await supabase
                 .from('subscriptions')
-                .select('status, tier, trial_ends_at, stripe_subscription_id')
+                .select('status, tier, stripe_subscription_id')
                 .eq('user_id', profile.id)
                 .maybeSingle();
 
@@ -93,8 +93,7 @@ function AppContent() {
               
               const blockedStatuses = ['pending_payment', 'requires_payment', 'expired', 'canceled', 'past_due', 'incomplete'];
               const isBlockedStatus = sub && blockedStatuses.includes(sub.status);
-              const isTrialExpired = sub?.status === 'trialing' && sub.trial_ends_at && new Date(sub.trial_ends_at) <= new Date();
-              const needsPayment = !sub || isBlockedStatus || isTrialExpired;
+              const needsPayment = !sub || isBlockedStatus;
 
               if (!isMaster && needsPayment) {
                 console.log(`Blocking access for user ${profile.id}: subscription status = ${sub?.status || 'none'}`);
@@ -102,8 +101,8 @@ function AppContent() {
                 await supabase.auth.signOut();
                 
                 let errorMessage = 'Please complete payment to access your account.';
-                if (sub?.status === 'expired' || isTrialExpired) {
-                  errorMessage = 'Your trial has ended. Please renew to continue.';
+                if (sub?.status === 'expired') {
+                  errorMessage = 'Your subscription has expired. Please renew to continue.';
                 } else if (sub?.status === 'pending_payment') {
                   errorMessage = 'Payment pending. Please complete checkout to access your account.';
                 }

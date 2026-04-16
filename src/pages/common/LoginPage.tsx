@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '@/store/AppContext';
 import { supabase } from '@/lib/supabase';
-import { TIERS, FREE_TRIAL_DAYS } from '@/types/subscription';
+import { TIERS } from '@/types/subscription';
 import { Heart, ArrowLeft, Eye, EyeOff, Tag, CheckCircle2, AlertCircle } from 'lucide-react';
 import PricingPage from './PricingPage';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -82,7 +82,7 @@ function SignInForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
       // ── Check subscription status before granting access ─────────────────
       const { data: sub } = await supabase
         .from('subscriptions')
-        .select('status, tier, trial_ends_at, stripe_subscription_id')
+        .select('status, tier, stripe_subscription_id')
         .eq('user_id', profile.id)
         .maybeSingle();
 
@@ -92,7 +92,6 @@ function SignInForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
       const isActive = sub && (
         sub.status === 'active' ||
         sub.status === 'promo' ||
-        (sub.status === 'trialing' && new Date(sub.trial_ends_at) > new Date()) ||
         isMaster
       );
 
@@ -317,12 +316,8 @@ function SignUpForm({ onBack, onSignedIn }: { onBack: () => void; onSignedIn: (u
       const isPromo = promoStatus === 'valid' && form.promoCode.trim();
       await supabase.from('subscriptions').upsert({
         user_id: uid,
-        tier: 'companion',
+        tier: 'daily_care',
         status: isPromo ? 'promo' : 'pending_payment',
-        trial_started_at: now,
-        trial_ends_at: isPromo
-          ? new Date(Date.now() + 45 * 86400000).toISOString()
-          : new Date(Date.now() + 30 * 86400000).toISOString(),
         promo_expires_at: isPromo ? new Date(Date.now() + 45 * 86400000).toISOString() : null,
         promo_code: isPromo ? form.promoCode.trim().toUpperCase() : null,
         updated_at: now,
@@ -657,6 +652,17 @@ export default function LoginPage() {
 
       {/* Content */}
       <main className="flex-1 flex items-start justify-center p-4 pt-8 overflow-y-auto">
+        {mode === 'plans' ? (
+          <div className="w-full">
+            <AnimatePresence mode="wait">
+              <motion.div key="plans"
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.25 }}>
+                <PricingPage onGoToLogin={() => setMode('signin')} />
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        ) : (
         <div className="w-full max-w-md">
           <AnimatePresence mode="wait">
             <motion.div key={mode}
@@ -669,15 +675,13 @@ export default function LoginPage() {
               {mode === 'signin' && (
                 <SignInForm onBack={() => setMode('plans')} onSuccess={handleSignedIn} />
               )}
-              {mode === 'plans' && (
-                <PricingPage onGoToLogin={() => setMode('signin')} />
-              )}
               {mode === 'signup' && (
                 <SignUpForm onBack={() => setMode('plans')} onSignedIn={handleNewUser} />
               )}
             </motion.div>
           </AnimatePresence>
         </div>
+        )}
       </main>
     </div>
   );

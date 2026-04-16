@@ -155,12 +155,32 @@ export default function LandingPage() {
                       { icon: '🩺', text: 'Doctor visit tracking' },
                       { icon: '💛', text: 'Mood & symptom log' },
                       { icon: '💬', text: 'Message care team' },
+                      { icon: '📸', text: 'Family photos' },
+                      { icon: '🎮', text: 'Games & brain training' },
+                      { icon: '🎥', text: 'Videos & media upload' },
+                      { icon: '⏰', text: 'Daily routines' },
                     ].map(item => (
                       <div key={item.text} className="flex items-center gap-2 bg-warm-ivory rounded-xl px-3 py-2.5">
                         <span className="text-base leading-none">{item.icon}</span>
                         <span className="text-xs font-semibold text-charcoal">{item.text}</span>
                       </div>
                     ))}
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-5 border-t border-soft-taupe">
+                  <div className="bg-charcoal rounded-2xl px-5 py-4">
+                    <p className="text-[14px] text-white/50 uppercase tracking-widest font-semibold mb-3">Who it's for</p>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {['Dementia', 'ADHD', 'Autism', 'Anxiety', 'TBI', 'Cognitive needs'].map(tag => (
+                        <span key={tag} className="text-xs font-semibold text-white bg-white/10 px-3 py-1.5 rounded-lg">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-xs text-white/60 leading-relaxed">
+                      And the <span className="text-white font-semibold">Families & Care Partners</span> who support them everyday.
+                    </p>
                   </div>
                 </div>
               </div>

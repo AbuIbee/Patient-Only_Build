@@ -3,11 +3,11 @@
 export type TierName = 'companion' | 'daily_care' | 'full_support' | 'master';
 
 export type SubscriptionStatus =
-  | 'trialing'     // within the free trial window
   | 'active'       // paid and current (or master/promo)
   | 'past_due'     // payment failed, grace period
   | 'canceled'     // explicitly canceled
-  | 'expired'      // trial ended, never paid
+  | 'expired'      // never paid / payment lapsed
+  | 'pending_payment' // account created, awaiting Stripe confirmation
   | 'promo';       // active via promotional code
 
 export interface Subscription {
@@ -15,8 +15,6 @@ export interface Subscription {
   userId: string;
   tier: TierName;
   status: SubscriptionStatus;
-  trialStartedAt: string;        // ISO date — when they first signed up
-  trialEndsAt: string;           // ISO date — trialStartedAt + FREE_TRIAL_DAYS
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   stripeCustomerId: string | null;
@@ -28,18 +26,11 @@ export interface Subscription {
   updatedAt: string;
 }
 
-// ─── Free trial duration ─────────────────────────────────────────────────────
-
-/** Days of free access for the Companion (free) tier before requiring upgrade */
-export const FREE_TRIAL_DAYS = 30;
-
-/** Days of free access granted by a promotional code */
-export const PROMO_TOTAL_DAYS = 45;
+// ─── No free trial — paid plans only ─────────────────────────────────────────
 
 /**
- * Master account detection is now DB-driven — managed via the Admin Center.
+ * Master account detection is DB-driven — managed via the Admin Center.
  * Go to: Admin Center → All Users → click any user → Account Type → Master Account.
- * No code changes needed. This array is kept empty intentionally.
  */
 export const MASTER_EMAILS: string[] = [];  // managed via Admin Center UI + subscriptions table
 
@@ -67,14 +58,6 @@ export const TEMP_USER_BLOCKED_MSG =
 
 // ─── Promo codes ─────────────────────────────────────────────────────────────
 
-/**
- * Active promotional codes.
- * Each code grants PROMO_TOTAL_DAYS (~2 months) of free Companion access,
- * which counts toward — not in addition to — the 45-day free tier.
- *
- * tier: which tier the promo unlocks ('companion' = free basics extended,
- *       'daily_care' = mid-tier free for promo window)
- */
 export interface PromoCode {
   code: string;
   tier: TierName;
@@ -85,16 +68,8 @@ export interface PromoCode {
 }
 
 export const PROMO_CODES: PromoCode[] = [
-  {
-    code: 'WELCOME2MO',
-    tier: 'companion',
-    days: PROMO_TOTAL_DAYS,
-    maxUses: null,
-    expiresAt: null,
-    description: '2 months free (includes 45-day free tier)',
-  },
-  // Add more codes here as needed, e.g.:
-  // { code: 'CAREGIVER50', tier: 'daily_care', days: 61, maxUses: 100, expiresAt: null, description: '2 months Daily Care free' },
+  // Add promo codes here as needed, e.g.:
+  // { code: 'WELCOME30', tier: 'daily_care', days: 30, maxUses: null, expiresAt: null, description: '30 days Daily Care free' },
 ];
 
 export function validatePromoCode(code: string): PromoCode | null {
@@ -125,6 +100,8 @@ export interface TierFeature {
 }
 
 export const TIERS: Record<TierName, TierConfig> = {
+
+  // Companion — legacy internal tier, not shown in public pricing UI
   companion: {
     name: 'companion',
     label: 'Companion',
@@ -132,7 +109,7 @@ export const TIERS: Record<TierName, TierConfig> = {
     annualPrice: null,
     description: 'Legacy internal tier',
     tagline: 'Internal compatibility only — not shown publicly.',
-    stripePriceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_COMPANION_FREE_TRIAL || '',
+    stripePriceIdMonthly: '',
     stripePriceIdAnnual: null,
     features: [
       { label: 'Daily time & orientation', included: true },
@@ -160,7 +137,6 @@ export const TIERS: Record<TierName, TierConfig> = {
     stripePriceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_DAILY_CARE_MONTHLY || '',
     stripePriceIdAnnual: null,
     features: [
-      { label: 'Everything in Companion', included: true },
       { label: 'Unlimited reminders', included: true, highlight: true },
       { label: 'Medication tracker + logs', included: true, highlight: true },
       { label: 'Care Partner check-in (A–G)', included: true, highlight: true },
@@ -185,7 +161,6 @@ export const TIERS: Record<TierName, TierConfig> = {
     stripePriceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_FULL_SUPPORT_MONTHLY || '',
     stripePriceIdAnnual: null,
     features: [
-      { label: 'Everything in Daily Care', included: true },
       { label: 'Voice messages from family', included: true, highlight: true },
       { label: 'AI comfort voices (all 4)', included: true, highlight: true },
       { label: 'Slideshow auto-play', included: true },
@@ -233,8 +208,8 @@ const FEATURE_ACCESS: Record<FeatureKey, TierName[]> = {
   care_partner_checkin: ['daily_care', 'full_support', 'master'],
   memories_unlimited:   ['daily_care', 'full_support', 'master'],
   mood_history:         ['daily_care', 'full_support', 'master'],
-  games:                ['full_support', 'master'],
-  media:                ['full_support', 'master'],
+  games:                ['daily_care', 'full_support', 'master'],
+  media:                ['daily_care', 'full_support', 'master'],
   voice_messages:       ['full_support', 'master'],
   ai_voices:            ['full_support', 'master'],
   documents:            ['full_support', 'master'],
@@ -248,43 +223,55 @@ export function hasFeatureAccess(tier: TierName, feature: FeatureKey): boolean {
   return FEATURE_ACCESS[feature].includes(tier);
 }
 
-/** Returns true if the subscription is currently in an active or trialing state. */
+/** Returns true if the subscription is currently active. */
 export function isSubscriptionActive(sub: Subscription | null): boolean {
   if (!sub) return false;
-  if (sub.tier === 'master') return true;  // master is always active
+  if (sub.tier === 'master') return true;
   if (sub.status === 'promo') {
-    // Promo is active as long as promoExpiresAt is in the future
     if (!sub.promoExpiresAt) return true;
     return new Date(sub.promoExpiresAt) > new Date();
   }
-  return sub.status === 'active' || sub.status === 'trialing';
+  return sub.status === 'active';
 }
 
-/** Returns days remaining in the trial or promo window (0 if expired). */
-export function trialDaysRemaining(sub: Subscription | null): number {
-  if (!sub) return 0;
-  if (sub.tier === 'master') return 0;  // master never expires
-
-  if (sub.status === 'promo' && sub.promoExpiresAt) {
-    const end = new Date(sub.promoExpiresAt).getTime();
-    return Math.max(0, Math.ceil((end - Date.now()) / (1000 * 60 * 60 * 24)));
+/** Returns true if the subscription requires payment to proceed. */
+export function needsPayment(sub: Subscription | null): boolean {
+  if (!sub) return true;
+  if (sub.tier === 'master') return false;
+  if (sub.status === 'promo') {
+    if (!sub.promoExpiresAt) return false;
+    return new Date(sub.promoExpiresAt) <= new Date();
   }
-
-  if (sub.status !== 'trialing') return 0;
-  const end = new Date(sub.trialEndsAt).getTime();
-  return Math.max(0, Math.ceil((end - Date.now()) / (1000 * 60 * 60 * 24)));
+  return sub.status === 'expired' || sub.status === 'canceled' || sub.status === 'pending_payment';
 }
 
-/** Returns true if still within the 7-day money-back window (not applicable to master/promo). */
-export function isWithinRefundWindow(sub: Subscription | null): boolean {
+/** Returns true if the subscription is past due (payment failed, grace period). */
+export function isPastDue(sub: Subscription | null): boolean {
   if (!sub) return false;
-  if (sub.tier === 'master' || sub.status === 'promo') return false;
-  const start = new Date(sub.trialStartedAt).getTime();
-  const daysSinceStart = (Date.now() - start) / (1000 * 60 * 60 * 24);
-  return daysSinceStart <= 7;
+  return sub.status === 'past_due';
+}
+// ─── Backward-compatibility stubs ────────────────────────────────────────────
+// These are kept so existing files (App.tsx, SubscriptionContext.tsx,
+// LoginPage.tsx, ProtectedRoute.tsx, TrialBanner.tsx) continue to compile
+// without changes. No free trial logic runs — they safely return zero/false.
+
+/** @deprecated No free trial. Kept for import compatibility only. */
+export const FREE_TRIAL_DAYS = 0;
+
+/** @deprecated No free trial. Kept for import compatibility only. */
+export const PROMO_TOTAL_DAYS = 0;
+
+/** @deprecated Always returns 0 — no trial period. */
+export function trialDaysRemaining(_sub: Subscription | null): number {
+  return 0;
 }
 
-/** Returns true if the free trial has genuinely expired and user needs to upgrade. */
+/** @deprecated Always returns false — no refund window. */
+export function isWithinRefundWindow(_sub: Subscription | null): boolean {
+  return false;
+}
+
+/** @deprecated Always returns false — no trial to expire. */
 export function isTrialExpired(sub: Subscription | null): boolean {
   if (!sub) return false;
   if (sub.tier === 'master') return false;
@@ -292,6 +279,5 @@ export function isTrialExpired(sub: Subscription | null): boolean {
     if (!sub.promoExpiresAt) return false;
     return new Date(sub.promoExpiresAt) <= new Date();
   }
-  if (sub.status !== 'trialing') return sub.status === 'expired';
-  return new Date(sub.trialEndsAt) <= new Date();
+  return sub.status === 'expired' || sub.status === 'canceled' || sub.status === 'pending_payment';
 }

@@ -711,9 +711,8 @@ export default function PricingPage({
                       >
                         Privacy Policy
                       </a>
-                      . I understand that subscriptions auto-renew monthly and all charges
-                      are non-refundable after the 7-day money-back window. We do not sell
-                      your personal information.
+                      . I understand that subscriptions auto-renew monthly. All charges
+                      are non-refundable. We do not sell your personal information.
                     </span>
                   </label>
 
