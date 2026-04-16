@@ -323,7 +323,7 @@ export default function PricingPage({
   };
 
   const content = (
-    <div className="max-w-5xl mx-auto px-4 py-8 min-h-[760px] flex flex-col">
+    <div className="max-w-4xl mx-auto px-4 py-8">
       <AnimatePresence mode="wait">
         {step === 'plans' && (
           <motion.div
@@ -331,24 +331,20 @@ export default function PricingPage({
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="flex-1"
           >
-            <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold text-charcoal mb-2">Choose Your Plan</h1>
-              <p className="text-medium-gray">
-                First, choose the plan you want. Then create your account and continue to
-                secure checkout.
+            {/* Header */}
+            <div className="text-center mb-10">
+              <h1 className="text-3xl font-bold text-charcoal mb-3">Choose Your Plan</h1>
+              <p className="text-medium-gray max-w-md mx-auto">
+                Pick the plan that fits your needs, then create your account and head to secure checkout.
               </p>
-              <p className="text-sm text-medium-gray mt-2">
-                No free tier. Simple paid plans with immediate access after checkout.
+              <p className="text-sm text-medium-gray mt-2 font-medium">
+                Simple monthly plans — immediate access after checkout.
               </p>
             </div>
 
-            <div className="flex items-center justify-center mb-8">
-              <span className="text-sm font-medium text-charcoal">Monthly plans</span>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-6 mb-8 items-stretch">
+            {/* Cards — equal height via joined border design */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-0 mb-10 rounded-2xl overflow-hidden border-2 border-warm-bronze shadow-lg">
               {visibleTiers.map((tierName, i) => {
                 const cfg = TIERS[tierName];
                 const isPopular = tierName === 'daily_care';
@@ -356,104 +352,92 @@ export default function PricingPage({
                 return (
                   <motion.div
                     key={tierName}
-                    initial={{ opacity: 0, y: 16 }}
+                    initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.08 }}
-                    className={`relative rounded-2xl border-2 p-6 flex flex-col transition-all hover:shadow-elevated ${
+                    className={`flex flex-col p-8 ${
                       isPopular
-                        ? 'border-warm-bronze shadow-elevated'
-                        : 'border-soft-taupe hover:border-warm-bronze/50'
+                        ? 'bg-white'
+                        : 'bg-warm-ivory md:border-l-2 border-t-2 md:border-t-0 border-warm-bronze/30'
                     }`}
                   >
-                    {isPopular && (
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                        <span className="bg-warm-bronze text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
-                          <Star className="w-3 h-3" /> Most Popular
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="mb-4">
+                    {/* Tier label + badge */}
+                    <div className="flex items-start justify-between mb-1">
                       <h3 className="text-xl font-bold text-charcoal">{cfg.label}</h3>
-
-                      <div className="mt-2 flex items-baseline gap-1">
-                        <span className="text-3xl font-bold text-charcoal">
-                          ${cfg.price.toFixed(2)}
+                      {isPopular && (
+                        <span className="bg-warm-bronze text-white text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 flex-shrink-0 ml-2 mt-0.5">
+                          <Star className="w-2.5 h-2.5 fill-white" /> Most Popular
                         </span>
-                        <span className="text-medium-gray text-sm">/mo</span>
-                      </div>
-
-                      <p className="text-sm text-medium-gray mt-1">{cfg.tagline}</p>
+                      )}
                     </div>
 
-                    <ul className="space-y-2 flex-1 mb-6">
-                      {cfg.features.map((feat) => (
-                        <li key={feat.label} className="flex items-start gap-2">
-                          {feat.included ? (
-                            <Check
-                              className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
-                                feat.highlight ? 'text-warm-bronze' : 'text-soft-sage'
-                              }`}
-                            />
-                          ) : (
-                            <Lock className="w-4 h-4 mt-0.5 flex-shrink-0 text-soft-taupe" />
-                          )}
+                    {/* Price */}
+                    <div className="flex items-baseline gap-1 mt-3 mb-6 pb-6 border-b border-soft-taupe">
+                      <span className="text-4xl font-bold text-charcoal">${cfg.price.toFixed(2)}</span>
+                      <span className="text-medium-gray text-sm font-medium">/month</span>
+                    </div>
 
-                          <span
-                            className={`text-sm ${
-                              feat.included
-                                ? feat.highlight
-                                  ? 'text-charcoal font-medium'
-                                  : 'text-charcoal'
-                                : 'text-soft-taupe'
-                            }`}
-                          >
+                    {/* Features list — flex-1 forces both columns same height */}
+                    <ul className="space-y-3 flex-1 mb-8">
+                      {cfg.features.map((feat) => (
+                        <li key={feat.label} className="flex items-start gap-2.5">
+                          {feat.included ? (
+                            <span className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${feat.highlight ? 'bg-warm-bronze/15' : 'bg-soft-sage/20'}`}>
+                              <Check className={`w-3 h-3 ${feat.highlight ? 'text-warm-bronze' : 'text-soft-sage'}`} />
+                            </span>
+                          ) : (
+                            <span className="w-5 h-5 rounded-full bg-soft-taupe/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <Lock className="w-3 h-3 text-soft-taupe" />
+                            </span>
+                          )}
+                          <span className={`text-sm leading-snug ${
+                            feat.included
+                              ? feat.highlight ? 'text-charcoal font-semibold' : 'text-charcoal'
+                              : 'text-soft-taupe'
+                          }`}>
                             {feat.label}
                           </span>
                         </li>
                       ))}
                     </ul>
 
+                    {/* CTA button */}
                     <button
                       type="button"
                       onClick={() => handleSelectTier(tierName)}
-                      className={`w-full py-3 rounded-xl font-semibold transition-colors text-sm ${
+                      className={`w-full py-3.5 rounded-xl font-bold text-sm transition-colors ${
                         isPopular
-                          ? 'bg-warm-bronze hover:bg-deep-bronze text-white'
-                          : 'bg-charcoal hover:bg-charcoal/90 text-white'
+                          ? 'bg-warm-bronze hover:bg-deep-bronze text-white shadow-md'
+                          : 'bg-charcoal hover:bg-charcoal/85 text-white'
                       }`}
                     >
-                      {tierName === 'daily_care'
-                        ? 'Choose Daily Care'
-                        : 'Choose Full Service Care'}
+                      {tierName === 'daily_care' ? 'Get Daily Care' : 'Get Full Service Care'}
                     </button>
                   </motion.div>
                 );
               })}
             </div>
 
-            <div className="flex flex-wrap justify-center gap-6 text-sm text-medium-gray">
+            {/* Trust badges */}
+            <div className="flex flex-wrap justify-center gap-5 text-sm text-medium-gray mb-4">
               <span className="flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-soft-sage" />
-                Choose a plan first
+                <ShieldCheck className="w-4 h-4 text-soft-sage" /> Secure checkout
               </span>
               <span className="flex items-center gap-1.5">
-                <RefreshCw className="w-4 h-4 text-calm-blue" />
-                Create your account after plan selection
+                <RefreshCw className="w-4 h-4 text-calm-blue" /> Cancel anytime
               </span>
               <span className="flex items-center gap-1.5">
-                <X className="w-4 h-4 text-gentle-coral" />
-                Cancel anytime
+                <X className="w-4 h-4 text-gentle-coral" /> No hidden fees
               </span>
             </div>
 
             {onGoToLogin && (
-              <p className="text-center text-sm text-medium-gray mt-6">
+              <p className="text-center text-sm text-medium-gray mt-4">
                 Already have an account?{' '}
                 <button
                   type="button"
                   onClick={onGoToLogin}
-                  className="text-warm-bronze hover:text-deep-bronze font-medium underline"
+                  className="text-warm-bronze hover:text-deep-bronze font-semibold underline underline-offset-2"
                 >
                   Sign in here
                 </button>

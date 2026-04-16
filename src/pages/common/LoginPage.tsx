@@ -643,11 +643,9 @@ export default function LoginPage() {
       {/* Header */}
       <header className="bg-white border-b border-soft-taupe px-4 py-3 flex-shrink-0">
         <div className="max-w-md mx-auto flex items-center gap-3">
-          {mode !== 'landing' && (
-            <button onClick={handleBack} className="p-2 rounded-lg hover:bg-soft-taupe/30 text-medium-gray transition-colors">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-          )}
+          <button onClick={handleBack} className="p-2 rounded-lg hover:bg-soft-taupe/30 text-medium-gray transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-warm-bronze rounded-lg flex items-center justify-center">
               <Heart className="w-5 h-5 text-white" />

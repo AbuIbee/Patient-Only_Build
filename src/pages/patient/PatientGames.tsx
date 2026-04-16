@@ -1487,8 +1487,11 @@ export default function PatientGames({ initialGame, onNavigateHome }: { initialG
   const [activeGame, setActiveGame] = useState<GameId>(initialGame || 'menu');
 
   const handleBack = () => {
-    if (onNavigateHome) onNavigateHome();
-    else setActiveGame('menu');
+    if (activeGame !== 'menu') {
+      setActiveGame('menu');
+    } else if (onNavigateHome) {
+      onNavigateHome();
+    }
   };
 
   const renderGame = () => {
