@@ -77,11 +77,11 @@ const ACCOUNT_TYPES: AccountTypeDef[] = [
   },
   {
     key: 'companion',
-    label: 'Companion (30-day Trial)',
+    label: 'Companion (Internal Only)',
     tier: 'companion', status: 'trialing',
     trialDays: 30, promoDays: null, isTempUser: false,
     color: 'bg-yellow-100 text-yellow-800',
-    description: '30-day free trial, then requires upgrade',
+    description: 'Internal/basic tier not shown in public pricing',
   },
   {
     key: 'daily_care',

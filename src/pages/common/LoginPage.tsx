@@ -3,6 +3,7 @@ import { useApp } from '@/store/AppContext';
 import { supabase } from '@/lib/supabase';
 import { TIERS, FREE_TRIAL_DAYS } from '@/types/subscription';
 import { Heart, ArrowLeft, Eye, EyeOff, Tag, CheckCircle2, AlertCircle } from 'lucide-react';
+import PricingPage from './PricingPage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import type { UserRole } from '@/types';
@@ -17,7 +18,7 @@ const PW_RULES = [
 const pwStrength = (p: string) => PW_RULES.filter(r => r.test(p)).length;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-type Mode = 'landing' | 'signin' | 'signup';
+type Mode = 'landing' | 'signin' | 'signup' | 'plans';
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
@@ -96,19 +97,19 @@ function SignInForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
       );
 
       if (!isPrivileged && !isActive) {
-        // Trial expired or no payment — send to Stripe
-        const tierName = sub?.tier ?? 'companion';
-        const tierConfig = TIERS[tierName as keyof typeof TIERS] ?? TIERS['companion'];
+        // Payment required — send to Stripe for the selected paid plan
+        const tierName = (sub?.tier === 'full_support' || sub?.tier === 'daily_care') ? sub.tier : 'daily_care';
+        const tierConfig = TIERS[tierName as keyof typeof TIERS] ?? TIERS['daily_care'];
         const priceId = tierConfig.stripePriceIdMonthly;
 
         if (!priceId) {
-          toast.error('Your trial has expired. Please contact support to reactivate your account.');
+          toast.error('Payment configuration is missing. Please contact support to reactivate your account.');
           await supabase.auth.signOut();
           return;
         }
 
-        toast('Your trial has ended — completing payment setup…', { duration: 4000 });
-        const trialEnd = new Date(Date.now() + FREE_TRIAL_DAYS * 86400000).toISOString();
+        toast('Payment required — redirecting to secure checkout…', { duration: 4000 });
+        const trialEnd = new Date().toISOString();
 
         const fnRes = await fetch('https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session', {
           method: 'POST',
@@ -177,9 +178,9 @@ function SignInForm({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =
       </button>
 
       <p className="text-center text-sm text-medium-gray">
-        Don't have an account?{' '}
+        Need a new account?{' '}
         <button onClick={onBack} className="text-warm-bronze font-semibold hover:text-deep-bronze">
-          Create one here →
+          Choose a plan first →
         </button>
       </p>
     </div>
@@ -556,7 +557,7 @@ function LandingButtons({ onSignIn, onSignUp }: { onSignIn: () => void; onSignUp
       <div className="space-y-3">
         <button onClick={onSignUp}
           className="w-full py-4 bg-warm-bronze hover:bg-deep-bronze text-white rounded-2xl font-semibold text-lg transition-colors shadow-md">
-          Create Free Account
+          Choose Your Plan
         </button>
         <button onClick={onSignIn}
           className="w-full py-4 border-2 border-warm-bronze text-warm-bronze hover:bg-warm-bronze/5 rounded-2xl font-semibold text-lg transition-colors">
@@ -565,7 +566,7 @@ function LandingButtons({ onSignIn, onSignUp }: { onSignIn: () => void; onSignUp
       </div>
 
       <p className="text-center text-xs text-medium-gray">
-        Free for 30 days — your card will not be charged.
+Paid plans start at $2.99/month with immediate access after checkout.
       </p>
 
       {/* Staff access */}
@@ -601,8 +602,8 @@ export default function LoginPage() {
       if (!profile) { toast.error('Account setup failed. Please try again.'); return; }
 
       const priceId =
-        import.meta.env.VITE_STRIPE_PRICE_COMPANION_MONTHLY ||
-        TIERS['companion']?.stripePriceIdMonthly || '';
+        import.meta.env.VITE_STRIPE_PRICE_DAILY_CARE_MONTHLY ||
+        TIERS['daily_care']?.stripePriceIdMonthly || '';
 
       if (!priceId) {
         toast.error('Payment configuration missing. Please contact support.', { duration: 8000 });
@@ -610,7 +611,7 @@ export default function LoginPage() {
         return;
       }
 
-      const trialEnd = new Date(Date.now() + FREE_TRIAL_DAYS * 86400000).toISOString();
+      const trialEnd = new Date().toISOString();
       toast.success(`Account created! Redirecting to secure checkout…`);
 
       const fnRes = await fetch('https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session', {
@@ -619,7 +620,7 @@ export default function LoginPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
         },
-        body: JSON.stringify({ priceId, tierName: 'companion', userId, email: profile.email, trialEnd }),
+        body: JSON.stringify({ priceId, tierName: 'daily_care', userId, email: profile.email, trialEnd }),
       });
       const fnJson = await fnRes.json();
 
@@ -665,13 +666,16 @@ export default function LoginPage() {
               exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.25 }}
               className="bg-white rounded-2xl shadow-lg border border-soft-taupe p-6 mb-8">
               {mode === 'landing' && (
-                <LandingButtons onSignIn={() => setMode('signin')} onSignUp={() => setMode('signup')} />
+                <LandingButtons onSignIn={() => setMode('signin')} onSignUp={() => setMode('plans')} />
               )}
               {mode === 'signin' && (
-                <SignInForm onBack={() => setMode('landing')} onSuccess={handleSignedIn} />
+                <SignInForm onBack={() => setMode('plans')} onSuccess={handleSignedIn} />
+              )}
+              {mode === 'plans' && (
+                <PricingPage onGoToLogin={() => setMode('signin')} />
               )}
               {mode === 'signup' && (
-                <SignUpForm onBack={() => setMode('signin')} onSignedIn={handleNewUser} />
+                <SignUpForm onBack={() => setMode('plans')} onSignedIn={handleNewUser} />
               )}
             </motion.div>
           </AnimatePresence>

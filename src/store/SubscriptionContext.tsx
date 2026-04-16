@@ -90,72 +90,15 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
 
       if (!data) {
-        // New user — check if their email has already used the free trial
-        const email = user.email?.toLowerCase() ?? '';
-
-        const { data: existingTrial } = await supabase
-          .from('trial_registrations')
-          .select('id')
-          .eq('email', email)
-          .maybeSingle();
-
-        if (existingTrial) {
-          // This email already used its free trial — create an expired subscription
-          // so the app shows the upgrade wall immediately
-          const now = new Date().toISOString();
-          const { data: created } = await supabase
-            .from('subscriptions')
-            .insert({
-              user_id:          user.id,
-              tier:             'companion',
-              status:           'expired',
-              trial_started_at: now,
-              trial_ends_at:    now,   // already expired
-            })
-            .select()
-            .single();
-
-          if (created) setSubscription(mapRow(created));
-          return;
-        }
-
-        // Fresh email — grant the 45-day trial and register the email
-        const trialStart = new Date();
-        const trialEnd   = new Date(trialStart.getTime() + FREE_TRIAL_DAYS * 24 * 60 * 60 * 1000);
-
-        // Register the email first (UNIQUE constraint prevents duplicates)
-        const { error: regError } = await supabase
-          .from('trial_registrations')
-          .insert({ email, user_id: user.id });
-
-        if (regError) {
-          // Race condition — another signup with same email beat us to it
-          console.warn('[Subscription] Trial registration conflict for:', email);
-          const now = new Date().toISOString();
-          const { data: created } = await supabase
-            .from('subscriptions')
-            .insert({
-              user_id:          user.id,
-              tier:             'companion',
-              status:           'expired',
-              trial_started_at: now,
-              trial_ends_at:    now,
-            })
-            .select()
-            .single();
-          if (created) setSubscription(mapRow(created));
-          return;
-        }
-
-        // Registration succeeded — create the subscription row
+        const now = new Date().toISOString();
         const { data: created, error: createErr } = await supabase
           .from('subscriptions')
           .insert({
-            user_id:          user.id,
-            tier:             'companion',
-            status:           'trialing',
-            trial_started_at: trialStart.toISOString(),
-            trial_ends_at:    trialEnd.toISOString(),
+            user_id: user.id,
+            tier: 'daily_care',
+            status: 'pending_payment',
+            trial_started_at: now,
+            trial_ends_at: now,
           })
           .select()
           .single();
@@ -286,7 +229,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   // subscription object already reflects the master tier from a previous load.
   const masterFlag = isMasterEmail(userEmail) || subscription?.tier === 'master';
 
-  const tier: TierName = subscription?.tier ?? 'companion';
+  const tier: TierName = subscription?.tier ?? 'daily_care';
 
   // For master accounts isActive must be true regardless of subscription state
   const isActive  = masterFlag ? true : isSubscriptionActive(subscription);

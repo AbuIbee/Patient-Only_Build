@@ -73,11 +73,14 @@ export default function LandingPage() {
               Stay on track, feel supported,
               <span className="text-warm-bronze block">every single day</span>
             </h1>
-            <p className="text-medium-gray leading-relaxed">
-              My Memoria Ally helps families, individuals and care partners provide daily structure, reminders, and support
-              for and their loved ones with gentle medication reminders, mood tracking, to benefit from a calmer, more guided routine. Calmer days start here.
-             </p>
-             <br/>
+            <div className="space-y-4 text-medium-gray leading-relaxed text-justify">
+            <p>
+              My Memoria Ally helps families, individuals, and care partners bring more calm, structure, and confidence into everyday life. Designed to support people living with Dementia, ADHD (Attention Deficit Hyperactivity Disorder), Autism Disorder, Anxiety Disorder, Traumatic Brain Injury, and other cognitive support needs, it provides gentle reminders, medication tracking, mood check-ins, and daily guidance that make routines easier to follow and less overwhelming.
+            </p>
+            <p>
+              Instead of trying to remember everything at once, families can rely on one organized place for support, reassurance, and consistency. My Memoria Ally helps reduce stress, keeps important tasks from slipping through the cracks, and gives loved ones a calmer, more guided day — so everyone feels more supported, more organized, and more at ease. Calmer days start here.
+            </p>
+            </div>
 
             <div className="flex gap-4">
               <Button
@@ -85,7 +88,7 @@ export default function LandingPage() {
                 onClick={handleGetStarted}
                 className="bg-warm-bronze text-white rounded-xl px-8"
               >
-                Get Started Free
+                Choose Your Plan
               </Button>
               <Button
                 variant="outline"
@@ -115,13 +118,13 @@ export default function LandingPage() {
             className="bg-gradient-to-br from-warm-bronze/10 to-calm-blue/10 rounded-3xl p-8 space-y-5"
           >
             {/* Opening line */}
-            <p className="text-lg font-semibold text-charcoal leading-snug">
+            <p className="text-lg font-semibold text-charcoal leading-snug text-justify">
               My Memoria Ally was created for the{' '}
               <span className="text-warm-bronze">quiet heroes</span> — the daughters, sons,
               husbands, and wives who wake up every day ready to care for an aging loved one.
             </p>
 
-            <p className="text-medium-gray leading-relaxed">
+            <p className="text-medium-gray leading-relaxed text-justify">
               We know you're not a doctor or a nurse. You're just someone who loves deeply
               and wants to do right by them. That's where we come in.
             </p>
