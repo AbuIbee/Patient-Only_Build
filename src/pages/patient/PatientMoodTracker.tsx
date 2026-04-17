@@ -1,4 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from 'recharts';
 import { useApp } from '@/store/AppContext';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -185,23 +195,15 @@ function SectionCombinedGraph({
   allCheckIns: CheckInData[];
   filterKey: FilterKey;
 }) {
-const rangeStart = useMemo(() => getRangeStart(filterKey), [filterKey]);
+  const rangeStart = useMemo(() => getRangeStart(filterKey), [filterKey]);
 
-const sortedCheckIns = useMemo(
-  () =>
-    allCheckIns
-      .filter(d => new Date(d.check_in_date + 'T00:00:00') >= rangeStart)
-      .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date)),
-  [allCheckIns, rangeStart]
-);
-
-const dates = useMemo(() => buildCalendarDates(filterKey), [filterKey]);
-
-  const byDate = useMemo(() => {
-    const m = new Map<string, CheckInData>();
-    sortedCheckIns.forEach(c => m.set(c.check_in_date, c));
-    return m;
-  }, [sortedCheckIns]);
+  const sortedCheckIns = useMemo(
+    () =>
+      allCheckIns
+        .filter(d => new Date(d.check_in_date + 'T00:00:00') >= rangeStart)
+        .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date)),
+    [allCheckIns, rangeStart]
+  );
 
   const getVal = (c: CheckInData, key: string): number | null => {
     switch (key) {
@@ -211,91 +213,73 @@ const dates = useMemo(() => buildCalendarDates(filterKey), [filterKey]);
       case 'fn_transfers':  return c.fn_transfers ? getScore(c.fn_transfers) : null;
       case 'fn_mobility':   return c.fn_mobility ? getScore(c.fn_mobility) : null;
       case 'fn_medication': return c.fn_medication ? getScore(c.fn_medication) : null;
-
       case 'nu_appetite':   return c.nu_appetite ? getScore(c.nu_appetite) : null;
       case 'nu_meal_pct':   return c.nu_meal_pct ? getScore(c.nu_meal_pct) : null;
       case 'nu_fluids':     return c.nu_fluids ? getScore(c.nu_fluids) : null;
       case 'nu_swallowing': return c.nu_swallowing ? getScore(c.nu_swallowing) : null;
-
       case 'co_urinary':    return c.co_urinary ? getScore(c.co_urinary) : null;
       case 'co_bowel':      return c.co_bowel ? getScore(c.co_bowel) : null;
       case 'co_skin':       return c.co_skin ? getScore(c.co_skin) : null;
-
       case 'sa_falls':      return c.sa_falls ? getScore(c.sa_falls) : null;
       case 'sa_wandering':  return c.sa_wandering ? getScore(c.sa_wandering) : null;
       case 'sa_safety_concerns':
         return c.sa_safety_concerns !== undefined ? (c.sa_safety_concerns ? 1 : 4) : null;
-
       case 'be_behaviors': {
         const n = (c.be_behaviors || []).filter(b => b !== 'None observed').length;
         return Math.max(0, 4 - Math.min(4, n));
       }
-
       case 'mo_mood':  return c.mo_mood ? getScore(c.mo_mood) : null;
       case 'mo_sleep': return c.mo_sleep ? getScore(c.mo_sleep) : null;
-
       case 'sy_symptoms': {
         const n = (c.sy_symptoms || []).length;
         return Math.max(0, 4 - Math.min(4, n));
       }
-
-      default:
-        return null;
+      default: return null;
     }
   };
 
-  const series = useMemo(
-    () =>
-      metrics.map(m => ({
-        ...m,
-        points: dates.map((d, i) => ({
-          i,
-          date: d,
-          score: byDate.has(d) ? getVal(byDate.get(d)!, m.key) : null,
-        })),
-      })),
-    [metrics, dates, byDate]
-  );
+  // Build flat chart data: one row per check-in date that has data
+  const chartData = useMemo(() => {
+    return sortedCheckIns.map(c => {
+      const row: Record<string, string | number | null> = { date: c.check_in_date };
+      metrics.forEach(m => {
+        row[m.key] = getVal(c, m.key);
+      });
+      return row;
+    });
+  }, [sortedCheckIns, metrics]);
 
-  const hasData = series.some(s => s.points.some(p => p.score !== null));
-
-  const PAD_L = 36;
-  const PAD_R = 16;
-  const PAD_T = 20;
-  const PAD_B = 32;
-  const VB_W = 860;
-  const VB_H = 200;
-  const CW = VB_W - PAD_L - PAD_R;
-  const CH = VB_H - PAD_T - PAD_B;
-
-  const sy = (score: number) => PAD_T + CH - (score / 4) * CH;
-  const sx = (i: number) =>
-    dates.length <= 1 ? PAD_L + CW / 2 : PAD_L + (i / (dates.length - 1)) * CW;
-
-  const maxLabels =
-    filterKey === '7d' ? 7 :
-    filterKey === '1m' ? 6 :
-    filterKey === '2m' ? 6 :
-    filterKey === '3m' ? 6 :
-    filterKey === '6m' ? 6 : 6;
-
-  const labelIdx: number[] =
-    dates.length <= maxLabels
-      ? dates.map((_, i) => i)
-      : Array.from(
-          { length: maxLabels },
-          (_, k) => Math.round((k * (dates.length - 1)) / (maxLabels - 1))
-        );
+  const hasData = chartData.length > 0;
 
   const fmtDate = (d: string) => {
     const dt = new Date(d + 'T12:00');
-    if (filterKey === '7d') {
-      return dt.toLocaleDateString('en-US', { weekday: 'short' });
-    }
+    if (filterKey === '7d') return dt.toLocaleDateString('en-US', { weekday: 'short' });
+    if (filterKey === '1m') return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const gid = (key: string) => 'sg' + title.replace(/\s/g, '') + key.replace(/[^a-z0-9]/gi, '');
+  // Score labels for Y axis
+  const scoreLabel = (v: number) => {
+    const labels: Record<number, string> = { 0: '0', 1: '1', 2: '2', 3: '3', 4: '4' };
+    return labels[v] ?? '';
+  };
+
+  // Custom tooltip
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="bg-white border border-soft-taupe/40 rounded-xl shadow-md p-3 text-xs">
+        <p className="font-bold text-charcoal mb-1">{fmtDate(label)}</p>
+        {payload.map((p: any) => (
+          <div key={p.dataKey} className="flex items-center gap-1.5 mb-0.5">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
+            <span className="text-medium-gray">{p.name}:</span>
+            <span className="font-semibold" style={{ color: p.color }}>{p.value ?? '—'}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4 mb-5 border border-soft-taupe/40">
@@ -311,149 +295,59 @@ const dates = useMemo(() => buildCalendarDates(filterKey), [filterKey]);
           No check-in data for this period yet
         </div>
       ) : (
-        <>
-          <svg
-            viewBox={`0 0 ${VB_W} ${VB_H}`}
-            className="w-full block overflow-visible"
-            style={{ height: 200 }}
-            preserveAspectRatio="none"
-          >
-            <defs>
-              {series.map(s => (
-                <linearGradient key={s.key} id={gid(s.key)} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={s.color} stopOpacity="0.18" />
-                  <stop offset="100%" stopColor={s.color} stopOpacity="0.02" />
-                </linearGradient>
-              ))}
-            </defs>
-
-            <rect x={PAD_L} y={PAD_T} width={CW} height={CH} fill="#fafaf8" rx="2" />
-
-            {[0, 1, 2, 3, 4].map(v => (
-              <g key={v}>
-                <line
-                  x1={PAD_L}
-                  y1={sy(v)}
-                  x2={PAD_L + CW}
-                  y2={sy(v)}
-                  stroke={v === 0 ? '#c8c4bc' : '#e8e4dc'}
-                  strokeWidth={v === 0 ? 1.2 : 0.7}
-                  strokeDasharray={v === 0 ? '0' : '4,5'}
-                />
-                <text x={PAD_L - 5} y={sy(v) + 4} textAnchor="end" fontSize="10" fill="#aaa">
-                  {v}
-                </text>
-              </g>
-            ))}
-
-            <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + CH} stroke="#c8c4bc" strokeWidth="1.2" />
-
-            {labelIdx.map(di => (
-              <line
-                key={di}
-                x1={sx(di)}
-                y1={PAD_T}
-                x2={sx(di)}
-                y2={PAD_T + CH}
-                stroke="#e8e4dc"
-                strokeWidth="0.5"
-                strokeDasharray="3,5"
+        <ResponsiveContainer width="100%" height={200}>
+          <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="4 4" stroke="#e8e4dc" vertical={false} />
+            <XAxis
+              dataKey="date"
+              tickFormatter={fmtDate}
+              tick={{ fontSize: 10, fill: '#7a7670' }}
+              tickLine={false}
+              axisLine={{ stroke: '#c8c4bc' }}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              domain={[0, 4]}
+              ticks={[0, 1, 2, 3, 4]}
+              tickFormatter={scoreLabel}
+              tick={{ fontSize: 10, fill: '#aaa' }}
+              tickLine={false}
+              axisLine={false}
+              width={28}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            {metrics.map(m => (
+              <Line
+                key={m.key}
+                type="monotone"
+                dataKey={m.key}
+                name={m.label}
+                stroke={m.color}
+                strokeWidth={2.5}
+                dot={{ r: 3.5, fill: m.color, stroke: 'white', strokeWidth: 1.8 }}
+                activeDot={{ r: 5 }}
+                connectNulls={false}
               />
             ))}
+          </LineChart>
+        </ResponsiveContainer>
+      )}
 
-            {series.map(s => {
-              const valid = s.points.filter(p => p.score !== null) as { i: number; date: string; score: number }[];
-
-              const segs: string[] = [];
-              let cur = '';
-
-              s.points.forEach(p => {
-                if (p.score === null) {
-                  if (cur) {
-                    segs.push(cur);
-                    cur = '';
-                  }
-                } else {
-                  const x = sx(p.i);
-                  const y = sy(p.score);
-                  cur += cur ? ` L${x.toFixed(1)},${y.toFixed(1)}` : `M${x.toFixed(1)},${y.toFixed(1)}`;
-                }
-              });
-
-              if (cur) segs.push(cur);
-
-              let area = '';
-              if (valid.length >= 2) {
-                area =
-                  valid
-                    .map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.i).toFixed(1)},${sy(p.score).toFixed(1)}`)
-                    .join(' ') +
-                  ` L${sx(valid[valid.length - 1].i).toFixed(1)},${(PAD_T + CH).toFixed(1)}` +
-                  ` L${sx(valid[0].i).toFixed(1)},${(PAD_T + CH).toFixed(1)} Z`;
-              }
-
-              return (
-                <g key={s.key}>
-                  {area && <path d={area} fill={`url(#${gid(s.key)})`} />}
-                  {segs.map((d, j) => (
-                    <path
-                      key={j}
-                      d={d}
-                      fill="none"
-                      stroke={s.color}
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  ))}
-                  {s.points.map(p => {
-                    if (p.score === null) return null;
-                    const x = sx(p.i);
-                    const y = sy(p.score);
-                    return (
-                      <g key={p.i}>
-                        <circle cx={x} cy={y} r="6" fill={s.color} fillOpacity="0.15" />
-                        <circle cx={x} cy={y} r="3.5" fill={s.color} stroke="white" strokeWidth="1.8" />
-                        <text x={x} y={y - 8} textAnchor="middle" fontSize="9" fontWeight="700" fill={s.color}>
-                          {p.score}
-                        </text>
-                      </g>
-                    );
-                  })}
-                </g>
-              );
-            })}
-
-            {labelIdx.map(di => (
-              <text
-                key={di}
-                x={sx(di)}
-                y={PAD_T + CH + 20}
-                textAnchor="middle"
-                fontSize="10.5"
-                fill="#7a7670"
-                fontWeight="500"
-              >
-                {fmtDate(dates[di])}
-              </text>
-            ))}
-          </svg>
-
-          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 pt-2 border-t border-soft-taupe/20">
-            {metrics.map(m => (
-              <span
-                key={m.key}
-                className="flex items-center gap-1.5 text-[11px] font-semibold"
-                style={{ color: m.color }}
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" className="flex-shrink-0">
-                  <circle cx="5" cy="5" r="4" fill={m.color} />
-                </svg>
-                {m.label}
-              </span>
-            ))}
-          </div>
-        </>
+      {hasData && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 pt-2 border-t border-soft-taupe/20">
+          {metrics.map(m => (
+            <span
+              key={m.key}
+              className="flex items-center gap-1.5 text-[11px] font-semibold"
+              style={{ color: m.color }}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" className="flex-shrink-0">
+                <circle cx="5" cy="5" r="4" fill={m.color} />
+              </svg>
+              {m.label}
+            </span>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -810,21 +704,42 @@ useEffect(() => {
     else setShowCalmTools(false);
   };
 
-  const submitMood = () => {
-    if (!selectedMood) return;
+  const submitMood = async () => {
+    if (!selectedMood || !patientId) return;
 
+    const timestamp = new Date().toISOString();
+    const timeOfDay = (
+      format(new Date(), 'a').toLowerCase().includes('am') ? 'morning' : 'afternoon'
+    ) as 'morning' | 'afternoon' | 'evening' | 'night';
+
+    // Persist to Supabase so moods survive logout and reload
+    const { data, error } = await supabase.from('mood_entries').insert({
+      patient_id: patientId,
+      mood: selectedMood,
+      intensity: 7,
+      note: moodNote || null,
+      time_of_day: timeOfDay,
+      timestamp,
+      recorded_by: state.patient?.preferredName || 'Patient',
+    }).select().single();
+
+    if (error) {
+      console.error('Error saving mood entry:', error);
+      toast.error('Could not save your mood. Please try again.');
+      return;
+    }
+
+    // Update local context with DB-assigned id
     dispatch({
       type: 'ADD_MOOD_ENTRY',
       payload: {
-        id: `me${Date.now()}`,
-        patientId: state.patient?.id || '',
+        id: data?.id || `me${Date.now()}`,
+        patientId,
         mood: selectedMood,
         intensity: 7,
         note: moodNote,
-        timeOfDay: (
-          format(new Date(), 'a').toLowerCase().includes('am') ? 'morning' : 'afternoon'
-        ) as 'morning' | 'afternoon' | 'evening' | 'night',
-        timestamp: new Date().toISOString(),
+        timeOfDay,
+        timestamp,
         recordedBy: state.patient?.preferredName || 'Patient',
       },
     });

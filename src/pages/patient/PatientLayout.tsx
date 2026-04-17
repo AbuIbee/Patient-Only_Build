@@ -148,7 +148,7 @@ export default function PatientLayout() {
             .select('*')
             .eq('patient_id', patientId)
             .order('timestamp', { ascending: false })
-            .limit(10),
+            .limit(500),
         ]);
 
         dispatch({
@@ -257,21 +257,22 @@ export default function PatientLayout() {
   };
 
   const navItems = [
-    { id: 'dashboard'          as PatientView, label: 'Home',                icon: LayoutDashboard },
-    { id: 'checkin'            as PatientView, label: 'Care Partner',         icon: ClipboardList },
-    { id: 'intake'             as PatientView, label: 'Patient Intake Form',  icon: ClipboardPlus },
-    { id: 'emergency_contacts' as PatientView, label: 'Emergency Contacts',   icon: Phone },
-    { id: 'memories'           as PatientView, label: 'Family',               icon: Users },
-    { id: 'mood'               as PatientView, label: 'How I Feel',           icon: Smile },
-    { id: 'reminders'          as PatientView, label: 'Reminders',            icon: Bell },
+    { id: 'dashboard'  as PatientView, label: 'Home',          icon: LayoutDashboard },
+    { id: 'memories'   as PatientView, label: 'Family',        icon: Users },
+    { id: 'mood'       as PatientView, label: 'How I Feel',    icon: Smile },
+    { id: 'reminders'  as PatientView, label: 'Reminders',     icon: Bell },
+    { id: 'medications'as PatientView, label: 'Medications',   icon: Pill },
+    { id: 'routines'   as PatientView, label: 'My Day',        icon: Calendar },
+    { id: 'media'      as PatientView, label: 'Videos & Media',icon: Film },
+    { id: 'games'      as PatientView, label: 'Memory Games',  icon: Gamepad2 },
   ];
 
+  // "More" contains care-admin items only
   const moreNavItems = [
-    { id: 'medications' as PatientView, label: 'Medications',    icon: Pill },
-    { id: 'routines'    as PatientView, label: 'My Day',         icon: Calendar },
-    { id: 'documents'   as PatientView, label: 'Papers',         icon: FileText },
-    { id: 'media'       as PatientView, label: 'Videos & Media', icon: Film },
-    { id: 'games'       as PatientView, label: 'Memory Games',   icon: Gamepad2 },
+    { id: 'checkin'            as PatientView, label: 'Care Partners',       icon: ClipboardList },
+    { id: 'intake'             as PatientView, label: 'Patient Intake Form', icon: ClipboardPlus },
+    { id: 'emergency_contacts' as PatientView, label: 'Emergency Contact',   icon: Phone },
+    { id: 'documents'          as PatientView, label: 'Papers',              icon: FileText },
   ];
 
   const allNavItems = [...navItems, ...moreNavItems];

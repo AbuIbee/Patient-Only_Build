@@ -92,13 +92,16 @@ export default function LandingPage() {
               </h1>
 
               <p className="text-lg text-medium-gray leading-relaxed mb-8 max-w-lg">
-                My Memoria Ally helps families and care partners bring calm, structure, and
-                confidence into daily life — for people living with Dementia, ADHD, Autism,
-                Anxiety, TBI, and other cognitive needs.
+                My Memoria Ally helps families and care partners bring calm, structure, and 
+                confidence into daily life — for people living with <b> Dementia, ADHD, Autism,
+                Anxiety, TBI, and other cognitive needs.</b>  My Memoria Ally acts as a trusted 
+                daily companion — helping patients stay on track, helping caregivers stay informed, 
+                and helping families feel confident that the people they love are supported 
+                every step of the way.
               </p>
 
               <div className="flex flex-wrap gap-3 mb-8">
-                {['Medication reminders', 'Mood tracking', 'Family connection', 'Daily routines'].map(tag => (
+                {['Medication reminders', 'Mood tracking', 'Family connection', 'Daily routines', 'Document organization', 'more'].map(tag => (
                   <span key={tag} className="flex items-center gap-1.5 text-sm text-charcoal bg-white border border-soft-taupe px-3 py-1.5 rounded-full shadow-sm">
                     <Check className="w-3.5 h-3.5 text-warm-bronze" /> {tag}
                   </span>
@@ -393,7 +396,7 @@ export default function LandingPage() {
           >
             See Plans &amp; Pricing <ArrowRight className="w-4 h-4" />
           </button>
-          <p className="mt-4 text-sm text-white/40">No free tier. Immediate access after checkout.</p>
+          <p className="mt-4 text-sm text-white/40">Immediate access after checkout.</p>
         </motion.div>
       </section>
 

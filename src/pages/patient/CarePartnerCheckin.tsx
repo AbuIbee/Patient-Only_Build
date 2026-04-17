@@ -157,7 +157,8 @@ function Section({
 // ─── History row ──────────────────────────────────────────────────────────────
 function HistoryRow({ row }: { row: any }) {
   const [open, setOpen] = useState(false);
-  const date = new Date(row.check_in_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  // Append T12:00 to avoid UTC midnight shifting the date back one day in local time zones
+  const date = new Date(row.check_in_date + 'T12:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
   const flags: string[] = [];
   if (row.sa_falls && row.sa_falls !== 'None') flags.push('⚠️ Fall');
   if ((row.be_behaviors || []).length > 0 && !row.be_behaviors.includes('None observed')) flags.push('🧠 Behavior');
