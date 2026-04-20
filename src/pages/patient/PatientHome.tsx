@@ -169,7 +169,20 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
     try { return JSON.parse(localStorage.getItem('lovedOnePhotos') || '[]'); } catch { return []; }
   });
   const [showPhotoPopup, setShowPhotoPopup] = useState<{id:string;name:string;url:string}|null>(null);
-  
+
+  // Topic 4 — first-session onboarding path
+  const firstSessionDone = localStorage.getItem('firstSessionDone') === 'true';
+  const hasLovedOne = (patient?.familiarFaces?.length ?? 0) > 0 || JSON.parse(localStorage.getItem('lovedOnePhotos') || '[]').length > 0;
+  const hasRoutine = state.tasks.length > 0;
+  const hasReminder = localMeds.length > 0 || state.medications.length > 0;
+  const firstSessionSteps = [
+    { done: hasLovedOne,  emoji: '👤', label: 'Add one loved one',    hint: 'Go to People Who Love You below' },
+    { done: hasRoutine,   emoji: '🔁', label: 'Add one routine',       hint: 'Visit the Routine tab' },
+    { done: hasReminder,  emoji: '💊', label: 'Add one reminder',      hint: 'Visit Medications tab' },
+    { done: true,         emoji: '🏠', label: 'View today\'s home screen', hint: 'You\'re here!' },
+  ];
+  const allFirstSessionDone = firstSessionSteps.every(s => s.done);
+  const showFirstSession = !firstSessionDone && !allFirstSessionDone;
 
   const tasks = state.tasks.filter(t => t.status !== 'completed').slice(0, 3);
 
@@ -394,9 +407,39 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
                 </div>
               </div>
 
-              <p className="text-xl text-charcoal font-semibold mb-4 drop-shadow-sm">
+              <p className="text-xl text-charcoal font-semibold mb-1 drop-shadow-sm">
                 {getTimeOfDayGreeting()}{patient?.preferredName || patient?.firstName ? `, ${patient?.preferredName || patient?.firstName}` : ''}!
               </p>
+              {/* Topic 7 — reassuring microcopy anchored to time of day */}
+              <p className="text-sm text-charcoal/70 font-medium mb-4">
+                {isMorning
+                  ? "You're on track today. Here's what comes next."
+                  : hour < 19
+                  ? 'You are supported. Your care team is with you.'
+                  : 'A good evening to rest. You did well today.'}
+              </p>
+
+              {/* Topic 5 — Daily anchor strip: turns usage into rhythm */}
+              <div className="flex gap-2 mb-5">
+                {[
+                  { label: 'Morning', emoji: '☀️', active: isMorning },
+                  { label: 'Midday',  emoji: '🌤️', active: !isMorning && hour < 17 },
+                  { label: 'Evening', emoji: '🌙', active: hour >= 17 },
+                ].map(anchor => (
+                  <div
+                    key={anchor.label}
+                    className={`flex-1 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      anchor.active
+                        ? 'bg-warm-bronze text-white shadow-sm'
+                        : 'bg-white/40 text-charcoal/50'
+                    }`}
+                  >
+                    <span className="text-sm">{anchor.emoji}</span>
+                    {anchor.label}
+                    {anchor.active && <span className="ml-auto w-1.5 h-1.5 bg-white rounded-full animate-pulse" />}
+                  </div>
+                ))}
+              </div>
 
               <div className="border-t border-white/30 pt-4">
                 <h3 className="text-lg font-semibold text-charcoal mb-3 flex items-center gap-2">
@@ -433,11 +476,16 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
                 <div className="flex-1">
                   <p className="font-medium text-charcoal">
                     {todaysMedsTaken === totalMedsToday && totalMedsToday > 0
-                      ? 'All medications taken today!'
+                      ? '100% medication adherence today — great work!'
                       : totalMedsToday === 0
                       ? 'No medications scheduled today'
-                      : `${todaysMedsTaken} of ${totalMedsToday} medications taken`}
+                      : `${todaysMedsTaken} of ${totalMedsToday} medications taken today`}
                   </p>
+                  {totalMedsToday > 0 && todaysMedsTaken < totalMedsToday && (
+                    <p className="text-xs text-medium-gray mt-0.5">
+                      {totalMedsToday - todaysMedsTaken} remaining — staying on track matters
+                    </p>
+                  )}
                 </div>
                 {todaysMedsTaken === totalMedsToday && totalMedsToday > 0 && (
                   <CheckCircle2 className="w-6 h-6 text-soft-sage" />
@@ -446,6 +494,40 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
             </div>
           </Card>
         </motion.div>
+
+        {/* Topic 4 — First-session onboarding path */}
+        {showFirstSession && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.15 }}
+            className="bg-white rounded-2xl border border-warm-bronze/30 shadow-sm p-5"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-bold text-charcoal flex items-center gap-2">
+                <span className="text-lg">🌟</span> Get started in 4 steps
+              </h3>
+              <button
+                onClick={() => localStorage.setItem('firstSessionDone', 'true')}
+                className="text-xs text-medium-gray hover:text-charcoal underline"
+              >
+                Dismiss
+              </button>
+            </div>
+            <div className="space-y-2">
+              {firstSessionSteps.map((step, i) => (
+                <div key={i} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl ${step.done ? 'bg-soft-sage/10' : 'bg-warm-ivory'}`}>
+                  <span className="text-base">{step.emoji}</span>
+                  <div className="flex-1">
+                    <p className={`text-sm font-semibold ${step.done ? 'text-soft-sage line-through' : 'text-charcoal'}`}>{step.label}</p>
+                    {!step.done && <p className="text-xs text-medium-gray">{step.hint}</p>}
+                  </div>
+                  {step.done && <CheckCircle2 className="w-4 h-4 text-soft-sage flex-shrink-0" />}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* People Who Love You Section */}
         <motion.div

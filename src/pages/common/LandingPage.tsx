@@ -85,19 +85,18 @@ export default function LandingPage() {
                 Compassionate Care, Every Day
               </span>
 
-              <h1 className="text-5xl lg:text-6xl font-bold text-charcoal leading-[1.1] mb-6">
-                Stay on track,<br />
-                feel supported,<br />
+              <h1 className="text-5xl lg:text-6xl font-bold text-charcoal leading-[1.1] mb-3">
+                Stay oriented,<br />
+                stay supported,<br />
                 <span className="text-warm-bronze">every single day.</span>
               </h1>
 
+              <p className="text-base text-warm-bronze font-semibold mb-5">
+                A daily support app for people with memory and cognitive challenges — with built-in visibility for families and care partners.
+              </p>
+
               <p className="text-lg text-medium-gray leading-relaxed mb-8 max-w-lg">
-                My Memoria Ally helps families and care partners bring calm, structure, and 
-                confidence into daily life — for people living with <b> Dementia, ADHD, Autism,
-                Anxiety, TBI, and other cognitive needs.</b>  My Memoria Ally acts as a trusted 
-                daily companion — helping patients stay on track, helping caregivers stay informed, 
-                and helping families feel confident that the people they love are supported 
-                every step of the way.
+                My Memoria Ally helps people with memory and cognitive challenges stay oriented, supported, and connected each day. Built primarily for <b>dementia and cognitive decline</b> — and the families, caregivers, and care teams behind them — it combines daily orientation, emotional reassurance, and caregiver visibility in one calm, easy-to-use experience.
               </p>
 
               <div className="flex flex-wrap gap-3 mb-8">
@@ -105,6 +104,21 @@ export default function LandingPage() {
                   <span key={tag} className="flex items-center gap-1.5 text-sm text-charcoal bg-white border border-soft-taupe px-3 py-1.5 rounded-full shadow-sm">
                     <Check className="w-3.5 h-3.5 text-warm-bronze" /> {tag}
                   </span>
+                ))}
+              </div>
+
+              {/* Topic 2 — 3-part value strip */}
+              <div className="grid grid-cols-3 gap-3 mb-8">
+                {[
+                  { emoji: '🧠', who: 'For Patients',    benefit: 'Calm daily guidance' },
+                  { emoji: '❤️', who: 'For Families',    benefit: 'Visibility & reassurance' },
+                  { emoji: '🩺', who: 'For Care Teams',  benefit: 'Structured updates' },
+                ].map(item => (
+                  <div key={item.who} className="bg-white border border-soft-taupe rounded-2xl px-3 py-3 text-center shadow-sm">
+                    <span className="text-xl block mb-1">{item.emoji}</span>
+                    <p className="text-[11px] font-bold text-charcoal leading-tight">{item.who}</p>
+                    <p className="text-[10px] text-medium-gray leading-tight mt-0.5">{item.benefit}</p>
+                  </div>
                 ))}
               </div>
 
@@ -151,17 +165,17 @@ export default function LandingPage() {
                   day a little calmer — for both of you.
                 </p>
                 <div className="mt-5 pt-5 border-t border-soft-taupe">
-                  <p className="text-xs text-medium-gray uppercase tracking-widest font-semibold mb-3">What's included</p>
+                  <p className="text-xs text-medium-gray uppercase tracking-widest font-semibold mb-3">Hard utility built in</p>
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { icon: '💊', text: 'Medication reminders' },
-                      { icon: '🩺', text: 'Doctor visit tracking' },
-                      { icon: '💛', text: 'Mood & symptom log' },
-                      { icon: '💬', text: 'Message care team' },
-                      { icon: '📸', text: 'Family photos' },
-                      { icon: '🎮', text: 'Games & brain training' },
-                      { icon: '🎥', text: 'Videos & media upload' },
-                      { icon: '⏰', text: 'Daily routines' },
+                      { icon: '💊', text: 'Medication adherence' },
+                      { icon: '📋', text: 'Routine reinforcement' },
+                      { icon: '💛', text: 'Symptom & mood logging' },
+                      { icon: '👨‍👩‍👧', text: 'Family visibility' },
+                      { icon: '📸', text: 'Memory vault' },
+                      { icon: '🎮', text: 'Brain training games' },
+                      { icon: '🎥', text: 'Videos & media' },
+                      { icon: '⏰', text: 'Daily orientat­ion' },
                     ].map(item => (
                       <div key={item.text} className="flex items-center gap-2 bg-warm-ivory rounded-xl px-3 py-2.5">
                         <span className="text-base leading-none">{item.icon}</span>
@@ -172,8 +186,25 @@ export default function LandingPage() {
                 </div>
 
                 <div className="mt-5 pt-5 border-t border-soft-taupe">
+                  {/* Topic 9 — 3 pillars */}
+                  <p className="text-xs text-medium-gray uppercase tracking-widest font-semibold mb-3">Built on 3 pillars</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { emoji: '🧭', label: 'Orientation' },
+                      { emoji: '🔁', label: 'Routine' },
+                      { emoji: '💛', label: 'Reassurance' },
+                    ].map(p => (
+                      <div key={p.label} className="bg-warm-bronze/10 rounded-xl px-2 py-3 text-center">
+                        <span className="text-xl block mb-1">{p.emoji}</span>
+                        <p className="text-xs font-bold text-charcoal">{p.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-5 border-t border-soft-taupe">
                   <div className="bg-charcoal rounded-2xl px-5 py-4">
-                    <p className="text-[14px] text-white/50 uppercase tracking-widest font-semibold mb-3">Who it's for</p>
+                    <p className="text-[14px] text-white/50 uppercase tracking-widest font-semibold mb-3">Primary: Dementia & cognitive decline</p>
                     <div className="flex flex-wrap gap-2 mb-3">
                       {['Dementia', 'ADHD', 'Autism', 'Anxiety', 'TBI', 'Cognitive needs'].map(tag => (
                         <span key={tag} className="text-xs font-semibold text-white bg-white/10 px-3 py-1.5 rounded-lg">
@@ -182,7 +213,7 @@ export default function LandingPage() {
                       ))}
                     </div>
                     <p className="text-xs text-white/60 leading-relaxed">
-                      And the <span className="text-white font-semibold">Families & Care Partners</span> who support them everyday.
+                      And the <span className="text-white font-semibold">Families & Care Partners</span> who support them every day.
                     </p>
                   </div>
                 </div>
@@ -239,8 +270,8 @@ export default function LandingPage() {
             <span className="inline-block bg-warm-bronze/10 text-warm-bronze text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-4">
               Everything You Need
             </span>
-            <h2 className="text-3xl lg:text-4xl font-bold text-charcoal">Built for everyday support</h2>
-            <p className="text-medium-gray mt-3 max-w-md mx-auto">Everything to stay organized, calm, and supported — in one gentle, easy-to-use app.</p>
+            <h2 className="text-3xl lg:text-4xl font-bold text-charcoal">Orientation. Routine. Reassurance.</h2>
+            <p className="text-medium-gray mt-3 max-w-md mx-auto">Unlike generic reminder or care apps, My Memoria Ally combines daily orientation, emotional reassurance, and caregiver visibility in one calm experience.</p>
           </motion.div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -406,9 +437,17 @@ export default function LandingPage() {
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-warm-bronze rounded-lg flex items-center justify-center">
               <Heart className="w-4 h-4 text-white" />
-            </div>
+          </div>
             <span className="font-semibold text-white/60">My Memoria Ally</span>
           </div>
+            <span className="font-semibold text-white/60">
+            <a href="/privacy" className="hover:underline">
+              Privacy
+            </a></span>
+            <span className="font-semibold text-white/60">
+            <a href="/about-us" className="hover:underline">
+              About Us
+            </a></span>
           <p>© 2025 My Memoria Ally. All rights reserved.</p>
         </div>
       </footer>
