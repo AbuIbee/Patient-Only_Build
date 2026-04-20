@@ -405,6 +405,33 @@ type ChessBoard = ChessPiece[][];
 
 // Full names for accessibility — shown in piece labels
 const PIECE_NAMES: Record<string, string> = { K:'King', Q:'Queen', R:'Rook', B:'Bishop', N:'Knight', P:'Pawn' };
+// Solid filled chess piece SVGs — readable at any size, no outline ambiguity
+function ChessPieceSVG({ type, color, size=40 }: { type:string; color:'white'|'black'; size?:number }) {
+  const fill = color === 'white' ? '#f5f0e8' : '#1a1a1a';
+  const stroke = color === 'white' ? '#4a3000' : '#d4af70';
+  const sw = 1.5;
+  const paths: Record<string,string> = {
+    // King — cross on crown
+    K: 'M16,4 L16,8 M14,8 L18,8 M10,26 Q10,14 16,14 Q22,14 22,26 Z M8,26 L24,26 L26,30 L6,30 Z',
+    // Queen — crown with points
+    Q: 'M6,8 L10,20 L16,14 L22,20 L26,8 L22,14 L16,8 L10,14 Z M8,24 L24,24 L25,28 L7,28 Z',
+    // Rook — castle battlements
+    R: 'M8,8 L8,12 L10,12 L10,10 L13,10 L13,12 L15,12 L15,10 L17,10 L17,12 L19,12 L19,10 L22,10 L22,12 L24,12 L24,8 Z M10,12 L10,26 L22,26 L22,12 Z M8,26 L24,26 L25,30 L7,30 Z',
+    // Bishop — pointed mitre
+    B: 'M16,4 Q20,8 20,14 Q22,18 20,22 L12,22 Q10,18 12,14 Q12,8 16,4 Z M14,22 L18,22 L19,26 L13,26 Z M8,26 L24,26 L25,30 L7,30 Z M15,9 L17,9',
+    // Knight — horse head  
+    N: 'M10,28 L10,20 Q8,14 12,10 Q14,6 18,8 Q22,8 22,12 Q24,14 22,18 L20,20 L20,28 Z M12,12 Q13,10 15,11',
+    // Pawn — simple round top
+    P: 'M16,6 A5,5 0 1,1 16,5.9 Z M12,22 Q10,18 12,16 L20,16 Q22,18 20,22 Z M10,22 L22,22 L23,28 L9,28 Z',
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" style={{filter:`drop-shadow(0 1px 2px ${color==='white'?'rgba(0,0,0,0.5)':'rgba(255,255,255,0.2)'})`}}>
+      <path d={paths[type]||paths.P} fill={fill} stroke={stroke} strokeWidth={sw} strokeLinejoin="round" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+// Keep GLYPHS for captured piece display only
 const GLYPHS: Record<string,string> = {
   'white-K':'♔','white-Q':'♕','white-R':'♖','white-B':'♗','white-N':'♘','white-P':'♙',
   'black-K':'♚','black-Q':'♛','black-R':'♜','black-B':'♝','black-N':'♞','black-P':'♟',
@@ -611,9 +638,10 @@ function ChessGame({ onBack }: { onBack: () => void }) {
                       const light = (r+c)%2===0;
                       const isSel = selected?.[0]===r && selected?.[1]===c;
                       const isMove = validMoves.some(([mr,mc])=>mr===r&&mc===c);
-                      const glyph = piece ? GLYPHS[`${piece.color}-${piece.type}`] : null;
                       // Highlight white king red when in check
                       const isKingInCheck = inCheck && piece?.type==='K' && piece?.color==='white';
+                      // SVG piece size based on cell
+                      const pieceSize = cellSz.includes('64') ? 44 : cellSz.includes('56') ? 38 : 32;
                       return (
                         <div key={c} onClick={() => handleClick(r,c)}
                           aria-label={piece ? `${piece.color} ${PIECE_NAMES[piece.type]}` : 'empty'}
@@ -624,20 +652,15 @@ function ChessGame({ onBack }: { onBack: () => void }) {
                             ${isMove ? (light ? '!bg-emerald-300' : '!bg-emerald-600') : ''}`}>
                           {/* Move dot */}
                           {isMove && !piece && (
-                            <div className="w-5 h-5 rounded-full bg-emerald-800/70 border-2 border-emerald-500" />
+                            <div className="w-5 h-5 rounded-full bg-emerald-800/60 border-2 border-emerald-600" />
                           )}
                           {/* Capture ring */}
                           {isMove && piece && (
-                            <div className="absolute inset-0.5 rounded-lg border-4 border-emerald-400 pointer-events-none" />
+                            <div className="absolute inset-0.5 rounded border-4 border-emerald-500 pointer-events-none" />
                           )}
-                          {glyph && (
-                            <span className={`select-none leading-none font-black
-                              ${cellSz.includes('48') ? 'text-3xl' : 'text-4xl'}
-                              ${piece!.color==='white'
-                                ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,1)]'
-                                : 'text-gray-950 drop-shadow-[0_1px_3px_rgba(255,255,255,0.5)]'}`}>
-                              {glyph}
-                            </span>
+                          {/* Solid SVG chess piece */}
+                          {piece && (
+                            <ChessPieceSVG type={piece.type} color={piece.color} size={pieceSize} />
                           )}
                         </div>
                       );
@@ -671,18 +694,18 @@ function ChessGame({ onBack }: { onBack: () => void }) {
 // WORD SEARCH — large cells, high contrast drag highlighting
 // ══════════════════════════════════════════════════════════════════════════════
 const WS_THEMES = [
-  { theme: 'Comfort & Home',    words: ['MEMORY','FAMILY','SMILE','HOPE','CARE','PEACE','LOVE','HOME','CALM','KIND'] },
-  { theme: 'Nature',            words: ['GARDEN','FLOWER','SUMMER','SUNSET','BREEZE','MEADOW','FOREST','OCEAN','RIVER','CLOUD'] },
-  { theme: 'Daily Life',        words: ['APPLE','BREAD','WATER','MUSIC','DANCE','BOOK','STORY','LIGHT','TABLE','CHAIR'] },
-  { theme: 'Animals',           words: ['RABBIT','KITTEN','PUPPY','ROBIN','HORSE','SHEEP','EAGLE','TIGER','WHALE','PANDA'] },
-  { theme: 'Food & Cooking',    words: ['BUTTER','PEPPER','HONEY','CARROT','COOKIE','MUFFIN','CHICKEN','SALAD','LEMON','CHERRY'] },
-  { theme: 'Seasons & Weather', words: ['WINTER','SPRING','AUTUMN','RAINY','SNOWY','SUNNY','FROSTY','BREEZY','STORMY','MISTY'] },
-  { theme: 'Colors',            words: ['VIOLET','ORANGE','YELLOW','SILVER','PURPLE','SCARLET','INDIGO','GOLDEN','CRIMSON','IVORY'] },
-  { theme: 'Feelings',          words: ['HAPPY','JOYFUL','GENTLE','BRAVE','GRATEFUL','TENDER','SERENE','CONTENT','PEACEFUL','CHEERFUL'] },
-  { theme: 'Places',            words: ['CHURCH','SCHOOL','MARKET','BRIDGE','VALLEY','HARBOR','CASTLE','MUSEUM','GARDEN','FOREST'] },
-  { theme: 'Faith & Spirit',    words: ['GRACE','PRAYER','FAITH','BLESS','ANGEL','GOSPEL','SPIRIT','WISDOM','DIVINE','SACRED'] },
+  { theme: 'Comfort',   words: ['MEMORY','FAMILY','SMILE','HOPE','CARE','PEACE','LOVE','HOME'] },
+  { theme: 'Nature',    words: ['GARDEN','FLOWER','SUMMER','SUNSET','BREEZE','MEADOW','FOREST','OCEAN'] },
+  { theme: 'Daily',     words: ['APPLE','BREAD','WATER','MUSIC','DANCE','BOOK','STORY','LIGHT'] },
+  { theme: 'Animals',   words: ['RABBIT','KITTEN','PUPPY','ROBIN','HORSE','SHEEP','EAGLE','TIGER'] },
+  { theme: 'Food',      words: ['BUTTER','HONEY','CARROT','COOKIE','MUFFIN','SALAD','LEMON','CHERRY'] },
+  { theme: 'Seasons',   words: ['WINTER','SPRING','AUTUMN','RAINY','SNOWY','SUNNY','FROSTY','MISTY'] },
+  { theme: 'Colors',    words: ['VIOLET','ORANGE','YELLOW','SILVER','PURPLE','GOLDEN','CRIMSON','IVORY'] },
+  { theme: 'Feelings',  words: ['HAPPY','JOYFUL','GENTLE','BRAVE','TENDER','SERENE','CONTENT','CHEERFUL'] },
+  { theme: 'Places',    words: ['CHURCH','SCHOOL','MARKET','BRIDGE','VALLEY','HARBOR','CASTLE','MUSEUM'] },
+  { theme: 'Faith',     words: ['GRACE','PRAYER','FAITH','BLESS','ANGEL','SPIRIT','WISDOM','SACRED'] },
 ];
-const WS_SIZE = 14;
+const WS_SIZE = 10;
 const WS_DIRS: [number,number][] = [[0,1],[1,0],[1,1],[1,-1],[0,-1],[-1,0],[-1,-1],[-1,1]];
 
 function buildWordSearch(words: string[]): { grid: string[][], placed: {word:string;cells:[number,number][]}[] } {
@@ -754,7 +777,7 @@ function WordSearchGame({ onBack }: { onBack: () => void }) {
 
   const words=WS_THEMES[themeIdx].words;
   // Large cells for older users: 36px on mobile, 40px on sm, 44px on md
-  const cellCls = 'w-9 h-9 sm:w-10 sm:h-10 md:w-11 md:h-11';
+  const cellCls = 'w-11 h-11 sm:w-12 sm:h-12';
 
   return (
     <div className={A.pageBg} onMouseUp={onUp} onTouchEnd={onUp}>
@@ -785,7 +808,7 @@ function WordSearchGame({ onBack }: { onBack: () => void }) {
         <div className="flex gap-5 flex-col lg:flex-row">
           {/* Grid */}
           <div className="flex-shrink-0">
-            <div className={`${A.surfaceLg} p-2 inline-block`}>
+            <div className="inline-block bg-white rounded-2xl shadow-md border-2 border-stone-200 p-2">
               {gameData.grid.map((row,r) => (
                 <div key={r} className="flex">
                   {row.map((letter,c) => {
@@ -1149,7 +1172,7 @@ function CrosswordGame({ onBack }: { onBack: () => void }) {
         <div className="flex gap-5 flex-col xl:flex-row">
           {/* Grid */}
           <div className="flex-shrink-0">
-            <div className={`${A.surfaceLg} p-2 inline-block`}>
+            <div className="inline-block bg-stone-900 p-1 rounded-xl shadow-lg border-2 border-stone-700">
               {grid.map((row,r) => (
                 <div key={r} className="flex">
                   {row.map((cell,c) => {
@@ -1162,15 +1185,11 @@ function CrosswordGame({ onBack }: { onBack: () => void }) {
                       return false;
                     })();
 
-                    if(cell.black) return <div key={c} className={`${cellSz} bg-stone-800 m-px rounded-sm`}/>;
+                    if(cell.black) return <div key={c} className={`${cellSz} bg-stone-900`} style={{margin:'1px'}}/>;
 
                     return (
-                      <div key={c} className={`${cellSz} relative m-px rounded-sm transition-all border-2
-                        ${isFocused ? 'border-amber-600 bg-amber-100 z-10' :
-                          inWord ? 'border-amber-400 bg-amber-50' :
-                          status==='correct' ? 'border-emerald-500 bg-emerald-50' :
-                          status==='wrong' ? 'border-red-500 bg-red-50' :
-                          'border-stone-300 bg-white'}`}>
+                      <div key={c} className={`${cellSz} relative transition-all border-2`}
+                        style={{margin:'1px', backgroundColor: isFocused?'#fef3c7': inWord?'#fef9ee': status==='correct'?'#dcfce7': status==='wrong'?'#fee2e2': '#fffdf7', borderColor: isFocused?'#d97706': inWord?'#f59e0b': status==='correct'?'#22c55e': status==='wrong'?'#ef4444': '#9ca3af'}}>
                         {cell.number && (
                           <span className="absolute top-0 left-0.5 text-[7px] font-black text-amber-700 leading-none">{cell.number}</span>
                         )}
@@ -1295,14 +1314,34 @@ function SolitaireGame({onBack}:{onBack:()=>void}){
   const wasteShow=draw===3?gs.waste.slice(-3):gs.waste.slice(-1);
   const isDraggingThis=(src:string)=>dragging?.src===src;
 
-  // Card rendering — large, high-contrast, clear suit symbols
+  // Card rendering — large, high-contrast faces for older/vision-impaired users
   const CardFace=({card,compact=false}:{card:SolCard;compact?:boolean})=>{
     const red=isRed(card.suit);
+    const col=red?'text-red-600':'text-stone-900';
+    if(compact){
+      return(
+        <div className={`flex flex-col items-start h-full px-1 py-0.5 ${col}`}>
+          <div className="text-xs font-black leading-none">{VL[card.value]}</div>
+          <div className="text-xs leading-none">{card.suit}</div>
+        </div>
+      );
+    }
     return(
-      <div className={`flex flex-col justify-between h-full px-1.5 py-1 ${red?'text-red-600':'text-stone-900'}`}>
-        <div className={`font-black leading-tight ${compact?'text-[10px]':'text-sm'}`}>{VL[card.value]}<br/>{card.suit}</div>
-        <div className={`text-center leading-none ${compact?'text-base':'text-2xl'}`}>{card.suit}</div>
-        <div className={`font-black leading-tight rotate-180 self-end ${compact?'text-[10px]':'text-sm'}`}>{VL[card.value]}<br/>{card.suit}</div>
+      <div className={`flex flex-col items-stretch h-full px-2 py-1.5 ${col}`} style={{width:CARD_W,height:CARD_H}}>
+        {/* Top-left rank + suit */}
+        <div className="flex flex-col items-start leading-none">
+          <span className="text-lg font-black leading-none">{VL[card.value]}</span>
+          <span className="text-base font-black leading-none">{card.suit}</span>
+        </div>
+        {/* Large center suit */}
+        <div className="flex-1 flex items-center justify-center">
+          <span className={`${red?'text-red-600':'text-stone-900'} font-black select-none`} style={{fontSize:28,lineHeight:1}}>{card.suit}</span>
+        </div>
+        {/* Bottom-right rank + suit rotated */}
+        <div className="flex flex-col items-end leading-none rotate-180">
+          <span className="text-lg font-black leading-none">{VL[card.value]}</span>
+          <span className="text-base font-black leading-none">{card.suit}</span>
+        </div>
       </div>
     );
   };
@@ -1317,7 +1356,7 @@ function SolitaireGame({onBack}:{onBack:()=>void}){
   );
 
   const selRing='!border-amber-400 ring-4 ring-amber-400/50 shadow-2xl -translate-y-2 z-20';
-  const cardBase='absolute w-16 h-22 rounded-xl border-2 bg-gray-900 select-none transition-all duration-100 cursor-grab active:cursor-grabbing overflow-hidden';
+  const cardBase='absolute rounded-xl border-2 bg-white select-none transition-all duration-100 cursor-grab active:cursor-grabbing overflow-hidden shadow-sm';
   // w-16=64px, h-22=88px (custom via style)
   const CARD_W=64, CARD_H=88;
 
@@ -1459,7 +1498,7 @@ function SolitaireGame({onBack}:{onBack:()=>void}){
           <div style={{position:'fixed',left:dragging.x-CARD_W/2,top:dragging.y-12,zIndex:9999,pointerEvents:'none'}}>
             {dragging.cards.map((card,i)=>(
               <div key={card.id} style={{position:'absolute',top:`${i*28}px`,left:0,width:CARD_W,height:CARD_H}}
-                className="rounded-xl border-3 border-amber-500 bg-gray-900 shadow-2xl overflow-hidden">
+                className="rounded-xl border-2 border-amber-600 bg-white shadow-2xl overflow-hidden">
                 <CardFace card={card}/>
               </div>
             ))}
