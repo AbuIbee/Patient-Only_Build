@@ -3,13 +3,15 @@ import LandingPage from '@/pages/common/LandingPage';
 import LoginPage from '@/pages/common/LoginPage';
 import ResetPasswordPage from '@/pages/common/ResetPasswordPage';
 import PublicPatientIntakePage from '@/pages/common/PublicPatientIntakePage';
+import AboutUsPage from '@/pages/common/AboutUsPage';
 import PatientLayout from '@/pages/patient/PatientLayout';
 import AdminLayout from '@/pages/admin/AdminLayout';
+import PrivacyPage from '@/pages/privacy/PrivacyPage';
 import { Toaster } from '@/components/ui/sonner';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@/types';
-import { isTempUser, TIERS } from '@/types/subscription';
+import { isTempUser } from '@/types/subscription';
 import './App.css';
 
 function AppContent() {
@@ -21,6 +23,10 @@ function AppContent() {
 
   const currentPath = useMemo(() => window.location.pathname, []);
   const isPublicPatientIntakeRoute = currentPath === '/patient-intake';
+  const isPrivacyRoute = currentPath === '/privacy';
+  const isAboutUsRoute = currentPath === '/about-us';
+  const isPublicRoute =
+    isPublicPatientIntakeRoute || isPrivacyRoute || isAboutUsRoute;
 
   const restoreUser = (profile: any) => {
     const safeRole = (profile.role as UserRole) || 'patient';
@@ -50,7 +56,9 @@ function AppContent() {
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
         if (session?.user) {
           const { data: profile } = await supabase
@@ -62,6 +70,7 @@ function AppContent() {
           if (profile) {
             if (profile.must_change_password) {
               setCurrentUserEmail(profile.email || '');
+
               dispatch({
                 type: 'SET_USER',
                 payload: {
@@ -75,13 +84,14 @@ function AppContent() {
                   updatedAt: profile.updated_at,
                 },
               });
+
               setForcedChange(true);
               setCheckingSession(false);
               return;
             }
 
-            // ── Block access if payment not yet collected ────────────────────
             const isPrivileged = ['admin', 'caregiver', 'master', 'superadmin'].includes(profile.role);
+
             if (!isPrivileged) {
               const { data: sub } = await supabase
                 .from('subscriptions')
@@ -90,23 +100,28 @@ function AppContent() {
                 .maybeSingle();
 
               const isMaster = sub?.tier === 'master';
-              
-              const blockedStatuses = ['pending_payment', 'requires_payment', 'expired', 'canceled', 'past_due', 'incomplete'];
+              const blockedStatuses = [
+                'pending_payment',
+                'requires_payment',
+                'expired',
+                'canceled',
+                'past_due',
+                'incomplete',
+              ];
               const isBlockedStatus = sub && blockedStatuses.includes(sub.status);
               const needsPayment = !sub || isBlockedStatus;
 
               if (!isMaster && needsPayment) {
-                console.log(`Blocking access for user ${profile.id}: subscription status = ${sub?.status || 'none'}`);
-                
                 await supabase.auth.signOut();
-                
+
                 let errorMessage = 'Please complete payment to access your account.';
                 if (sub?.status === 'expired') {
                   errorMessage = 'Your subscription has expired. Please renew to continue.';
                 } else if (sub?.status === 'pending_payment') {
-                  errorMessage = 'Payment pending. Please complete checkout to access your account.';
+                  errorMessage =
+                    'Payment pending. Please complete checkout to access your account.';
                 }
-                
+
                 sessionStorage.setItem('paymentRequiredMessage', errorMessage);
                 window.location.href = '/pricing';
                 return;
@@ -147,7 +162,7 @@ function AppContent() {
   }, [dispatch]);
 
   useEffect(() => {
-    if (isPublicPatientIntakeRoute) return;
+    if (isPublicRoute) return;
 
     if (state.isAuthenticated && state.selectedRole) {
       const allowedRoles = ['patient', 'admin', 'superadmin'];
@@ -159,10 +174,10 @@ function AppContent() {
     } else if (!state.isAuthenticated) {
       window.history.replaceState({}, '', '/');
     }
-  }, [state.isAuthenticated, state.selectedRole, isPublicPatientIntakeRoute]);
+  }, [state.isAuthenticated, state.selectedRole, isPublicRoute]);
 
   useEffect(() => {
-    if (isPublicPatientIntakeRoute) return;
+    if (isPublicRoute) return;
 
     const handlePop = () => {
       if (!window.history.state?.role) {
@@ -173,7 +188,7 @@ function AppContent() {
 
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
-  }, [dispatch, isPublicPatientIntakeRoute]);
+  }, [dispatch, isPublicRoute]);
 
   const handlePasswordSet = async () => {
     setShowPasswordReset(false);
@@ -197,7 +212,7 @@ function AppContent() {
   };
 
   useEffect(() => {
-    if (!state.isAuthenticated || isPublicPatientIntakeRoute) return;
+    if (!state.isAuthenticated || isPublicRoute) return;
 
     const TIMEOUT = 10 * 60 * 1000;
     let timeoutId: ReturnType<typeof setTimeout>;
@@ -224,7 +239,7 @@ function AppContent() {
         window.removeEventListener(eventName, resetTimeout)
       );
     };
-  }, [state.isAuthenticated, dispatch, isPublicPatientIntakeRoute]);
+  }, [state.isAuthenticated, dispatch, isPublicRoute]);
 
   if (checkingSession) {
     return (
@@ -264,6 +279,14 @@ function AppContent() {
   }
 
   const renderContent = () => {
+    if (isPrivacyRoute) {
+      return <PrivacyPage />;
+    }
+
+    if (isAboutUsRoute) {
+      return <AboutUsPage />;
+    }
+
     if (isPublicPatientIntakeRoute) {
       return <PublicPatientIntakePage />;
     }
