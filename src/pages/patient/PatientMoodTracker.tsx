@@ -705,44 +705,51 @@ useEffect(() => {
   };
 
   const submitMood = async () => {
-    if (!selectedMood || !patientId) return;
+    if (!selectedMood) return;
 
     const timestamp = new Date().toISOString();
     const timeOfDay = (
       format(new Date(), 'a').toLowerCase().includes('am') ? 'morning' : 'afternoon'
     ) as 'morning' | 'afternoon' | 'evening' | 'night';
 
-    // Persist to Supabase so moods survive logout and reload
-    const { data, error } = await supabase.from('mood_entries').insert({
-      patient_id: patientId,
+    const newEntry = {
+      id: `me${Date.now()}`,
+      patientId: patientId || 'local',
       mood: selectedMood,
       intensity: 7,
-      note: moodNote || null,
-      time_of_day: timeOfDay,
+      note: moodNote,
+      timeOfDay,
       timestamp,
-      recorded_by: state.patient?.preferredName || 'Patient',
-    }).select().single();
+      recordedBy: state.patient?.preferredName || 'Patient',
+    };
 
-    if (error) {
-      console.error('Error saving mood entry:', error);
-      toast.error('Could not save your mood. Please try again.');
-      return;
-    }
-
-    // Update local context with DB-assigned id
-    dispatch({
-      type: 'ADD_MOOD_ENTRY',
-      payload: {
-        id: data?.id || `me${Date.now()}`,
-        patientId,
+    // Try Supabase first; fall back to localStorage silently
+    if (patientId) {
+      const { data, error } = await supabase.from('mood_entries').insert({
+        patient_id: patientId,
         mood: selectedMood,
         intensity: 7,
-        note: moodNote,
-        timeOfDay,
+        note: moodNote || null,
+        time_of_day: timeOfDay,
         timestamp,
-        recordedBy: state.patient?.preferredName || 'Patient',
-      },
-    });
+        recorded_by: state.patient?.preferredName || 'Patient',
+      }).select().single();
+
+      if (!error && data) {
+        newEntry.id = data.id;
+      }
+      // If error, we still save locally below — no toast error shown
+    }
+
+    // Always update local state and localStorage
+    dispatch({ type: 'ADD_MOOD_ENTRY', payload: newEntry });
+
+    // Persist to localStorage as backup
+    try {
+      const stored = JSON.parse(localStorage.getItem('moodEntries') || '[]');
+      stored.unshift(newEntry);
+      localStorage.setItem('moodEntries', JSON.stringify(stored.slice(0, 200)));
+    } catch { /* ignore */ }
 
     toast.success('Thank you for sharing how you feel 💛');
     setSelectedMood(null);

@@ -168,31 +168,52 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
   const [lovedOnePhotos, setLovedOnePhotos] = useState<{id:string; name:string; url:string}[]>(() => {
     try { return JSON.parse(localStorage.getItem('lovedOnePhotos') || '[]'); } catch { return []; }
   });
-  const [showPhotoPopup, setShowPhotoPopup] = useState<{id:string;name:string;url:string}|null>(null);
+const [showPhotoPopup, setShowPhotoPopup] = useState<{ id: string; name: string; url: string } | null>(null);
 
-  // Topic 4 — first-session onboarding path
-  const firstSessionDone = localStorage.getItem('firstSessionDone') === 'true';
-  const hasLovedOne = (patient?.familiarFaces?.length ?? 0) > 0 || JSON.parse(localStorage.getItem('lovedOnePhotos') || '[]').length > 0;
-  const hasRoutine = state.tasks.length > 0;
-  const hasReminder = localMeds.length > 0 || state.medications.length > 0;
-  const firstSessionSteps = [
-    { done: hasLovedOne,  emoji: '👤', label: 'Add one loved one',    hint: 'Go to People Who Love You below' },
-    { done: hasRoutine,   emoji: '🔁', label: 'Add one routine',       hint: 'Visit the Routine tab' },
-    { done: hasReminder,  emoji: '💊', label: 'Add one reminder',      hint: 'Visit Medications tab' },
-    { done: true,         emoji: '🏠', label: 'View today\'s home screen', hint: 'You\'re here!' },
-  ];
-  const allFirstSessionDone = firstSessionSteps.every(s => s.done);
-  const showFirstSession = !firstSessionDone && !allFirstSessionDone;
+const localMeds: Array<{ id: string; times: string[]; daysOfWeek: number[]; isActive: boolean }> = useMemo(() => {
+  try {
+    return JSON.parse(localStorage.getItem('patientLocalMeds') || '[]');
+  } catch {
+    return [];
+  }
+}, []);
 
-  const tasks = state.tasks.filter(t => t.status !== 'completed').slice(0, 3);
+const localLogs: Array<{ medId: string; date: string; scheduledTime: string; status: string }> = useMemo(() => {
+  try {
+    return JSON.parse(localStorage.getItem('patientLocalLogs') || '[]');
+  } catch {
+    return [];
+  }
+}, []);
 
-  const localMeds: Array<{ id: string; times: string[]; daysOfWeek: number[]; isActive: boolean }> = useMemo(() => {
-    try { return JSON.parse(localStorage.getItem('patientLocalMeds') || '[]'); } catch { return []; }
-  }, []);
-  const localLogs: Array<{ medId: string; date: string; scheduledTime: string; status: string }> = useMemo(() => {
-    try { return JSON.parse(localStorage.getItem('patientLocalLogs') || '[]'); } catch { return []; }
-  }, []);
+const firstSessionDone = localStorage.getItem('firstSessionDone') === 'true';
 
+const hasLovedOne =
+  (patient?.familiarFaces?.length ?? 0) > 0 ||
+  (() => {
+    try {
+      return JSON.parse(localStorage.getItem('lovedOnePhotos') || '[]').length > 0;
+    } catch {
+      return false;
+    }
+  })();
+
+const hasRoutine = (state.tasks?.length ?? 0) > 0;
+
+const hasReminder =
+  (localMeds?.length ?? 0) > 0 ||
+  (state.medications?.length ?? 0) > 0;
+
+const firstSessionSteps = [
+  { done: hasLovedOne, emoji: '👤', label: 'Add a family photo', nav: 'Tap "People Who Love You" below' },
+  { done: hasRoutine, emoji: '🔁', label: 'Set up a daily routine', nav: 'Go to My Day in the menu' },
+  { done: hasReminder, emoji: '💊', label: 'Add a medication', nav: 'Go to Medications in the menu' },
+];
+
+const allFirstSessionDone = firstSessionSteps.every((s) => s.done);
+const showFirstSession = !firstSessionDone && !allFirstSessionDone;
+
+const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(0, 3);
   const today = new Date().toISOString().split('T')[0];
   const todayDow = new Date().getDay();
 
@@ -270,12 +291,24 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
   }, []);
 
   const playSafetyMessage = () => {
-    if (isPlaying || !customVoiceBase64) return;
-    const audio = new Audio(customVoiceBase64);
+    if (isPlaying) {
+      currentAudio?.pause();
+      setIsPlaying(false);
+      setCurrentAudio(null);
+      return;
+    }
+    // Re-read from localStorage each time in case the state is stale
+    const src = customVoiceBase64 || localStorage.getItem('customVoiceBase64');
+    if (!src) return;
+    const audio = new Audio(src);
     audio.onended = () => { setIsPlaying(false); setCurrentAudio(null); };
-    audio.play().catch(() => setIsPlaying(false));
-    setCurrentAudio(audio);
-    setIsPlaying(true);
+    audio.onerror = () => { setIsPlaying(false); setCurrentAudio(null); };
+    audio.play().then(() => {
+      setCurrentAudio(audio);
+      setIsPlaying(true);
+    }).catch(() => {
+      setIsPlaying(false);
+    });
   };
 
   useEffect(() => {
@@ -316,65 +349,53 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
           <Card className={`border-0 shadow-elevated overflow-hidden relative ${isSundowningTime ? 'ring-4 ring-warm-amber/50' : ''}`}>
             <WeatherBackground condition={weather.condition} isDay={weather.isDay} />
 
-            <div className="relative z-10 p-8 text-center border-b border-white/20">
-              <div className="absolute inset-0 opacity-10 pointer-events-none">
-                <div className="absolute top-4 left-4 w-20 h-20 rounded-full bg-white/30" />
-                <div className="absolute bottom-4 right-4 w-32 h-32 rounded-full bg-white/20" />
+            <div className="relative z-10 px-6 pt-8 pb-6 text-center border-b border-white/20">
+              {/* Soft decorative rings */}
+              <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-t-2xl">
+                <div className="absolute -top-8 -left-8 w-40 h-40 rounded-full bg-warm-bronze/8" />
+                <div className="absolute -bottom-4 -right-8 w-48 h-48 rounded-full bg-white/10" />
               </div>
               <div className="relative z-10">
+                {/* Heart icon */}
                 <motion.div
-                  animate={{ scale: [1, 1.02, 1] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                  animate={{ scale: [1, 1.08, 1] }}
+                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                  className="flex justify-center mb-4"
                 >
-                  <h1 className="text-3xl md:text-4xl font-bold text-charcoal mb-2 tracking-tight">
-                    {patient?.affirmation?.split('.')[0] || 'You are safe'}
-                  </h1>
-                  <p className="text-lg md:text-xl font-medium text-charcoal/80">
-                    {patient?.affirmation?.split('.').slice(1).join('. ') || 'You are loved. You are at home.'}
-                  </p>
+                  <div className="w-14 h-14 bg-white/70 rounded-full flex items-center justify-center shadow-soft">
+                    <Heart className="w-7 h-7 text-gentle-coral fill-gentle-coral/40" />
+                  </div>
                 </motion.div>
 
-                <button
-                  onClick={playSafetyMessage}
-                  disabled={!customVoiceBase64}
-                  className={`mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-full shadow-soft transition-all ${
-                    isPlaying ? 'bg-warm-bronze text-white' :
-                    customVoiceBase64 ? 'bg-white/80 hover:bg-white' :
-                    'bg-white/40 text-charcoal/40 cursor-not-allowed'
-                  }`}
-                >
-                  {isPlaying ? (
-                    <>
-                      <Volume2 className="w-5 h-5 animate-pulse" />
-                      <span className="font-medium">Playing…</span>
-                    </>
-                  ) : (
-                    <>
-                      <Volume2 className="w-5 h-5 text-warm-bronze" />
-                      <span className="text-charcoal font-medium">
-                        {customVoiceBase64
-                          ? `Tap to hear${customVoiceLabel ? ` — ${customVoiceLabel}` : ''}`
-                          : 'Record your voice below'}
-                      </span>
-                    </>
-                  )}
-                </button>
+                {/* Primary affirmation — large and warm */}
+                <h1 className="text-4xl md:text-5xl font-bold text-charcoal leading-tight tracking-tight mb-2">
+                  {patient?.affirmation?.split('.')[0] || 'You are safe'}
+                </h1>
+                <p className="text-xl md:text-2xl font-medium text-charcoal/70 leading-snug">
+                  {patient?.affirmation?.split('.').slice(1).join('. ') || 'You are loved. You are at home.'}
+                </p>
 
-                <div className="mt-2 flex items-center justify-center gap-1.5 text-xs text-charcoal/50">
+                {/* Voice playback row — compact, unobtrusive */}
+                <div className="mt-5 flex items-center justify-center gap-3">
                   {customVoiceBase64 ? (
-                    <><Mic className="w-3 h-3" /> Your personal recording</>
-                  ) : (
-                    <><Mic className="w-3 h-3" /> No recording yet — tap below to add one</>
-                  )}
-                </div>
-
-                <div className="mt-3 flex items-center justify-center gap-2">
+                    <button
+                      onClick={playSafetyMessage}
+                      className={`inline-flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold shadow-sm transition-all ${
+                        isPlaying
+                          ? 'bg-warm-bronze text-white'
+                          : 'bg-white/80 hover:bg-white text-charcoal'
+                      }`}
+                    >
+                      <Volume2 className={`w-4 h-4 ${isPlaying ? 'animate-pulse text-white' : 'text-warm-bronze'}`} />
+                      {isPlaying ? 'Playing…' : 'Hear a loving message'}
+                    </button>
+                  ) : null}
                   <button
                     onClick={() => setShowRecorder(true)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/60 hover:bg-white border border-white/80 text-charcoal/70 hover:text-charcoal text-xs font-medium transition-all shadow-sm"
+                    className="w-9 h-9 rounded-full bg-white/50 hover:bg-white/80 flex items-center justify-center border border-white/60 text-charcoal/50 hover:text-warm-bronze transition-all"
+                    title={customVoiceBase64 ? 'Change recording' : 'Record a loving message'}
                   >
-                    <Mic className="w-3.5 h-3.5 text-warm-bronze" />
-                    {customVoiceBase64 ? 'Change recording' : 'Record your voice'}
+                    <Mic className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -407,17 +428,22 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
                 </div>
               </div>
 
-              <p className="text-xl text-charcoal font-semibold mb-1 drop-shadow-sm">
+              <p className="text-xl text-charcoal font-semibold mb-2 drop-shadow-sm">
                 {getTimeOfDayGreeting()}{patient?.preferredName || patient?.firstName ? `, ${patient?.preferredName || patient?.firstName}` : ''}!
               </p>
-              {/* Topic 7 — reassuring microcopy anchored to time of day */}
-              <p className="text-sm text-charcoal/70 font-medium mb-4">
-                {isMorning
-                  ? "You're on track today. Here's what comes next."
-                  : hour < 19
-                  ? 'You are supported. Your care team is with you.'
-                  : 'A good evening to rest. You did well today.'}
-              </p>
+              {/* Topic 7 — reassuring microcopy: prominent, warm, easy to see */}
+              <div className="inline-flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-4 py-1.5 mb-4 shadow-sm">
+                <span className="text-base">
+                  {isMorning ? '☀️' : hour < 19 ? '💛' : '🌙'}
+                </span>
+                <p className="text-sm text-charcoal font-semibold">
+                  {isMorning
+                    ? "You're on track today. Here's what comes next."
+                    : hour < 19
+                    ? 'You are supported. Your care team is with you.'
+                    : 'A good evening to rest. You did well today.'}
+                </p>
+              </div>
 
               {/* Topic 5 — Daily anchor strip: turns usage into rhythm */}
               <div className="flex gap-2 mb-5">
@@ -495,32 +521,39 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
           </Card>
         </motion.div>
 
-        {/* Topic 4 — First-session onboarding path */}
+        {/* Topic 4 — First-session welcome checklist: simple and warm */}
         {showFirstSession && (
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.15 }}
-            className="bg-white rounded-2xl border border-warm-bronze/30 shadow-sm p-5"
+            className="bg-warm-bronze/8 border border-warm-bronze/25 rounded-2xl p-5"
           >
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-base font-bold text-charcoal flex items-center gap-2">
-                <span className="text-lg">🌟</span> Get started in 4 steps
-              </h3>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-base font-bold text-charcoal">Welcome! Let's get you set up 💛</p>
+                <p className="text-xs text-medium-gray mt-0.5">Complete these 3 steps to get the most out of the app</p>
+              </div>
               <button
-                onClick={() => localStorage.setItem('firstSessionDone', 'true')}
-                className="text-xs text-medium-gray hover:text-charcoal underline"
+                onClick={() => { localStorage.setItem('firstSessionDone', 'true'); window.location.reload(); }}
+                className="text-xs text-medium-gray hover:text-charcoal underline ml-3 flex-shrink-0"
               >
-                Dismiss
+                Skip
               </button>
             </div>
-            <div className="space-y-2">
-              {firstSessionSteps.map((step, i) => (
-                <div key={i} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl ${step.done ? 'bg-soft-sage/10' : 'bg-warm-ivory'}`}>
-                  <span className="text-base">{step.emoji}</span>
+            <div className="space-y-2.5">
+              {[
+                { done: hasLovedOne,  emoji: '👤', label: 'Add a family photo',    nav: 'Tap "People Who Love You" below' },
+                { done: hasRoutine,   emoji: '🔁', label: 'Set up a daily routine', nav: 'Go to My Day in the menu'        },
+                { done: hasReminder,  emoji: '💊', label: 'Add a medication',       nav: 'Go to Medications in the menu'   },
+              ].map((step, i) => (
+                <div key={i} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all ${step.done ? 'bg-soft-sage/15' : 'bg-white/70'}`}>
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm ${step.done ? 'bg-soft-sage text-white' : 'bg-warm-bronze/15 text-warm-bronze'}`}>
+                    {step.done ? '✓' : step.emoji}
+                  </div>
                   <div className="flex-1">
                     <p className={`text-sm font-semibold ${step.done ? 'text-soft-sage line-through' : 'text-charcoal'}`}>{step.label}</p>
-                    {!step.done && <p className="text-xs text-medium-gray">{step.hint}</p>}
+                    {!step.done && <p className="text-xs text-medium-gray">{step.nav}</p>}
                   </div>
                   {step.done && <CheckCircle2 className="w-4 h-4 text-soft-sage flex-shrink-0" />}
                 </div>

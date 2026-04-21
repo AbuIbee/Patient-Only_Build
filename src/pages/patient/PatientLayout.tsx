@@ -16,9 +16,7 @@ import PatientIntakeForm from './PatientIntakeForm';
 import PatientCareTeam from './PatientCareTeam';
 import MediaUploader from '@/components/MediaUploader';
 import {
-  LayoutDashboard, Calendar, Pill, FileText, Bell,
-  Heart, Smile, Users, MoreHorizontal, ChevronLeft,
-  ChevronRight, Volume2, Sun, Moon, LogOut, ClipboardList, UserCheck, Film, ClipboardPlus, Phone, Gamepad2, X, Menu, ClipboardCheck,
+  Heart, Volume2, LogOut, ChevronRight, Menu, X, ClipboardCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -41,7 +39,6 @@ type PatientView =
 export default function PatientLayout() {
   const [currentView, setCurrentView] = useState<PatientView>('dashboard');
   const [selectedGameId, setSelectedGameId] = useState<string | undefined>(undefined);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -257,22 +254,22 @@ export default function PatientLayout() {
   };
 
   const navItems = [
-    { id: 'dashboard'  as PatientView, label: 'Home',          icon: LayoutDashboard },
-    { id: 'memories'   as PatientView, label: 'Family',        icon: Users },
-    { id: 'mood'       as PatientView, label: 'How I Feel',    icon: Smile },
-    { id: 'reminders'  as PatientView, label: 'Reminders',     icon: Bell },
-    { id: 'medications'as PatientView, label: 'Medications',   icon: Pill },
-    { id: 'routines'   as PatientView, label: 'My Day',        icon: Calendar },
-    { id: 'media'      as PatientView, label: 'Videos & Media',icon: Film },
-    { id: 'games'      as PatientView, label: 'Memory Games',  icon: Gamepad2 },
+    { id: 'dashboard'   as PatientView, label: 'Home',           emoji: '🏠' },
+    { id: 'memories'    as PatientView, label: 'Family',         emoji: '👨‍👩‍👧' },
+    { id: 'mood'        as PatientView, label: 'How I Feel',     emoji: '😊' },
+    { id: 'reminders'   as PatientView, label: 'Reminders',      emoji: '🔔' },
+    { id: 'medications' as PatientView, label: 'Medications',    emoji: '💊' },
+    { id: 'routines'    as PatientView, label: 'My Day',         emoji: '📅' },
+    { id: 'media'       as PatientView, label: 'Videos & Media', emoji: '🎬' },
+    { id: 'games'       as PatientView, label: 'Memory Games',   emoji: '🎮' },
   ];
 
   // "More" contains care-admin items only
   const moreNavItems = [
-    { id: 'checkin'            as PatientView, label: 'Care Partners',       icon: ClipboardList },
-    { id: 'intake'             as PatientView, label: 'Patient Intake Form', icon: ClipboardPlus },
-    { id: 'emergency_contacts' as PatientView, label: 'Emergency Contact',   icon: Phone },
-    { id: 'documents'          as PatientView, label: 'Papers',              icon: FileText },
+    { id: 'checkin'             as PatientView, label: 'Care Partners',       emoji: '📋' },
+    { id: 'intake'              as PatientView, label: 'Patient Intake Form', emoji: '📝' },
+    { id: 'emergency_contacts'  as PatientView, label: 'Emergency Contact',   emoji: '🚨' },
+    { id: 'documents'           as PatientView, label: 'Papers',              emoji: '📄' },
   ];
 
   const allNavItems = [...navItems, ...moreNavItems];
@@ -342,16 +339,16 @@ export default function PatientLayout() {
   return (
     <div className="h-screen bg-warm-ivory flex overflow-hidden">
       <aside
-        className={`fixed left-0 top-0 bottom-0 ${getSidebarBg()} border-r border-soft-taupe z-40 transition-all duration-300 hidden md:flex flex-col ${sidebarCollapsed ? 'w-20' : 'w-64'}`}
+        className={`fixed left-0 top-0 bottom-0 ${getSidebarBg()} border-r border-soft-taupe z-40 w-64 hidden md:flex flex-col`}
       >
         <div className="h-14 flex items-center px-4 border-b border-soft-taupe flex-shrink-0">
           <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center flex-shrink-0">
             <Heart className="w-6 h-6 text-white" />
           </div>
-          {!sidebarCollapsed && <span className="ml-3 font-semibold text-charcoal">My Memoria Ally</span>}
+          <span className="ml-3 font-semibold text-charcoal">My Memoria Ally</span>
         </div>
 
-        {!sidebarCollapsed && (
+        {(
           <div className="px-4 py-2 border-b border-soft-taupe flex-shrink-0">
             <div className="flex items-center gap-3">
               {patient?.photoUrl ? (
@@ -381,24 +378,21 @@ export default function PatientLayout() {
 
         <nav className="p-2 space-y-0.5 flex-1 overflow-y-auto min-h-0">
           {navItems.map((item) => {
-            const Icon = item.icon;
             const isActive = currentView === item.id;
-
             return (
               <button
                 key={item.id}
                 onClick={() => setCurrentView(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${isActive ? 'bg-warm-bronze/15 text-charcoal font-semibold' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                  isActive
+                    ? 'bg-warm-bronze text-white font-bold shadow-sm'
+                    : 'text-medium-gray hover:bg-soft-taupe/60 hover:text-charcoal'
+                }`}
               >
-                <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-warm-bronze' : ''}`} />
-                {!sidebarCollapsed && (
-                  <span className="font-medium text-sm">{item.label}</span>
-                )}
-                {isActive && !sidebarCollapsed && (
-                  <motion.div
-                    layoutId="activeIndicator"
-                    className="ml-auto w-2 h-2 bg-white rounded-full"
-                  />
+                <span className="text-xl leading-none flex-shrink-0">{item.emoji}</span>
+                <span className={`text-sm font-medium ${isActive ? 'text-white' : ''}`}>{item.label}</span>
+                {isActive && (
+                  <div className="ml-auto w-2 h-2 bg-white rounded-full" />
                 )}
               </button>
             );
@@ -406,17 +400,17 @@ export default function PatientLayout() {
 
           <button
             onClick={() => setShowMoreMenu(!showMoreMenu)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${showMoreMenu ? 'bg-calm-blue/20 text-calm-blue' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+              showMoreMenu || moreNavItems.some(i => i.id === currentView)
+                ? 'bg-warm-bronze/15 text-charcoal font-semibold'
+                : 'text-medium-gray hover:bg-soft-taupe/60 hover:text-charcoal'
+            }`}
           >
-            <MoreHorizontal className="w-5 h-5 flex-shrink-0" />
-            {!sidebarCollapsed && (
-              <span className="font-medium text-sm">More</span>
-            )}
-            {!sidebarCollapsed && (
-              <motion.div animate={{ rotate: showMoreMenu ? 180 : 0 }} className="ml-auto">
-                <ChevronRight className="w-4 h-4" />
-              </motion.div>
-            )}
+            <span className="text-xl leading-none flex-shrink-0">•••</span>
+            <span className="text-sm font-medium">More</span>
+            <motion.div animate={{ rotate: showMoreMenu ? 90 : 0 }} className="ml-auto">
+              <ChevronRight className="w-4 h-4" />
+            </motion.div>
           </button>
 
           <AnimatePresence>
@@ -427,19 +421,21 @@ export default function PatientLayout() {
                 exit={{ height: 0, opacity: 0 }}
                 className="overflow-hidden"
               >
-                <div className="pl-4 space-y-1 border-l-2 border-soft-taupe ml-4">
+                <div className="pl-3 space-y-0.5 border-l-2 border-warm-bronze/20 ml-4 mt-0.5">
                   {moreNavItems.map((item) => {
-                    const Icon = item.icon;
                     const isActive = currentView === item.id;
-
                     return (
                       <button
                         key={item.id}
-                        onClick={() => setCurrentView(item.id)}
-                        className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${isActive ? 'bg-warm-bronze/15 text-charcoal font-semibold' : 'text-medium-gray hover:bg-soft-taupe hover:text-charcoal'}`}
+                        onClick={() => { setCurrentView(item.id); setShowMoreMenu(false); }}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                          isActive
+                            ? 'bg-warm-bronze text-white font-bold shadow-sm'
+                            : 'text-medium-gray hover:bg-soft-taupe/60 hover:text-charcoal'
+                        }`}
                       >
-                        <Icon className="w-5 h-5 flex-shrink-0" />
-                        {!sidebarCollapsed && <span className="font-medium text-sm">{item.label}</span>}
+                        <span className="text-xl leading-none flex-shrink-0">{item.emoji}</span>
+                        <span className={`text-sm font-medium ${isActive ? 'text-white' : ''}`}>{item.label}</span>
                       </button>
                     );
                   })}
@@ -455,21 +451,9 @@ export default function PatientLayout() {
             className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-soft-sage/10 text-soft-sage hover:bg-soft-sage/20 transition-colors"
           >
             <Volume2 className={`w-5 h-5 flex-shrink-0 ${isPlaying ? 'animate-pulse' : ''}`} />
-            {!sidebarCollapsed && (
-              <span className="font-medium text-sm">
-                {isPlaying ? 'Playing...' : 'Hear "You\'re Safe"'}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-medium-gray hover:bg-soft-taupe transition-colors"
-          >
-            <ChevronLeft
-              className={`w-5 h-5 flex-shrink-0 transition-transform ${sidebarCollapsed ? 'rotate-180' : ''}`}
-            />
-            {!sidebarCollapsed && <span className="font-medium text-sm">Collapse</span>}
+            <span className="font-medium text-sm">
+              {isPlaying ? 'Playing...' : 'Hear "You\'re Safe"'}
+            </span>
           </button>
 
           <button
@@ -477,12 +461,12 @@ export default function PatientLayout() {
             className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-gentle-coral hover:bg-gentle-coral/10 transition-colors"
           >
             <LogOut className="w-5 h-5 flex-shrink-0" />
-            {!sidebarCollapsed && <span className="font-medium text-sm">Logout</span>}
+            <span className="font-medium text-sm">Logout</span>
           </button>
         </div>
       </aside>
 
-      <main className={`flex-1 transition-all duration-300 ${sidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} overflow-y-auto pb-16 md:pb-0`}>
+      <main className="flex-1 md:ml-64 overflow-y-auto pb-16 md:pb-0">
         <div className="min-h-screen">
           {isSundowningTime && (
             <div className="bg-warm-amber/10 border-b border-warm-amber/20 px-4 py-3">
@@ -531,27 +515,24 @@ export default function PatientLayout() {
 
       {/* ── MOBILE BOTTOM NAV BAR ──────────────────────────────────────── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-soft-taupe z-50 flex items-stretch h-16 safe-area-pb">
-        {/* Show first 4 nav items + More button */}
         {[...navItems.slice(0, 4)].map((item) => {
-          const Icon = item.icon;
           const isActive = currentView === item.id;
           return (
             <button
               key={item.id}
               onClick={() => { setCurrentView(item.id); setShowMobileMenu(false); }}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
                 isActive ? 'text-warm-bronze' : 'text-medium-gray'
               }`}
             >
-              <Icon className="w-5 h-5" />
+              <span className="text-xl leading-none">{item.emoji}</span>
               <span className="text-[10px] font-medium leading-none">{item.label}</span>
             </button>
           );
         })}
-        {/* More button opens slide-up drawer */}
         <button
           onClick={() => setShowMobileMenu(true)}
-          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+          className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
             showMobileMenu ? 'text-warm-bronze' : 'text-medium-gray'
           }`}
         >
@@ -615,7 +596,6 @@ export default function PatientLayout() {
               {/* All nav items */}
               <div className="px-4 py-3 grid grid-cols-2 gap-2 max-h-[60vh] overflow-y-auto">
                 {[...navItems, ...moreNavItems].map((item) => {
-                  const Icon = item.icon;
                   const isActive = currentView === item.id;
                   return (
                     <button
@@ -627,7 +607,7 @@ export default function PatientLayout() {
                           : 'bg-soft-taupe/30 text-charcoal hover:bg-soft-taupe/60'
                       }`}
                     >
-                      <Icon className="w-5 h-5 flex-shrink-0" />
+                      <span className="text-xl leading-none flex-shrink-0">{item.emoji}</span>
                       <span className="font-medium text-sm">{item.label}</span>
                     </button>
                   );

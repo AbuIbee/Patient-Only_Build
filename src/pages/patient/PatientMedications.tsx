@@ -282,13 +282,21 @@ function DoseRow({
     return now.getHours() > h || (now.getHours() === h && now.getMinutes() > m);
   })();
 
+  const handleRowClick = () => {
+    if (status === 'pending') onTake();
+    else if (status === 'missed') onTake();
+    else if (status === 'taken' || status === 'skipped') onUndo();
+  };
+
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-      className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${
-        status === 'taken'   ? 'bg-soft-sage/10 border-soft-sage/20' :
-        status === 'missed'  ? 'bg-gentle-coral/10 border-gentle-coral/20' :
-        status === 'skipped' ? 'bg-warm-amber/10 border-warm-amber/20' :
-        'bg-white border-soft-taupe shadow-sm hover:shadow-md'
+    <motion.button
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+      onClick={handleRowClick}
+      className={`w-full text-left flex items-center gap-3 p-3 rounded-2xl border transition-all cursor-pointer active:scale-[0.99] ${
+        status === 'taken'   ? 'bg-soft-sage/10 border-soft-sage/20 hover:bg-soft-sage/15' :
+        status === 'missed'  ? 'bg-gentle-coral/10 border-gentle-coral/20 hover:bg-gentle-coral/15' :
+        status === 'skipped' ? 'bg-warm-amber/10 border-warm-amber/20 hover:bg-warm-amber/15' :
+        'bg-white border-soft-taupe shadow-sm hover:shadow-md hover:border-warm-bronze/30'
       }`}>
       {/* Color dot + form icon */}
       <div className={`w-10 h-10 rounded-xl ${med.color || 'bg-warm-bronze'} flex items-center justify-center flex-shrink-0 ${status === 'taken' ? 'opacity-50' : ''}`}>
@@ -320,36 +328,23 @@ function DoseRow({
         )}
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-1.5 flex-shrink-0">
+      {/* Action hint — right side */}
+      <div className="flex items-center gap-1 flex-shrink-0 text-xs text-medium-gray">
         {status === 'pending' && (
-          <>
-            <button onClick={onTake}
-              className="flex items-center gap-1 px-3 py-1.5 bg-soft-sage text-white rounded-xl text-xs font-semibold hover:bg-soft-sage/90 transition-colors shadow-sm">
-              <Check className="w-3.5 h-3.5" /> Take
-            </button>
-            {isPast && (
-              <button onClick={onSkip}
-                className="px-2 py-1.5 bg-soft-taupe/40 text-medium-gray rounded-xl text-xs font-medium hover:bg-soft-taupe transition-colors">
-                Skip
-              </button>
-            )}
-          </>
-        )}
-        {(status === 'taken' || status === 'skipped') && (
-          <button onClick={onUndo} title="Undo"
-            className="p-1.5 text-medium-gray hover:text-charcoal rounded-lg hover:bg-soft-taupe/40 transition-colors">
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
+          <span className="flex items-center gap-1 px-2 py-1 bg-soft-sage/15 text-soft-sage rounded-lg font-semibold">
+            <Check className="w-3 h-3" /> Tap to take
+          </span>
         )}
         {status === 'missed' && (
-          <button onClick={onTake}
-            className="flex items-center gap-1 px-2 py-1.5 bg-gentle-coral/20 text-gentle-coral rounded-xl text-xs font-semibold hover:bg-gentle-coral/30 transition-colors">
-            <RotateCcw className="w-3.5 h-3.5" /> Late
-          </button>
+          <span className="flex items-center gap-1 px-2 py-1 bg-gentle-coral/20 text-gentle-coral rounded-lg font-semibold">
+            <RotateCcw className="w-3 h-3" /> Late
+          </span>
+        )}
+        {(status === 'taken' || status === 'skipped') && (
+          <RotateCcw className="w-4 h-4 text-medium-gray" />
         )}
       </div>
-    </motion.div>
+    </motion.button>
   );
 }
 
@@ -369,6 +364,7 @@ export default function PatientMedications() {
   const [weekStart, setWeekStart]   = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [monthDate, setMonthDate]   = useState(() => new Date());
   const [detailMed, setDetailMed]   = useState<LocalMed | null>(null);
+  const [dayPopup,  setDayPopup]    = useState<{ date: string; doses: ReturnType<typeof getDosesForDate> } | null>(null);
 
   const todayStr = today();
 
@@ -756,16 +752,24 @@ export default function PatientMedications() {
                 const d = format(day, 'yyyy-MM-dd');
                 const doses = getDosesForDate(d);
                 const isToday = isSameDay(day, new Date());
+                const isFuture = day > new Date();
                 const colorCls = getMonthCellColor(day);
                 const taken = doses.filter(x => getStatus(x.medId, d, x.time) === 'taken').length;
+                // Use dark text on light/empty cells, white only on solid-color cells
+                const textCls = (doses.length === 0 || isFuture)
+                  ? 'text-charcoal'
+                  : colorCls.includes('bg-soft-sage') || colorCls.includes('bg-gentle-coral') || colorCls.includes('bg-warm-amber/80')
+                  ? 'text-white'
+                  : 'text-charcoal';
                 return (
-                  <div key={d}
-                    className={`aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 ${colorCls} ${isToday ? 'ring-2 ring-warm-bronze ring-offset-1' : ''}`}>
-                    <span className="text-xs font-bold">{format(day, 'd')}</span>
+                  <button key={d}
+                    onClick={() => setDayPopup({ date: d, doses })}
+                    className={`aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all hover:scale-105 hover:shadow-sm ${colorCls} ${isToday ? 'ring-2 ring-warm-bronze ring-offset-1' : ''}`}>
+                    <span className={`text-xs font-bold ${textCls}`}>{format(day, 'd')}</span>
                     {doses.length > 0 && (
-                      <span className="text-[9px] font-semibold opacity-80">{taken}/{doses.length}</span>
+                      <span className={`text-[9px] font-semibold opacity-90 ${textCls}`}>{taken}/{doses.length}</span>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -946,14 +950,71 @@ export default function PatientMedications() {
               </Card>
             )}
 
-            <button onClick={() => setShowAdd(true)}
-              className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-soft-taupe rounded-2xl text-medium-gray hover:border-warm-bronze hover:text-warm-bronze hover:bg-warm-bronze/5 transition-all text-sm font-medium">
-              <Plus className="w-4 h-4" /> Add Another Medication
-            </button>
           </motion.div>
         )}
 
       </AnimatePresence>
+
+      {/* ── Day Detail Popup ─────────────────────────────────────────────── */}
+      <Dialog open={!!dayPopup} onOpenChange={() => setDayPopup(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <Calendar className="w-5 h-5 text-warm-bronze" />
+              {dayPopup ? format(parseISO(dayPopup.date), 'EEEE, MMMM d') : ''}
+            </DialogTitle>
+            <DialogDescription>
+              {dayPopup?.doses.length === 0
+                ? 'No medications scheduled for this day.'
+                : `${dayPopup?.doses.filter(d => getStatus(d.medId, dayPopup.date, d.time) === 'taken').length} of ${dayPopup?.doses.length} doses taken`}
+            </DialogDescription>
+          </DialogHeader>
+          {dayPopup && (
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {dayPopup.doses.length === 0 ? (
+                <div className="py-8 text-center text-medium-gray">
+                  <Pill className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No medications this day</p>
+                </div>
+              ) : (
+                dayPopup.doses.map(d => {
+                  const status = getStatus(d.medId, dayPopup.date, d.time);
+                  const isTodayOrPast = parseISO(dayPopup.date) <= new Date();
+                  return (
+                    <div key={`${d.medId}-${d.time}`}
+                      className={`flex items-center gap-3 p-3 rounded-xl border ${
+                        status === 'taken'   ? 'bg-soft-sage/10 border-soft-sage/20' :
+                        status === 'missed'  ? 'bg-gentle-coral/10 border-gentle-coral/20' :
+                        'bg-white border-soft-taupe'
+                      }`}>
+                      <div className={`w-9 h-9 rounded-xl ${d.med.color || 'bg-warm-bronze'} flex items-center justify-center flex-shrink-0`}>
+                        <Pill className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <p className={`text-sm font-semibold ${status === 'taken' ? 'text-medium-gray line-through' : 'text-charcoal'}`}>
+                          {d.med.name}
+                        </p>
+                        <p className="text-xs text-medium-gray">{d.time} · {d.med.dosage}</p>
+                      </div>
+                      <StatusBadge status={status} />
+                      {isTodayOrPast && status !== 'taken' && (
+                        <button
+                          onClick={() => {
+                            setConfirm({ medId: d.medId, time: d.time, date: dayPopup.date, action: 'take' });
+                            setDayPopup(null);
+                          }}
+                          className="text-xs px-2 py-1 bg-soft-sage text-white rounded-lg font-semibold hover:bg-soft-sage/90 transition-colors">
+                          Mark taken
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ── Add Medication Dialog ─────────────────────────────────────────── */}
       <Dialog open={showAdd} onOpenChange={setShowAdd}>

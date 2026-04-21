@@ -91,7 +91,7 @@ export default function LandingPage() {
                 <span className="text-warm-bronze">every single day.</span>
               </h1>
 
-              <p className="text-base text-warm-bronze font-semibold mb-5">
+              <p className="text-base text-charcoal font-semibold mb-5">
                 A daily support app for people with memory and cognitive challenges — with built-in visibility for families and care partners.
               </p>
 
@@ -153,17 +153,37 @@ export default function LandingPage() {
               className="space-y-5"
             >
               {/* Main card */}
-              <div className="bg-white rounded-3xl p-8 border border-soft-taupe shadow-lg">
+            <div className="bg-white rounded-3xl p-8 border border-soft-taupe shadow-lg">
+              
+                {/* Topic 9 — 3 pillars */}
                 <p className="text-lg font-bold text-charcoal leading-snug mb-3">
-                  Built for the{' '}
-                  <span className="text-warm-bronze">quiet heroes</span> — the daughters,
-                  sons, husbands, and wives who show up every single day.
+                  Built for the{' '} <span className="text-warm-bronze">quiet heroes</span></p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { emoji: '🧭', label: 'Orientation' },
+                    { emoji: '🔁', label: 'Routine' },
+                    { emoji: '💛', label: 'Reassurance' },
+                  ].map(p => (
+                    <div key={p.label} className="bg-warm-bronze/10 rounded-xl px-2 py-3 text-center">
+                      <span className="text-xl block mb-1">{p.emoji}</span>
+                      <p className="text-xs font-bold text-charcoal">{p.label}</p>
+                    </div>
+                  ))}
+                </div>
+              
+                <div className="mt-5 pt-5 border-t border-soft-taupe"></div>
+              <p className="text-lg font-bold text-charcoal leading-snug mb-3">
+                The daughters, sons, husbands, and wives who show up every single day!
                 </p>
                 <p className="text-medium-gray leading-relaxed text-sm">
                   You're not a doctor or a nurse. You're someone who loves deeply and wants
                   to do right by them. My Memoria Ally gives you the tools to make every
                   day a little calmer — for both of you.
                 </p>
+                {/* Quote */}
+              <p className="text-center text-sm text-warm-bronze font-semibold italic">
+                "Because memory is precious. And so are you."
+              </p>
                 <div className="mt-5 pt-5 border-t border-soft-taupe">
                   <p className="text-xs text-medium-gray uppercase tracking-widest font-semibold mb-3">Hard utility built in</p>
                   <div className="grid grid-cols-2 gap-2">
@@ -185,22 +205,7 @@ export default function LandingPage() {
                   </div>
                 </div>
 
-                <div className="mt-5 pt-5 border-t border-soft-taupe">
-                  {/* Topic 9 — 3 pillars */}
-                  <p className="text-xs text-medium-gray uppercase tracking-widest font-semibold mb-3">Built on 3 pillars</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { emoji: '🧭', label: 'Orientation' },
-                      { emoji: '🔁', label: 'Routine' },
-                      { emoji: '💛', label: 'Reassurance' },
-                    ].map(p => (
-                      <div key={p.label} className="bg-warm-bronze/10 rounded-xl px-2 py-3 text-center">
-                        <span className="text-xl block mb-1">{p.emoji}</span>
-                        <p className="text-xs font-bold text-charcoal">{p.label}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+
 
                 <div className="mt-5 pt-5 border-t border-soft-taupe">
                   <div className="bg-charcoal rounded-2xl px-5 py-4">
@@ -228,10 +233,7 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              {/* Quote */}
-              <p className="text-center text-sm text-warm-bronze font-semibold italic">
-                "Because memory is precious. And so are you."
-              </p>
+              
             </motion.div>
           </div>
         </div>
