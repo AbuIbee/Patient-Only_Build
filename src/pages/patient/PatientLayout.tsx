@@ -267,9 +267,9 @@ export default function PatientLayout() {
   // "More" contains care-admin items only
   const moreNavItems = [
     { id: 'checkin'             as PatientView, label: 'Care Partners',       emoji: '📋' },
+    { id: 'documents'           as PatientView, label: 'Documents',            emoji: '📄' },
     { id: 'intake'              as PatientView, label: 'Patient Intake Form', emoji: '📝' },
     { id: 'emergency_contacts'  as PatientView, label: 'Emergency Contact',   emoji: '🚨' },
-    { id: 'documents'           as PatientView, label: 'Papers',              emoji: '📄' },
   ];
 
   const allNavItems = [...navItems, ...moreNavItems];

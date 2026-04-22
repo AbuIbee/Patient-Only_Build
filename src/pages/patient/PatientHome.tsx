@@ -356,27 +356,18 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                 <div className="absolute -bottom-4 -right-8 w-48 h-48 rounded-full bg-white/10" />
               </div>
               <div className="relative z-10">
-                {/* Heart icon */}
-                <motion.div
-                  animate={{ scale: [1, 1.08, 1] }}
-                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-                  className="flex justify-center mb-4"
-                >
-                  <div className="w-14 h-14 bg-white/70 rounded-full flex items-center justify-center shadow-soft">
-                    <Heart className="w-7 h-7 text-gentle-coral fill-gentle-coral/40" />
-                  </div>
-                </motion.div>
+                {/* Top row: mic — Hear a loving message — heart (all same size) */}
+                <div className="flex justify-center items-center gap-4 mb-4">
+                  {/* Microphone — left */}
+                  <button
+                    onClick={() => setShowRecorder(true)}
+                    className="w-9 h-9 rounded-full bg-white/60 hover:bg-white/90 flex items-center justify-center border border-white/60 text-charcoal/60 hover:text-warm-bronze transition-all shadow-sm"
+                    title={customVoiceBase64 ? 'Change recording' : 'Record a loving message'}
+                  >
+                    <Mic className="w-5 h-5" />
+                  </button>
 
-                {/* Primary affirmation — large and warm */}
-                <h1 className="text-4xl md:text-5xl font-bold text-charcoal leading-tight tracking-tight mb-2">
-                  {patient?.affirmation?.split('.')[0] || 'You are safe'}
-                </h1>
-                <p className="text-xl md:text-2xl font-medium text-charcoal/70 leading-snug">
-                  {patient?.affirmation?.split('.').slice(1).join('. ') || 'You are loved. You are at home.'}
-                </p>
-
-                {/* Voice playback row — compact, unobtrusive */}
-                <div className="mt-5 flex items-center justify-center gap-3">
+                  {/* Hear a loving message — centre */}
                   {customVoiceBase64 ? (
                     <button
                       onClick={playSafetyMessage}
@@ -389,15 +380,33 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                       <Volume2 className={`w-4 h-4 ${isPlaying ? 'animate-pulse text-white' : 'text-warm-bronze'}`} />
                       {isPlaying ? 'Playing…' : 'Hear a loving message'}
                     </button>
-                  ) : null}
-                  <button
-                    onClick={() => setShowRecorder(true)}
-                    className="w-9 h-9 rounded-full bg-white/50 hover:bg-white/80 flex items-center justify-center border border-white/60 text-charcoal/50 hover:text-warm-bronze transition-all"
-                    title={customVoiceBase64 ? 'Change recording' : 'Record a loving message'}
+                  ) : (
+                    <span className="text-xs text-charcoal/40 italic">No recording yet</span>
+                  )}
+
+                  {/* Heart — right, same size as mic button */}
+                  <motion.div
+                    animate={{ scale: [1, 1.08, 1] }}
+                    transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
                   >
-                    <Mic className="w-4 h-4" />
-                  </button>
+                    <div className="w-9 h-9 bg-white/60 rounded-full flex items-center justify-center shadow-sm">
+                      <Heart className="w-5 h-5 text-gentle-coral fill-gentle-coral/40" />
+                    </div>
+                  </motion.div>
                 </div>
+
+                {/* Greeting */}
+                <p className="text-xl text-charcoal font-semibold mb-2 drop-shadow-sm text-center">
+                  {getTimeOfDayGreeting()}{patient?.preferredName || patient?.firstName ? `, ${patient?.preferredName || patient?.firstName}` : ''}!
+                </p>
+
+                {/* Primary affirmation — large and warm */}
+                <h1 className="text-4xl md:text-5xl font-bold text-charcoal leading-tight tracking-tight mb-2 text-center">
+                  {patient?.affirmation?.split('.')[0] || 'You are safe'}
+                </h1>
+                <p className="text-xl md:text-xl font-medium text-charcoal/70 leading-snug text-center">
+                  {patient?.affirmation?.split('.').slice(1).join('. ') || 'You are loved. You are at home.'}
+                </p>
               </div>
             </div>
 
@@ -417,10 +426,10 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                   <div className="flex items-center gap-3 text-charcoal">
                     <WeatherIcon condition={weather.condition} className="w-6 h-6" />
                     <div className="text-right">
-                      <div className="text-2xl font-bold text-charcoal leading-none">
+                      <div className="text-4xl font-bold text-charcoal leading-none">
                         {weather.temp}°
                       </div>
-                      <div className="mt-1 text-sm font-medium text-charcoal/85 leading-snug">
+                      <div className="mt-1 text-medium font-medium text-charcoal/85 leading-snug">
                         {weather.message}
                       </div>
                     </div>
@@ -428,49 +437,10 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                 </div>
               </div>
 
-              <p className="text-xl text-charcoal font-semibold mb-2 drop-shadow-sm">
-                {getTimeOfDayGreeting()}{patient?.preferredName || patient?.firstName ? `, ${patient?.preferredName || patient?.firstName}` : ''}!
-              </p>
-              {/* Topic 7 — reassuring microcopy: prominent, warm, easy to see */}
-              <div className="inline-flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-4 py-1.5 mb-4 shadow-sm">
-                <span className="text-base">
-                  {isMorning ? '☀️' : hour < 19 ? '💛' : '🌙'}
-                </span>
-                <p className="text-sm text-charcoal font-semibold">
-                  {isMorning
-                    ? "You're on track today. Here's what comes next."
-                    : hour < 19
-                    ? 'You are supported. Your care team is with you.'
-                    : 'A good evening to rest. You did well today.'}
-                </p>
-              </div>
-
-              {/* Topic 5 — Daily anchor strip: turns usage into rhythm */}
-              <div className="flex gap-2 mb-5">
-                {[
-                  { label: 'Morning', emoji: '☀️', active: isMorning },
-                  { label: 'Midday',  emoji: '🌤️', active: !isMorning && hour < 17 },
-                  { label: 'Evening', emoji: '🌙', active: hour >= 17 },
-                ].map(anchor => (
-                  <div
-                    key={anchor.label}
-                    className={`flex-1 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-                      anchor.active
-                        ? 'bg-warm-bronze text-white shadow-sm'
-                        : 'bg-white/40 text-charcoal/50'
-                    }`}
-                  >
-                    <span className="text-sm">{anchor.emoji}</span>
-                    {anchor.label}
-                    {anchor.active && <span className="ml-auto w-1.5 h-1.5 bg-white rounded-full animate-pulse" />}
-                  </div>
-                ))}
-              </div>
-
               <div className="border-t border-white/30 pt-4">
                 <h3 className="text-lg font-semibold text-charcoal mb-3 flex items-center gap-2">
                   <ChevronRight className="w-5 h-5 text-warm-bronze" />
-                  What's Next Today
+                  
                 </h3>
                 {tasks.length > 0 ? (
                   <div className="space-y-2">
@@ -493,7 +463,7 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                     ))}
                   </div>
                 ) : (
-                  <p className="text-charcoal/70 font-medium">All done for today! Great job!</p>
+                  <p className="text-charcoal/70 font-medium"></p>
                 )}
               </div>
 

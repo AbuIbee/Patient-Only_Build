@@ -18,7 +18,7 @@ interface MediaUploaderProps {
   readOnly?: boolean; // patient view: can see but maybe not delete others' uploads
 }
 
-const MAX_FILE_SIZE  = 500 * 1024 * 1024; // 500 MB
+const MAX_FILE_SIZE  = 5 * 1024 * 1024 * 1024; // 5 GB
 const ALLOWED_TYPES  = ['video/mp4', 'video/quicktime', 'video/webm', 'video/avi',
                         'image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
@@ -64,7 +64,7 @@ export default function MediaUploader({ patientId, patientName, readOnly = false
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
-      toast.error('File too large. Maximum size is 500 MB.');
+      toast.error('File too large. Maximum size is 5 GB.');
       return;
     }
 

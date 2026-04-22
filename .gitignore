@@ -7,3 +7,10 @@ Patient-Only_Build/
 .vercel/"dist/" 
 .vercel
 .env*.local
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

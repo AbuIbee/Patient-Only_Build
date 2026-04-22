@@ -1,6 +1,7 @@
 import { useApp } from '@/store/AppContext';
 import { Card } from '@/components/ui/card';
-import { Bell, Clock, Calendar, Pill, Stethoscope, CheckCircle2, AlertCircle, Plus, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Bell, Clock, Calendar, Pill, Stethoscope, CheckCircle2, AlertCircle, Plus, X, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useMemo } from 'react';
 import { format, startOfMonth, getDaysInMonth, addMonths, subMonths, startOfWeek, addDays, isSameDay, parseISO } from 'date-fns';
@@ -45,179 +46,13 @@ function ReminderCalendar() {
   const [view,       setView]       = useState<CalendarView>('monthly');
   const [baseDate,   setBaseDate]   = useState(new Date());
   const [notes,      setNotes]      = useState<CalendarNote[]>(loadCalNotes);
-  const [selected,   setSelected]   = useState<string>(todayStr());
+  const [popupDate,  setPopupDate]  = useState<string | null>(null);
   const [addType,    setAddType]    = useState<'reminder' | 'appointment'>('reminder');
   const [addText,    setAddText]    = useState('');
-  const [showForm,   setShowForm]   = useState(false);
+  const [editId,     setEditId]     = useState<string | null>(null);
+  const [editText,   setEditText]   = useState('');
 
-  // Days for weekly view
-  const weekDays = useMemo(() => {
-    const start = startOfWeek(baseDate, { weekStartsOn: 1 });
-    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  }, [baseDate]);
 
-  // Days for monthly view
-  const monthDays = useMemo(() => {
-    const start = startOfMonth(baseDate);
-    const count = getDaysInMonth(baseDate);
-    const firstDow = (start.getDay() + 6) % 7; // Mon=0
-    const blanks = Array(firstDow).fill(null);
-    const days = Array.from({ length: count }, (_, i) => addDays(start, i));
-    return [...blanks, ...days];
-  }, [baseDate]);
-
-  const notesOnDate = (dateStr: string) => notes.filter(n => n.date === dateStr);
-
-  const addNote = () => {
-    if (!addText.trim()) return;
-    const note: CalendarNote = { id: `note_${Date.now()}`, date: selected, text: addText.trim(), type: addType };
-    const updated = [...notes, note];
-    saveCalNotes(updated);
-    setNotes(updated);
-    setAddText('');
-    setShowForm(false);
-  };
-
-  const removeNote = (id: string) => {
-    const updated = notes.filter(n => n.id !== id);
-    saveCalNotes(updated);
-    setNotes(updated);
-  };
-
-  const nav = (dir: number) => {
-    if (view === 'weekly') setBaseDate(d => addDays(d, dir * 7));
-    else setBaseDate(d => dir > 0 ? addMonths(d, 1) : subMonths(d, 1));
-  };
-
-  const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-
-  const DayCell = ({ date, compact = false }: { date: Date; compact?: boolean }) => {
-    const ds = format(date, 'yyyy-MM-dd');
-    const isToday = ds === todayStr();
-    const isSelected = ds === selected;
-    const dayNotes = notesOnDate(ds);
-    return (
-      <button
-        onClick={() => { setSelected(ds); setShowForm(false); }}
-        className={`relative flex flex-col items-center rounded-xl p-1 transition-all
-          ${isSelected ? 'bg-warm-bronze text-white shadow-md' : isToday ? 'bg-warm-bronze/15 text-warm-bronze' : 'hover:bg-soft-taupe/50 text-charcoal'}
-          ${compact ? 'min-h-[52px]' : 'min-h-[72px]'}
-        `}
-      >
-        <span className={`text-xs font-bold ${isSelected ? 'text-white' : isToday ? 'text-warm-bronze' : 'text-medium-gray'}`}>
-          {compact ? format(date,'EEE') : ''}{compact ? '\n' : ''}{format(date, 'd')}
-        </span>
-        {dayNotes.length > 0 && (
-          <div className="flex flex-wrap justify-center gap-0.5 mt-1">
-            {dayNotes.slice(0, compact ? 1 : 3).map(n => (
-              <div key={n.id} className={`w-1.5 h-1.5 rounded-full ${n.type === 'appointment' ? 'bg-gentle-coral' : 'bg-calm-blue'} ${isSelected ? 'bg-white/80' : ''}`} />
-            ))}
-            {!compact && dayNotes.length > 3 && <span className={`text-[9px] ${isSelected ? 'text-white/80' : 'text-medium-gray'}`}>+{dayNotes.length - 3}</span>}
-          </div>
-        )}
-      </button>
-    );
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* View toggle + nav */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-1 bg-soft-taupe/20 rounded-xl p-1">
-          {(['weekly','monthly'] as CalendarView[]).map(v => (
-            <button key={v} onClick={() => setView(v)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-semibold capitalize transition-all ${view === v ? 'bg-white shadow text-charcoal' : 'text-medium-gray hover:text-charcoal'}`}>
-              {v}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={() => nav(-1)} className="w-8 h-8 rounded-lg hover:bg-soft-taupe/50 flex items-center justify-center transition-colors"><ChevronLeft className="w-4 h-4 text-charcoal" /></button>
-          <span className="text-sm font-semibold text-charcoal min-w-[140px] text-center">
-            {view === 'monthly' ? format(baseDate,'MMMM yyyy') : `${format(weekDays[0],'MMM d')} – ${format(weekDays[6],'MMM d, yyyy')}`}
-          </span>
-          <button onClick={() => nav(1)} className="w-8 h-8 rounded-lg hover:bg-soft-taupe/50 flex items-center justify-center transition-colors"><ChevronRight className="w-4 h-4 text-charcoal" /></button>
-        </div>
-      </div>
-
-      {/* Calendar grid */}
-      {view === 'monthly' ? (
-        <div>
-          <div className="grid grid-cols-7 mb-1">
-            {DAY_LABELS.map(d => <div key={d} className="text-center text-xs font-semibold text-medium-gray py-1">{d}</div>)}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {monthDays.map((date, i) =>
-              date ? <DayCell key={i} date={date} /> : <div key={i} />
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-7 gap-1">
-          {weekDays.map((date, i) => <DayCell key={i} date={date} compact />)}
-        </div>
-      )}
-
-      {/* Selected day notes */}
-      <div className="bg-warm-ivory rounded-2xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="font-semibold text-charcoal">
-            {isSameDay(parseISO(selected), new Date()) ? 'Today' : format(parseISO(selected + 'T12:00:00'), 'EEEE, MMMM d')}
-          </h4>
-          <button
-            onClick={() => setShowForm(s => !s)}
-            className="flex items-center gap-1 text-sm font-medium text-warm-bronze hover:text-deep-bronze transition-colors"
-          >
-            <Plus className="w-4 h-4" /> Add
-          </button>
-        </div>
-
-        {/* Add form */}
-        <AnimatePresence>
-          {showForm && (
-            <motion.div initial={{ opacity:0, y:-8 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:-8 }} className="mb-3 space-y-2">
-              <div className="flex gap-2">
-                {(['reminder','appointment'] as const).map(t => (
-                  <button key={t} onClick={() => setAddType(t)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${addType===t ? t==='appointment' ? 'bg-gentle-coral text-white' : 'bg-calm-blue text-white' : 'bg-white border border-soft-taupe text-medium-gray'}`}>
-                    {t==='appointment' ? '🏥 Appointment' : '🔔 Reminder'}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  value={addText}
-                  onChange={e => setAddText(e.target.value)}
-                  onKeyDown={e => { if (e.key==='Enter') addNote(); if (e.key==='Escape') setShowForm(false); }}
-                  placeholder={addType==='appointment' ? 'e.g. Doctor visit at 10am…' : 'e.g. Call Mary…'}
-                  className="flex-1 px-3 py-2 text-sm rounded-xl border border-soft-taupe focus:outline-none focus:ring-2 focus:ring-warm-bronze/40 bg-white"
-                  autoFocus
-                />
-                <button onClick={addNote} className="px-4 py-2 bg-warm-bronze text-white rounded-xl text-sm font-semibold hover:bg-deep-bronze transition-colors">Save</button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Notes list */}
-        {notesOnDate(selected).length === 0 ? (
-          <p className="text-sm text-medium-gray italic">No notes for this day yet.</p>
-        ) : (
-          <div className="space-y-2">
-            {notesOnDate(selected).map(note => (
-              <div key={note.id} className={`flex items-start gap-2 p-3 rounded-xl ${note.type === 'appointment' ? 'bg-gentle-coral/10 border border-gentle-coral/20' : 'bg-calm-blue/10 border border-calm-blue/20'}`}>
-                <span className="text-base flex-shrink-0">{note.type === 'appointment' ? '🏥' : '🔔'}</span>
-                <p className="flex-1 text-sm text-charcoal">{note.text}</p>
-                <button onClick={() => removeNote(note.id)} className="w-5 h-5 rounded-full hover:bg-black/10 flex items-center justify-center flex-shrink-0">
-                  <X className="w-3 h-3 text-medium-gray" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 // ── My Tasks component ────────────────────────────────────────────────────────

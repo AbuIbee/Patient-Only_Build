@@ -143,9 +143,9 @@ export default function CalmMeDialog({ open, onClose }: { open: boolean; onClose
       return;
     }
 
-    const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
+    const MAX_VIDEO_SIZE = 5 * 1024 * 1024 * 1024;
     if (file.size > MAX_VIDEO_SIZE) {
-      setVideoError('Video exceeds the 100MB limit.');
+      setVideoError('Video exceeds the 5 GB limit.');
       e.target.value = '';
       return;
     }

@@ -28,10 +28,12 @@ interface CheckInData {
   sa_safety_concerns: boolean; sa_safety_checklist: string[]; sa_comments: string;
   // E - Behavior
   be_behaviors: string[]; be_trigger: string; be_comments: string;
+  be_agitation: string; be_wandering_risk: string; be_responsiveness: string; be_hallucinations: string;
   // F - Mood
   mo_mood: string; mo_social: string; mo_sleep: string; mo_comments: string;
   // G - Symptoms
   sy_symptoms: string[]; sy_severity: string; sy_other: string; sy_comments: string;
+  sy_pain: string; sy_respiratory: string; sy_gi: string; sy_neurological: string;
 }
 
 const EMPTY: CheckInData = {
@@ -42,8 +44,10 @@ const EMPTY: CheckInData = {
   sa_falls: '', sa_injury_details: '', sa_wandering: '',
   sa_safety_concerns: false, sa_safety_checklist: [], sa_comments: '',
   be_behaviors: [], be_trigger: '', be_comments: '',
+  be_agitation: '', be_wandering_risk: '', be_responsiveness: '', be_hallucinations: '',
   mo_mood: '', mo_social: '', mo_sleep: '', mo_comments: '',
   sy_symptoms: [], sy_severity: '', sy_other: '', sy_comments: '',
+  sy_pain: '', sy_respiratory: '', sy_gi: '', sy_neurological: '',
 };
 
 // ─── Option helpers ───────────────────────────────────────────────────────────
@@ -157,12 +161,26 @@ function Section({
 // ─── History row ──────────────────────────────────────────────────────────────
 function HistoryRow({ row }: { row: any }) {
   const [open, setOpen] = useState(false);
-  // Append T12:00 to avoid UTC midnight shifting the date back one day in local time zones
   const date = new Date(row.check_in_date + 'T12:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+  // All fields read directly from row columns — single source of truth
+  const be_agitation      = row.be_agitation;
+  const be_wandering_risk = row.be_wandering_risk;
+  const be_responsiveness = row.be_responsiveness;
+  const be_hallucinations = row.be_hallucinations;
+  const be_trigger        = row.be_trigger;
+  const sy_pain           = row.sy_pain;
+  const sy_respiratory    = row.sy_respiratory;
+  const sy_gi             = row.sy_gi;
+  const sy_neurological   = row.sy_neurological;
+  const sy_severity       = row.sy_severity;
+
   const flags: string[] = [];
   if (row.sa_falls && row.sa_falls !== 'None') flags.push('⚠️ Fall');
-  if ((row.be_behaviors || []).length > 0 && !row.be_behaviors.includes('None observed')) flags.push('🧠 Behavior');
-  if ((row.sy_symptoms || []).length > 0) flags.push('🩺 Symptoms');
+  if (be_agitation && be_agitation !== 'None observed' && be_agitation !== 'Unknown') flags.push('🧠 Behavior');
+  else if ((row.be_behaviors || []).length > 0 && !row.be_behaviors.includes('None observed')) flags.push('🧠 Behavior');
+  if (sy_pain && sy_pain !== 'None reported' && sy_pain !== 'Unknown') flags.push('🩺 Symptoms');
+  else if ((row.sy_symptoms || []).length > 0) flags.push('🩺 Symptoms');
 
   return (
     <div className="bg-white rounded-xl border border-soft-taupe overflow-hidden">
@@ -191,10 +209,28 @@ function HistoryRow({ row }: { row: any }) {
               </div>
             ))}
           </div>
-          {row.be_behaviors?.length > 0 && !row.be_behaviors.includes('None observed') && (
-            <div className="mt-3 p-3 bg-amber-50 rounded-xl">
-              <p className="text-xs font-medium text-amber-700 mb-1">Behaviors observed:</p>
-              <p className="text-xs text-amber-800">{row.be_behaviors.join(', ')}</p>
+          {(row.be_agitation || row.be_wandering_risk || row.be_responsiveness || row.be_hallucinations) && (
+            <div className="mt-3 p-3 bg-purple-50 rounded-xl">
+              <p className="text-xs font-medium text-purple-700 mb-1">Behavior & Responsiveness:</p>
+              <div className="text-xs text-purple-800 space-y-0.5">
+                {be_agitation && be_agitation !== 'None observed' && be_agitation !== 'Unknown' && <p>Agitation: {be_agitation}</p>}
+                {be_wandering_risk && be_wandering_risk !== 'None observed' && be_wandering_risk !== 'Unknown' && <p>Wandering: {be_wandering_risk}</p>}
+                {be_responsiveness && be_responsiveness !== 'Unknown' && <p>Responsiveness: {be_responsiveness}</p>}
+                {be_hallucinations && be_hallucinations !== 'None observed' && be_hallucinations !== 'Unknown' && <p>Hallucinations: {be_hallucinations}</p>}
+                {be_trigger && <p className="italic">Trigger: {be_trigger}</p>}
+              </div>
+            </div>
+          )}
+          {(sy_pain || sy_respiratory || sy_gi || sy_neurological) && (
+            <div className="mt-3 p-3 bg-red-50 rounded-xl">
+              <p className="text-xs font-medium text-red-700 mb-1">Symptoms & Comfort:</p>
+              <div className="text-xs text-red-800 space-y-0.5">
+                {sy_pain && sy_pain !== 'None reported' && sy_pain !== 'Unknown' && <p>Pain: {sy_pain}</p>}
+                {sy_respiratory && sy_respiratory !== 'Normal' && sy_respiratory !== 'Unknown' && <p>Respiratory: {sy_respiratory}</p>}
+                {sy_gi && sy_gi !== 'None' && sy_gi !== 'Unknown' && <p>GI: {sy_gi}</p>}
+                {sy_neurological && sy_neurological !== 'Baseline' && sy_neurological !== 'Unknown' && <p>Neurological: {sy_neurological}</p>}
+                {sy_severity && <p className="font-medium">Severity: {sy_severity}</p>}
+              </div>
             </div>
           )}
           {[row.fn_comments, row.nu_comments, row.sa_comments, row.be_comments, row.mo_comments, row.sy_comments]
@@ -257,9 +293,9 @@ export default function CarePartnerCheckin() {
     B: !!(data.nu_appetite || data.nu_meal_pct),
     C: !!(data.co_urinary || data.co_bowel),
     D: !!data.sa_falls,
-    E: data.be_behaviors.length > 0,
+    E: !!(data.be_agitation || data.be_wandering_risk || data.be_responsiveness || data.be_hallucinations || data.be_behaviors.length > 0),
     F: !!(data.mo_mood || data.mo_sleep),
-    G: data.sy_symptoms.length > 0 || !!data.sy_other,
+    G: !!(data.sy_pain || data.sy_respiratory || data.sy_gi || data.sy_neurological || data.sy_other),
   };
 
   const completedCount = Object.values(sectionComplete).filter(Boolean).length;
@@ -277,11 +313,58 @@ export default function CarePartnerCheckin() {
     setSaving(true);
     try {
       const { error } = await supabase.from('care_partner_checkins').insert({
-        patient_id:        patientId,
-        submitted_by:      state.currentUser.id,
-        submitted_by_name: `${state.currentUser.firstName} ${state.currentUser.lastName}`,
-        check_in_date:     new Date().toISOString().split('T')[0],
-        ...data,
+        patient_id:           patientId,
+        submitted_by:         state.currentUser.id,
+        submitted_by_name:    `${state.currentUser.firstName} ${state.currentUser.lastName}`,
+        check_in_date:        new Date().toISOString().split('T')[0],
+        // A — Daily Function
+        fn_dressing:          data.fn_dressing,
+        fn_bathing:           data.fn_bathing,
+        fn_toileting:         data.fn_toileting,
+        fn_transfers:         data.fn_transfers,
+        fn_mobility:          data.fn_mobility,
+        fn_medication:        data.fn_medication,
+        fn_comments:          data.fn_comments,
+        // B — Nutrition
+        nu_appetite:          data.nu_appetite,
+        nu_meal_pct:          data.nu_meal_pct,
+        nu_fluids:            data.nu_fluids,
+        nu_swallowing:        data.nu_swallowing,
+        nu_comments:          data.nu_comments,
+        // C — Continence
+        co_urinary:           data.co_urinary,
+        co_bowel:             data.co_bowel,
+        co_skin:              data.co_skin,
+        co_comments:          data.co_comments,
+        // D — Safety
+        sa_falls:             data.sa_falls,
+        sa_injury_details:    data.sa_injury_details,
+        sa_wandering:         data.sa_wandering,
+        sa_safety_concerns:   data.sa_safety_concerns,
+        sa_safety_checklist:  data.sa_safety_checklist,
+        sa_comments:          data.sa_comments,
+        // E — Behavior & Responsiveness
+        be_behaviors:         data.be_behaviors,
+        be_trigger:           data.be_trigger,
+        be_agitation:         data.be_agitation,
+        be_wandering_risk:    data.be_wandering_risk,
+        be_responsiveness:    data.be_responsiveness,
+        be_hallucinations:    data.be_hallucinations,
+        be_comments:          data.be_comments,
+        // F — Mood & Social
+        mo_mood:              data.mo_mood,
+        mo_social:            data.mo_social,
+        mo_sleep:             data.mo_sleep,
+        mo_comments:          data.mo_comments,
+        // G — Symptoms & Comfort
+        sy_symptoms:          data.sy_symptoms,
+        sy_severity:          data.sy_severity,
+        sy_other:             data.sy_other,
+        sy_pain:              data.sy_pain,
+        sy_respiratory:       data.sy_respiratory,
+        sy_gi:                data.sy_gi,
+        sy_neurological:      data.sy_neurological,
+        sy_comments:          data.sy_comments,
       });
       if (error) throw error;
       toast.success('Care Partner report submitted! Your caregiver and therapist can now view it.');
@@ -459,18 +542,17 @@ export default function CarePartnerCheckin() {
             color="bg-deep-bronze/10 text-deep-bronze"
             open={openSections.E} onToggle={() => toggleSection('E')}
             completed={sectionComplete.E}>
-            <MultiCheck
-              label="Behaviors observed today (select all that apply)"
-              options={[
-                'Wandering / pacing','Verbal aggression','Physical aggression',
-                'Resistance to care','Socially inappropriate behavior','Hallucinations',
-                'Delusions / paranoia','Repetitive questioning','Sundowning symptoms',
-                'Agitation / restlessness','Unsafe judgment / impulsivity','None observed',
-              ]}
-              selected={data.be_behaviors}
-              onChange={set('be_behaviors')}
-            />
-            {data.be_behaviors.length > 0 && !data.be_behaviors.includes('None observed') && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Select label="Agitation Level" value={data.be_agitation} onChange={set('be_agitation')}
+                options={['None observed','Mild — easily redirected','Moderate — persistent','Severe — unable to redirect','Unknown']} />
+              <Select label="Wandering / Elopement Risk" value={data.be_wandering_risk} onChange={set('be_wandering_risk')}
+                options={['None observed','Pacing only','Attempted door exit','Left the area','Unknown']} />
+              <Select label="Responsiveness" value={data.be_responsiveness} onChange={set('be_responsiveness')}
+                options={['Alert and oriented','Confused but responsive','Lethargic','Unresponsive','Unknown']} />
+              <Select label="Hallucinations / Delusions" value={data.be_hallucinations} onChange={set('be_hallucinations')}
+                options={['None observed','Possible — unsure','Visual hallucinations','Auditory hallucinations','Delusions / paranoia','Unknown']} />
+            </div>
+            {(data.be_agitation && data.be_agitation !== 'None observed' && data.be_agitation !== 'Unknown') && (
               <div className="space-y-1">
                 <label className="text-sm font-medium text-charcoal">Trigger noticed?</label>
                 <input value={data.be_trigger} onChange={e => set('be_trigger')(e.target.value)}
@@ -502,22 +584,22 @@ export default function CarePartnerCheckin() {
             color="bg-soft-sage/20 text-green-700"
             open={openSections.G} onToggle={() => toggleSection('G')}
             completed={sectionComplete.G}>
-            <MultiCheck
-              label="Symptoms present today (select all that apply)"
-              options={[
-                'Pain / discomfort','GI symptoms (nausea, vomiting, diarrhea, constipation)',
-                'Shortness of breath','Fever / chills','New or worsening confusion',
-                'Dizziness','Poor balance','New weakness','Safety concern (general)',
-              ]}
-              selected={data.sy_symptoms}
-              onChange={set('sy_symptoms')}
-            />
-            {data.sy_symptoms.length > 0 && (
-              <Select label="Overall Severity" value={data.sy_severity} onChange={set('sy_severity')}
-                options={['Mild','Moderate','Severe']} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Select label="Pain / Discomfort" value={data.sy_pain} onChange={set('sy_pain')}
+                options={['None reported','Mild — managed well','Moderate — affecting daily activity','Severe — significant distress','Unknown']} />
+              <Select label="Respiratory" value={data.sy_respiratory} onChange={set('sy_respiratory')}
+                options={['Normal','Mild shortness of breath','Moderate shortness of breath','Labored breathing / wheezing','Unknown']} />
+              <Select label="GI Symptoms" value={data.sy_gi} onChange={set('sy_gi')}
+                options={['None','Nausea','Vomiting','Diarrhea','Constipation','Multiple GI issues','Unknown']} />
+              <Select label="Neurological / Confusion" value={data.sy_neurological} onChange={set('sy_neurological')}
+                options={['Baseline','Mildly increased confusion','Significantly increased confusion','New neurological symptom','Unknown']} />
+            </div>
+            {(data.sy_pain !== '' || data.sy_respiratory !== '' || data.sy_gi !== '' || data.sy_neurological !== '') && (
+              <Select label="Overall Symptom Severity" value={data.sy_severity} onChange={set('sy_severity')}
+                options={['Mild — well managed','Moderate — monitor closely','Severe — contact care team']} />
             )}
             <div className="space-y-1">
-              <label className="text-sm font-medium text-charcoal">Other symptoms (free text)</label>
+              <label className="text-sm font-medium text-charcoal">Other symptoms or concerns (free text)</label>
               <input value={data.sy_other} onChange={e => set('sy_other')(e.target.value)}
                 placeholder="Describe any other symptoms or concerns..."
                 className="w-full px-3 py-2 border border-soft-taupe rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-warm-bronze" />

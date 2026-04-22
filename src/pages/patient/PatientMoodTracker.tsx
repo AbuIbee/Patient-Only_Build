@@ -74,6 +74,9 @@ const SCORE_MAP: Record<string, number> = {
   // Mood
   'Calm': 4, 'Anxious': 2, 'Depressed': 1, 'Irritable': 2, 'Elevated': 3, 'Labile': 1,
   'Normal (sleep)': 4, 'Slept too much': 2, 'Slept too little': 2, 'Day-night reversal': 0,
+
+  // Symptom severity (inverted: lower severity = higher score)
+  'Mild': 3, 'Moderate': 1, 'Severe': 0,
 };
 
 function getScore(value: string | null, defaultValue: number = 2): number {
@@ -112,6 +115,7 @@ interface CheckInData {
 
   // E - Behavior
   be_behaviors: string[];
+  be_trigger: string | null;
 
   // F - Mood & Social
   mo_mood: string | null;
@@ -119,6 +123,7 @@ interface CheckInData {
 
   // G - Symptoms
   sy_symptoms: string[];
+  sy_severity: string | null;
 }
 
 type FilterKey = '7d' | '1m' | '2m' | '3m' | '6m' | '1y';
@@ -228,12 +233,17 @@ function SectionCombinedGraph({
         const n = (c.be_behaviors || []).filter(b => b !== 'None observed').length;
         return Math.max(0, 4 - Math.min(4, n));
       }
+      case 'be_trigger':
+        // 4 = no trigger noted, 0 = trigger present (concern indicator)
+        return c.be_trigger ? 0 : 4;
       case 'mo_mood':  return c.mo_mood ? getScore(c.mo_mood) : null;
       case 'mo_sleep': return c.mo_sleep ? getScore(c.mo_sleep) : null;
       case 'sy_symptoms': {
         const n = (c.sy_symptoms || []).length;
         return Math.max(0, 4 - Math.min(4, n));
       }
+      case 'sy_severity':
+        return c.sy_severity ? getScore(c.sy_severity) : null;
       default: return null;
     }
   };
@@ -620,6 +630,21 @@ export default function PatientMoodTracker() {
   const moodEntries = state.moodEntries ?? [];
   const patientId = state.currentUser?.id;
 
+  // Merge any localStorage mood entries that aren't already in state (saved while offline or before Supabase synced)
+  useEffect(() => {
+    try {
+      const stored: typeof moodEntries = JSON.parse(localStorage.getItem('moodEntries') || '[]');
+      if (stored.length === 0) return;
+      const existingIds = new Set(moodEntries.map(e => e.id));
+      const missing = stored.filter(e => !existingIds.has(e.id));
+      if (missing.length > 0) {
+        missing.forEach(e => dispatch({ type: 'ADD_MOOD_ENTRY', payload: e }));
+      }
+    } catch { /* ignore */ }
+  // Only run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 useEffect(() => {
   if (!patientId) return;
 
@@ -791,16 +816,18 @@ useEffect(() => {
   ];
 
   const sectionEMetrics = [
-    { key: 'be_behaviors', label: 'Behaviors Observed', color: '#7c3aed' },
+    { key: 'be_behaviors', label: 'Behavior Load',    color: '#7c3aed' },
+    { key: 'be_trigger',   label: 'Trigger Noted',    color: '#c026d3' },
   ];
 
   const sectionFMetrics = [
-    { key: 'mo_mood', label: 'Mood', color: '#db2777' },
+    { key: 'mo_mood',  label: 'Mood',  color: '#db2777' },
     { key: 'mo_sleep', label: 'Sleep', color: '#2563eb' },
   ];
 
   const sectionGMetrics = [
-    { key: 'sy_symptoms', label: 'Symptoms Present', color: '#dc2626' },
+    { key: 'sy_symptoms', label: 'Symptom Load', color: '#dc2626' },
+    { key: 'sy_severity', label: 'Severity',     color: '#ea580c' },
   ];
 
   if (loading) {

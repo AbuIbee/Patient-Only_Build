@@ -506,6 +506,13 @@ export default function PatientMedications() {
     return 'bg-soft-taupe/30 text-medium-gray';
   };
 
+  // Returns per-dose pip data for richer calendar display
+  const getDosePips = (date: Date) => {
+    const d = format(date, 'yyyy-MM-dd');
+    const doses = getDosesForDate(d);
+    return doses.map(x => getStatus(x.medId, d, x.time));
+  };
+
   // ── Group today's doses by time-of-day ──────────────────────────────────────
   const groupedToday = useMemo(() => {
     const groups: Record<string, typeof todayDoses> = { morning: [], afternoon: [], evening: [], night: [] };
@@ -654,71 +661,79 @@ export default function PatientMedications() {
               </button>
             </div>
 
-            {/* Week grid */}
-            <div className="grid grid-cols-7 gap-1.5">
+            {/* Day-of-week header row */}
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+                <p key={d} className="text-xs font-bold text-medium-gray py-1">{d}</p>
+              ))}
+            </div>
+
+            {/* Week calendar grid — uniform cells matching monthly view */}
+            <div className="grid grid-cols-7 gap-1">
               {weekDays.map(day => {
-                const stats = getWeekStats(day);
+                const d = format(day, 'yyyy-MM-dd');
+                const doses = getDosesForDate(d);
                 const isToday = isSameDay(day, new Date());
                 const isFuture = day > new Date();
-                const pct = stats.total > 0 ? stats.taken / stats.total : 0;
+                const taken   = doses.filter(x => getStatus(x.medId, d, x.time) === 'taken').length;
+                const missed  = doses.filter(x => getStatus(x.medId, d, x.time) === 'missed').length;
+                const total   = doses.length;
+                const pips    = getDosePips(day);
+
+                const cellCls = total === 0
+                  ? 'bg-white border border-stone-100'
+                  : isFuture
+                  ? 'bg-white border border-stone-100'
+                  : taken === total
+                  ? 'bg-soft-sage/15 border border-soft-sage/40'
+                  : missed > 0 && taken === 0
+                  ? 'bg-gentle-coral/10 border border-gentle-coral/40'
+                  : missed > 0
+                  ? 'bg-warm-amber/10 border border-warm-amber/40'
+                  : 'bg-white border border-stone-100';
+
                 return (
-                  <div key={day.toISOString()}
-                    className={`flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 transition-all ${
-                      isToday ? 'border-warm-bronze bg-warm-bronze/5' : 'border-transparent bg-soft-taupe/10'
-                    }`}>
-                    <p className="text-xs font-bold text-medium-gray">{format(day, 'EEE')}</p>
-                    <p className={`text-sm font-bold ${isToday ? 'text-warm-bronze' : 'text-charcoal'}`}>{format(day, 'd')}</p>
-                    {!isFuture && stats.total > 0 ? (
-                      <>
-                        <div className="w-8 h-8 relative flex items-center justify-center">
-                          <svg className="w-8 h-8 -rotate-90" viewBox="0 0 32 32">
-                            <circle cx="16" cy="16" r="12" fill="none" stroke="#e8e4df" strokeWidth="4" />
-                            <circle cx="16" cy="16" r="12" fill="none"
-                              stroke={pct === 1 ? '#7da87b' : pct >= 0.5 ? '#c9923a' : '#e07b5a'}
-                              strokeWidth="4" strokeDasharray={`${pct * 75.4} 75.4`} strokeLinecap="round" />
-                          </svg>
-                          <span className="absolute text-xs font-bold text-charcoal">{stats.taken}</span>
-                        </div>
-                        <p className="text-xs text-medium-gray">{stats.taken}/{stats.total}</p>
-                        {stats.missed > 0 && <span className="text-xs text-gentle-coral font-semibold">{stats.missed} missed</span>}
-                      </>
-                    ) : (
-                      <div className="w-8 h-8 flex items-center justify-center">
-                        <span className="text-lg">{isFuture ? '—' : '·'}</span>
+                  <button key={d}
+                    onClick={() => setDayPopup({ date: d, doses })}
+                    className={`aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all hover:scale-105 hover:shadow-sm ${cellCls} ${isToday ? 'ring-2 ring-warm-bronze ring-offset-1' : ''}`}>
+                    <span className={`text-xs font-bold leading-none ${isToday ? 'text-warm-bronze' : 'text-charcoal'}`}>
+                      {format(day, 'd')}
+                    </span>
+                    {total > 0 && (
+                      <span className="text-[9px] font-semibold text-charcoal/60 leading-none">
+                        {taken}/{total}
+                      </span>
+                    )}
+                    {total > 0 && !isFuture && (
+                      <div className="flex gap-[2px] mt-0.5 flex-wrap justify-center max-w-[32px]">
+                        {pips.slice(0, 6).map((status, i) => (
+                          <span key={i} className={`w-1.5 h-1.5 rounded-full ${
+                            status === 'taken'  ? 'bg-soft-sage' :
+                            status === 'missed' ? 'bg-gentle-coral' :
+                            'bg-soft-taupe/50'
+                          }`} />
+                        ))}
                       </div>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
 
-            {/* Week detail list */}
-            <div className="space-y-3">
-              {weekDays.map(day => {
-                const d = format(day, 'yyyy-MM-dd');
-                const doses = getDosesForDate(d);
-                if (doses.length === 0) return null;
-                const isToday = isSameDay(day, new Date());
-                return (
-                  <div key={d}>
-                    <p className={`text-xs font-bold uppercase tracking-wide mb-2 ${isToday ? 'text-warm-bronze' : 'text-medium-gray'}`}>
-                      {isToday ? 'Today — ' : ''}{format(day, 'EEEE, MMM d')}
-                    </p>
-                    <div className="space-y-1.5">
-                      {doses.map(dose => (
-                        <DoseRow key={`${dose.medId}-${dose.time}-${d}`}
-                          med={dose.med} time={dose.time} compact
-                          status={getStatus(dose.medId, d, dose.time)}
-                          onTake={() => isToday ? setConfirm({ medId: dose.medId, time: dose.time, date: d, action: 'take' }) : undefined}
-                          onSkip={() => isToday ? logDose(dose.medId, d, dose.time, 'skipped') : undefined}
-                          onUndo={() => undoLog(dose.medId, d, dose.time)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
+            {/* Legend */}
+            <div className="flex gap-4 justify-center flex-wrap text-xs text-medium-gray">
+              {[
+                { cls: 'bg-soft-sage',     label: 'Taken'   },
+                { cls: 'bg-gentle-coral',  label: 'Missed'  },
+                { cls: 'bg-soft-taupe/50', label: 'Pending' },
+              ].map(l => (
+                <span key={l.label} className="flex items-center gap-1.5">
+                  <span className={`w-2.5 h-2.5 rounded-full ${l.cls}`} />{l.label}
+                </span>
+              ))}
             </div>
+
+            <p className="text-xs text-medium-gray text-center">Tap any day to view or update doses</p>
           </motion.div>
         )}
 
@@ -753,21 +768,56 @@ export default function PatientMedications() {
                 const doses = getDosesForDate(d);
                 const isToday = isSameDay(day, new Date());
                 const isFuture = day > new Date();
-                const colorCls = getMonthCellColor(day);
-                const taken = doses.filter(x => getStatus(x.medId, d, x.time) === 'taken').length;
-                // Use dark text on light/empty cells, white only on solid-color cells
-                const textCls = (doses.length === 0 || isFuture)
-                  ? 'text-charcoal'
-                  : colorCls.includes('bg-soft-sage') || colorCls.includes('bg-gentle-coral') || colorCls.includes('bg-warm-amber/80')
-                  ? 'text-white'
-                  : 'text-charcoal';
+                const taken  = doses.filter(x => getStatus(x.medId, d, x.time) === 'taken').length;
+                const missed  = doses.filter(x => getStatus(x.medId, d, x.time) === 'missed').length;
+                const pending = doses.filter(x => getStatus(x.medId, d, x.time) === 'pending').length;
+                const total   = doses.length;
+                const pips    = getDosePips(day);
+
+                // Cell border/bg based on status
+                const cellCls = total === 0
+                  ? 'bg-white border border-stone-100'
+                  : isFuture
+                  ? 'bg-white border border-stone-100'
+                  : taken === total
+                  ? 'bg-soft-sage/15 border border-soft-sage/40'
+                  : missed > 0 && taken === 0
+                  ? 'bg-gentle-coral/10 border border-gentle-coral/40'
+                  : missed > 0
+                  ? 'bg-warm-amber/10 border border-warm-amber/40'
+                  : 'bg-white border border-stone-100';
+
                 return (
                   <button key={d}
                     onClick={() => setDayPopup({ date: d, doses })}
-                    className={`aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all hover:scale-105 hover:shadow-sm ${colorCls} ${isToday ? 'ring-2 ring-warm-bronze ring-offset-1' : ''}`}>
-                    <span className={`text-xs font-bold ${textCls}`}>{format(day, 'd')}</span>
-                    {doses.length > 0 && (
-                      <span className={`text-[9px] font-semibold opacity-90 ${textCls}`}>{taken}/{doses.length}</span>
+                    className={`aspect-square rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all hover:scale-105 hover:shadow-sm ${cellCls} ${isToday ? 'ring-2 ring-warm-bronze ring-offset-1' : ''}`}>
+
+                    {/* Date number */}
+                    <span className={`text-xs font-bold leading-none ${isToday ? 'text-warm-bronze' : 'text-charcoal'}`}>
+                      {format(day, 'd')}
+                    </span>
+
+                    {/* Dose count */}
+                    {total > 0 && (
+                      <span className="text-[9px] font-semibold text-charcoal/60 leading-none">
+                        {taken}/{total}
+                      </span>
+                    )}
+
+                    {/* Pip row — one pip per dose, coloured by status */}
+                    {total > 0 && !isFuture && (
+                      <div className="flex gap-[2px] mt-0.5 flex-wrap justify-center max-w-[32px]">
+                        {pips.slice(0, 6).map((status, i) => (
+                          <span key={i} className={`w-1.5 h-1.5 rounded-full ${
+                            status === 'taken'   ? 'bg-soft-sage' :
+                            status === 'missed'  ? 'bg-gentle-coral' :
+                            'bg-soft-taupe/50'
+                          }`} />
+                        ))}
+                        {pips.length > 6 && (
+                          <span className="text-[7px] text-medium-gray">+{pips.length - 6}</span>
+                        )}
+                      </div>
                     )}
                   </button>
                 );
@@ -777,13 +827,12 @@ export default function PatientMedications() {
             {/* Legend */}
             <div className="flex gap-4 justify-center flex-wrap text-xs text-medium-gray">
               {[
-                { cls: 'bg-soft-sage',         label: '100% taken' },
-                { cls: 'bg-warm-amber/80',      label: '≥50% taken' },
-                { cls: 'bg-gentle-coral/70',    label: 'Missed doses' },
-                { cls: 'bg-soft-taupe/30',      label: 'No doses' },
+                { cls: 'bg-soft-sage',        label: 'Taken' },
+                { cls: 'bg-gentle-coral',     label: 'Missed' },
+                { cls: 'bg-soft-taupe/50',    label: 'Pending' },
               ].map(l => (
                 <span key={l.label} className="flex items-center gap-1.5">
-                  <span className={`w-3 h-3 rounded-full ${l.cls}`} />{l.label}
+                  <span className={`w-2.5 h-2.5 rounded-full ${l.cls}`} />{l.label}
                 </span>
               ))}
             </div>
