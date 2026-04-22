@@ -72,6 +72,15 @@ async function fetchWeather(lat: number, lon: number): Promise<WeatherData> {
   };
 }
 
+// IP-based geolocation — no browser permission needed, always works
+async function fetchWeatherByIP(): Promise<WeatherData> {
+  // Use ip-api.com (free, no key) to get approximate lat/lon from IP
+  const geoRes = await fetch('https://ip-api.com/json/?fields=lat,lon,status', { signal: AbortSignal.timeout(5000) });
+  const geo = await geoRes.json();
+  if (geo.status !== 'success') throw new Error('IP geo failed');
+  return fetchWeather(geo.lat, geo.lon);
+}
+
 function getFallbackWeather(): WeatherData {
   const hour  = new Date().getHours();
   const month = new Date().getMonth() + 1;
@@ -242,28 +251,39 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
   const [weather, setWeather] = useState<WeatherData>(getFallbackWeather());
 
   useEffect(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      async ({ coords }) => {
+    let cancelled = false;
+
+    const loadWeather = async () => {
+      // Strategy 1: browser GPS (most accurate — asks permission)
+      if (navigator.geolocation) {
         try {
+          const coords = await new Promise<GeolocationCoordinates>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              p => resolve(p.coords),
+              reject,
+              { timeout: 6000, maximumAge: 300000 }
+            );
+          });
           const w = await fetchWeather(coords.latitude, coords.longitude);
-          setWeather(w);
+          if (!cancelled) { setWeather(w); return; }
         } catch {
-          // keep fallback
+          // GPS denied or timed out — fall through to IP-based
         }
-      },
-      () => { /* permission denied — keep fallback */ },
-      { timeout: 8000 }
-    );
-    const interval = setInterval(() => {
-      navigator.geolocation.getCurrentPosition(
-        async ({ coords }) => {
-          try { setWeather(await fetchWeather(coords.latitude, coords.longitude)); } catch {}
-        },
-        () => {}
-      );
-    }, 30 * 60 * 1000);
-    return () => clearInterval(interval);
+      }
+      // Strategy 2: IP geolocation — no permission needed, always loads real weather
+      try {
+        const w = await fetchWeatherByIP();
+        if (!cancelled) setWeather(w);
+      } catch {
+        // IP lookup failed too — keep the time-based fallback already in state
+      }
+    };
+
+    loadWeather();
+
+    // Refresh every 20 minutes
+    const interval = setInterval(loadWeather, 20 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
   const slideshowImages = useMemo(() => [

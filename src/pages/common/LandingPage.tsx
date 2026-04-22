@@ -95,9 +95,28 @@ export default function LandingPage() {
                 A daily support app for people with memory and cognitive challenges — with built-in visibility for families and care partners.
               </p>
 
-              <p className="text-lg text-medium-gray leading-relaxed mb-8 max-w-lg">
-                My Memoria Ally helps people with memory and cognitive challenges stay oriented, supported, and connected each day. Built primarily for <b>dementia and cognitive decline</b> — and the families, caregivers, and care teams behind them — it combines daily orientation, emotional reassurance, and caregiver visibility in one calm, easy-to-use experience.
-              </p>
+              {/* WHO THIS APP IS FOR — scannable in 5-10 seconds */}
+              <div className="mb-8 max-w-lg space-y-3">
+                <p className="text-lg text-charcoal font-semibold leading-snug">
+                  Built for anyone living with a long-term or terminal illness that affects memory, mental health, and daily independence.
+                </p>
+                <p className="text-sm text-medium-gray leading-relaxed">
+                  Whether the diagnosis is <span className="text-charcoal font-medium">Alzheimer's, Parkinson's, MS, ALS, Huntington's, advanced COPD, heart failure, HIV/AIDS, PSP, or MSA</span> — if someone takes multiple medications, faces cognitive or physical decline, and relies on a caregiver, My Memoria Ally was built for them.
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {[
+                    { emoji: '💊', label: 'Multiple medications' },
+                    { emoji: '🧠', label: 'Cognitive decline' },
+                    { emoji: '💛', label: 'Mental health support' },
+                    { emoji: '🦽', label: 'Physical assistance' },
+                    { emoji: '👐', label: 'Caregiver coordination' },
+                  ].map(tag => (
+                    <span key={tag.label} className="inline-flex items-center gap-1.5 text-xs font-semibold bg-warm-bronze/10 text-warm-bronze border border-warm-bronze/20 px-3 py-1.5 rounded-full">
+                      {tag.emoji} {tag.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
 
               <div className="flex flex-wrap gap-3 mb-8">
                 {['Medication reminders', 'Mood tracking', 'Family connection', 'Daily routines', 'Document organization', 'more'].map(tag => (
