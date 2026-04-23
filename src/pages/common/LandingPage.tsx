@@ -92,39 +92,21 @@ export default function LandingPage() {
               </h1>
 
               <p className="text-base text-charcoal font-semibold mb-5">
-                A daily support app for people with memory and cognitive challenges — with built-in visibility for families and care partners.
+                Built for anyone living with a long-term or terminal illness that affects memory, mental health, and daily independence.
               </p>
 
               {/* WHO THIS APP IS FOR — scannable in 5-10 seconds */}
               <div className="mb-8 max-w-lg space-y-3">
-                <p className="text-lg text-charcoal font-semibold leading-snug">
-                  Built for anyone living with a long-term or terminal illness that affects memory, mental health, and daily independence.
-                </p>
-                <p className="text-sm text-medium-gray leading-relaxed">
-                  Whether the diagnosis is <span className="text-charcoal font-medium">Alzheimer's, Parkinson's, MS, ALS, Huntington's, advanced COPD, heart failure, HIV/AIDS, PSP, or MSA</span> — if someone takes multiple medications, faces cognitive or physical decline, and relies on a caregiver, My Memoria Ally was built for them.
-                </p>
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {[
-                    { emoji: '💊', label: 'Multiple medications' },
-                    { emoji: '🧠', label: 'Cognitive decline' },
-                    { emoji: '💛', label: 'Mental health support' },
-                    { emoji: '🦽', label: 'Physical assistance' },
-                    { emoji: '👐', label: 'Caregiver coordination' },
-                  ].map(tag => (
-                    <span key={tag.label} className="inline-flex items-center gap-1.5 text-xs font-semibold bg-warm-bronze/10 text-warm-bronze border border-warm-bronze/20 px-3 py-1.5 rounded-full">
-                      {tag.emoji} {tag.label}
-                    </span>
-                  ))}
-                </div>
+
+              <p className="text-medium text-medium-gray leading-relaxed">
+                  Whether the diagnosis is <span className="text-charcoal font-medium">Alzheimer's, Parkinson's, MS, ALS, Huntington's, advanced COPD, heart failure, HIV/AIDS, PSP, or MSA</span> — if someone takes multiple medications, faces cognitive or physical decline, and relies on a caregiver, My Memoria Ally was built for them.  Because a diagnosis changes everything — but it doesn't have to take everything.
+              </p>
+              <p className="text-medium text-medium-gray leading-relaxed">
+                It becomes more than support—it becomes a reliable record. Symptoms, mood changes, medications, and daily patterns are all captured in one place, so nothing important slips through the cracks. When it’s time to speak with a doctor or specialist, you’re not guessing—you’re prepared, informed, and able to clearly show what’s been happening over time.
+              </p>
               </div>
 
-              <div className="flex flex-wrap gap-3 mb-8">
-                {['Medication reminders', 'Mood tracking', 'Family connection', 'Daily routines', 'Document organization', 'more'].map(tag => (
-                  <span key={tag} className="flex items-center gap-1.5 text-sm text-charcoal bg-white border border-soft-taupe px-3 py-1.5 rounded-full shadow-sm">
-                    <Check className="w-3.5 h-3.5 text-warm-bronze" /> {tag}
-                  </span>
-                ))}
-              </div>
+
 
               {/* Topic 2 — 3-part value strip */}
               <div className="grid grid-cols-3 gap-3 mb-8">
@@ -142,26 +124,22 @@ export default function LandingPage() {
               </div>
 
               <div className="flex flex-wrap gap-3">
+
                 <button
-                  onClick={handleGetStarted}
+                  onClick={() => setShowLearnMore(true)}
                   className="flex items-center gap-2 bg-warm-bronze hover:bg-deep-bronze text-white font-semibold px-8 py-3.5 rounded-xl transition-colors shadow-md text-base"
                 >
                   Choose Your Plan <ArrowRight className="w-4 h-4" />
                 </button>
-                <button
-                  onClick={() => setShowLearnMore(true)}
-                  className="text-warm-bronze border-2 border-warm-bronze/30 hover:border-warm-bronze font-semibold px-8 py-3.5 rounded-xl transition-colors text-base"
-                >
-                  Learn More
-                </button>
-              </div>
 
-              <p className="mt-5 text-sm text-medium-gray">
+              <p className="mt-5 text-medium text-medium-gray">
                 Already have an account?{' '}
                 <button onClick={handleGoToLogin} className="text-warm-bronze hover:text-deep-bronze font-semibold underline underline-offset-2">
                   Sign in here
                 </button>
               </p>
+
+              </div>
             </motion.div>
 
             {/* Right: Story card */}
@@ -190,47 +168,48 @@ export default function LandingPage() {
                   ))}
                 </div>
               
-                <div className="mt-5 pt-5 border-t border-soft-taupe"></div>
-              <p className="text-lg font-bold text-charcoal leading-snug mb-3">
+                <div className="mt-8 pt-8 border-t border-soft-taupe"></div>
+              <p className="text-medium font-bold text-charcoal leading-snug mb-3">
                 The daughters, sons, husbands, and wives who show up every single day!
                 </p>
-                <p className="text-medium-gray leading-relaxed text-sm">
+                
+                <p className="text-medium text-medium-gray leading-relaxed">
                   You're not a doctor or a nurse. You're someone who loves deeply and wants
                   to do right by them. My Memoria Ally gives you the tools to make every
                   day a little calmer — for both of you.
                 </p>
+                <br/>
                 {/* Quote */}
               <p className="text-center text-sm text-warm-bronze font-semibold italic">
                 "Because memory is precious. And so are you."
               </p>
                 <div className="mt-5 pt-5 border-t border-soft-taupe">
                   <p className="text-xs text-medium-gray uppercase tracking-widest font-semibold mb-3">Hard utility built in</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { icon: '💊', text: 'Medication adherence' },
-                      { icon: '📋', text: 'Routine reinforcement' },
-                      { icon: '💛', text: 'Symptom & mood logging' },
-                      { icon: '👨‍👩‍👧', text: 'Family visibility' },
-                      { icon: '📸', text: 'Memory vault' },
-                      { icon: '🎮', text: 'Brain training games' },
-                      { icon: '🎥', text: 'Videos & media' },
-                      { icon: '⏰', text: 'Daily orientat­ion' },
-                    ].map(item => (
-                      <div key={item.text} className="flex items-center gap-2 bg-warm-ivory rounded-xl px-3 py-2.5">
-                        <span className="text-base leading-none">{item.icon}</span>
-                        <span className="text-xs font-semibold text-charcoal">{item.text}</span>
-                      </div>
-                    ))}
-                  </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {[
+                    { emoji: '💊', label: 'Multiple medications' },
+                    { emoji: '💛', label: 'Mental health support' },
+                    { emoji: '🦽', label: 'Physical assistance' },
+                    { emoji: '👐', label: 'Caregiver coordination' },
+                    { emoji: '⏰', label: 'Daily orientat­ion' },
+                    { emoji: '👨‍👩‍👧', label: 'Family & Caregiver support' },
+                  ].map(tag => (
+                    <span key={tag.label} className="inline-flex items-justified gap-1 text-sm font-semibold bg-warm-bronze/10 text-warm-bronze border border-warm-bronze/20 px-3 py-1.5 rounded-full">
+                      {tag.emoji} {tag.label}
+                    </span>
+                  ))}
                 </div>
+                </div>
+
+
 
 
 
                 <div className="mt-5 pt-5 border-t border-soft-taupe">
                   <div className="bg-charcoal rounded-2xl px-5 py-4">
-                    <p className="text-[14px] text-white/50 uppercase tracking-widest font-semibold mb-3">Primary: Dementia & cognitive decline</p>
+                    <p className="text-[14px] text-white/50 uppercase tracking-widest font-semibold mb-3">Primary: physical & mental decline</p>
                     <div className="flex flex-wrap gap-2 mb-3">
-                      {['Dementia', 'ADHD', 'Autism', 'Anxiety', 'TBI', 'Cognitive needs'].map(tag => (
+                      {['Alzheimer\'s & Dementia', 'Parkinson\'s', 'Multiple Sclerosis (MS)', 'ALS', 'Huntington\'s Disease', 'other care provided needs'].map(tag => (
                         <span key={tag} className="text-xs font-semibold text-white bg-white/10 px-3 py-1.5 rounded-lg">
                           {tag}
                         </span>
@@ -243,14 +222,6 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              {/* Facility card */}
-              <div className="bg-warm-bronze/8 border border-warm-bronze/20 rounded-2xl px-6 py-4">
-                <p className="text-sm text-charcoal leading-relaxed">
-                  🏥 For <strong>senior living facilities</strong> — extend your care outside
-                  your walls. Families feel supported. Nurses field fewer repeat questions.
-                  Your brand becomes the one families trust for life.
-                </p>
-              </div>
 
               
             </motion.div>
