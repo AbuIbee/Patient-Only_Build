@@ -99,7 +99,7 @@ export default function LandingPage() {
               <div className="mb-8 max-w-lg space-y-3">
 
               <p className="text-medium text-medium-gray leading-relaxed">
-                  Whether the diagnosis is <span className="text-charcoal font-medium">Alzheimer's, Parkinson's, MS, ALS, Huntington's, advanced COPD, heart failure, HIV/AIDS, PSP, or MSA</span> — if someone takes multiple medications, faces cognitive or physical decline, and relies on a caregiver, My Memoria Ally was built for them.  Because a diagnosis changes everything — but it doesn't have to take everything.
+                  Whether the diagnosis is <span className="text-charcoal font-medium">Alzheimer's, Dementia, Parkinson's, MS, ALS, Huntington's, advanced COPD, heart failure, HIV/AIDS, PSP, or MSA</span> — if someone takes multiple medications, faces cognitive or physical decline, and relies on a caregiver, My Memoria Ally was built for them.  Because a diagnosis changes everything — but it doesn't have to take everything.
               </p>
               <p className="text-medium text-medium-gray leading-relaxed">
                 It becomes more than support—it becomes a reliable record. Symptoms, mood changes, medications, and daily patterns are all captured in one place, so nothing important slips through the cracks. When it’s time to speak with a doctor or specialist, you’re not guessing—you’re prepared, informed, and able to clearly show what’s been happening over time.

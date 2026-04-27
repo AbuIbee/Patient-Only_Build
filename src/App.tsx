@@ -8,7 +8,7 @@ import PatientLayout from '@/pages/patient/PatientLayout';
 import AdminLayout from '@/pages/admin/AdminLayout';
 import PrivacyPage from '@/pages/privacy/PrivacyPage';
 import { Toaster } from '@/components/ui/sonner';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@/types';
 import { isTempUser } from '@/types/subscription';
@@ -21,7 +21,8 @@ function AppContent() {
   const [forcedChange, setForcedChange] = useState(false);
   const [currentUserEmail, setCurrentUserEmail] = useState('');
 
-  const currentPath = useMemo(() => window.location.pathname, []);
+  const [routePath, setRoutePath] = useState(() => window.location.pathname);
+  const currentPath = routePath;
   const isPublicPatientIntakeRoute = currentPath === '/patient-intake';
   const isPrivacyRoute = currentPath === '/privacy';
   const isAboutUsRoute = currentPath === '/about-us';
@@ -176,19 +177,28 @@ function AppContent() {
     }
   }, [state.isAuthenticated, state.selectedRole, isPublicRoute]);
 
+  // Navigation-only popstate — back button updates visible route, never signs out
   useEffect(() => {
-    if (isPublicRoute) return;
-
     const handlePop = () => {
-      if (!window.history.state?.role) {
-        supabase.auth.signOut();
-        dispatch({ type: 'LOGOUT' });
-      }
+      setRoutePath(window.location.pathname);
     };
 
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
-  }, [dispatch, isPublicRoute]);
+  }, []);
+
+  // Security guard — redirect unauthenticated users away from private routes
+  useEffect(() => {
+    if (checkingSession) return;
+    if (isPublicRoute) return;
+
+    const privateRoutes = ['/patient', '/admin', '/superadmin'];
+
+    if (!state.isAuthenticated && privateRoutes.includes(currentPath)) {
+      window.history.replaceState({}, '', '/');
+      setRoutePath('/');
+    }
+  }, [checkingSession, state.isAuthenticated, currentPath, isPublicRoute]);
 
   const handlePasswordSet = async () => {
     setShowPasswordReset(false);
