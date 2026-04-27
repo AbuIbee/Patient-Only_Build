@@ -16,7 +16,7 @@ import PatientIntakeForm from './PatientIntakeForm';
 import PatientCareTeam from './PatientCareTeam';
 import MediaUploader from '@/components/MediaUploader';
 import {
-  Heart, Volume2, LogOut, ChevronRight, Menu, X, ClipboardCheck,
+  Heart, LogOut, ChevronRight, Menu, X, ClipboardCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -41,7 +41,6 @@ export default function PatientLayout() {
   const [selectedGameId, setSelectedGameId] = useState<string | undefined>(undefined);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const { state, dispatch } = useApp();
   const patient = state.patient;
@@ -307,10 +306,7 @@ export default function PatientLayout() {
     }
   };
 
-  const playSafetyMessage = () => {
-    setIsPlaying(true);
-    setTimeout(() => setIsPlaying(false), 5000);
-  };
+
 
   const getSidebarBg = () => {
     if (isSundowningTime) return 'bg-gradient-to-b from-warm-amber/20 to-white';
@@ -446,16 +442,6 @@ export default function PatientLayout() {
         </nav>
 
         <div className="p-3 border-t border-soft-taupe space-y-1 flex-shrink-0">
-          <button
-            onClick={playSafetyMessage}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-soft-sage/10 text-soft-sage hover:bg-soft-sage/20 transition-colors"
-          >
-            <Volume2 className={`w-5 h-5 flex-shrink-0 ${isPlaying ? 'animate-pulse' : ''}`} />
-            <span className="font-medium text-sm">
-              {isPlaying ? 'Playing...' : 'Hear "You\'re Safe"'}
-            </span>
-          </button>
-
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-gentle-coral hover:bg-gentle-coral/10 transition-colors"
@@ -616,13 +602,6 @@ export default function PatientLayout() {
 
               {/* Bottom actions */}
               <div className="px-4 pb-6 pt-2 border-t border-soft-taupe flex gap-3">
-                <button
-                  onClick={playSafetyMessage}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-soft-sage/10 text-soft-sage font-medium text-sm"
-                >
-                  <Volume2 className="w-4 h-4" />
-                  {isPlaying ? 'Playing...' : 'You\'re Safe'}
-                </button>
                 <button
                   onClick={handleLogout}
                   className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gentle-coral/10 text-gentle-coral font-medium text-sm"
