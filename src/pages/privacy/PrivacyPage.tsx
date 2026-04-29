@@ -1152,9 +1152,7 @@ export default function PrivacyPage({ initialDoc }: { initialDoc?: DocId } = {})
       <header className="bg-white border-b border-stone-200 sticky top-0 z-20 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-warm-bronze rounded-xl flex items-center justify-center flex-shrink-0">
-              <Heart className="w-5 h-5 text-white" />
-            </div>
+            <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-9 h-9 rounded-xl object-cover flex-shrink-0" />
             <div>
               <p className="font-bold text-charcoal leading-tight">My Memoria Ally</p>
               <p className="text-xs text-charcoal/50 leading-tight">Privacy & Legal Documents</p>

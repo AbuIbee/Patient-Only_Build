@@ -16,7 +16,7 @@ import PatientIntakeForm from './PatientIntakeForm';
 import PatientCareTeam from './PatientCareTeam';
 import MediaUploader from '@/components/MediaUploader';
 import {
-  Heart, LogOut, ChevronRight, Menu, X, ClipboardCheck,
+  Heart, Volume2, LogOut, ChevronRight, Menu, X, ClipboardCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -41,6 +41,7 @@ export default function PatientLayout() {
   const [selectedGameId, setSelectedGameId] = useState<string | undefined>(undefined);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const { state, dispatch } = useApp();
   const patient = state.patient;
@@ -306,7 +307,10 @@ export default function PatientLayout() {
     }
   };
 
-
+  const playSafetyMessage = () => {
+    setIsPlaying(true);
+    setTimeout(() => setIsPlaying(false), 5000);
+  };
 
   const getSidebarBg = () => {
     if (isSundowningTime) return 'bg-gradient-to-b from-warm-amber/20 to-white';
@@ -318,8 +322,8 @@ export default function PatientLayout() {
     return (
       <div className="min-h-screen bg-warm-ivory flex items-center justify-center">
         <div className="text-center space-y-6">
-          <div className="w-20 h-20 bg-warm-bronze rounded-full flex items-center justify-center mx-auto">
-            <Heart className="w-10 h-10 text-white animate-pulse" />
+          <div className="w-20 h-20 rounded-full mx-auto overflow-hidden shadow-lg">
+            <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-full h-full object-cover animate-pulse" />
           </div>
           <div>
             <p className="text-2xl font-semibold text-charcoal">
@@ -338,9 +342,7 @@ export default function PatientLayout() {
         className={`fixed left-0 top-0 bottom-0 ${getSidebarBg()} border-r border-soft-taupe z-40 w-64 hidden md:flex flex-col`}
       >
         <div className="h-14 flex items-center px-4 border-b border-soft-taupe flex-shrink-0">
-          <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center flex-shrink-0">
-            <Heart className="w-6 h-6 text-white" />
-          </div>
+          <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
           <span className="ml-3 font-semibold text-charcoal">My Memoria Ally</span>
         </div>
 
@@ -449,6 +451,17 @@ export default function PatientLayout() {
             <LogOut className="w-5 h-5 flex-shrink-0" />
             <span className="font-medium text-sm">Logout</span>
           </button>
+
+          <button
+            onClick={playSafetyMessage}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-soft-sage/10 text-soft-sage hover:bg-soft-sage/20 transition-colors"
+          >
+            <Volume2 className={`w-5 h-5 flex-shrink-0 ${isPlaying ? 'animate-pulse' : ''}`} />
+            <span className="font-medium text-sm">
+              {isPlaying ? 'Playing...' : 'Hear "You\'re Safe"'}
+            </span>
+          </button>
+
         </div>
       </aside>
 
@@ -602,6 +615,13 @@ export default function PatientLayout() {
 
               {/* Bottom actions */}
               <div className="px-4 pb-6 pt-2 border-t border-soft-taupe flex gap-3">
+                <button
+                  onClick={playSafetyMessage}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-soft-sage/10 text-soft-sage font-medium text-sm"
+                >
+                  <Volume2 className="w-4 h-4" />
+                  {isPlaying ? 'Playing...' : 'You\'re Safe'}
+                </button>
                 <button
                   onClick={handleLogout}
                   className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gentle-coral/10 text-gentle-coral font-medium text-sm"

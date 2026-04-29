@@ -52,9 +52,7 @@ export default function LandingPage() {
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-soft-taupe">
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 bg-warm-bronze rounded-xl flex items-center justify-center shadow-sm">
-              <Heart className="w-5 h-5 text-white" />
-            </div>
+            <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-9 h-9 rounded-xl object-cover shadow-sm" />
             <span className="text-lg font-bold text-charcoal tracking-tight">My Memoria Ally</span>
           </div>
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-medium-gray">
@@ -427,9 +425,7 @@ export default function LandingPage() {
       <footer className="bg-charcoal border-t border-white/10 px-6 py-8">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-white/40">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-warm-bronze rounded-lg flex items-center justify-center">
-              <Heart className="w-4 h-4 text-white" />
-          </div>
+            <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-7 h-7 rounded-lg object-cover" />
             <span className="font-semibold text-white/60">My Memoria Ally</span>
           </div>
             <span className="font-semibold text-white/60">
