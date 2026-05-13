@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.memoriahelps.app',
-  appName: 'MemoriaHelps',
+  appId: 'com.mymemoriaally.app',
+  appName: 'MyMemoriaAlly',
   webDir: 'dist'
 };
 
