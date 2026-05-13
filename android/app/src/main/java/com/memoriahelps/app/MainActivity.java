@@ -1,4 +1,4 @@
-package com.memoriahelps.app;
+package com.memoriahelps.ap;
 
 import com.getcapacitor.BridgeActivity;
 
