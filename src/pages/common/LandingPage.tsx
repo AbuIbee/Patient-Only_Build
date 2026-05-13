@@ -39,7 +39,7 @@ export default function LandingPage() {
   ];
 
   const faqs = [
-    { q: 'Who is My Memoria Ally designed for?', a: 'It supports people living with Dementia, ADHD, Anxiety, Autism, Traumatic Brain Injury, and other cognitive needs — and the families who care for them.' },
+    { q: 'Who is My Memoria Ally designed for?', a: 'It supports people living with  Alzheimer\s, Dementia, Parkinson\s, MS, ALS, Huntington\s, PSP, or MSA, Traumatic Brain Injury, ADHD, Autism or other cognitive needs — and the families who care for them.' },
     { q: 'Do I need technical experience to use it?', a: 'Not at all. The interface is designed to be large, clear, and intuitive. If you can tap a button, you can use My Memoria Ally.' },
     { q: 'Can family members see what\'s happening?', a: 'Yes. Care partners get updates, can log check-ins, and stay connected — all without disrupting the patient\'s experience.' },
     { q: 'Is my health data kept private?', a: 'Absolutely. All data is stored securely and never sold. We follow strict privacy standards to protect you and your loved one.' },
@@ -97,7 +97,7 @@ export default function LandingPage() {
               <div className="mb-8 max-w-lg space-y-3">
 
               <p className="text-medium text-medium-gray leading-relaxed">
-                  Whether the diagnosis is <span className="text-charcoal font-medium">Alzheimer's, Dementia, Parkinson's, MS, ALS, Huntington's, advanced COPD, heart failure, HIV/AIDS, PSP, or MSA</span> — if someone takes multiple medications, faces cognitive or physical decline, and relies on a caregiver, My Memoria Ally was built for them.  Because a diagnosis changes everything — but it doesn't have to take everything.
+                  Whether the diagnosis is <span className="text-charcoal font-medium">Alzheimer's, Dementia, Parkinson's, MS (Multiple Sclerosis), ALS (Amyotrophic Lateral Sclerosis), Huntington's, PSP (Progressive Supranuclear Palsy), MSA (Multiple System Atrophy), Muscular Dystrophy, Hospice Care, ADHD, Autism, TBI (Traumatic Brain Injury) or other cognitive needs </span> — if someone takes multiple medications, faces cognitive or physical decline, and relies on a caregiver, My Memoria Ally was built for you to lend a helping hand.  Because a diagnosis changes everything — but it doesn't have to take everything.
               </p>
               <p className="text-medium text-medium-gray leading-relaxed">
                 It becomes more than support—it becomes a reliable record. Symptoms, mood changes, medications, and daily patterns are all captured in one place, so nothing important slips through the cracks. When it’s time to speak with a doctor or specialist, you’re not guessing—you’re prepared, informed, and able to clearly show what’s been happening over time.
