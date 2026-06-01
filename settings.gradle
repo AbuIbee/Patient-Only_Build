@@ -4,6 +4,7 @@ project(':app').projectDir = new File('./android/app')
 include ':capacitor-cordova-android-plugins'
 project(':capacitor-cordova-android-plugins').projectDir = new File('./android/capacitor-cordova-android-plugins/')
 
-include ':revenuecat-purchases-capacitor'
-project(':revenuecat-purchases-capacitor').projectDir = new File(rootProject.projectDir, 'node_modules/@revenuecat/purchases-capacitor/android')
 apply from: 'capacitor.settings.gradle'
+
+include ':revenuecat-purchases-capacitor'
+project(':revenuecat-purchases-capacitor').projectDir = new File(rootProject.projectDir, 'app/node_modules/@revenuecat/purchases-capacitor/android')
