@@ -14,7 +14,7 @@ dependencies {
     implementation project(':capacitor-local-notifications')
     implementation project(':capacitor-push-notifications')
     implementation project(':capawesome-capacitor-badge')
-    implementation "com.revenuecat.purchases:purchases-capacitor:13.1.5"
+    implementation project(':revenuecat-purchases-capacitor')
     implementation project(':capacitor-voice-recorder')
 
 }
