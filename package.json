@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "appflow:build": "vite build && npx cap sync android",
+    "ionic:build": "npm install && vite build && npx cap sync android",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "ionic:build": "npm install && vite build && npx cap sync android"
-  },
+    "preview": "vite preview"
+},
   "dependencies": {
     "@awesome-cordova-plugins/in-app-purchase-2": "^9.1.2",
     "@capacitor/android": "^8.4.0",
