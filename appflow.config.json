@@ -1,0 +1,8 @@
+{
+	"id": "d92870ab",
+	"platform": "android",
+	"type": "capacitor",
+	"buildConfig": {
+		"prePackageHook": "npm run appflow:build"
+	}
+}
