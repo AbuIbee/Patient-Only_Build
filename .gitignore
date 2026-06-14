@@ -1,5 +1,4 @@
 node_modules
-dist
 .vite
 .env
 .env.*
@@ -14,3 +13,6 @@ Patient-Only_Build/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Keep android web assets
+!android/app/src/main/assets/public
