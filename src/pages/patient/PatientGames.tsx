@@ -1,35 +1,43 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RotateCcw, ChevronLeft, Gamepad2, ExternalLink, Clock, CheckCircle2, Zap } from 'lucide-react';
+import { 
+  RotateCcw, ChevronLeft, Gamepad2, ExternalLink, Clock, 
+  CheckCircle2, Zap, Trophy, Award, Flame, Star, Sparkles, Users, User 
+} from 'lucide-react';
 
+// ─── TYPES & CONFIGURATIONS ──────────────────────────────────────────────────
 type GameId = 'menu' | 'matching' | 'crossword' | 'checkers' | 'chess' | 'brainapps' | 'wordsearch' | 'solitaire' | 'hangman';
 
-// ─── ACCESSIBILITY-FIRST DESIGN TOKENS (LIGHT MODE) ─────────────────────────
-// All interactive targets: minimum 56px tall. Text: minimum 18px body, 22px+ labels.
-// Contrast ratios: 7:1+ for critical text. Color never used as the ONLY indicator.
-// Every interactive state has a visible focus ring AND a shape/text change.
+// Word Search Themes Engine Config
+const WS_THEMES = [
+  { theme: 'Comfort', words: ['FAMILY', 'SMILE', 'HOPE', 'CARE', 'PEACE', 'LOVE', 'HOME', 'KIND', 'HUG'] },
+  { theme: 'Nature', words: ['GARDEN', 'FLOWER', 'SUMMER', 'SUNSET', 'BREEZE', 'MEADOW', 'FOREST', 'OCEAN', 'TREE'] },
+  { theme: 'Daily', words: ['APPLE', 'BREAD', 'WATER', 'MUSIC', 'DANCE', 'BOOK', 'STORY', 'LIGHT', 'TEA'] },
+  { theme: 'Animals', words: ['RABBIT', 'KITTEN', 'PUPPY', 'ROBIN', 'HORSE', 'SHEEP', 'EAGLE', 'TIGER', 'DEER'] },
+  { theme: 'Feelings', words: ['HAPPY', 'JOYFUL', 'GENTLE', 'BRAVE', 'TENDER', 'SERENE', 'CALM', 'PROUD', 'GLAD'] }
+];
 
+const WS_SIZE = 10;
+const WS_DIRS = [[0, 1], [1, 0], [1, 1], [1, -1]]; // Linear forward configurations only
+
+// ─── ACCESSIBILITY-FIRST DESIGN TOKENS (LIGHT MODE) ─────────────────────────
 const A = {
-  // Backgrounds — warm ivory light theme
   pageBg:     'min-h-screen bg-amber-50/60 p-4 md:p-6',
   surface:    'bg-white border border-stone-200 rounded-2xl shadow-sm',
   surfaceLg:  'bg-white border-2 border-stone-300 rounded-2xl shadow-sm',
   raised:     'bg-stone-50 border border-stone-200 rounded-xl',
 
-  // Buttons — all minimum 56px tall, bold text, clear labels
   btnPrimary: 'flex items-center justify-center gap-2 px-6 py-4 rounded-2xl bg-amber-700 hover:bg-amber-800 active:bg-amber-900 text-white font-black text-lg leading-none shadow-lg shadow-amber-700/30 transition-all active:scale-95 min-h-[56px] border-2 border-amber-600',
   btnSecondary:'flex items-center justify-center gap-2 px-5 py-4 rounded-2xl bg-stone-100 hover:bg-stone-200 active:bg-stone-300 text-stone-800 font-bold text-base leading-none transition-all border-2 border-stone-300 min-h-[56px]',
   btnBack:    'flex items-center gap-2 px-5 py-3 rounded-xl bg-white hover:bg-stone-50 text-stone-700 font-bold text-base border-2 border-stone-300 transition-all min-h-[48px] shadow-sm',
   btnIcon:    'flex items-center justify-center w-14 h-14 rounded-xl bg-white hover:bg-stone-100 text-stone-700 border-2 border-stone-300 transition-all shadow-sm',
 
-  // Text
   heading:    'text-3xl font-black text-stone-900 tracking-tight',
   subheading: 'text-xl font-bold text-stone-800',
   label:      'text-lg font-bold text-stone-800',
   body:       'text-base font-semibold text-stone-600',
   muted:      'text-sm font-semibold text-stone-500',
 
-  // Status colors — always paired with text/icon, never color alone
   turnYou:    'bg-amber-700 text-white border-2 border-amber-600',
   turnAI:     'bg-stone-200 text-stone-700 border-2 border-stone-300',
   correct:    'bg-emerald-600 text-white border-2 border-emerald-500',
@@ -38,7 +46,6 @@ const A = {
 };
 
 // ─── SHARED COMPONENTS ───────────────────────────────────────────────────────
-
 function GameHeader({ title, onBack, right }: { title: string; onBack: () => void; right?: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3 mb-6">
@@ -68,15 +75,302 @@ function WinModal({ icon, title, sub, onPlay }: { icon: string; title: string; s
   );
 }
 
+// Fixed minor color contrast warning from amber-400 to amber-700 for high accessibility standards
 function ProgressBar({ value, max, label }: { value: number; max: number; label?: string }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   return (
-    <div className="space-y-1.5">
-      {label && <p className={A.muted}>{label}: <strong className="text-amber-400 text-base">{value}</strong> / {max}</p>}
+    <div className="space-y-1.5 w-full">
+      {label && <p className={A.muted}>{label}: <strong className="text-amber-700 text-base">{value}</strong> / {max}</p>}
       <div className="h-4 bg-stone-200 rounded-full overflow-hidden border border-stone-300">
         <motion.div className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full"
           animate={{ width: `${pct}%` }} transition={{ duration: 0.5 }} />
       </div>
+    </div>
+  );
+}
+
+// ─── MASTER ENTRY APP ────────────────────────────────────────────────────────
+export default function App() {
+  const [currentGame, setCurrentGame] = useState<GameId>('menu');
+
+  return (
+    <div className="min-h-screen bg-stone-100 font-sans text-stone-800 antialiased selection:bg-amber-200">
+      <AnimatePresence mode="wait">
+        {currentGame === 'menu' && (
+          <motion.div key="menu" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={A.pageBg}>
+            <div className="max-w-4xl mx-auto text-center py-12 px-4">
+              <span className="inline-flex p-3 bg-amber-100 rounded-2xl text-amber-800 mb-4 shadow-inner">
+                <Gamepad2 size={40} />
+              </span>
+              <h1 className={`${A.heading} text-4xl sm:text-5xl mb-3`}>Cognitive Care Hub</h1>
+              <p className={`${A.body} text-lg max-w-xl mx-auto mb-10 text-stone-500`}>
+                High-contrast, large-target therapeutic interactive platforms designed specifically for memory retention and motor control exercises.
+              </p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-left">
+                {[
+                  { id: 'wordsearch', title: 'Word Search', desc: 'Pattern scanning & alignment tracking' },
+                  { id: 'matching', title: 'Card Matching', desc: 'Visual recollection & focus parameters' },
+                  { id: 'checkers', title: 'Checkers Board', desc: 'Spatial sequences & logic coordination' },
+                  { id: 'chess', title: 'Strategic Chess', desc: 'Analytical foresight exercises' },
+                  { id: 'crossword', title: 'Crossword Puzzles', desc: 'Vocabulary and semantic recall' },
+                  { id: 'hangman', title: 'Word Guessing', desc: 'Letter deduction practice' },
+                ].map((game) => (
+                  <button
+                    key={game.id}
+                    onClick={() => setCurrentGame(game.id as GameId)}
+                    className={`${A.surfaceLg} p-6 hover:border-amber-500 text-left transition-all active:scale-[0.98] group cursor-pointer focus:ring-4 focus:ring-amber-500/20`}
+                  >
+                    <h3 className="text-xl font-black text-stone-900 group-hover:text-amber-800 mb-1">{game.title}</h3>
+                    <p className="text-stone-500 text-sm font-medium leading-normal">{game.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {currentGame === 'wordsearch' && <WordSearchGame key="wordsearch" onBack={() => setCurrentGame('menu')} />}
+        
+        {/* Placeholder Fallback Screens for secondary routes */}
+        {currentGame !== 'menu' && currentGame !== 'wordsearch' && (
+          <div key="fallback" className={A.pageBg}>
+            <div className="max-w-md mx-auto mt-12 text-center space-y-6">
+              <GameHeader title={`${currentGame.toUpperCase()} Module`} onBack={() => setCurrentGame('menu')} />
+              <div className={`${A.surfaceLg} p-8 text-stone-500 font-bold`}>
+                This sub-module structural grid is initialized. Ready to bind your customized component rules here.
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WORD SEARCH MODULE 
+// ══════════════════════════════════════════════════════════════════════════════
+function WordSearchGame({ onBack }: { onBack: () => void }) {
+  const [themeIndex, setThemeIndex] = useState(0);
+  const [grid, setGrid] = useState<string[][]>([]);
+  const [foundWords, setFoundWords] = useState<string[]>([]);
+  const [wordPositions, setWordPositions] = useState<Record<string, [number, number][]>>({});
+  
+  const [dragStart, setDragStart] = useState<[number, number] | null>(null);
+  const [dragCurrent, setDragCurrent] = useState<[number, number] | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const activeTheme = WS_THEMES[themeIndex];
+
+  const buildPuzzle = useCallback(() => {
+    const size = WS_SIZE;
+    const nextGrid: string[][] = Array.from({ length: size }, () => Array(size).fill(''));
+    const positions: Record<string, [number, number][]> = {};
+
+    const targets = [...activeTheme.words].sort((a, b) => b.length - a.length);
+
+    targets.forEach(word => {
+      let inserted = false;
+      let attempts = 0;
+
+      while (!inserted && attempts < 100) {
+        attempts++;
+        const dir = WS_DIRS[Math.floor(Math.random() * WS_DIRS.length)];
+        const r = Math.floor(Math.random() * size);
+        const c = Math.floor(Math.random() * size);
+
+        const endR = r + dir[0] * (word.length - 1);
+        const endC = c + dir[1] * (word.length - 1);
+
+        if (endR >= 0 && endR < size && endC >= 0 && endC < size) {
+          let spaceAvailable = true;
+          const currentCoords: [number, number][] = [];
+
+          for (let i = 0; i < word.length; i++) {
+            const currR = r + dir[0] * i;
+            const currC = c + dir[1] * i;
+            if (nextGrid[currR][currC] !== '' && nextGrid[currR][currC] !== word[i]) {
+              spaceAvailable = false;
+              break;
+            }
+            currentCoords.push([currR, currC]);
+          }
+
+          if (spaceAvailable) {
+            currentCoords.forEach(([currR, currC], i) => {
+              nextGrid[currR][currC] = word[i];
+            });
+            positions[word] = currentCoords;
+            inserted = true;
+          }
+        }
+      }
+    });
+
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        if (nextGrid[r][c] === '') {
+          nextGrid[r][c] = alphabet[Math.floor(Math.random() * alphabet.length)];
+        }
+      }
+    }
+
+    setGrid(nextGrid);
+    setWordPositions(positions);
+    setFoundWords([]);
+  }, [themeIndex]);
+
+  useEffect(() => { buildPuzzle(); }, [buildPuzzle]);
+
+  const getDragSelectionCoords = (): [number, number][] => {
+    if (!dragStart || !dragCurrent) return [];
+    const [sr, sc] = dragStart;
+    const [cr, cc] = dragCurrent;
+
+    const dr = cr - sr;
+    const dc = cc - sc;
+    if (dr === 0 && dc === 0) return [[sr, sc]];
+
+    const stepR = dr === 0 ? 0 : dr > 0 ? 1 : -1;
+    const stepC = dc === 0 ? 0 : dc > 0 ? 1 : -1;
+
+    if (dr !== 0 && dc !== 0 && Math.abs(dr) !== Math.abs(dc)) return [];
+
+    const path: [number, number][] = [];
+    const iterations = Math.max(Math.abs(dr), Math.abs(dc)) + 1;
+
+    for (let i = 0; i < iterations; i++) {
+      path.push([sr + stepR * i, sc + stepC * i]);
+    }
+    return path;
+  };
+
+  const handlePointerDown = (r: number, c: number) => {
+    setDragStart([r, c]);
+    setDragCurrent([r, c]);
+    setIsDragging(true);
+  };
+
+  const handlePointerEnter = (r: number, c: number) => {
+    if (!isDragging) return;
+    setDragCurrent([r, c]);
+  };
+
+  const handlePointerUp = () => {
+    if (!isDragging) return;
+    setIsDragging(false);
+
+    const selectionCoords = getDragSelectionCoords();
+    if (selectionCoords.length === 0) return;
+
+    const parsedWord = selectionCoords.map(([r, c]) => grid[r]?.[c] || '').join('');
+    const reversedWord = [...parsedWord].reverse().join('');
+
+    activeTheme.words.forEach(word => {
+      if ((parsedWord === word || reversedWord === word) && !foundWords.includes(word)) {
+        setFoundWords(prev => [...prev, word]);
+      }
+    });
+
+    setDragStart(null);
+    setDragCurrent(null);
+  };
+
+  const currentSelectionCoords = getDragSelectionCoords();
+  const isCoordInCurrentSelection = (r: number, c: number) => 
+    currentSelectionCoords.some(([sr, sc]) => sr === r && sc === c);
+
+  const isCoordInFoundWords = (r: number, c: number) => {
+    return foundWords.some(word => 
+      wordPositions[word]?.some(([fr, fc]) => fr === r && fc === c)
+    );
+  };
+
+  const hasWon = foundWords.length === activeTheme.words.length;
+
+  return (
+    <div className="min-h-screen bg-stone-50 text-stone-900 p-4 md:p-6 select-none" onPointerUp={handlePointerUp}>
+      <div className="max-w-4xl mx-auto">
+        
+        {/* Uses merged shared header with extra dynamic info hook */}
+        <GameHeader 
+          title={`Scanning Search: ${activeTheme.theme}`} 
+          onBack={onBack} 
+          right={
+            <button onClick={() => setThemeIndex(prev => (prev + 1) % WS_THEMES.length)} className={A.btnSecondary}>
+              Next Theme
+            </button>
+          }
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+          
+          {/* Target Vocabulary Checklist (Using integrated UI design tokens) */}
+          <div className={`${A.surfaceLg} p-5 space-y-4`}>
+            <ProgressBar value={foundWords.length} max={activeTheme.words.length} label="Progress" />
+            <div className="grid grid-cols-2 md:grid-cols-1 gap-2 pt-2">
+              {activeTheme.words.map(word => {
+                const found = foundWords.includes(word);
+                return (
+                  <div 
+                    key={word} 
+                    className={`p-3 rounded-xl border-2 font-black tracking-wide transition-all flex items-center justify-between ${
+                      found ? 'bg-emerald-50 border-emerald-300 text-emerald-800 line-through opacity-60' : 'bg-stone-50 border-stone-200 text-stone-800'
+                    }`}
+                  >
+                    <span>{word}</span>
+                    {found && <CheckCircle2 size={18} className="text-emerald-600" />}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Master Touch/Drag Puzzle Grid Matrix Layout */}
+          <div className="md:col-span-2 flex flex-col items-center">
+            <div 
+              className={`${A.surfaceLg} p-3 bg-stone-900 border-stone-950 max-w-full aspect-square touch-none grid grid-cols-10 gap-1 sm:gap-1.5`}
+              style={{ width: '500px' }}
+            >
+              {grid.map((row, r) => 
+                row.map((letter, c) => {
+                  const selected = isCoordInCurrentSelection(r, c);
+                  const persistentMatched = isCoordInFoundWords(r, c);
+
+                  let cellStyle = 'bg-white border-stone-200 text-stone-900';
+                  if (selected) cellStyle = 'bg-amber-600 border-amber-700 text-white scale-95 z-20';
+                  else if (persistentMatched) cellStyle = 'bg-emerald-100 border-emerald-300 text-emerald-900 font-extrabold';
+
+                  return (
+                    <div
+                      key={`${r}-${c}`}
+                      onPointerDown={() => handlePointerDown(r, c)}
+                      onPointerEnter={() => handlePointerEnter(r, c)}
+                      className={`aspect-square rounded-lg border-2 flex items-center justify-center font-black text-lg sm:text-xl transition-all cursor-crosshair select-none ${cellStyle}`}
+                    >
+                      {letter}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Reused your native shared WinModal directly */}
+      <AnimatePresence>
+        {hasWon && (
+          <WinModal 
+            icon="🏆" 
+            title="Puzzle Cleared!" 
+            sub="Your scanning processing tracked every single word target perfectly." 
+            onPlay={() => setThemeIndex(prev => (prev + 1) % WS_THEMES.length)} 
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1145,12 +1439,8 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CHESS — large cells, labeled pieces, high-contrast board
-// ══════════════════════════════════════════════════════════════════════════════
-import React, { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { RotateCcw, ChevronLeft, User, Users, Trophy, Heart } from 'lucide-react';
-
 // --- CHESS LOGIC TYPES & INITIALIZATION ---
+// ══════════════════════════════════════════════════════════════════════════════
 type PieceType = 'p' | 'r' | 'n' | 'b' | 'q' | 'k';
 type Color = 'w' | 'b';
 type Piece = { type: PieceType; color: Color };
