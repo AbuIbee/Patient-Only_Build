@@ -1,24 +1,68 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  RotateCcw, ChevronLeft, Gamepad2, ExternalLink, Clock, 
-  CheckCircle2, Zap, Trophy, Award, Flame, Star, Sparkles, Users, User 
+  RotateCcw, ChevronLeft, Gamepad2, Clock, 
+  CheckCircle2, Zap, Trophy, Award, Flame, Star, Sparkles, Users, User, Heart, CheckCircle 
 } from 'lucide-react';
 
 // ─── TYPES & CONFIGURATIONS ──────────────────────────────────────────────────
 type GameId = 'menu' | 'matching' | 'crossword' | 'checkers' | 'chess' | 'brainapps' | 'wordsearch' | 'solitaire' | 'hangman';
 
-// Word Search Themes Engine Config
-const WS_THEMES = [
-  { theme: 'Comfort', words: ['FAMILY', 'SMILE', 'HOPE', 'CARE', 'PEACE', 'LOVE', 'HOME', 'KIND', 'HUG'] },
-  { theme: 'Nature', words: ['GARDEN', 'FLOWER', 'SUMMER', 'SUNSET', 'BREEZE', 'MEADOW', 'FOREST', 'OCEAN', 'TREE'] },
-  { theme: 'Daily', words: ['APPLE', 'BREAD', 'WATER', 'MUSIC', 'DANCE', 'BOOK', 'STORY', 'LIGHT', 'TEA'] },
-  { theme: 'Animals', words: ['RABBIT', 'KITTEN', 'PUPPY', 'ROBIN', 'HORSE', 'SHEEP', 'EAGLE', 'TIGER', 'DEER'] },
-  { theme: 'Feelings', words: ['HAPPY', 'JOYFUL', 'GENTLE', 'BRAVE', 'TENDER', 'SERENE', 'CALM', 'PROUD', 'GLAD'] }
+// --- CHESS LOGIC ENGINE TYPES ---
+type PieceType = 'p' | 'r' | 'n' | 'b' | 'q' | 'k';
+type Color = 'w' | 'b';
+type Piece = { type: PieceType; color: Color };
+type Board = (Piece | null)[][];
+type Position = [number, number];
+
+const INITIAL_CHESS_BOARD: Board = [
+  [
+    { type: 'r', color: 'b' }, { type: 'n', color: 'b' }, { type: 'b', color: 'b' }, { type: 'q', color: 'b' },
+    { type: 'k', color: 'b' }, { type: 'b', color: 'b' }, { type: 'n', color: 'b' }, { type: 'r', color: 'b' }
+  ],
+  Array(8).fill(null).map(() => ({ type: 'p', color: 'b' })),
+  Array(8).fill(null),
+  Array(8).fill(null),
+  Array(8).fill(null),
+  Array(8).fill(null),
+  Array(8).fill(null).map(() => ({ type: 'p', color: 'w' })),
+  [
+    { type: 'r', color: 'w' }, { type: 'n', color: 'w' }, { type: 'b', color: 'w' }, { type: 'q', color: 'w' },
+    { type: 'k', color: 'w' }, { type: 'b', color: 'w' }, { type: 'n', color: 'w' }, { type: 'r', color: 'w' }
+  ]
 ];
 
-const WS_SIZE = 10;
-const WS_DIRS = [[0, 1], [1, 0], [1, 1], [1, -1]]; // Linear forward configurations only
+const CHESS_ENCOURAGEMENT_QUOTES = [
+  "Fantastic focus! Every strategic layout trains your working memory.",
+  "Your neuroplasticity is at work right now. Rest, reset, and try again!",
+  "Brilliant mental tracking! Every game is an investment in cognitive clarity.",
+  "Progress takes patience. Your problem-solving skills are expanding beautifully!",
+  "Great concentration. Take a deep breath, adjust your sights, and jump back in."
+];
+
+const CHESS_PIECE_VALUES: Record<PieceType, number> = { p: 10, n: 30, b: 30, r: 50, q: 90, k: 900 };
+
+const CHESS_PAWN_PST = [
+  [0,  0,  0,  0,  0,  0,  0,  0],
+  [5,  5,  5,  5,  5,  5,  5,  5],
+  [1,  1,  2,  3,  3,  2,  1,  1],
+  [0.5, 0.5, 1, 2.5, 2.5, 1, 0.5, 0.5],
+  [0,  0,  0,  2,  2,  0,  0,  0],
+  [0.5, -0.5, -1, 0, 0, -1, -0.5, 0.5],
+  [0.5, 1, 1, -2, -2, 1, 1, 0.5],
+  [0,  0,  0,  0,  0,  0,  0,  0]
+];
+
+const CHESS_KNIGHT_PST = [
+  [-5, -4, -3, -3, -3, -3, -4, -5],
+  [-4, -2,  0,  0,  0,  0, -2, -4],
+  [-3,  0,  1,  1.5, 1.5,  1,  0, -3],
+  [-3,  0.5, 1.5, 2, 2, 1.5,  0.5, -3],
+  [-3,  0, 1.5, 2, 2, 1.5,  0, -3],
+  [-3,  0.5,  1,  1.5, 1.5,  1,  0.5, -3],
+  [-4, -2,  0,  0.5, 0.5,  0, -2, -4],
+  [-5, -4, -3, -3, -3, -3, -4, -5]
+];
 
 // ─── ACCESSIBILITY-FIRST DESIGN TOKENS (LIGHT MODE) ─────────────────────────
 const A = {
@@ -59,38 +103,139 @@ function GameHeader({ title, onBack, right }: { title: string; onBack: () => voi
   );
 }
 
-function WinModal({ icon, title, sub, onPlay }: { icon: string; title: string; sub?: string; onPlay: () => void }) {
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-      <motion.div initial={{ scale: 0.7, y: 40 }} animate={{ scale: 1, y: 0 }} transition={{ type: 'spring', bounce: 0.4 }}
-        className="bg-white rounded-3xl p-8 text-center shadow-2xl max-w-sm w-full border-2 border-amber-600">
-        <div className="text-7xl mb-4 select-none">{icon}</div>
-        <h3 className="text-3xl font-black text-stone-900 mb-2">{title}</h3>
-        {sub && <p className="text-stone-500 text-lg font-semibold mb-6">{sub}</p>}
-        <button onClick={onPlay} className={`${A.btnPrimary} w-full text-xl py-5`}>
-          <RotateCcw className="w-5 h-5" /> Play Again
-        </button>
-      </motion.div>
-    </motion.div>
-  );
+// ─── CHESS PIECE SVG DICTIONARY ───
+const ChessPieceSVG = ({ type, color }: { type: PieceType; color: Color }) => {
+  const fill = color === 'w' ? '#f8fafc' : '#334155';
+  const stroke = color === 'w' ? '#475569' : '#0f172a';
+
+  switch (type) {
+    case 'p':
+      return (
+        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
+          <path d="M12 2a3 3 0 0 0-3 3c0 1 .5 2 1.3 2.5C8.4 8.2 7 10 7 12c0 1.2.6 2.3 1.5 3-.7.7-1.5 1.8-1.5 3v2h10v-2c0-1.2-.8-2.3-1.5-3 .9-.7 1.5-1.8 1.5-3 0-2-1.4-3.8-3.3-4.5.8-.5 1.3-1.5 1.3-2.5a3 3 0 0 0-3-3z" />
+        </svg>
+      );
+    case 'n':
+      return (
+        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
+          <path d="M22 10c0-4-3-7-7-7-2.5 0-5 1.5-6 3.5C8.5 6 7.5 5.5 6.5 5.5c-2 0-3.5 1.5-3.5 3.5 0 2 1.5 3 2.5 4-2 1-3.5 3-3.5 5.5v1.5h16V18c0-3 2-6.5 4-8z" />
+          <circle cx="13" cy="7" r="1" fill={stroke} />
+        </svg>
+      );
+    case 'b':
+      return (
+        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
+          <circle cx="12" cy="4" r="1.5" />
+          <path d="M12 6c-2.5 0-4.5 3-4.5 6 0 2 1.5 4.5 4.5 6.5 3-2 4.5-4.5 4.5-6 0-3-2-6-4-6zM8 20h8v1.5H8z" />
+          <path d="M10 9h4M12 7v4" stroke={stroke} strokeWidth="1" />
+        </svg>
+      );
+    case 'r':
+      return (
+        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
+          <path d="M4 3v3h2v11H5v3h14v-3h-1v-11h2V3h-3v2h-2V3h-2v2h-2V3H4z" />
+        </svg>
+      );
+    case 'q':
+      return (
+        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
+          <path d="M2 5l3 11h14l3-11-4 5-4-7-4 7-4-5zM4 19h16v1.5H4z" />
+          <circle cx="2" cy="4" r="1" /><circle cx="5" cy="4" r="1" /><circle cx="12" cy="2" r="1" /><circle cx="19" cy="4" r="1" /><circle cx="22" cy="4" r="1" />
+        </svg>
+      );
+    case 'k':
+      return (
+        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
+          <path d="M12 2v3M10 3h4M5 7l2 10h10l2-10-3 4-4-5-4 5-3-4zm-1 12h16v1.5H4z" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+};
+
+// --- HELPER MOVEMENTS FOR CHESS VALIDATION ---
+function getChessValidMoves(board: Board, r: number, c: number): Position[] {
+  const piece = board[r][c];
+  if (!piece) return [];
+  const moves: Position[] = [];
+  const color = piece.color;
+  const opp = color === 'w' ? 'b' : 'w';
+
+  const addMove = (nr: number, nc: number): boolean => {
+    if (nr < 0 || nr >= 8 || nc < 0 || nc >= 8) return false;
+    if (!board[nr][nc]) { moves.push([nr, nc]); return true; }
+    if (board[nr][nc]?.color === opp) { moves.push([nr, nc]); return false; }
+    return false;
+  };
+
+  switch (piece.type) {
+    case 'p': {
+      const dir = color === 'w' ? -1 : 1;
+      const startRow = color === 'w' ? 6 : 1;
+      if (r + dir >= 0 && r + dir < 8 && !board[r + dir][c]) {
+        moves.push([r + dir, c]);
+        if (r === startRow && !board[r + dir * 2][c]) moves.push([r + dir * 2, c]);
+      }
+      for (const dc of [-1, 1]) {
+        const nc = c + dc;
+        if (nc >= 0 && nc < 8 && board[r + dir]?.[nc]?.color === opp) moves.push([r + dir, nc]);
+      }
+      break;
+    }
+    case 'n': {
+      const offsets = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+      offsets.forEach(([dr, dc]) => addMove(r + dr, c + dc));
+      break;
+    }
+    case 'b': {
+      const dirs = [[-1,-1],[-1,1],[1,-1],[1,1]];
+      dirs.forEach(([dr, dc]) => {
+        let step = 1;
+        while (addMove(r + dr * step, c + dc * step) && !board[r + dr * step][c + dc * step]) step++;
+      });
+      break;
+    }
+    case 'r': {
+      const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+      dirs.forEach(([dr, dc]) => {
+        let step = 1;
+        while (addMove(r + dr * step, c + dc * step) && !board[r + dr * step][c + dc * step]) step++;
+      });
+      break;
+    }
+    case 'q': {
+      const dirs = [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]];
+      dirs.forEach(([dr, dc]) => {
+        let step = 1;
+        while (addMove(r + dr * step, c + dc * step) && !board[r + dr * step][c + dc * step]) step++;
+      });
+      break;
+    }
+    case 'k': {
+      const dirs = [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]];
+      dirs.forEach(([dr, dc]) => addMove(r + dr, c + dc));
+      break;
+    }
+  }
+  return moves;
 }
 
-// Fixed minor color contrast warning from amber-400 to amber-700 for high accessibility standards
-function ProgressBar({ value, max, label }: { value: number; max: number; label?: string }) {
-  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
-  return (
-    <div className="space-y-1.5 w-full">
-      {label && <p className={A.muted}>{label}: <strong className="text-amber-700 text-base">{value}</strong> / {max}</p>}
-      <div className="h-4 bg-stone-200 rounded-full overflow-hidden border border-stone-300">
-        <motion.div className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full"
-          animate={{ width: `${pct}%` }} transition={{ duration: 0.5 }} />
-      </div>
-    </div>
-  );
+function getAllChessLegalMoves(board: Board, color: Color) {
+  const moves: { fr: number, fc: number, tr: number, tc: number }[] = [];
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (board[r][c]?.color === color) {
+        const valid = getChessValidMoves(board, r, c);
+        valid.forEach(([tr, tc]) => moves.push({ fr: r, fc: c, tr, tc }));
+      }
+    }
+  }
+  return moves;
 }
 
 // ─── MASTER ENTRY APP ────────────────────────────────────────────────────────
-export default function App() {
+export function App() {
   const [currentGame, setCurrentGame] = useState<GameId>('menu');
 
   return (
@@ -109,12 +254,9 @@ export default function App() {
               
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-left">
                 {[
-                  { id: 'wordsearch', title: 'Word Search', desc: 'Pattern scanning & alignment tracking' },
                   { id: 'matching', title: 'Card Matching', desc: 'Visual recollection & focus parameters' },
                   { id: 'checkers', title: 'Checkers Board', desc: 'Spatial sequences & logic coordination' },
-                  { id: 'chess', title: 'Strategic Chess', desc: 'Analytical foresight exercises' },
-                  { id: 'crossword', title: 'Crossword Puzzles', desc: 'Vocabulary and semantic recall' },
-                  { id: 'hangman', title: 'Word Guessing', desc: 'Letter deduction practice' },
+                  { id: 'chess', title: 'Strategic Chess', desc: 'Analytical foresight exercises & multi-tier AI modes' }
                 ].map((game) => (
                   <button
                     key={game.id}
@@ -130,246 +272,9 @@ export default function App() {
           </motion.div>
         )}
 
-        {currentGame === 'wordsearch' && <WordSearchGame key="wordsearch" onBack={() => setCurrentGame('menu')} />}
-        
-        {/* Placeholder Fallback Screens for secondary routes */}
-        {currentGame !== 'menu' && currentGame !== 'wordsearch' && (
-          <div key="fallback" className={A.pageBg}>
-            <div className="max-w-md mx-auto mt-12 text-center space-y-6">
-              <GameHeader title={`${currentGame.toUpperCase()} Module`} onBack={() => setCurrentGame('menu')} />
-              <div className={`${A.surfaceLg} p-8 text-stone-500 font-bold`}>
-                This sub-module structural grid is initialized. Ready to bind your customized component rules here.
-              </div>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// WORD SEARCH MODULE 
-// ══════════════════════════════════════════════════════════════════════════════
-function WordSearchGame({ onBack }: { onBack: () => void }) {
-  const [themeIndex, setThemeIndex] = useState(0);
-  const [grid, setGrid] = useState<string[][]>([]);
-  const [foundWords, setFoundWords] = useState<string[]>([]);
-  const [wordPositions, setWordPositions] = useState<Record<string, [number, number][]>>({});
-  
-  const [dragStart, setDragStart] = useState<[number, number] | null>(null);
-  const [dragCurrent, setDragCurrent] = useState<[number, number] | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const activeTheme = WS_THEMES[themeIndex];
-
-  const buildPuzzle = useCallback(() => {
-    const size = WS_SIZE;
-    const nextGrid: string[][] = Array.from({ length: size }, () => Array(size).fill(''));
-    const positions: Record<string, [number, number][]> = {};
-
-    const targets = [...activeTheme.words].sort((a, b) => b.length - a.length);
-
-    targets.forEach(word => {
-      let inserted = false;
-      let attempts = 0;
-
-      while (!inserted && attempts < 100) {
-        attempts++;
-        const dir = WS_DIRS[Math.floor(Math.random() * WS_DIRS.length)];
-        const r = Math.floor(Math.random() * size);
-        const c = Math.floor(Math.random() * size);
-
-        const endR = r + dir[0] * (word.length - 1);
-        const endC = c + dir[1] * (word.length - 1);
-
-        if (endR >= 0 && endR < size && endC >= 0 && endC < size) {
-          let spaceAvailable = true;
-          const currentCoords: [number, number][] = [];
-
-          for (let i = 0; i < word.length; i++) {
-            const currR = r + dir[0] * i;
-            const currC = c + dir[1] * i;
-            if (nextGrid[currR][currC] !== '' && nextGrid[currR][currC] !== word[i]) {
-              spaceAvailable = false;
-              break;
-            }
-            currentCoords.push([currR, currC]);
-          }
-
-          if (spaceAvailable) {
-            currentCoords.forEach(([currR, currC], i) => {
-              nextGrid[currR][currC] = word[i];
-            });
-            positions[word] = currentCoords;
-            inserted = true;
-          }
-        }
-      }
-    });
-
-    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        if (nextGrid[r][c] === '') {
-          nextGrid[r][c] = alphabet[Math.floor(Math.random() * alphabet.length)];
-        }
-      }
-    }
-
-    setGrid(nextGrid);
-    setWordPositions(positions);
-    setFoundWords([]);
-  }, [themeIndex]);
-
-  useEffect(() => { buildPuzzle(); }, [buildPuzzle]);
-
-  const getDragSelectionCoords = (): [number, number][] => {
-    if (!dragStart || !dragCurrent) return [];
-    const [sr, sc] = dragStart;
-    const [cr, cc] = dragCurrent;
-
-    const dr = cr - sr;
-    const dc = cc - sc;
-    if (dr === 0 && dc === 0) return [[sr, sc]];
-
-    const stepR = dr === 0 ? 0 : dr > 0 ? 1 : -1;
-    const stepC = dc === 0 ? 0 : dc > 0 ? 1 : -1;
-
-    if (dr !== 0 && dc !== 0 && Math.abs(dr) !== Math.abs(dc)) return [];
-
-    const path: [number, number][] = [];
-    const iterations = Math.max(Math.abs(dr), Math.abs(dc)) + 1;
-
-    for (let i = 0; i < iterations; i++) {
-      path.push([sr + stepR * i, sc + stepC * i]);
-    }
-    return path;
-  };
-
-  const handlePointerDown = (r: number, c: number) => {
-    setDragStart([r, c]);
-    setDragCurrent([r, c]);
-    setIsDragging(true);
-  };
-
-  const handlePointerEnter = (r: number, c: number) => {
-    if (!isDragging) return;
-    setDragCurrent([r, c]);
-  };
-
-  const handlePointerUp = () => {
-    if (!isDragging) return;
-    setIsDragging(false);
-
-    const selectionCoords = getDragSelectionCoords();
-    if (selectionCoords.length === 0) return;
-
-    const parsedWord = selectionCoords.map(([r, c]) => grid[r]?.[c] || '').join('');
-    const reversedWord = [...parsedWord].reverse().join('');
-
-    activeTheme.words.forEach(word => {
-      if ((parsedWord === word || reversedWord === word) && !foundWords.includes(word)) {
-        setFoundWords(prev => [...prev, word]);
-      }
-    });
-
-    setDragStart(null);
-    setDragCurrent(null);
-  };
-
-  const currentSelectionCoords = getDragSelectionCoords();
-  const isCoordInCurrentSelection = (r: number, c: number) => 
-    currentSelectionCoords.some(([sr, sc]) => sr === r && sc === c);
-
-  const isCoordInFoundWords = (r: number, c: number) => {
-    return foundWords.some(word => 
-      wordPositions[word]?.some(([fr, fc]) => fr === r && fc === c)
-    );
-  };
-
-  const hasWon = foundWords.length === activeTheme.words.length;
-
-  return (
-    <div className="min-h-screen bg-stone-50 text-stone-900 p-4 md:p-6 select-none" onPointerUp={handlePointerUp}>
-      <div className="max-w-4xl mx-auto">
-        
-        {/* Uses merged shared header with extra dynamic info hook */}
-        <GameHeader 
-          title={`Scanning Search: ${activeTheme.theme}`} 
-          onBack={onBack} 
-          right={
-            <button onClick={() => setThemeIndex(prev => (prev + 1) % WS_THEMES.length)} className={A.btnSecondary}>
-              Next Theme
-            </button>
-          }
-        />
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-          
-          {/* Target Vocabulary Checklist (Using integrated UI design tokens) */}
-          <div className={`${A.surfaceLg} p-5 space-y-4`}>
-            <ProgressBar value={foundWords.length} max={activeTheme.words.length} label="Progress" />
-            <div className="grid grid-cols-2 md:grid-cols-1 gap-2 pt-2">
-              {activeTheme.words.map(word => {
-                const found = foundWords.includes(word);
-                return (
-                  <div 
-                    key={word} 
-                    className={`p-3 rounded-xl border-2 font-black tracking-wide transition-all flex items-center justify-between ${
-                      found ? 'bg-emerald-50 border-emerald-300 text-emerald-800 line-through opacity-60' : 'bg-stone-50 border-stone-200 text-stone-800'
-                    }`}
-                  >
-                    <span>{word}</span>
-                    {found && <CheckCircle2 size={18} className="text-emerald-600" />}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Master Touch/Drag Puzzle Grid Matrix Layout */}
-          <div className="md:col-span-2 flex flex-col items-center">
-            <div 
-              className={`${A.surfaceLg} p-3 bg-stone-900 border-stone-950 max-w-full aspect-square touch-none grid grid-cols-10 gap-1 sm:gap-1.5`}
-              style={{ width: '500px' }}
-            >
-              {grid.map((row, r) => 
-                row.map((letter, c) => {
-                  const selected = isCoordInCurrentSelection(r, c);
-                  const persistentMatched = isCoordInFoundWords(r, c);
-
-                  let cellStyle = 'bg-white border-stone-200 text-stone-900';
-                  if (selected) cellStyle = 'bg-amber-600 border-amber-700 text-white scale-95 z-20';
-                  else if (persistentMatched) cellStyle = 'bg-emerald-100 border-emerald-300 text-emerald-900 font-extrabold';
-
-                  return (
-                    <div
-                      key={`${r}-${c}`}
-                      onPointerDown={() => handlePointerDown(r, c)}
-                      onPointerEnter={() => handlePointerEnter(r, c)}
-                      className={`aspect-square rounded-lg border-2 flex items-center justify-center font-black text-lg sm:text-xl transition-all cursor-crosshair select-none ${cellStyle}`}
-                    >
-                      {letter}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Reused your native shared WinModal directly */}
-      <AnimatePresence>
-        {hasWon && (
-          <WinModal 
-            icon="🏆" 
-            title="Puzzle Cleared!" 
-            sub="Your scanning processing tracked every single word target perfectly." 
-            onPlay={() => setThemeIndex(prev => (prev + 1) % WS_THEMES.length)} 
-          />
-        )}
+        {currentGame === 'matching' && <MatchingGame key="matching" onBack={() => setCurrentGame('menu')} />}
+        {currentGame === 'checkers' && <CheckersGame key="checkers" onBack={() => setCurrentGame('menu')} />}
+        {currentGame === 'chess' && <ChessGame key="chess" onBack={() => setCurrentGame('menu')} />}
       </AnimatePresence>
     </div>
   );
@@ -378,11 +283,6 @@ function WordSearchGame({ onBack }: { onBack: () => void }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // MATCHING PAIRS
 // ══════════════════════════════════════════════════════════════════════════════
-import { useState, useCallback, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Clock, RotateCcw, ChevronLeft, Award, HelpCircle, CheckCircle, Flame, Star, Sparkles } from "lucide-react";
-
-// PREMIUM EXPANSED PATIENT-OPTIMIZED VECTOR ARTIFACT DICTIONARY (48 UNIQUE ILLUSTRATIONS)
 const VECTOR_ITEMS = [
   { key: "sun", color: "#f59e0b", path: "M12 3v2m0 14v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M17.66 5.66l1.42-1.42M12 7a5 5 0 100 10 5 5 0 000-10z" },
   { key: "heart", color: "#ef4444", path: "M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" },
@@ -407,36 +307,11 @@ const VECTOR_ITEMS = [
   { key: "eye", color: "#3b82f6", path: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 15a3 3 0 100-6 3 3 0 000 6z" },
   { key: "crown", color: "#ca8a04", path: "M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z M2 20h20v2H2z" },
   { key: "pie", color: "#f97316", path: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 2v10h10" },
-  { key: "tree", color: "#15803d", path: "M12 2L3 17h18L12 2z M12 17v5M8 22h8" },
-  { key: "camera", color: "#475569", path: "M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z M12 17a4 4 0 100-8 4 4 0 000 8z" },
-  { key: "flag", color: "#dc2626", path: "M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z M4 22V15" },
-  { key: "hourglass", color: "#a1a1aa", path: "M5 2h14M5 22h14M19 2L12 12 5 2M5 22l7-10 7 10" },
-  { key: "globe", color: "#0284c7", path: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" },
-  { key: "scissors", color: "#ef4444", path: "M6 10a4 4 0 100-8 4 4 0 000 8zm0 12a4 4 0 100-8 4 4 0 000 8zm14-14L12 12l8 4M12 12l8-8" },
-  { key: "smile", color: "#eab308", path: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M8 14s1.5 2 4 2 4-2 4-2 M9 9h.01M15 9h.01" },
-  { key: "spade", color: "#334155", path: "M12 2s7 5.2 7 9.5c0 3.3-2.2 4.5-4.5 4.5-2 0-2.5-1.5-2.5-1.5s-.5 1.5-2.5 1.5c-2.3 0-4.5-1.2-4.5-4.5C5 7.2 12 2 12 2z M12 16v6M9 22h6" },
-  { key: "wind", color: "#94a3b8", path: "M2 7h18a3 3 0 000-6M2 12h13a3 3 0 010 6M2 17h10a3 3 0 000-6" },
-  { key: "zap", color: "#fbbf24", path: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
-  { key: "anchor2", color: "#0ea5e9", path: "M12 2v18M5 12H2M22 12h-3M12 2a3 3 0 100 6 3 3 0 000-6zm7 10a7 7 0 01-14 0" },
-  { key: "target", color: "#f43f5e", path: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 17a5 5 0 100-10 5 5 0 000 10z M12 14a2 2 0 100-4 2 2 0 000 4z" },
-  { key: "activity", color: "#10b981", path: "M22 12h-4l-3 9L9 3l-3 9H2" },
-  { key: "award", color: "#8b5cf6", path: "M12 15a7 7 0 100-14 7 7 0 000 14z M8.21 13.89L7 23l5-3 5 3-1.21-9.12" },
-  { key: "box", color: "#d97706", path: "M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" },
-  { key: "briefcase", color: "#78716c", path: "M16 16v1a2 2 0 01-2 2h-4a2 2 0 01-2-2v-1M2 7h20v11a2 2 0 01-2 2H4a2 2 0 01-2-2z M16 7V4a2 2 0 01-2-2h-4a2 2 0 01-2 2v3" },
-  { key: "cpu", color: "#06b6d4", path: "M4 4h16v16H4z M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3" },
-  { key: "disc", color: "#ec4899", path: "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 14a2 2 0 100-4 2 2 0 000 4z" },
-  { key: "feather2", color: "#14b8a6", path: "M20.24 4.76a6 6 0 00-8.49 0L3 13.5V21h7.5l8.74-8.74a6 6 0 000-8.5z M3 21l3.5-3.5" },
-  { key: "infinity", color: "#4f46e5", path: "M12 12c-2-2.67-4-4-6-4a4 4 0 100 8c2 0 4-1.33 6-4zm0 0c2 2.67 4 4 6 4a4 4 0 100-8c-2 0-4 1.33-6 4z" },
-  { key: "layers", color: "#f43f5e", path: "M12 2L2 7l10 5 10-5-10-5z M2 17l10 5 10-5M2 12l10 5 10-5" },
-  { key: "map", color: "#84cc16", path: "M1 6l7-3 8 3 7-3v15l-7 3-8-3-7 3V6z M8 3v15M16 6v15" },
-  { key: "pocket", color: "#3b82f6", path: "M4 3h16v7a8 8 0 01-16 0z M4 3l8 8 8-8" },
-  { key: "shuffle", color: "#f59e0b", path: "M16 3h5v5M4 20l17-17M20 16v5h-5M4 4l5 5m6 6l6 6" },
-  { key: "sun2", color: "#eab308", path: "M12 3v2m0 14v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M17.66 5.66l1.42-1.42M12 7a5 5 0 100 10 5 5 0 000-10z" }
+  { key: "tree", color: "#15803d", path: "M12 2L3 17h18L12 2z M12 17v5M8 22h8" }
 ];
 
 interface MatchCard { id: number; itemIndex: number; flipped: boolean; matched: boolean; }
 
-// LEVEL-SPECIFIC SENSORY ANIMATION WIN OVERLAYS
 function EasyAuroraOverlay() {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 60, pointerEvents: 'none', overflow: 'hidden' }}>
@@ -530,7 +405,6 @@ function HardConstellationOverlay() {
     const draw = () => {
       ctx.clearRect(0, 0, w, h);
       
-      // Update coordinates
       nodes.forEach(n => {
         n.x += n.vx; n.y += n.vy;
         if (n.x < 0 || n.x > w) n.vx *= -1;
@@ -542,7 +416,6 @@ function HardConstellationOverlay() {
         ctx.fill();
       });
 
-      // Render connected lines between neighboring nodes
       ctx.lineWidth = 0.8;
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
@@ -565,7 +438,7 @@ function HardConstellationOverlay() {
   return <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, zIndex: 60, pointerEvents: 'none' }} />;
 }
 
-export default function MatchingGame({ onBack }: { onBack: () => void }) {
+function MatchingGame({ onBack }: { onBack: () => void }) {
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy');
   const [cards, setCards] = useState<MatchCard[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
@@ -575,12 +448,10 @@ export default function MatchingGame({ onBack }: { onBack: () => void }) {
   const [elapsed, setElapsed] = useState(0);
   const [running, setRunning] = useState(false);
 
-  // Map settings to user requirements (24 grids, 48 grids, 96 grids)
-  const imageCount = difficulty === 'easy' ? 12 : difficulty === 'medium' ? 24 : 48;
+  const imageCount = difficulty === 'easy' ? 6 : difficulty === 'medium' ? 12 : 24;
 
   const initGame = useCallback(() => {
-    // Collect specific slice range based on computed density requirements
-    const indices = Array.from({ length: imageCount }, (_, i) => i);
+    const indices = Array.from({ length: imageCount }, (_, i) => i % VECTOR_ITEMS.length);
     const doubled = [...indices, ...indices]
       .sort(() => Math.random() - 0.5)
       .map((itemIndex, i) => ({ id: i, itemIndex, flipped: false, matched: false }));
@@ -617,7 +488,6 @@ export default function MatchingGame({ onBack }: { onBack: () => void }) {
       const [first, second] = updatedSelected.map(cardId => cards.find(c => c.id === cardId)!);
 
       if (first.itemIndex === second.itemIndex) {
-        // Confirmed Match State
         setCards(prev => prev.map(c => updatedSelected.includes(c.id) ? { ...c, matched: true } : c));
         setMatches(m => {
           const nextCount = m + 1;
@@ -629,7 +499,6 @@ export default function MatchingGame({ onBack }: { onBack: () => void }) {
         });
         setSelected([]);
       } else {
-        // Mismatch — Flip back over with a gentle delay
         setTimeout(() => {
           setCards(prev => prev.map(c => updatedSelected.includes(c.id) ? { ...c, flipped: false } : c));
           setSelected([]);
@@ -642,19 +511,16 @@ export default function MatchingGame({ onBack }: { onBack: () => void }) {
     return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
   };
 
-  // Fluid columns adapt perfectly to desktop monitors or vertical cellphones
-  const gridColumns = difficulty === 'easy' ? 'grid-cols-4 sm:grid-cols-4 md:grid-cols-6' : difficulty === 'medium' ? 'grid-cols-4 sm:grid-cols-6 md:grid-cols-8' : 'grid-cols-6 sm:grid-cols-8 md:grid-cols-12';
+  const gridColumns = difficulty === 'easy' ? 'grid-cols-4' : difficulty === 'medium' ? 'grid-cols-4 sm:grid-cols-6' : 'grid-cols-6 sm:grid-cols-8';
 
   return (
     <div style={{ background: '#0f172a', minHeight: '100vh', padding: '16px 8px', fontFamily: 'system-ui, sans-serif', boxSizing: 'border-box' }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         
-        {/* Render Selected Celebrate Engine Pattern */}
         {won && difficulty === 'easy' && <EasyAuroraOverlay />}
         {won && difficulty === 'medium' && <MediumBubbleOverlay />}
         {won && difficulty === 'hard' && <HardConstellationOverlay />}
 
-        {/* Premium Core Navigation Ribbon Panel */}
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button 
@@ -675,7 +541,6 @@ export default function MatchingGame({ onBack }: { onBack: () => void }) {
           </div>
         </div>
 
-        {/* Difficulty Selectors + Metric Dash */}
         <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '20px', padding: '12px 16px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '16px' }}>
           <div style={{ display: 'flex', gap: '6px' }}>
             {(['easy', 'medium', 'hard'] as const).map(level => (
@@ -695,18 +560,18 @@ export default function MatchingGame({ onBack }: { onBack: () => void }) {
                   border: `1px solid ${difficulty === level ? '#60a5fa' : 'rgba(255,255,255,0.06)'}`
                 }}
               >
-                {level} <span style={{ fontSize: '11px', opacity: 0.8 }}>({level === 'easy' ? '24' : level === 'medium' ? '48' : '96'})</span>
+                {level} <span style={{ fontSize: '11px', opacity: 0.8 }}>({level === 'easy' ? '12' : level === 'medium' ? '24' : '48'})</span>
               </button>
             ))}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginLeft: 'auto' }}>
             <div style={{ textAlign: 'center' }}>
-              <span style={{ block: 'span', fontSize: '18px', fontWeight: '900', color: 'white' }}>{moves}</span>
+              <span style={{ fontSize: '18px', fontWeight: '900', color: 'white' }}>{moves}</span>
               <p style={{ margin: 0, fontSize: '11px', color: '#64748b', fontWeight: '600' }}>Moves Made</p>
             </div>
             <div style={{ textAlign: 'center', borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '20px' }}>
-              <span style={{ block: 'span', fontSize: '18px', fontWeight: '900', color: '#10b981' }}>{matches} / {imageCount}</span>
+              <span style={{ fontSize: '18px', fontWeight: '900', color: '#10b981' }}>{matches} / {imageCount}</span>
               <p style={{ margin: 0, fontSize: '11px', color: '#64748b', fontWeight: '600' }}>Matched Pairs</p>
             </div>
 
@@ -720,7 +585,6 @@ export default function MatchingGame({ onBack }: { onBack: () => void }) {
           </div>
         </div>
 
-        {/* Fluid Adaptive Progress Tracker Line */}
         <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 16px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.04)', marginBottom: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '6px' }}>
             <span>Completion Track</span>
@@ -731,12 +595,10 @@ export default function MatchingGame({ onBack }: { onBack: () => void }) {
           </div>
         </div>
 
-        {/* Responsive Layout Card Board Core Grid */}
         <div className={`grid ${gridColumns} gap-2 sm:gap-3`} style={{ boxSizing: 'border-box' }}>
           {cards.map(card => {
             const staticItem = VECTOR_ITEMS[card.itemIndex];
             
-            // Dynamic fluid size configuration computed to avoid viewport clipping on high density tiers
             const dynamicSizeStyle = {
               width: '100%',
               aspectRatio: '1',
@@ -760,7 +622,7 @@ export default function MatchingGame({ onBack }: { onBack: () => void }) {
                 whileHover={!card.flipped && !card.matched ? { scale: 1.03, borderColor: 'rgba(255,255,255,0.2)' } : {}}
                 whileTap={!card.flipped && !card.matched ? { scale: 0.96 } : {}}
                 style={dynamicSizeStyle}
-                aria-label={card.flipped || card.matched ? `Card ${staticItem?.key}` : 'Hidden hidden card'}
+                aria-label={card.flipped || card.matched ? `Card ${staticItem?.key}` : 'Hidden card'}
               >
                 <AnimatePresence mode="wait">
                   {card.flipped || card.matched ? (
@@ -792,7 +654,6 @@ export default function MatchingGame({ onBack }: { onBack: () => void }) {
                       exit={{ opacity: 0 }}
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}
                     >
-                      {/* Premium Subtle Textured Back Cover Graphics instead of simple text question marks */}
                       <svg width="24%" height="24%" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="2.5">
                         <circle cx="12" cy="12" r="10" />
                         <path d="M12 8v4M12 16h.01" />
@@ -805,13 +666,12 @@ export default function MatchingGame({ onBack }: { onBack: () => void }) {
           })}
         </div>
 
-        {/* Master End-Game Win Modal HUD */}
         <AnimatePresence>
           {won && (
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
-              style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' }}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifycenter: 'center', zIndex: 100, padding: '16px' }}
             >
               <motion.div 
                 initial={{ scale: 0.85, y: 30 }} 
@@ -832,13 +692,13 @@ export default function MatchingGame({ onBack }: { onBack: () => void }) {
                 
                 <div style={{ background: '#0f172a', padding: '14px', borderRadius: '16px', display: 'flex', justifyContent: 'space-around', marginBottom: '24px' }}>
                   <div>
-                    <span style={{ display: 'block', color: 'white', fontSize: '18px', fontWeight: '900' }}>{moves}</span>
-                    <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600' }}>Total Moves</span>
+                    <span style={{ color: 'white', fontSize: '18px', fontWeight: '900' }}>{moves}</span>
+                    <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', display: 'block' }}>Total Moves</span>
                   </div>
                   <div style={{ width: '1px', background: 'rgba(255,255,255,0.1)' }} />
                   <div>
-                    <span style={{ display: 'block', color: '#38bdf8', fontSize: '18px', fontWeight: '900' }}>{formatTimer(elapsed)}</span>
-                    <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600' }}>Duration</span>
+                    <span style={{ color: '#38bdf8', fontSize: '18px', fontWeight: '900' }}>{formatTimer(elapsed)}</span>
+                    <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '600', display: 'block' }}>Duration</span>
                   </div>
                 </div>
                 
@@ -859,14 +719,9 @@ export default function MatchingGame({ onBack }: { onBack: () => void }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// CHECKERS — large pieces, clear board, high-contrast
+// CHECKERS
 // ══════════════════════════════════════════════════════════════════════════════
-import { useState, useCallback, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { RotateCcw, ChevronLeft, Users, User, Brain, Heart, Trophy, Sparkles } from "lucide-react";
-
-// POSITIVE ENCOURAGEMENT DICTIONARY FOR CLINICAL COGNITIVE REINFORCEMENT
-const ENCOURAGEMENT_QUOTES = [
+const CHECKERS_ENCOURAGEMENT_QUOTES = [
   "Every game reshapes the mind. Keep exploring your potential!",
   "Progress isn't linear. Your mental focus is expanding beautifully!",
   "Superb concentration! Each choice creates new pathways for learning.",
@@ -882,7 +737,7 @@ interface CheckerMove {
   fr: number; fc: number;
   tr: number; tc: number;
   isJump: boolean;
-  jumps: [number, number][]; // Tracks captured pieces
+  jumps: [number, number][];
 }
 
 function makeCheckerBoard(): CkBoard {
@@ -900,7 +755,6 @@ function makeCheckerBoard(): CkBoard {
   return b;
 }
 
-// ADVANCED PATH GENERATOR SUPPORTING MANDATORY JUMPS
 function getPieceMoves(b: CkBoard, r: number, c: number): CheckerMove[] {
   const piece = b[r][c];
   if (!piece) return [];
@@ -936,12 +790,10 @@ function getAllMovesForColor(b: CkBoard, color: 'red' | 'black'): CheckerMove[] 
       }
     }
   }
-  // Enforce mandatory capture rules
   const jumps = list.filter(m => m.isJump);
   return jumps.length > 0 ? jumps : list;
 }
 
-// RENDER CALMING VICTORY CELEBRATION CONFETTI PIPELINE
 function AmbientVictoryParticles() {
   return (
     <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 60, overflow: 'hidden' }}>
@@ -968,7 +820,7 @@ function AmbientVictoryParticles() {
   );
 }
 
-export default function CheckersGame({ onBack }: { onBack: () => void }) {
+function CheckersGame({ onBack }: { onBack: () => void }) {
   const [board, setBoard] = useState<CkBoard>(makeCheckerBoard());
   const [gameMode, setGameMode] = useState<'1player' | '2players'>('1player');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
@@ -982,7 +834,6 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
 
   const activeColorMoves = getAllMovesForColor(board, turn);
 
-  // EVALUATION HEURISTICS ENGINE FOR HARNESSING THERAPEUTIC AI TIER LEVELING
   const evaluateBoard = (b: CkBoard): number => {
     let score = 0;
     for (let r = 0; r < 8; r++) {
@@ -990,7 +841,6 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
         const p = b[r][c];
         if (p) {
           let val = p.king ? 3.0 : 1.0;
-          // Reward positional control over center cells
           if (r >= 3 && r <= 4 && c >= 3 && c <= 4) val += 0.2;
           if (p.color === 'black') score += val;
           else score -= val;
@@ -999,6 +849,20 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
     }
     return score;
   };
+
+  function applyMoveSimulation(b: CkBoard, m: CheckerMove): CkBoard {
+    const nb = b.map(row => [...row]);
+    const piece = nb[m.fr][m.fc];
+    nb[m.tr][m.tc] = piece;
+    nb[m.fr][m.fc] = null;
+
+    m.jumps.forEach(([jr, jc]) => { nb[jr][jc] = null; });
+
+    if (m.tr === 0 && piece?.color === 'red') nb[m.tr][m.tc] = { ...piece, king: true };
+    if (m.tr === 7 && piece?.color === 'black') nb[m.tr][m.tc] = { ...piece, king: true };
+
+    return nb;
+  }
 
   const minimax = useCallback((b: CkBoard, depth: number, alpha: number, beta: number, isMax: boolean): { score: number, move: CheckerMove | null } => {
     if (depth === 0) return { score: evaluateBoard(b), move: null };
@@ -1020,7 +884,7 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
           bestMove = m;
         }
         alpha = Math.max(alpha, maxScore);
-        if (beta <= alpha) break; // Pruning threshold met
+        if (beta <= alpha) break;
       }
       return { score: maxScore, move: bestMove };
     } else {
@@ -1033,27 +897,11 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
           bestMove = m;
         }
         beta = Math.min(beta, minScore);
-        if (beta <= alpha) break; // Pruning threshold met
+        if (beta <= alpha) break;
       }
       return { score: minScore, move: bestMove };
     }
   }, []);
-
-  function applyMoveSimulation(b: CkBoard, m: CheckerMove): CkBoard {
-    const nb = b.map(row => [...row]);
-    const piece = nb[m.fr][m.fc];
-    nb[m.tr][m.tc] = piece;
-    nb[m.fr][m.fc] = null;
-
-    // Erase jumped coordinates
-    m.jumps.forEach(([jr, jc]) => { nb[jr][jc] = null; });
-
-    // Handle Kings crowning checkpoints
-    if (m.tr === 0 && piece?.color === 'red') nb[m.tr][m.tc] = { ...piece, king: true };
-    if (m.tr === 7 && piece?.color === 'black') nb[m.tr][m.tc] = { ...piece, king: true };
-
-    return nb;
-  }
 
   const checkGameEndConditions = (b: CkBoard, currentTurn: 'red' | 'black') => {
     const redPieces = b.flat().filter(p => p?.color === 'red');
@@ -1081,19 +929,17 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
     if (matchWinner) {
       setWinner(matchWinner);
       if (matchWinner === 'black' && gameMode === '1player') {
-        setEncouragementQuote(ENCOURAGEMENT_QUOTES[Math.floor(Math.random() * ENCOURAGEMENT_QUOTES.length)]);
+        setEncouragementQuote(CHECKERS_ENCOURAGEMENT_QUOTES[Math.floor(Math.random() * CHECKERS_ENCOURAGEMENT_QUOTES.length)]);
       }
     } else {
       setTurn(nextTurn);
     }
   };
 
-  // AI TRIGGER HANDLER
   useEffect(() => {
     if (gameMode === '2players' || turn === 'red' || winner || aiThinking) return;
 
     setAiThinking(true);
-    // Configured thinking delay offers realistic rhythm spacing for tracking
     const delayDuration = difficulty === 'easy' ? 400 : difficulty === 'medium' ? 750 : 1100;
 
     const timer = setTimeout(() => {
@@ -1107,7 +953,6 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
       let chosenMove: CheckerMove;
 
       if (difficulty === 'easy') {
-        // Casual mistake factor introduction
         if (Math.random() > 0.6) {
           chosenMove = moves[Math.floor(Math.random() * moves.length)];
         } else {
@@ -1132,16 +977,13 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
 
     const activePiece = board[r][c];
 
-    // If a valid destination is selected
     const matchesMovement = validMoves.find(m => m.tr === r && m.tc === c);
     if (matchesMovement) {
       executeMove(matchesMovement);
       return;
     }
 
-    // Otherwise evaluate piece selection state matching turn constraint
     if (activePiece && activePiece.color === turn) {
-      // Find out if global mandatory jumps exist forcing attention
       const matchesPieceMoves = activeColorMoves.filter(m => m.fr === r && m.fc === c);
       setSelected([r, c]);
       setValidMoves(matchesPieceMoves);
@@ -1170,7 +1012,6 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
 
         {winner === 'red' && <AmbientVictoryParticles />}
 
-        {/* Global Premium Control Header */}
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button 
@@ -1194,11 +1035,9 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
           </button>
         </div>
 
-        {/* Level, Mode & Setting Selection HUD Controls */}
         <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '24px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
             
-            {/* Mode configuration */}
             <div style={{ display: 'flex', background: '#0f172a', padding: '4px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.06)' }}>
               <button
                 onClick={() => { setGameMode('1player'); handleResetGame(); }}
@@ -1214,7 +1053,6 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
               </button>
             </div>
 
-            {/* Difficulty selectors shown exclusively on singleplayer setup */}
             {gameMode === '1player' && (
               <div style={{ display: 'flex', gap: '4px' }}>
                 {(['easy', 'medium', 'hard'] as const).map(lvl => (
@@ -1241,7 +1079,6 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
 
           </div>
 
-          {/* Status Indicator Bar */}
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', background: '#0f172a', padding: '12px 16px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.04)' }}>
             <div style={{ display: 'flex', gap: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1264,7 +1101,6 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
           </div>
         </div>
 
-        {/* Core Checkers Matrix Grid Board container */}
         <div style={{ display: 'flex', justifyContent: 'center', margin: '20px 0' }}>
           <div style={{
             width: '100%',
@@ -1284,9 +1120,8 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
                     const isSelectedPiece = selected?.[0] === r && selected?.[1] === c;
                     const validTargetMove = validMoves.find(m => m.tr === r && m.tc === c);
 
-                    // Contextual color mappings
                     let tileBg = isDarkSquare ? '#1e293b' : '#f8fafc';
-                    if (isDarkSquare && isSelectedPiece) tileBg = '#1d4ed8'; // Dark rich sapphire focus highlight
+                    if (isDarkSquare && isSelectedPiece) tileBg = '#1d4ed8'; 
                     else if (isDarkSquare && validTargetMove) tileBg = 'rgba(245,158,11,0.12)';
 
                     return (
@@ -1304,7 +1139,6 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
                           transition: 'background 0.2s ease'
                         }}
                       >
-                        {/* Target highlight node indicator overlay */}
                         {validTargetMove && !piece && (
                           <div style={{
                             width: '32%',
@@ -1316,7 +1150,6 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
                           }} />
                         )}
 
-                        {/* Vector Token Pieces Container */}
                         {piece && (
                           <motion.div
                             animate={{ scale: isSelectedPiece ? 1.12 : 1 }}
@@ -1331,7 +1164,6 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
                               boxSizing: 'border-box',
                               position: 'relative',
                               zIndex: 10,
-                              // Beautiful modern layered depth rendering
                               background: piece.color === 'red' 
                                 ? 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)' 
                                 : 'linear-gradient(135deg, #334155 0%, #0f172a 100%)',
@@ -1341,13 +1173,11 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
                                 : '0 4px 8px rgba(0,0,0,0.3)'
                             }}
                           >
-                            {/* Sophisticated Circular Vector Grooves */}
                             <svg viewBox="0 0 100 100" style={{ position: 'absolute', width: '100%', height: '100%', pointerEvents: 'none', opacity: 0.25 }}>
                               <circle cx="50" cy="50" r="38" fill="none" stroke="white" strokeWidth="3" />
                               <circle cx="50" cy="50" r="26" fill="none" stroke="white" strokeWidth="2" />
                             </svg>
 
-                            {/* Crown Vector Graphic Overlay for Kings */}
                             {piece.king && (
                               <motion.svg 
                                 initial={{ scale: 0.6, opacity: 0 }}
@@ -1374,14 +1204,13 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
           </div>
         </div>
 
-        {/* Bottom Interactive Modals Dashboard for Game-Over HUD */}
         <AnimatePresence>
           {winner && (
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
               exit={{ opacity: 0 }}
-              style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' }}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifycenter: 'center', zIndex: 100, padding: '16px' }}
             >
               <motion.div 
                 initial={{ scale: 0.9, y: 20 }} 
@@ -1389,7 +1218,6 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
                 exit={{ scale: 0.9, y: 20 }}
                 style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '32px', padding: '36px 24px', textAlign: 'center', maxWidth: '440px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}
               >
-                {/* Condition: Human Player Won */}
                 {winner === 'red' || gameMode === '2players' ? (
                   <div>
                     <div style={{ display: 'inline-flex', padding: '16px', background: 'rgba(16,185,129,0.1)', borderRadius: '24px', marginBottom: '16px', color: '#10b981' }}>
@@ -1403,7 +1231,6 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
                     </p>
                   </div>
                 ) : (
-                  /* Condition: Computer Won Single Player (Display Encouragement) */
                   <div>
                     <div style={{ display: 'inline-flex', padding: '16px', background: 'rgba(59,130,246,0.1)', borderRadius: '24px', marginBottom: '16px', color: '#3b82f6' }}>
                       <Heart size={40} fill="#3b82f6" />
@@ -1412,7 +1239,6 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
                       A Beautiful Effort!
                     </h3>
                     
-                    {/* Screen-wide prominent optimistic text */}
                     <blockquote style={{ background: '#0f172a', padding: '16px 20px', borderRadius: '18px', borderLeft: '4px solid #3b82f6', margin: '0 0 24px 0', textAlign: 'left' }}>
                       <p style={{ color: '#e2e8f0', fontSize: '15px', fontWeight: '600', lineHeight: '1.6', margin: 0 }}>
                         "{encouragementQuote}"
@@ -1423,7 +1249,7 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
 
                 <button 
                   onClick={handleResetGame} 
-                  style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', border: 'none', color: 'white', borderRadius: '16px', fontWeight: '700', fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 14px rgba(59,130,246,0.3' }}
+                  style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', border: 'none', color: 'white', borderRadius: '16px', fontWeight: '700', fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 14px rgba(59,130,246,0.3)' }}
                 >
                   Start New Session
                 </button>
@@ -1438,199 +1264,10 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// CHESS — large cells, labeled pieces, high-contrast board
-// --- CHESS LOGIC TYPES & INITIALIZATION ---
+// CHESS
 // ══════════════════════════════════════════════════════════════════════════════
-type PieceType = 'p' | 'r' | 'n' | 'b' | 'q' | 'k';
-type Color = 'w' | 'b';
-type Piece = { type: PieceType; color: Color };
-type Board = (Piece | null)[][];
-type Position = [number, number];
-
-const INITIAL_BOARD: Board = [
-  [
-    { type: 'r', color: 'b' }, { type: 'n', color: 'b' }, { type: 'b', color: 'b' }, { type: 'q', color: 'b' },
-    { type: 'k', color: 'b' }, { type: 'b', color: 'b' }, { type: 'n', color: 'b' }, { type: 'r', color: 'b' }
-  ],
-  Array(8).fill(null).map(() => ({ type: 'p', color: 'b' })),
-  Array(8).fill(null),
-  Array(8).fill(null),
-  Array(8).fill(null),
-  Array(8).fill(null),
-  Array(8).fill(null).map(() => ({ type: 'p', color: 'w' })),
-  [
-    { type: 'r', color: 'w' }, { type: 'n', color: 'w' }, { type: 'b', color: 'w' }, { type: 'q', color: 'w' },
-    { type: 'k', color: 'w' }, { type: 'b', color: 'w' }, { type: 'n', color: 'w' }, { type: 'r', color: 'w' }
-  ]
-];
-
-const ENCOURAGEMENT_QUOTES = [
-  "Fantastic focus! Every strategic layout trains your working memory.",
-  "Your neuroplasticity is at work right now. Rest, reset, and try again!",
-  "Brilliant mental tracking! Every game is an investment in cognitive clarity.",
-  "Progress takes patience. Your problem-solving skills are expanding beautifully!",
-  "Great concentration. Take a deep breath, adjust your sights, and jump back in."
-];
-
-// --- AI EVALUATION WEIGHTS (PIECE-SQUARE TABLES) ---
-const PIECE_VALUES: Record<PieceType, number> = { p: 10, n: 30, b: 30, r: 50, q: 90, k: 900 };
-
-// Positional bonuses rewarding center control (Crucial for Medium & Hard)
-const PAWN_PST = [
-  [0,  0,  0,  0,  0,  0,  0,  0],
-  [5,  5,  5,  5,  5,  5,  5,  5],
-  [1,  1,  2,  3,  3,  2,  1,  1],
-  [0.5, 0.5, 1, 2.5, 2.5, 1, 0.5, 0.5],
-  [0,  0,  0,  2,  2,  0,  0,  0],
-  [0.5, -0.5, -1, 0, 0, -1, -0.5, 0.5],
-  [0.5, 1, 1, -2, -2, 1, 1, 0.5],
-  [0,  0,  0,  0,  0,  0,  0,  0]
-];
-
-const KNIGHT_PST = [
-  [-5, -4, -3, -3, -3, -3, -4, -5],
-  [-4, -2,  0,  0,  0,  0, -2, -4],
-  [-3,  0,  1,  1.5, 1.5,  1,  0, -3],
-  [-3,  0.5, 1.5, 2, 2, 1.5,  0.5, -3],
-  [-3,  0, 1.5, 2, 2, 1.5,  0, -3],
-  [-3,  0.5,  1,  1.5, 1.5,  1,  0.5, -3],
-  [-4, -2,  0,  0.5, 0.5,  0, -2, -4],
-  [-5, -4, -3, -3, -3, -3, -4, -5]
-];
-
-// --- GENERATE VALID MOVE SCHEMATICS (BASIC RULESET ENGINE) ---
-function getValidMoves(board: Board, r: number, c: number): Position[] {
-  const piece = board[r][c];
-  if (!piece) return [];
-  const moves: Position[] = [];
-  const color = piece.color;
-  const opp = color === 'w' ? 'b' : 'w';
-
-  const addMove = (nr: number, nc: number): boolean => {
-    if (nr < 0 || nr >= 8 || nc < 0 || nc >= 8) return false;
-    if (!board[nr][nc]) { moves.push([nr, nc]); return true; }
-    if (board[nr][nc]?.color === opp) { moves.push([nr, nc]); return false; }
-    return false;
-  };
-
-  switch (piece.type) {
-    case 'p': {
-      const dir = color === 'w' ? -1 : 1;
-      const startRow = color === 'w' ? 6 : 1;
-      if (r + dir >= 0 && r + dir < 8 && !board[r + dir][c]) {
-        moves.push([r + dir, c]);
-        if (r === startRow && !board[r + dir * 2][c]) moves.push([r + dir * 2, c]);
-      }
-      // Diagonal captures
-      for (const dc of [-1, 1]) {
-        const nc = c + dc;
-        if (nc >= 0 && nc < 8 && board[r + dir]?.[nc]?.color === opp) moves.push([r + dir, nc]);
-      }
-      break;
-    }
-    case 'n': {
-      const offsets = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-      offsets.forEach(([dr, dc]) => addMove(r + dr, c + dc));
-      break;
-    }
-    case 'b': {
-      const dirs = [[-1,-1],[-1,1],[1,-1],[1,1]];
-      dirs.forEach(([dr, dc]) => {
-        let step = 1;
-        while (addMove(r + dr * step, c + dc * step) && !board[r + dr * step][c + dc * step]) step++;
-      });
-      break;
-    }
-    case 'r': {
-      const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
-      dirs.forEach(([dr, dc]) => {
-        let step = 1;
-        while (addMove(r + dr * step, c + dc * step) && !board[r + dr * step][c + dc * step]) step++;
-      });
-      break;
-    }
-    case 'q': {
-      const dirs = [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]];
-      dirs.forEach(([dr, dc]) => {
-        let step = 1;
-        while (addMove(r + dr * step, c + dc * step) && !board[r + dr * step][c + dc * step]) step++;
-      });
-      break;
-    }
-    case 'k': {
-      const dirs = [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]];
-      dirs.forEach(([dr, dc]) => addMove(r + dr, c + dc));
-      break;
-    }
-  }
-  return moves;
-}
-
-// Comprehensive search gatherer for AI engine tracking
-function getAllLegalMoves(board: Board, color: Color) {
-  const moves: { fr: number, fc: number, tr: number, tc: number }[] = [];
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-      if (board[r][c]?.color === color) {
-        const valid = getValidMoves(board, r, c);
-        valid.forEach(([tr, tc]) => moves.push({ fr: r, fc: c, tr, tc }));
-      }
-    }
-  }
-  return moves;
-}
-
-// --- PIECE SVG GRAPHICS DICTIONARY ---
-const PieceSVG = ({ type, color }: { type: PieceType; color: Color }) => {
-  const fill = color === 'w' ? '#f8fafc' : '#334155';
-  const stroke = color === 'w' ? '#475569' : '#0f172a';
-
-  switch (type) {
-    case 'p':
-      return (
-        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
-          <path d="M12 2a3 3 0 0 0-3 3c0 1 .5 2 1.3 2.5C8.4 8.2 7 10 7 12c0 1.2.6 2.3 1.5 3-.7.7-1.5 1.8-1.5 3v2h10v-2c0-1.2-.8-2.3-1.5-3 .9-.7 1.5-1.8 1.5-3 0-2-1.4-3.8-3.3-4.5.8-.5 1.3-1.5 1.3-2.5a3 3 0 0 0-3-3z" />
-        </svg>
-      );
-    case 'n':
-      return (
-        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
-          <path d="M22 10c0-4-3-7-7-7-2.5 0-5 1.5-6 3.5C8.5 6 7.5 5.5 6.5 5.5c-2 0-3.5 1.5-3.5 3.5 0 2 1.5 3 2.5 4-2 1-3.5 3-3.5 5.5v1.5h16V18c0-3 2-6.5 4-8z" />
-          <circle cx="13" cy="7" r="1" fill={stroke} />
-        </svg>
-      );
-    case 'b':
-      return (
-        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
-          <circle cx="12" cy="4" r="1.5" />
-          <path d="M12 6c-2.5 0-4.5 3-4.5 6 0 2 1.5 4.5 4.5 6.5 3-2 4.5-4.5 4.5-6 0-3-2-6-4-6zM8 20h8v1.5H8z" />
-          <path d="M10 9h4M12 7v4" stroke={stroke} strokeWidth="1" />
-        </svg>
-      );
-    case 'r':
-      return (
-        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
-          <path d="M4 3v3h2v11H5v3h14v-3h-1v-11h2V3h-3v2h-2V3h-2v2h-2V3H4z" />
-        </svg>
-      );
-    case 'q':
-      return (
-        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
-          <path d="M2 5l3 11h14l3-11-4 5-4-7-4 7-4-5zM4 19h16v1.5H4z" />
-          <circle cx="2" cy="4" r="1" /><circle cx="5" cy="4" r="1" /><circle cx="12" cy="2" r="1" /><circle cx="19" cy="4" r="1" /><circle cx="22" cy="4" r="1" />
-        </svg>
-      );
-    case 'k':
-      return (
-        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
-          <path d="M12 2v3M10 3h4M5 7l2 10h10l2-10-3 4-4-5-4 5-3-4zm-1 12h16v1.5H4z" />
-        </svg>
-      );
-  }
-};
-
-export default function ChessGame({ onBack }: { onBack: () => void }) {
-  const [board, setBoard] = useState<Board>(INITIAL_BOARD);
+function ChessGame({ onBack }: { onBack: () => void }) {
+  const [board, setBoard] = useState<Board>(INITIAL_CHESS_BOARD);
   const [gameMode, setGameMode] = useState<'1player' | '2players'>('1player');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   
@@ -1641,21 +1278,19 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
   const [aiThinking, setAiThinking] = useState(false);
   const [encouragementQuote, setEncouragementQuote] = useState('');
 
-  // --- MINIMAX AI SIMULATION ENGINE ---
   const evaluateBoardState = (b: Board): number => {
     let totalScore = 0;
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
         const piece = b[r][c];
         if (piece) {
-          let val = PIECE_VALUES[piece.type];
+          let val = CHESS_PIECE_VALUES[piece.type];
           
-          // Positional bonuses configuration mappings
-          if (piece.type === 'p') val += PAWN_PST[piece.color === 'b' ? r : 7 - r][c];
-          if (piece.type === 'n') val += KNIGHT_PST[piece.color === 'b' ? r : 7 - r][c];
+          if (piece.type === 'p') val += CHESS_PAWN_PST[piece.color === 'b' ? r : 7 - r][c];
+          if (piece.type === 'n') val += CHESS_KNIGHT_PST[piece.color === 'b' ? r : 7 - r][c];
 
-          if (piece.color === 'b') totalScore += val; // Black = AI Maximize Target
-          else totalScore -= val;                     // White = Human Minimize Target
+          if (piece.color === 'b') totalScore += val; 
+          else totalScore -= val;                     
         }
       }
     }
@@ -1665,7 +1300,7 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
   const minimax = useCallback((b: Board, depth: number, alpha: number, beta: number, isMax: boolean) => {
     if (depth === 0) return { score: evaluateBoardState(b), move: null };
 
-    const moves = getAllLegalMoves(b, isMax ? 'b' : 'w');
+    const moves = getAllChessLegalMoves(b, isMax ? 'b' : 'w');
     if (moves.length === 0) {
       return { score: isMax ? -9999 : 9999, move: null };
     }
@@ -1685,7 +1320,7 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
           bestMove = m;
         }
         alpha = Math.max(alpha, maxScore);
-        if (beta <= alpha) break; // Alpha-beta pruning trigger
+        if (beta <= alpha) break; 
       }
       return { score: maxScore, move: bestMove };
     } else {
@@ -1701,7 +1336,7 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
           bestMove = m;
         }
         beta = Math.min(beta, minScore);
-        if (beta <= alpha) break; // Alpha-beta pruning trigger
+        if (beta <= alpha) break; 
       }
       return { score: minScore, move: bestMove };
     }
@@ -1711,16 +1346,13 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
     const nextBoard = board.map(row => [...row]);
     const piece = nextBoard[fr][fc];
 
-    // Handle standard execution
     nextBoard[tr][tc] = piece;
     nextBoard[fr][fc] = null;
 
-    // Automatic Pawn Promotion check (auto-promotes to Queen to decrease mental burden for rehabilitation)
     if (piece?.type === 'p' && (tr === 0 || tr === 7)) {
       nextBoard[tr][tc] = { type: 'q', color: piece.color };
     }
 
-    // Evaluate Checkmate Conditions (King elimination model optimized for casual/therapy settings)
     const activeKings = nextBoard.flat().filter(p => p?.type === 'k');
     setBoard(nextBoard);
     setSelected(null);
@@ -1730,7 +1362,7 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
       const matchWinner = piece?.color === 'w' ? 'w' : 'b';
       setWinner(matchWinner);
       if (matchWinner === 'b' && gameMode === '1player') {
-        setEncouragementQuote(ENCOURAGEMENT_QUOTES[Math.floor(Math.random() * ENCOURAGEMENT_QUOTES.length)]);
+        setEncouragementQuote(CHESS_ENCOURAGEMENT_QUOTES[Math.floor(Math.random() * CHESS_ENCOURAGEMENT_QUOTES.length)]);
       }
       return;
     }
@@ -1738,16 +1370,14 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
     setTurn(prev => prev === 'w' ? 'b' : 'w');
   };
 
-  // --- SYSTEM AI PROCESS SCHEDULER EFFECT ---
   useEffect(() => {
     if (gameMode === '2players' || turn === 'w' || winner || aiThinking) return;
 
     setAiThinking(true);
-    // Safe processing window allows realistic processing flow
     const delay = difficulty === 'easy' ? 500 : difficulty === 'medium' ? 900 : 1400;
 
     const timer = setTimeout(() => {
-      const moves = getAllLegalMoves(board, 'b');
+      const moves = getAllChessLegalMoves(board, 'b');
       if (moves.length === 0) {
         setWinner('w');
         setAiThinking(false);
@@ -1757,17 +1387,14 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
       let chosenMove = null;
 
       if (difficulty === 'easy') {
-        // 35% probability index choosing a sub-optimal/random path to support patient confidence
         if (Math.random() < 0.35) {
           chosenMove = moves[Math.floor(Math.random() * moves.length)];
         } else {
           chosenMove = minimax(board, 1, -Infinity, Infinity, true).move;
         }
       } else if (difficulty === 'medium') {
-        // Explores positions 2 depths deep for baseline competitive flow
         chosenMove = minimax(board, 2, -Infinity, Infinity, true).move;
       } else {
-        // Deep search 4 depths deep leveraging alpha-beta parameters
         chosenMove = minimax(board, 4, -Infinity, Infinity, true).move;
       }
 
@@ -1791,7 +1418,7 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
       const targetPiece = board[r][c];
       if (targetPiece && targetPiece.color === turn) {
         setSelected([r, c]);
-        setValidMoves(getValidMoves(board, r, c));
+        setValidMoves(getChessValidMoves(board, r, c));
       } else {
         setSelected(null);
         setValidMoves([]);
@@ -1800,7 +1427,7 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
   };
 
   const resetGame = () => {
-    setBoard(INITIAL_BOARD);
+    setBoard(INITIAL_CHESS_BOARD);
     setSelected(null);
     setValidMoves([]);
     setTurn('w');
@@ -1813,7 +1440,6 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
     <div className="min-h-screen bg-slate-950 px-2 py-4 sm:p-6" style={{ fontFamily: 'system-ui, sans-serif' }}>
       <div className="max-w-xl mx-auto">
         
-        {/* Header Ribbon Section */}
         <div className="flex items-center justify-between gap-4 mb-4">
           <div className="flex items-center gap-3">
             <button 
@@ -1837,11 +1463,9 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
           </button>
         </div>
 
-        {/* HUD Level and Configuration Control Hub */}
         <div className="bg-slate-900 border border-white/5 rounded-3xl p-4 flex flex-col gap-3 mb-4 shadow-xl">
           <div className="flex flex-wrap items-center justify-between gap-3">
             
-            {/* Mode Controls */}
             <div className="flex bg-slate-950 p-1 rounded-xl border border-white/5">
               <button
                 onClick={() => { setGameMode('1player'); resetGame(); }}
@@ -1857,143 +1481,85 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
               </button>
             </div>
 
-            {/* Difficulty Indicators */}
             {gameMode === '1player' && (
               <div className="flex bg-slate-950/40 p-0.5 rounded-lg border border-white/5">
                 {(['easy', 'medium', 'hard'] as const).map(lvl => (
                   <button
                     key={lvl}
                     onClick={() => setDifficulty(lvl)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-bold capitalize transition cursor-pointer ${difficulty === lvl ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-slate-400 border border-transparent'}`}
+                    className={`px-2.5 py-1 rounded-md text-xs font-bold capitalize transition cursor-pointer ${difficulty === lvl ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-slate-400'}`}
                   >
                     {lvl}
                   </button>
                 ))}
               </div>
             )}
+
           </div>
 
-          {/* Real-time Status Banner */}
-          <div className="flex items-center justify-between bg-slate-950 p-3 rounded-2xl border border-white/5 text-xs">
+          <div className="flex flex-wrap items-center justify-between background-slate-950/30 p-3 rounded-2xl border border-white/5 text-xs text-slate-300 font-medium">
             <div className="flex gap-4">
-              <div className="flex items-center gap-2">
-                <div className={`w-2.5 h-2.5 rounded-full bg-slate-100 ${turn === 'w' && !winner ? 'ring-4 ring-blue-500/30' : ''}`} />
-                <span className={`font-bold ${turn === 'w' && !winner ? 'text-white' : 'text-slate-500'}`}>
-                  {gameMode === '1player' ? 'You (White)' : 'Player 1'}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-600 ${turn === 'b' && !winner ? 'ring-4 ring-blue-500/30' : ''}`} />
-                <span className={`font-bold ${turn === 'b' && !winner ? 'text-white' : 'text-slate-500'}`}>
-                  {gameMode === '1player' ? 'AI (Black)' : 'Player 2'}
-                </span>
-              </div>
+              <span className={turn === 'w' && !winner ? "text-blue-400 font-bold" : ""}>White {gameMode === '1player' ? '(You)' : ''}</span>
+              <span className={turn === 'b' && !winner ? "text-blue-400 font-bold" : ""}>Black {gameMode === '1player' ? '(AI)' : ''}</span>
             </div>
-
-            <div className="font-semibold text-slate-300">
-              {aiThinking ? "⏳ AI mapping tree..." : winner ? "Game Over" : `${turn === 'w' ? 'White' : 'Black'} to Move`}
+            <div>
+              {aiThinking ? "⏳ AI reasoning..." : winner ? "Checkmate" : `${turn === 'w' ? 'White' : 'Black'} turn`}
             </div>
           </div>
         </div>
 
-        {/* Matrix Chessboard Core */}
-        <div className="flex justify-center my-2">
-          <div className="w-100 max-w-full aspect-square bg-slate-800 p-1.5 rounded-2xl shadow-2xl box-border">
-            <div className="grid grid-rows-8 w-full h-full rounded-xl overflow-hidden">
-              {board.map((row, r) => (
-                <div key={r} className="grid grid-cols-8 w-full h-full">
-                  {row.map((piece, c) => {
-                    const isDarkCell = (r + c) % 2 === 1;
-                    const isPieceSelected = selected?.[0] === r && selected?.[1] === c;
-                    const isValidDestination = validMoves.some(([vr, vc]) => vr === r && vc === c);
-
-                    // Dynamic thematic background selection
-                    let cellBg = isDarkCell ? 'bg-slate-700' : 'bg-slate-200';
-                    if (isPieceSelected) cellBg = 'bg-blue-600';
-                    else if (isValidDestination) cellBg = isDarkCell ? 'bg-emerald-900/60' : 'bg-emerald-100';
-
-                    return (
-                      <div
-                        key={c}
-                        onClick={() => handleSquareClick(r, c)}
-                        className={`${cellBg} relative flex items-center justify-center cursor-pointer select-none transition-colors duration-150`}
-                      >
-                        {/* Target Capture Dot Overlay */}
-                        {isValidDestination && !piece && (
-                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-md ring-2 ring-white" />
-                        )}
-
-                        {/* Interactive Chess Piece Vector Overlay */}
-                        {piece && (
-                          <motion.div
-                            animate={{ scale: isPieceSelected ? 1.1 : 1 }}
-                            transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                            className="w-full h-full flex items-center justify-center z-10"
-                          >
-                            <PieceSVG type={piece.type} color={piece.color} />
-                          </motion.div>
-                        )}
-                      </div>
-                    );
-                  })}
+        <div className="aspect-square bg-slate-900 border-4 border-slate-800 rounded-2xl p-1 shadow-2xl overflow-hidden grid grid-rows-8 grid-cols-8">
+          {board.map((row, r) => 
+            row.map((piece, c) => {
+              const isDark = (r + c) % 2 === 1;
+              const isSelected = selected?.[0] === r && selected?.[1] === c;
+              const isValidDestination = validMoves.some(([vr, vc]) => vr === r && vc === c);
+              
+              return (
+                <div
+                  key={`${r}-${c}`}
+                  onClick={() => handleSquareClick(r, c)}
+                  className={`relative flex items-center justify-center transition-colors cursor-pointer select-none
+                    ${isDark ? 'bg-slate-800' : 'bg-slate-700'} 
+                    ${isSelected ? '!bg-blue-600/50' : ''} 
+                    ${isValidDestination ? '!bg-emerald-500/30' : ''}
+                  `}
+                >
+                  {isValidDestination && !piece && (
+                    <div className="w-3 h-3 rounded-full bg-emerald-400 shadow-lg shadow-emerald-500/50" />
+                  )}
+                  {piece && <ChessPieceSVG type={piece.type} color={piece.color} />}
                 </div>
-              ))}
-            </div>
-          </div>
+              );
+            })
+          )}
         </div>
 
-        {/* End of Match Encouragement / Celebration Overlay Modals */}
         <AnimatePresence>
           {winner && (
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4"
-            >
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
               <motion.div 
-                initial={{ scale: 0.95, y: 15 }} 
-                animate={{ scale: 1, y: 0 }} 
-                exit={{ scale: 0.95, y: 15 }}
+                initial={{ scale: 0.9, opacity: 0 }} 
+                animate={{ scale: 1, opacity: 1 }}
                 className="bg-slate-900 border border-white/10 rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl"
               >
-                {winner === 'w' || gameMode === '2players' ? (
-                  <div>
-                    <div className="inline-flex p-4 bg-emerald-500/10 text-emerald-400 rounded-2xl mb-4">
-                      <Trophy size={36} />
-                    </div>
-                    <h3 className="text-2xl font-black text-white mb-2">
-                      {gameMode === '2players' ? `${winner === 'w' ? 'White' : 'Black'} Triumphs!` : 'Splendid Victory!'}
-                    </h3>
-                    <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-                      {gameMode === '1player' ? 'Your deep analytical tracking successfully broke through the defense.' : 'Excellent display of positional awareness!'}
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="inline-flex p-4 bg-blue-500/10 text-blue-400 rounded-2xl mb-4">
-                      <Heart size={36} fill="currentColor" />
-                    </div>
-                    <h3 className="text-xl font-extrabold text-slate-100 mb-3">
-                      A Beautiful Mental Exercise!
-                    </h3>
-                    
-                    <blockquote className="bg-slate-950 p-4 rounded-xl border-l-4 border-blue-500 text-left mb-6">
-                      <p className="text-slate-300 text-sm font-medium leading-relaxed italic">
-                        "{encouragementQuote}"
-                      </p>
-                    </blockquote>
-                  </div>
+                <Trophy className="mx-auto text-amber-500 mb-2" size={40} />
+                <h3 className="text-white text-2xl font-black mb-1">
+                  {winner === 'draw' ? 'Draw Match' : `${winner === 'w' ? 'White' : 'Black'} Wins!`}
+                </h3>
+                {winner === 'b' && gameMode === '1player' && encouragementQuote && (
+                  <p className="text-slate-400 text-sm italic border-l-2 border-blue-500 px-3 bg-slate-950/40 py-2 rounded-r-lg my-4 text-left">
+                    "{encouragementQuote}"
+                  </p>
                 )}
-
                 <button 
-                  onClick={resetGame} 
-                  className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:scale-98 text-white rounded-xl font-bold text-sm transition shadow-lg shadow-blue-600/20 cursor-pointer"
+                  onClick={resetGame}
+                  className="mt-4 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 px-4 rounded-xl transition"
                 >
-                  Begin Next Session
+                  New Game Session
                 </button>
               </motion.div>
-            </motion.div>
+            </div>
           )}
         </AnimatePresence>
 
@@ -2001,11 +1567,10 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
     </div>
   );
 }
+
 // ══════════════════════════════════════════════════════════════════════════════
 // WORD SEARCH — large cells, high contrast drag highlighting
 // ══════════════════════════════════════════════════════════════════════════════
-import { useState, useCallback, useEffect, useRef } from "react";
-import { RotateCcw, CheckCircle2, ChevronLeft } from "lucide-react";
 
 // EXTENDED ACCESSIBLE THEMES (50 Themes, 500+ Unique Words)
 // Words are kept simple and readable for players with cognitive conditions like dementia/Alzheimer's
@@ -2117,7 +1682,7 @@ function buildWordSearch(words) {
   return { grid, placed };
 }
 
-export default function WordSearchGame({ onBack }) {
+export function WordSearchGame({ onBack }: { onBack: () => void }) {
   const [themeIdx, setThemeIdx] = useState(0);
   const [gameData, setGameData] = useState(() => buildWordSearch(WS_THEMES[0].words));
   const [found, setFound] = useState(new Set());
@@ -2498,8 +2063,6 @@ export default function WordSearchGame({ onBack }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // HANGMAN — SVG gallows + large keyboard
 // ══════════════════════════════════════════════════════════════════════════════
-import { useState, useEffect, useRef } from "react";
-import { RotateCcw, ChevronLeft, Heart, HeartOff, Sparkles } from "lucide-react";
 
 // EXTENDED COGNITIVE WORD DATABASE (510 Unique, Positive, Accessible Words)
 const HM_WORDS = [
@@ -2694,7 +2257,7 @@ function GardenGrowthSVG({ wrong }: { wrong: number }) {
   );
 }
 
-export default function HangmanGame({ onBack }: { onBack: () => void }) {
+export function HangmanGame({ onBack }: { onBack: () => void }) {
   const [word, setWord] = useState('');
   const [guessed, setGuessed] = useState<Set<string>>(new Set());
   const [sparkles, setSparkles] = useState<{ id: number; x: number; y: number }[]>([]);
@@ -3071,9 +2634,6 @@ export default function HangmanGame({ onBack }: { onBack: () => void }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // CROSSWORD
 // ══════════════════════════════════════════════════════════════════════════════
-import { useState, useCallback, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { RotateCcw, ChevronLeft, CheckCircle2, Shuffle, AlertCircle, Sparkles, BookOpen } from "lucide-react";
 
 // EXTENSIVE PATIENT-OPTIMIZED DICTIONARY (500 DISTINCT SELECTIONS)
 // Categories: Nature, Comfort, Food, Sensory Memories, Domestic Life, Positive Emotions, Wellness
@@ -3753,7 +3313,7 @@ function SmoothInkVictoryCanvas() {
   return <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, zIndex: 60, pointerEvents: 'none' }} />;
 }
 
-export default function CrosswordGame({ onBack }: { onBack: () => void }) {
+export function CrosswordGame({ onBack }: { onBack: () => void }) {
   // Key state elements tracking computed crossword matrix parameters
   const [board, setBoard] = useState(() => buildCW(CW_CLUES));
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -4091,9 +3651,6 @@ export default function CrosswordGame({ onBack }: { onBack: () => void }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // SOLITAIRE
 // ══════════════════════════════════════════════════════════════════════════════
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { RotateCcw, ChevronLeft, Award, Zap, Layers, Grid } from 'lucide-react';
 
 // STYLISTIC UTILITIES & CONFIGURATIONS
 type Suit = 'spades' | 'hearts' | 'diamonds' | 'clubs';
@@ -4267,7 +3824,7 @@ function HighEndVictoryCanvas() {
   return <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, zIndex: 60, pointerEvents: 'none' }} />;
 }
 
-export default function SolitaireGame({ onBack }: { onBack: () => void }) {
+export function SolitaireGame({ onBack }: { onBack: () => void }) {
   const [draw, setDraw] = useState<1 | 3>(1);
   const [gs, setGs] = useState<SolState>(() => initSol());
   const [sel, setSel] = useState<{ src: string; cards: SolCard[] } | null>(null);
