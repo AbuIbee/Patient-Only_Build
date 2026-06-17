@@ -11,7 +11,7 @@ import WordSearchGame from '../PatientGames/WordSearch';
 import CrosswordGame from '../PatientGames/CrosswordPuzzle';
 import HangmanGame from '../PatientGames/Hangman';
 import CheckersGame from '../PatientGames/Checkers';
-import { ChessGame } from '../PatientGames/Chess';
+import ChessGame from '../PatientGames/Chess';
 import SolitaireGame from '../PatientGames/Solitaire';
 
 // ─── TYPES & CONFIGURATIONS ──────────────────────────────────────────────────
