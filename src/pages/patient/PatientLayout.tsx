@@ -261,7 +261,7 @@ export default function PatientLayout() {
     { id: 'medications' as PatientView, label: 'Medications',    emoji: '💊' },
     { id: 'routines'    as PatientView, label: 'My Day',         emoji: '📅' },
     { id: 'media'       as PatientView, label: 'Videos & Media', emoji: '🎬' },
-    { id: 'games'       as PatientView, label: 'Memory Games',   emoji: '🎮' },
+    { id: 'games'       as PatientView, label: 'Patient Arcade',   emoji: '🎮' },
   ];
 
   // "More" contains care-admin items only
