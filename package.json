@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "appflow:build": "vite build && npx cap sync android && test -f android/app/src/main/assets/public/index.html",
+    "build": "vite build && npx cap sync android",
+    "appflow:build": "vite build && npx cap sync android && (test -f android/app/src/main/assets/public/index.html || exit 1)",
     "ionic:build": "npm install && vite build && npx cap sync android",
     "lint": "eslint .",
     "preview": "vite preview"

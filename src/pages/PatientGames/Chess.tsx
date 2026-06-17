@@ -259,7 +259,8 @@ function getBestMove(b, castleRights, enPassant, depth=3) {
 const FILES = ["a","b","c","d","e","f","g","h"];
 const RANKS = ["8","7","6","5","4","3","2","1"];
 
-const DIFFICULTY = { easy: 1, medium: 2, hard: 3 };
+// Medium maps to 4 ply deep (2 full moves) and Hard maps to 6 ply deep (3 full moves)
+const DIFFICULTY = { easy: 1, medium: 4, hard: 6 };
 
 export default function ChessGame({ onBack }) {
   const [board, setBoard] = useState(initBoard);
@@ -329,8 +330,6 @@ export default function ChessGame({ onBack }) {
         const cap = board[r][c];
         if(cap) setCapturedW(p=>[...p,cap]);
         const {board:nb,castleRights:ncr,enPassant:nep} = applyMove(board,sr,sc,r,c,castleRights,enPassant);
-        const movedPiece = nb[r][c];
-        // Check if pawn promotion happened — already auto-queened in applyMove
         setBoard(nb); setCastleRights(ncr); setEnPassant(nep);
         setLastMove([sr,sc,r,c]);
         setMoveCount(m=>m+1);
@@ -570,42 +569,48 @@ export default function ChessGame({ onBack }) {
     gameOverOverlay: {
       position: "absolute",
       inset: 0,
-      background: "rgba(0,0,0,0.75)",
+      background: "rgba(253, 251, 247, 0.92)", // Highly legible warm backdrop instead of dark mask
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       borderRadius: "var(--border-radius-md)",
       zIndex: 10,
+      backdropFilter: "blur(2px)",
     },
     gameOverBox: {
-      background: "var(--color-background-primary)",
-      border: "0.5px solid var(--color-border-secondary)",
+      background: "#ffffff",
+      border: "2px solid #e7e5e0",
       borderRadius: "var(--border-radius-lg)",
-      padding: "20px 28px",
+      padding: "24px 32px",
       textAlign: "center",
-      maxWidth: 240,
+      maxWidth: 260,
+      boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)",
     },
     gameOverTitle: {
-      fontSize: 22,
-      fontWeight: 500,
-      color: "var(--color-text-primary)",
-      marginBottom: 6,
+      fontSize: 24,
+      fontWeight: "800",
+      color: "#1c1917",
+      marginBottom: 8,
+      letterSpacing: "-0.5px",
     },
     gameOverSub: {
-      fontSize: 13,
-      color: "var(--color-text-secondary)",
-      marginBottom: 14,
+      fontSize: 14,
+      fontWeight: "500",
+      color: "#78716c",
+      marginBottom: 18,
+      lineHeight: "1.4",
     },
     playAgainBtn: {
-      background: "var(--color-background-info)",
+      background: "#2563eb",
       border: "none",
       borderRadius: "var(--border-radius-md)",
-      padding: "8px 20px",
+      padding: "10px 20px",
       cursor: "pointer",
       fontSize: 14,
-      color: "var(--color-text-info)",
-      fontWeight: 500,
+      color: "#ffffff",
+      fontWeight: "700",
       width: "100%",
+      boxShadow: "0 4px 12px rgba(37,99,235,0.2)",
     },
   };
 
