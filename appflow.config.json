@@ -1,6 +1,5 @@
 {
 	"app_id": "d92870ab",
 	"platform": "android",
-	"type": "capacitor",
-
+	"type": "capacitor"
 }
