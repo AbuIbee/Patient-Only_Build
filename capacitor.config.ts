@@ -9,7 +9,7 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
     allowNavigation: ['www.mymemoriaally.com']
   },
-  // ... any other existing configuration
+
 };
 
 export default config;
