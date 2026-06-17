@@ -12,7 +12,7 @@ const config: CapacitorConfig = {
   'ktehhvmmwnsbcvpjcmzt.supabase.co'
 ]
   },
-  // ... any other existing configuration
+
 };
 
 export default config;
