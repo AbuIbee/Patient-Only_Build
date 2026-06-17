@@ -1,6 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { RotateCcw, ChevronLeft, User, Users, Trophy, Heart, HelpCircle, History } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from "react";
 
 // --- CHESS LOGIC TYPES & INITIALIZATION ---
 type PieceType = 'p' | 'r' | 'n' | 'b' | 'q' | 'k';
@@ -39,13 +37,73 @@ const INITIAL_BOARD: Board = [
   ]
 ];
 
-const ENCOURAGEMENT_QUOTES = [
-  "Fantastic focus! Every strategic layout trains your working memory.",
-  "Your neuroplasticity is at work right now. Rest, reset, and try again!",
-  "Brilliant mental tracking! Every game is an investment in cognitive clarity.",
-  "Progress takes patience. Your problem-solving skills are expanding beautifully!",
-  "Great concentration. Take a deep breath, adjust your sights, and jump back in."
-];
+// --- MODERN PIECE SVG DICTIONARY (MATCHES ORIGINAL GRAPHICS EXACTLY) ---
+const SVGPieces: Record<string, () => JSX.Element> = {
+  wP: () => (
+    <svg viewBox="0 0 45 45" width="100%" height="100%">
+      <path d="M22.5 9c-2.21 0-4 1.79-4 4 0 1.31.63 2.47 1.61 3.2C17.07 17.22 15 19.86 15 23c0 .83.18 1.62.5 2.34C12.83 26 11 28.28 11 31c0 3.31 2.69 6 6 6h11c3.31 0 6-2.69 6-6 0-2.72-1.83-5-4.5-5.66.32-.72.5-1.51.5-2.34 0-3.14-2.07-5.78-5.11-6.8.98-.73 1.61-1.89 1.61-3.2 0-2.21-1.79-4-4-4z" fill="#ffffff" stroke="#2b2b2b" strokeWidth="2" strokeLinejoin="round"/>
+    </svg>
+  ),
+  wR: () => (
+    <svg viewBox="0 0 45 45" width="100%" height="100%">
+      <path d="M9 39h27v-3H9v3zm3-3h21v-4H12v4zm2.5-4l1.5-12h13l1.5 12h-16zm-.5-12h17v-4H14v4zm-1-4h19V9h-3v3h-3V9h-4v3h-3V9h-3v4h-3v3z" fill="#ffffff" stroke="#2b2b2b" strokeWidth="2" strokeLinejoin="round"/>
+    </svg>
+  ),
+  wN: () => (
+    <svg viewBox="0 0 45 45" width="100%" height="100%">
+      <path d="M22 10c-5 0-8 3-10 8 0 0 1.5-1.5 4-1.5 0 0-3 2.5-4 7v4c.5 1.5 2 3 4 2.5 0 0-1 1.5-1 3.5 0 3 2.5 4 5 4h12c3 0 6-3 6-7 0-3.5-2-7-5-9 0 0 1-3 0-6s-5-6-11-5.5z" fill="#ffffff" stroke="#2b2b2b" strokeWidth="2" strokeLinejoin="round"/>
+      <circle cx="15" cy="15" r="2" fill="#2b2b2b"/>
+    </svg>
+  ),
+  wB: () => (
+    <svg viewBox="0 0 45 45" width="100%" height="100%">
+      <path d="M9 36h27v-3H9v3zm13.5-3c4 0 7.5-3 7.5-7 0-2.5-1.5-5.5-3.5-8.5C24.5 14 22.5 9.5 22.5 9.5s-2 4.5-4 8c-2 3-3.5 6-3.5 8.5 0 4 3.5 7 7.5 7z" fill="#ffffff" stroke="#2b2b2b" strokeWidth="2" strokeLinejoin="round"/>
+      <circle cx="22.5" cy="5" r="2.5" fill="#ffffff" stroke="#2b2b2b" strokeWidth="2"/>
+    </svg>
+  ),
+  wQ: () => (
+    <svg viewBox="0 0 45 45" width="100%" height="100%">
+      <path d="M9 37h27v-3H9v3zm3.5-3.5L16 16l6.5 13 6.5-13 3.5 17.5h-20zM6 16c1.5 0 2.5-1 2.5-2.5S7.5 11 6 11s-2.5 1-2.5 2.5S4.5 16 6 16zm33 0c1.5 0 2.5-1 2.5-2.5S40.5 11 39 11s-2.5 1-2.5 2.5.1 2.5 2.5 2.5zM22.5 9c1.4 0 2.5-1.1 2.5-2.5S23.9 4 22.5 4 20 5.1 20 6.5 21.1 9 22.5 9z" fill="#ffffff" stroke="#2b2b2b" strokeWidth="2" strokeLinejoin="round"/>
+    </svg>
+  ),
+  wK: () => (
+    <svg viewBox="0 0 45 45" width="100%" height="100%">
+      <path d="M9 38h27v-3H9v3zm13.5-3V11m-4 4h8M12 30c-2-4-2-11 2-14h17c4 3 4 10 2 14H12z" fill="#ffffff" stroke="#2b2b2b" strokeWidth="2" strokeLinejoin="round"/>
+    </svg>
+  ),
+  bP: () => (
+    <svg viewBox="0 0 45 45" width="100%" height="100%">
+      <path d="M22.5 9c-2.21 0-4 1.79-4 4 0 1.31.63 2.47 1.61 3.2C17.07 17.22 15 19.86 15 23c0 .83.18 1.62.5 2.34C12.83 26 11 28.28 11 31c0 3.31 2.69 6 6 6h11c3.31 0 6-2.69 6-6 0-2.72-1.83-5-4.5-5.66.32-.72.5-1.51.5-2.34 0-3.14-2.07-5.78-5.11-6.8.98-.73 1.61-1.89 1.61-3.2 0-2.21-1.79-4-4-4z" fill="#3b4252" stroke="#1a1c23" strokeWidth="2" strokeLinejoin="round"/>
+    </svg>
+  ),
+  bR: () => (
+    <svg viewBox="0 0 45 45" width="100%" height="100%">
+      <path d="M9 39h27v-3H9v3zm3-3h21v-4H12v4zm2.5-4l1.5-12h13l1.5 12h-16zm-.5-12h17v-4H14v4zm-1-4h19V9h-3v3h-3V9h-4v3h-3V9h-3v4h-3v3z" fill="#3b4252" stroke="#1a1c23" strokeWidth="2" strokeLinejoin="round"/>
+    </svg>
+  ),
+  bN: () => (
+    <svg viewBox="0 0 45 45" width="100%" height="100%">
+      <path d="M22 10c-5 0-8 3-10 8 0 0 1.5-1.5 4-1.5 0 0-3 2.5-4 7v4c.5 1.5 2 3 4 2.5 0 0-1 1.5-1 3.5 0 3 2.5 4 5 4h12c3 0 6-3 6-7 0-3.5-2-7-5-9 0 0 1-3 0-6s-5-6-11-5.5z" fill="#3b4252" stroke="#1a1c23" strokeWidth="2" strokeLinejoin="round"/>
+      <circle cx="15" cy="15" r="2" fill="#eceff4"/>
+    </svg>
+  ),
+  bB: () => (
+    <svg viewBox="0 0 45 45" width="100%" height="100%">
+      <path d="M9 36h27v-3H9v3zm13.5-3c4 0 7.5-3 7.5-7 0-2.5-1.5-5.5-3.5-8.5C24.5 14 22.5 9.5 22.5 9.5s-2 4.5-4 8c-2 3-3.5 6-3.5 8.5 0 4 3.5 7 7.5 7z" fill="#3b4252" stroke="#1a1c23" strokeWidth="2" strokeLinejoin="round"/>
+      <circle cx="22.5" cy="5" r="2.5" fill="#3b4252" stroke="#1a1c23" strokeWidth="2"/>
+    </svg>
+  ),
+  bQ: () => (
+    <svg viewBox="0 0 45 45" width="100%" height="100%">
+      <path d="M9 37h27v-3H9v3zm3.5-3.5L16 16l6.5 13 6.5-13 3.5 17.5h-20zM6 16c1.5 0 2.5-1 2.5-2.5S7.5 11 6 11s-2.5 1-2.5 2.5S4.5 16 6 16zm33 0c1.5 0 2.5-1 2.5-2.5S40.5 11 39 11s-2.5 1-2.5 2.5.1 2.5 2.5 2.5zM22.5 9c1.4 0 2.5-1.1 2.5-2.5S23.9 4 22.5 4 20 5.1 20 6.5 21.1 9 22.5 9z" fill="#3b4252" stroke="#1a1c23" strokeWidth="2" strokeLinejoin="round"/>
+    </svg>
+  ),
+  bK: () => (
+    <svg viewBox="0 0 45 45" width="100%" height="100%">
+      <path d="M9 38h27v-3H9v3zm13.5-3V11m-4 4h8M12 30c-2-4-2-11 2-14h17c4 3 4 10 2 14H12z" fill="#3b4252" stroke="#1a1c23" strokeWidth="2" strokeLinejoin="round"/>
+    </svg>
+  )
+};
 
 // --- AI EVALUATION WEIGHTS (PIECE-SQUARE TABLES) ---
 const PIECE_VALUES: Record<PieceType, number> = { p: 10, n: 32, b: 33, r: 50, q: 90, k: 20000 };
@@ -136,22 +194,18 @@ function getPseudoLegalMoves(board: Board, r: number, c: number, history: MoveRe
       const dir = color === 'w' ? -1 : 1;
       const startRow = color === 'w' ? 6 : 1;
       
-      // Single push
       if (r + dir >= 0 && r + dir < 8 && !board[r + dir][c]) {
         moves.push([r + dir, c]);
-        // Double push
         if (r === startRow && !board[r + dir * 2][c]) {
           moves.push([r + dir * 2, c]);
         }
       }
-      // Captures
       for (const dc of [-1, 1]) {
         const nc = c + dc;
         if (nc >= 0 && nc < 8) {
           if (board[r + dir]?.[nc]?.color === opp) {
             moves.push([r + dir, nc]);
           }
-          // En Passant Architecture
           if (history.length > 0) {
             const lastMove = history[history.length - 1];
             if (
@@ -200,14 +254,11 @@ function getPseudoLegalMoves(board: Board, r: number, c: number, history: MoveRe
       const dirs = [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]];
       dirs.forEach(([dr, dc]) => addMove(r + dr, c + dc));
       
-      // Castling Rights Structural Scaffold Rules
       if (!piece.hasMoved && c === 4) {
-        // King Side Castling
         const rookKing = board[r][7];
         if (rookKing && !rookKing.hasMoved && !board[r][5] && !board[r][6]) {
           moves.push([r, 6]);
         }
-        // Queen Side Castling
         const rookQueen = board[r][0];
         if (rookQueen && !rookQueen.hasMoved && !board[r][1] && !board[r][2] && !board[r][3]) {
           moves.push([r, 2]);
@@ -235,7 +286,6 @@ function isSquareAttacked(board: Board, r: number, c: number, attackerColor: Col
     for (let col = 0; col < 8; col++) {
       const piece = board[row][col];
       if (piece && piece.color === attackerColor) {
-        // Evaluate pawn attacks distinctively because getPseudoLegalMoves filters diagonal vs step
         if (piece.type === 'p') {
           const dir = attackerColor === 'w' ? -1 : 1;
           if (row + dir === r && (col - 1 === c || col + 1 === c)) return true;
@@ -261,22 +311,19 @@ function getLegalMoves(board: Board, r: number, c: number, history: MoveRecord[]
   const legal: Position[] = [];
 
   pseudo.forEach(([tr, tc]) => {
-    // Prevent king walking through check during castling simulation mapping logic
     if (piece.type === 'k' && Math.abs(c - tc) === 2) {
       if (isColorInCheck(board, piece.color)) return;
       const stepDirection = tc > c ? 1 : -1;
-      const tempBoard = board.map(row => [...row]);
+      const tempBoard = board.map(row => row.map(cell => cell ? { ...cell } : null));
       tempBoard[r][c + stepDirection] = tempBoard[r][c];
       tempBoard[r][c] = null;
       if (isColorInCheck(tempBoard, piece.color)) return;
     }
 
-    // Standard structural checkout simulation mapping
-    const nextBoard = board.map(row => [...row]);
+    const nextBoard = board.map(row => row.map(cell => cell ? { ...cell } : null));
     nextBoard[tr][tc] = nextBoard[r][c];
     nextBoard[r][c] = null;
     
-    // Process en-passant secondary deletions in calculation branches
     if (piece.type === 'p' && c !== tc && !board[tr][tc]) {
       nextBoard[r][tc] = null;
     }
@@ -302,74 +349,18 @@ function getAllLegalMoves(board: Board, color: Color, history: MoveRecord[]) {
   return moves;
 }
 
-// --- PIECE SVG GRAPHICS DICTIONARY ---
-const PieceSVG = ({ type, color }: { type: PieceType; color: Color }) => {
-  const fill = color === 'w' ? '#f8fafc' : '#334155';
-  const stroke = color === 'w' ? '#475569' : '#0f172a';
-
-  switch (type) {
-    case 'p':
-      return (
-        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
-          <path d="M12 2a3 3 0 0 0-3 3c0 1 .5 2 1.3 2.5C8.4 8.2 7 10 7 12c0 1.2.6 2.3 1.5 3-.7.7-1.5 1.8-1.5 3v2h10v-2c0-1.2-.8-2.3-1.5-3 .9-.7 1.5-1.8 1.5-3 0-2-1.4-3.8-3.3-4.5.8-.5 1.3-1.5 1.3-2.5a3 3 0 0 0-3-3z" />
-        </svg>
-      );
-    case 'n':
-      return (
-        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
-          <path d="M22 10c0-4-3-7-7-7-2.5 0-5 1.5-6 3.5C8.5 6 7.5 5.5 6.5 5.5c-2 0-3.5 1.5-3.5 3.5 0 2 1.5 3 2.5 4-2 1-3.5 3-3.5 5.5v1.5h16V18c0-3 2-6.5 4-8z" />
-          <circle cx="13" cy="7" r="1" fill={stroke} />
-        </svg>
-      );
-    case 'b':
-      return (
-        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
-          <circle cx="12" cy="4" r="1.5" />
-          <path d="M12 6c-2.5 0-4.5 3-4.5 6 0 2 1.5 4.5 4.5 6.5 3-2 4.5-4.5 4.5-6 0-3-2-6-4-6zM8 20h8v1.5H8z" />
-          <path d="M10 9h4M12 7v4" stroke={stroke} strokeWidth="1" />
-        </svg>
-      );
-    case 'r':
-      return (
-        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
-          <path d="M4 3v3h2v11H5v3h14v-3h-1v-11h2V3h-3v2h-2V3h-2v2h-2V3H4z" />
-        </svg>
-      );
-    case 'q':
-      return (
-        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
-          <path d="M2 5l3 11h14l3-11-4 5-4-7-4 7-4-5zM4 19h16v1.5H4z" />
-          <circle cx="2" cy="4" r="1" /><circle cx="5" cy="4" r="1" /><circle cx="12" cy="2" r="1" /><circle cx="19" cy="4" r="1" /><circle cx="22" cy="4" r="1" />
-        </svg>
-      );
-    case 'k':
-      return (
-        <svg viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="1.5" className="w-4/5 h-4/5 drop-shadow">
-          <path d="M12 2v3M10 3h4M5 7l2 10h10l2-10-3 4-4-5-4 5-3-4zm-1 12h16v1.5H4z" />
-        </svg>
-      );
-  }
-};
-
 export default function ChessGame({ onBack }: { onBack: () => void }) {
   const [board, setBoard] = useState<Board>(INITIAL_BOARD);
-  const [gameMode, setGameMode] = useState<'1player' | '2players'>('1player');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
-  
   const [selected, setSelected] = useState<Position | null>(null);
   const [validMoves, setValidMoves] = useState<Position[]>([]);
   const [turn, setTurn] = useState<Color>('w');
   const [winner, setWinner] = useState<Color | 'draw' | null>(null);
-  const [aiThinking, setAiThinking] = useState(false);
-  const [encouragementQuote, setEncouragementQuote] = useState('');
-  
-  // Advanced Logging Repositories
   const [history, setHistory] = useState<MoveRecord[]>([]);
-  const [capturedWhite, setCapturedWhite] = useState<Piece[]>([]);
-  const [capturedBlack, setCapturedBlack] = useState<Piece[]>([]);
-  const [showHistoryOverlay, setShowHistoryOverlay] = useState(false);
+  const [capturedW, setCapturedW] = useState<Piece[]>([]);
+  const [capturedB, setCapturedB] = useState<Piece[]>([]);
 
-  // --- MINIMAX AI SIMULATION ENGINE ---
+  // --- MINIMAX AI ENGINE SIMULATION BLOCK ---
   const evaluateBoardState = (b: Board): number => {
     let totalScore = 0;
     for (let r = 0; r < 8; r++) {
@@ -377,8 +368,6 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
         const piece = b[r][c];
         if (piece) {
           let val = PIECE_VALUES[piece.type];
-          
-          // Positional bonuses processing configuration maps
           if (piece.type === 'p') val += PAWN_PST[piece.color === 'b' ? r : 7 - r][c];
           else if (piece.type === 'n') val += KNIGHT_PST[piece.color === 'b' ? r : 7 - r][c];
           else if (piece.type === 'b') val += BISHOP_PST[piece.color === 'b' ? r : 7 - r][c];
@@ -386,8 +375,8 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
           else if (piece.type === 'q') val += QUEEN_PST[piece.color === 'b' ? r : 7 - r][c];
           else if (piece.type === 'k') val += KING_PST_MIDDLE[piece.color === 'b' ? r : 7 - r][c];
 
-          if (piece.color === 'b') totalScore += val; // Black = AI Maximize Target
-          else totalScore -= val;                     // White = Human Minimize Target
+          if (piece.color === 'b') totalScore += val;
+          else totalScore -= val;
         }
       }
     }
@@ -402,10 +391,9 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
       if (isColorInCheck(b, isMax ? 'b' : 'w')) {
         return { score: isMax ? -100000 - depth : 100000 + depth, move: null };
       }
-      return { score: 0, move: null }; // Stalemate configuration mapping
+      return { score: 0, move: null };
     }
 
-    // Move-ordering Optimization Sort to maximize alpha-beta triggers and eliminate browser freezing loops
     moves.sort((m1, m2) => {
       const p1 = b[m1.tr][m1.tc] ? PIECE_VALUES[b[m1.tr][m1.tc]!.type] : 0;
       const p2 = b[m2.tr][m2.tc] ? PIECE_VALUES[b[m2.tr][m2.tc]!.type] : 0;
@@ -418,11 +406,10 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
       let maxScore = -Infinity;
       for (const m of moves) {
         const targetPiece = b[m.tr][m.tc];
-        const nextBoard = b.map(row => [...row]);
-        nextBoard[m.tr][m.tc] = { ...nextBoard[m.fr][m.fc], hasMoved: true };
+        const nextBoard = b.map(row => row.map(cell => cell ? { ...cell } : null));
+        nextBoard[m.tr][m.tc] = { ...nextBoard[m.fr][m.fc]!, hasMoved: true };
         nextBoard[m.fr][m.fc] = null;
 
-        // Sync castling pieces inside evaluation nodes
         if (b[m.fr][m.fc]?.type === 'k' && Math.abs(m.fc - m.tc) === 2) {
           if (m.tc === 6) { nextBoard[m.fr][5] = nextBoard[m.fr][7]; nextBoard[m.fr][7] = null; }
           if (m.tc === 2) { nextBoard[m.fr][3] = nextBoard[m.fr][0]; nextBoard[m.fr][0] = null; }
@@ -443,8 +430,8 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
       let minScore = Infinity;
       for (const m of moves) {
         const targetPiece = b[m.tr][m.tc];
-        const nextBoard = b.map(row => [...row]);
-        nextBoard[m.tr][m.tc] = { ...nextBoard[m.fr][m.fc], hasMoved: true };
+        const nextBoard = b.map(row => row.map(cell => cell ? { ...cell } : null));
+        nextBoard[m.tr][m.tc] = { ...nextBoard[m.fr][m.fc]!, hasMoved: true };
         nextBoard[m.fr][m.fc] = null;
 
         if (b[m.fr][m.fc]?.type === 'k' && Math.abs(m.fc - m.tc) === 2) {
@@ -467,48 +454,38 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
   }, []);
 
   const executeMove = (fr: number, fc: number, tr: number, tc: number) => {
-    const nextBoard = board.map(row => [...row]);
-    const piece = { ...nextBoard[fr][fc], hasMoved: true };
+    const nextBoard = board.map(row => row.map(cell => cell ? { ...cell } : null));
+    const piece = { ...nextBoard[fr][fc]!, hasMoved: true };
     let captured = nextBoard[tr][tc];
-    const flags: string[] = [];
 
-    // Complete Castling Execution Logic
     if (piece.type === 'k' && Math.abs(fc - tc) === 2) {
       if (tc === 6) {
-        nextBoard[fr][5] = { ...nextBoard[fr][7], hasMoved: true };
+        nextBoard[fr][5] = { ...nextBoard[fr][7]!, hasMoved: true };
         nextBoard[fr][7] = null;
-        flags.push('O-O');
       } else if (tc === 2) {
-        nextBoard[fr][3] = { ...nextBoard[fr][0], hasMoved: true };
+        nextBoard[fr][3] = { ...nextBoard[fr][0]!, hasMoved: true };
         nextBoard[fr][0] = null;
-        flags.push('O-O-O');
       }
     }
 
-    // Complete En Passant Execution Logic
     if (piece.type === 'p' && fc !== tc && !captured) {
       captured = nextBoard[fr][tc];
       nextBoard[fr][tc] = null;
-      flags.push('e.p.');
     }
 
-    // Log Captured Registries
     if (captured) {
-      if (captured.color === 'w') setCapturedWhite(p => [...p, captured!]);
-      else setCapturedBlack(p => [...p, captured!]);
+      if (captured.color === 'w') setCapturedW(prev => [...prev, captured!]);
+      else setCapturedB(prev => [...prev, captured!]);
     }
 
-    // Commit standard transitions
     nextBoard[tr][tc] = piece;
     nextBoard[fr][fc] = null;
 
-    // Automatic Pawn Promotion Layer
     if (piece.type === 'p' && (tr === 0 || tr === 7)) {
       nextBoard[tr][tc] = { type: 'q', color: piece.color, hasMoved: true };
-      flags.push('Promotion');
     }
 
-    const newRecord: MoveRecord = { fr, fc, tr, tc, piece, captured, flags };
+    const newRecord: MoveRecord = { fr, fc, tr, tc, piece, captured };
     const updatedHistory = [...history, newRecord];
     
     setHistory(updatedHistory);
@@ -517,39 +494,30 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
     setValidMoves([]);
 
     const nextColor = turn === 'w' ? 'b' : 'w';
-
-    // Advanced Checkmate / Stalemate Assessment Blocks
     const nextPlayerLegalMoves = getAllLegalMoves(nextBoard, nextColor, updatedHistory);
     if (nextPlayerLegalMoves.length === 0) {
-      if (isColorInCheck(nextBoard, nextColor)) {
-        setWinner(turn); // Current player delivered checkmate
-      } else {
-        setWinner('draw'); // No legal moves and not in check = Stalemate
-      }
+      if (isColorInCheck(nextBoard, nextColor)) setWinner(turn);
+      else setWinner('draw');
       return;
     }
 
     setTurn(nextColor);
   };
 
-  // --- SYSTEM AI PROCESS SCHEDULER EFFECT ---
+  // --- IMMEDIATE AI ENGINE EXECUTION TRIGGER ---
   useEffect(() => {
-    if (gameMode === '2players' || turn === 'w' || winner || aiThinking) return;
+    if (turn === 'w' || winner) return;
 
-    setAiThinking(true);
-    const delay = difficulty === 'easy' ? 400 : difficulty === 'medium' ? 800 : 1200;
-
+    // Run computation in the immediate tick thread to remove layout delays
     const timer = setTimeout(() => {
       const moves = getAllLegalMoves(board, 'b', history);
       if (moves.length === 0) {
         if (isColorInCheck(board, 'b')) setWinner('w');
         else setWinner('draw');
-        setAiThinking(false);
         return;
       }
 
       let chosenMove = null;
-
       if (difficulty === 'easy') {
         if (Math.random() < 0.40) {
           chosenMove = moves[Math.floor(Math.random() * moves.length)];
@@ -559,28 +527,25 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
       } else if (difficulty === 'medium') {
         chosenMove = minimax(board, 2, -Infinity, Infinity, true, history).move;
       } else {
-        chosenMove = minimax(board, 4, -Infinity, Infinity, true, history).move;
+        chosenMove = minimax(board, 3, -Infinity, Infinity, true, history).move;
       }
 
       const finalMove = chosenMove || moves[0];
       executeMove(finalMove.fr, finalMove.fc, finalMove.tr, finalMove.tc);
-      setAiThinking(false);
-    }, delay);
+    }, 50);
 
     return () => clearTimeout(timer);
-  }, [turn, gameMode, board, difficulty, winner, aiThinking, minimax, history]);
+  }, [turn, board, difficulty, winner, history, minimax]);
 
   const handleSquareClick = (r: number, c: number) => {
-    if (winner || aiThinking) return;
-    if (gameMode === '1player' && turn === 'b') return;
+    if (winner || turn === 'b') return;
 
     const isHighlightMove = validMoves.some(([vr, vc]) => vr === r && vc === c);
-
     if (isHighlightMove && selected) {
       executeMove(selected[0], selected[1], r, c);
     } else {
       const targetPiece = board[r][c];
-      if (targetPiece && targetPiece.color === turn) {
+      if (targetPiece && targetPiece.color === 'w') {
         setSelected([r, c]);
         setValidMoves(getLegalMoves(board, r, c, history));
       } else {
@@ -590,283 +555,340 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const resetGame = () => {
+  const handleResetGame = () => {
     setBoard(INITIAL_BOARD);
     setSelected(null);
     setValidMoves([]);
     setTurn('w');
     setWinner(null);
-    setAiThinking(false);
-    setEncouragementQuote('');
     setHistory([]);
-    setCapturedWhite([]);
-    setCapturedBlack([]);
+    setCapturedW([]);
+    setCapturedB([]);
   };
 
-  const convertToNotation = (m: MoveRecord) => {
-    const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-    const ranks = ['8', '7', '6', '5', '4', '3', '2', '1'];
-    if (m.flags?.includes('O-O')) return 'O-O';
-    if (m.flags?.includes('O-O-O')) return 'O-O-O';
-    const pieceLetter = m.piece.type === 'p' ? '' : m.piece.type.toUpperCase();
-    const captureSymbol = m.captured ? 'x' : '';
-    return `${pieceLetter}${files[m.fc]}${ranks[m.fr]}${captureSymbol}${files[m.tc]}${ranks[m.tr]}`;
+  // Material evaluation differential advantage calc
+  const computeAdvantage = () => {
+    let wScore = 0; let bScore = 0;
+    board.forEach(row => row.forEach(cell => {
+      if (cell) {
+        if (cell.color === 'w') wScore += PIECE_VALUES[cell.type];
+        else bScore += PIECE_VALUES[cell.type];
+      }
+    }));
+    return Math.round((wScore - bScore) / 10);
   };
+
+  const currentAdvantage = computeAdvantage();
 
   return (
-    <div className="min-h-screen bg-slate-950 px-2 py-4 sm:p-6" style={{ fontFamily: 'system-ui, sans-serif' }}>
-      <div className="max-w-xl mx-auto">
-        
-        {/* Header Ribbon Section */}
-        <div className="flex items-center justify-between gap-4 mb-4">
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={onBack}
-              className="p-2 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition cursor-pointer"
+    <div style={styles.container}>
+      {/* Upper Control Ribbon Bar */}
+      <div style={styles.topRibbon}>
+        <button style={styles.backButton} onClick={onBack}>
+          ← Back
+        </button>
+        <div style={styles.difficultyContainer}>
+          {(['easy', 'medium', 'hard'] as const).map(lvl => (
+            <button
+              key={lvl}
+              onClick={() => setDifficulty(lvl)}
+              style={difficulty === lvl ? styles.activeDiffBtn : styles.diffBtn}
             >
-              <ChevronLeft className="text-slate-400" size={20} />
+              {lvl}
             </button>
-            <div>
-              <h2 className="text-white text-xl font-extrabold tracking-tight">Cognitive Chess</h2>
-              <p className="text-slate-500 text-xs">Spatial targeting & analytical sequencing</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setShowHistoryOverlay(true)}
-              className="p-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition cursor-pointer"
-              title="View Notation History"
-            >
-              <History size={18} className="text-blue-400" />
-            </button>
-            <button 
-              onClick={resetGame}
-              className="p-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition cursor-pointer"
-              aria-label="Restart Match"
-            >
-              <RotateCcw size={18} className="text-amber-500" />
-            </button>
-          </div>
+          ))}
         </div>
+        <button style={styles.resetButton} onClick={handleResetGame}>
+          Reset Match
+        </button>
+      </div>
 
-        {/* HUD Level and Configuration Control Hub */}
-        <div className="bg-slate-900 border border-white/5 rounded-3xl p-4 flex flex-col gap-3 mb-4 shadow-xl">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            
-            {/* Mode Controls */}
-            <div className="flex bg-slate-950 p-1 rounded-xl border border-white/5">
-              <button
-                onClick={() => { setGameMode('1player'); resetGame(); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${gameMode === '1player' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
-              >
-                <User size={13} /> Vs Computer
-              </button>
-              <button
-                onClick={() => { setGameMode('2players'); resetGame(); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${gameMode === '2players' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
-              >
-                <Users size={13} /> 2-Player
-              </button>
-            </div>
+      {/* Captured Registry Row — Opponent captures (White pieces) */}
+      <div style={{ ...styles.capturedRow, marginBottom: 4 }}>
+        <span style={{ fontSize: 12, color: '#94a3b8', width: 60, fontWeight: 'bold' }}>AI took</span>
+        <div style={styles.capturedPieces}>
+          {capturedB.map((p, i) => {
+            const Component = SVGPieces['w' + p.type.toUpperCase()];
+            return (
+              <div key={i} style={styles.capturedIconWrap}>
+                <Component />
+              </div>
+            );
+          })}
+        </div>
+        {currentAdvantage < 0 && (
+          <span style={styles.advantageTag}>+{Math.abs(currentAdvantage)}</span>
+        )}
+      </div>
 
-            {/* Difficulty Indicators */}
-            {gameMode === '1player' && (
-              <div className="flex bg-slate-950/40 p-0.5 rounded-lg border border-white/5">
-                {(['easy', 'medium', 'hard'] as const).map(lvl => (
-                  <button
-                    key={lvl}
-                    onClick={() => setDifficulty(lvl)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-bold capitalize transition cursor-pointer ${difficulty === lvl ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'text-slate-400 border border-transparent'}`}
+      {/* Main Framework Board Layout */}
+      <div style={styles.boardWrapper}>
+        <div style={styles.boardGrid}>
+          {board.map((row, r) => (
+            <div key={r} style={styles.boardRow}>
+              {row.map((piece, c) => {
+                const isDark = (r + c) % 2 === 1;
+                const isSelected = selected?.[0] === r && selected?.[1] === c;
+                const isValidMove = validMoves.some(([vr, vc]) => vr === r && vc === c);
+
+                let cellColor = isDark ? '#1e293b' : '#334155';
+                if (isSelected) cellColor = '#2563eb';
+                else if (isValidMove) cellColor = isDark ? '#064e3b' : '#047857';
+
+                const PieceComponent = piece ? SVGPieces[piece.color + piece.type.toUpperCase()] : null;
+
+                return (
+                  <div
+                    key={c}
+                    onClick={() => handleSquareClick(r, c)}
+                    style={{ ...styles.cell, backgroundColor: cellColor }}
                   >
-                    {lvl}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Captured Material Tracking Aggregations */}
-          <div className="grid grid-cols-2 gap-2 bg-slate-950/50 p-2.5 rounded-2xl border border-white/5 text-xs">
-            <div className="flex flex-col gap-1 border-r border-white/5 pr-2">
-              <span className="text-slate-500 font-medium">White Casualties:</span>
-              <div className="flex flex-wrap gap-0.5 min-h-[16px]">
-                {capturedWhite.map((p, i) => (
-                  <span key={i} className="text-slate-400 bg-white/5 px-1 rounded uppercase font-bold text-[10px]">{p.type}</span>
-                ))}
-              </div>
+                    {isValidMove && !piece && <div style={styles.dotMarker} />}
+                    {PieceComponent && (
+                      <div style={styles.pieceVectorContainer}>
+                        <PieceComponent />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <div className="flex flex-col gap-1 pl-2">
-              <span className="text-slate-500 font-medium">Black Casualties:</span>
-              <div className="flex flex-wrap gap-0.5 min-h-[16px]">
-                {capturedBlack.map((p, i) => (
-                  <span key={i} className="text-slate-400 bg-white/5 px-1 rounded uppercase font-bold text-[10px]">{p.type}</span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Real-time Status Banner */}
-          <div className="flex items-center justify-between bg-slate-950 p-3 rounded-2xl border border-white/5 text-xs">
-            <div className="flex gap-4">
-              <div className="flex items-center gap-2">
-                <div className={`w-2.5 h-2.5 rounded-full bg-slate-100 ${turn === 'w' && !winner ? 'ring-4 ring-blue-500/30' : ''}`} />
-                <span className={`font-bold ${turn === 'w' && !winner ? 'text-white' : 'text-slate-500'}`}>
-                  {gameMode === '1player' ? 'You (White)' : 'Player 1'}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2.5 h-2.5 rounded-full bg-slate-700 border border-slate-600 ${turn === 'b' && !winner ? 'ring-4 ring-blue-500/30' : ''}`} />
-                <span className={`font-bold ${turn === 'b' && !winner ? 'text-white' : 'text-slate-500'}`}>
-                  {gameMode === '1player' ? 'AI (Black)' : 'Player 2'}
-                </span>
-              </div>
-            </div>
-
-            <div className="font-semibold text-slate-300">
-              {aiThinking ? "⏳ AI mapping tree..." : winner ? "Game Over" : `${turn === 'w' ? 'White' : 'Black'} to Move`}
-            </div>
-          </div>
+          ))}
         </div>
 
-        {/* Matrix Chessboard Core */}
-        <div className="flex justify-center my-2">
-          <div className="w-100 max-w-full aspect-square bg-slate-800 p-1.5 rounded-2xl shadow-2xl box-border">
-            <div className="grid grid-rows-8 w-full h-full rounded-xl overflow-hidden">
-              {board.map((row, r) => (
-                <div key={r} className="grid grid-cols-8 w-full h-full">
-                  {row.map((piece, c) => {
-                    const isDarkCell = (r + c) % 2 === 1;
-                    const isPieceSelected = selected?.[0] === r && selected?.[1] === c;
-                    const isValidDestination = validMoves.some(([vr, vc]) => vr === r && vc === c);
-
-                    let cellBg = isDarkCell ? 'bg-slate-700' : 'bg-slate-200';
-                    if (isPieceSelected) cellBg = 'bg-blue-600';
-                    else if (isValidDestination) cellBg = isDarkCell ? 'bg-emerald-900/60' : 'bg-emerald-100';
-
-                    return (
-                      <div
-                        key={c}
-                        onClick={() => handleSquareClick(r, c)}
-                        className={`${cellBg} relative flex items-center justify-center cursor-pointer select-none transition-colors duration-150`}
-                      >
-                        {/* Target Capture Dot Overlay */}
-                        {isValidDestination && !piece && (
-                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-md ring-2 ring-white" />
-                        )}
-
-                        {/* Interactive Chess Piece Vector Overlay */}
-                        {piece && (
-                          <motion.div
-                            animate={{ scale: isPieceSelected ? 1.1 : 1 }}
-                            transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                            className="w-full h-full flex items-center justify-center z-10"
-                          >
-                            <PieceSVG type={piece.type} color={piece.color} />
-                          </motion.div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+        {winner && (
+          <div style={styles.overlay}>
+            <div style={styles.victoryModal}>
+              <h3 style={styles.modalTitle}>
+                {winner === 'draw' ? 'Stalemate Draw' : winner === 'w' ? 'Splendid Victory!' : 'Match Completed'}
+              </h3>
+              <p style={styles.modalDesc}>
+                {winner === 'w' ? 'Your precise spatial strategy successfully broke down the computer defense.' : 'A wonderful mental tracking sequence.'}
+              </p>
+              <button style={styles.modalBtn} onClick={handleResetGame}>
+                Next Match
+              </button>
             </div>
           </div>
+        )}
+      </div>
+
+      {/* Captured Registry Row — Player captures (Black pieces) */}
+      <div style={{ ...styles.capturedRow, marginTop: 8 }}>
+        <span style={{ fontSize: 12, color: '#94a3b8', width: 60, fontWeight: 'bold' }}>You took</span>
+        <div style={styles.capturedPieces}>
+          {capturedW.map((p, i) => {
+            const Component = SVGPieces['b' + p.type.toUpperCase()];
+            return (
+              <div key={i} style={styles.capturedIconWrap}>
+                <Component />
+              </div>
+            );
+          })}
         </div>
+        {currentAdvantage > 0 && (
+          <span style={styles.advantageTag}>+{currentAdvantage}</span>
+        )}
+      </div>
 
-        {/* Notation Logging View Overlay Modal */}
-        <AnimatePresence>
-          {showHistoryOverlay && (
-            <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            >
-              <motion.div 
-                initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-                className="bg-slate-900 border border-white/10 rounded-2xl max-w-sm w-full p-5 max-h-[75vh] flex flex-col shadow-2xl"
-              >
-                <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3">
-                  <h3 className="text-white font-bold text-base flex items-center gap-2"><History size={16} /> Game Notation Log</h3>
-                  <button onClick={() => setShowHistoryOverlay(false)} className="text-slate-400 text-xs hover:text-white cursor-pointer">Close</button>
-                </div>
-                <div className="flex-1 overflow-y-auto pr-1 text-xs text-slate-300 grid grid-cols-2 gap-x-4 gap-y-1">
-                  {history.length === 0 ? (
-                    <div className="col-span-2 text-slate-500 text-center py-8">No moves recorded yet.</div>
-                  ) : (
-                    history.map((record, index) => (
-                      <div key={index} className="py-1 border-b border-white/5 flex justify-between">
-                        <span className="text-slate-500 font-mono">Move {index + 1}:</span>
-                        <span className="font-bold font-mono tracking-wide text-blue-400">{convertToNotation(record)}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* End of Match Encouragement / Celebration Overlay Modals */}
-        <AnimatePresence>
-          {winner && (
-            <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4"
-            >
-              <motion.div 
-                initial={{ scale: 0.95, y: 15 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 15 }}
-                className="bg-slate-900 border border-white/10 rounded-3xl p-6 text-center max-w-sm w-full shadow-2xl"
-              >
-                {winner === 'draw' ? (
-                  <div>
-                    <div className="inline-flex p-4 bg-amber-500/10 text-amber-400 rounded-2xl mb-4">
-                      <HelpCircle size={36} />
-                    </div>
-                    <h3 className="text-2xl font-black text-white mb-2">Draw Match!</h3>
-                    <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-                      A tactical stalemate has been reached. Both positions are completely locked with no legal moves left.
-                    </p>
-                  </div>
-                ) : winner === 'w' || gameMode === '2players' ? (
-                  <div>
-                    <div className="inline-flex p-4 bg-emerald-500/10 text-emerald-400 rounded-2xl mb-4">
-                      <Trophy size={36} />
-                    </div>
-                    <h3 className="text-2xl font-black text-white mb-2">
-                      {gameMode === '2players' ? `${winner === 'w' ? 'White' : 'Black'} Triumphs!` : 'Splendid Victory!'}
-                    </h3>
-                    <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-                      {gameMode === '1player' ? 'Your deep analytical tracking successfully broke through the defense.' : 'Excellent display of positional awareness!'}
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="inline-flex p-4 bg-blue-500/10 text-blue-400 rounded-2xl mb-4">
-                      <Heart size={36} fill="currentColor" />
-                    </div>
-                    <h3 className="text-xl font-extrabold text-slate-100 mb-3">
-                      A Beautiful Mental Exercise!
-                    </h3>
-                    <blockquote className="bg-slate-950 p-4 rounded-xl border-l-4 border-blue-500 text-left mb-6">
-                      <p className="text-slate-300 text-sm font-medium leading-relaxed italic">
-                        "{encouragementQuote || ENCOURAGEMENT_QUOTES[0]}"
-                      </p>
-                    </blockquote>
-                  </div>
-                )}
-
-                <button 
-                  onClick={resetGame} 
-                  className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 active:scale-98 text-white rounded-xl font-bold text-sm transition shadow-lg shadow-blue-600/20 cursor-pointer"
-                >
-                  Begin Next Session
-                </button>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
+      {/* Footer Status Display Header */}
+      <div style={styles.statusBar}>
+        <span style={{ fontWeight: 'bold' }}>
+          {winner ? 'Match Ended' : turn === 'w' ? 'Your turn (White)' : 'AI is mapping tree...'}
+        </span>
       </div>
     </div>
   );
 }
+
+// --- ORIGINAL EXACT GRAPHICS CSS DICTIONARY STYLE VALUES ---
+const styles = {
+  container: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0f172a',
+    padding: '12px',
+    borderRadius: '24px',
+    width: '100%',
+    maxWidth: '440px',
+    margin: '0 auto',
+    boxSizing: 'border-box' as const,
+    fontFamily: 'system-ui, sans-serif',
+    color: '#f8fafc'
+  },
+  topRibbon: {
+    display: 'flex',
+    width: '100%',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '10px'
+  },
+  backButton: {
+    background: 'none',
+    border: 'none',
+    color: '#94a3b8',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: 'bold'
+  },
+  difficultyContainer: {
+    display: 'flex',
+    background: '#1e293b',
+    padding: '2px',
+    borderRadius: '8px'
+  },
+  diffBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#64748b',
+    padding: '4px 8px',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    textTransform: 'capitalize' as const
+  },
+  activeDiffBtn: {
+    background: '#334155',
+    border: 'none',
+    color: '#f59e0b',
+    padding: '4px 8px',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    borderRadius: '6px',
+    textTransform: 'capitalize' as const
+  },
+  resetButton: {
+    background: 'rgba(245,158,11,0.1)',
+    border: 'none',
+    color: '#f59e0b',
+    padding: '6px 12px',
+    borderRadius: '8px',
+    fontSize: '12px',
+    fontWeight: 'bold',
+    cursor: 'pointer'
+  },
+  capturedRow: {
+    display: 'flex',
+    alignItems: 'center',
+    width: '100%',
+    height: '24px',
+    padding: '0 4px',
+    boxSizing: 'border-box' as const
+  },
+  capturedPieces: {
+    display: 'flex',
+    flex: 1,
+    gap: '2px',
+    overflowX: 'hidden' as const
+  },
+  capturedIconWrap: {
+    width: '18px',
+    height: '18px',
+    opacity: 0.75
+  },
+  advantageTag: {
+    fontSize: '10px',
+    fontWeight: 'bold',
+    color: '#10b981',
+    background: 'rgba(16,185,129,0.1)',
+    padding: '2px 4px',
+    borderRadius: '4px'
+  },
+  boardWrapper: {
+    position: 'relative' as const,
+    width: '100%',
+    aspectRatio: '1/1',
+    background: '#1e293b',
+    borderRadius: '16px',
+    padding: '6px',
+    boxSizing: 'border-box' as const,
+    boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3)'
+  },
+  boardGrid: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    width: '100%',
+    height: '100%',
+    borderRadius: '10px',
+    overflow: 'hidden' as const
+  },
+  boardRow: {
+    display: 'flex',
+    flex: 1,
+    width: '100%'
+  },
+  cell: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative' as const,
+    cursor: 'pointer'
+  },
+  dotMarker: {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    backgroundColor: '#34d399',
+    position: 'absolute' as const,
+    zIndex: 5
+  },
+  pieceVectorContainer: {
+    width: '85%',
+    height: '85%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2
+  },
+  statusBar: {
+    marginTop: '10px',
+    fontSize: '13px',
+    color: '#94a3b8'
+  },
+  overlay: {
+    position: 'absolute' as const,
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(15,23,42,0.85)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '16px',
+    zIndex: 20,
+    padding: '20px'
+  },
+  victoryModal: {
+    backgroundColor: '#1e293b',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: '20px',
+    padding: '24px',
+    textAlign: 'center' as const,
+    maxWidth: '280px',
+    width: '100%'
+  },
+  modalTitle: {
+    fontSize: '20px',
+    fontWeight: '900',
+    margin: '0 0 8px 0',
+    color: '#ffffff'
+  },
+  modalDesc: {
+    fontSize: '13px',
+    color: '#94a3b8',
+    lineHeight: 1.5,
+    margin: '0 0 20px 0'
+  },
+  modalBtn: {
+    width: '100%',
+    padding: '12px',
+    background: '#2563eb',
+    border: 'none',
+    color: 'white',
+    borderRadius: '12px',
+    fontWeight: 'bold',
+    fontSize: '14px',
+    cursor: 'pointer'
+  }
+};
