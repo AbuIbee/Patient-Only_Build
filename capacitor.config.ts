@@ -7,7 +7,10 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://www.mymemoriaally.com',
     androidScheme: 'https',
-    allowNavigation: ['www.mymemoriaally.com']
+    allowNavigation: [
+  'www.mymemoriaally.com',
+  'ktehhvmmwnsbcvpjcmzt.supabase.co'
+]
   },
   // ... any other existing configuration
 };
