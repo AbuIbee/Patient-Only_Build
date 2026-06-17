@@ -2,7 +2,7 @@ import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.memoriahelps.ap',
-  appName: 'MyMemoriaAlly',
+  appName: 'My Memoria Ally',
   webDir: 'dist',
   server: {
     url: 'https://www.mymemoriaally.com',
