@@ -1,0 +1,13 @@
+{
+	"appId": "com.memoriahelps.ap",
+	"appName": "My Memoria Ally",
+	"webDir": "dist",
+	"server": {
+		"url": "https://www.mymemoriaally.com",
+		"androidScheme": "https",
+		"allowNavigation": [
+			"www.mymemoriaally.com",
+			"ktehhvmmwnsbcvpjcmzt.supabase.co"
+		]
+	}
+}
