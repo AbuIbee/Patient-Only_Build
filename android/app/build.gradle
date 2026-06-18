@@ -7,8 +7,8 @@ android {
         applicationId "com.memoriahelps.ap"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 60
-        versionName "1.0.60"
+        versionCode 61
+        versionName "1.0.61"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -56,3 +56,34 @@ try {
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
+
+tasks.register("verifyCapacitorAssets") {
+    doLast {
+        def configFile = file("$projectDir/src/main/assets/capacitor.config.json")
+        def indexFile = file("$projectDir/src/main/assets/public/index.html")
+
+        if (!configFile.exists()) {
+            throw new GradleException("Missing capacitor.config.json. Run: npm run appflow:build")
+        }
+
+        if (!indexFile.exists()) {
+            throw new GradleException("Missing public/index.html. Run: npm run appflow:build")
+        }
+
+        def configText = configFile.text
+
+        if (!configText.contains("https://www.mymemoriaally.com")) {
+            throw new GradleException("capacitor.config.json does not contain https://www.mymemoriaally.com")
+        }
+
+        if (!configText.contains("com.memoriahelps.ap")) {
+            throw new GradleException("capacitor.config.json does not contain com.memoriahelps.ap")
+        }
+
+        if (!configText.contains("My Memoria Ally")) {
+            throw new GradleException("capacitor.config.json does not contain My Memoria Ally")
+        }
+    }
+}
+
+preBuild.dependsOn("verifyCapacitorAssets")
