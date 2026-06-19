@@ -5,6 +5,6 @@
       "dependencyInstallCommand": "npm install",
       "webBuildCommand": "npm run appflow:build",
       "androidPath": "android"
-    },
+    }
   ]
 }
