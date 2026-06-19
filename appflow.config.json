@@ -1,7 +1,7 @@
 {
   "apps": [
     {
-      "appId": "6ce54280",
+      "appId": "08dbfad1",
       "dependencyInstallCommand": "npm install",
       "webBuildCommand": "npm run appflow:build",
       "androidPath": "android"
