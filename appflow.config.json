@@ -1,16 +1,10 @@
 {
   "apps": [
     {
-      "appId": "dbac4904",
+      "appId": "6ce54280",
       "dependencyInstallCommand": "npm install",
       "webBuildCommand": "npm run appflow:build",
       "androidPath": "android"
     },
-    {
-      "appId": "6dd5ecfc",
-      "dependencyInstallCommand": "npm install",
-      "webBuildCommand": "npm run appflow:build",
-      "androidPath": "android"
-    }
   ]
 }
