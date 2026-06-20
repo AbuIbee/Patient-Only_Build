@@ -78,29 +78,26 @@ export default function LandingPage() {
 
             {/* Left: Copy */}
             <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-              <span className="inline-flex items-center gap-2 bg-warm-bronze/10 text-warm-bronze text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-6">
-                <span className="w-1.5 h-1.5 bg-warm-bronze rounded-full animate-pulse" />
-                Compassionate Care, Every Day
-              </span>
-
+              
               <h1 className="text-5xl lg:text-6xl font-bold text-charcoal leading-[1.1] mb-3">
                 Stay oriented,<br />
                 stay supported,<br />
                 <span className="text-warm-bronze">every single day.</span>
               </h1>
 
-              <p className="text-base text-charcoal font-semibold mb-5">
-                Built for anyone living with a long-term or terminal illness that affects memory, mental health, and daily independence.
-              </p>
-
               {/* WHO THIS APP IS FOR — scannable in 5-10 seconds */}
               <div className="mb-8 max-w-lg space-y-3">
 
-              <p className="text-medium text-medium-gray leading-relaxed">
-                  Whether the diagnosis is <span className="text-charcoal font-medium">Alzheimer's, Dementia, Parkinson's, Muscular Dystrophy, Hospice Care, ADHD, Autism, Huntington's Disease , MS </span> (Multiple Sclerosis), <span className="text-charcoal font-medium"> ALS </span> (Amyotrophic Lateral Sclerosis), <span className="text-charcoal font-medium">  PSP </span> (Progressive Supranuclear Palsy), <span className="text-charcoal font-medium"> MSA </span> (Multiple System Atrophy), <span className="text-charcoal font-medium">  TBI </span> (Traumatic Brain Injury) <span className="text-charcoal font-medium"> or other cognitive needs </span> — if someone takes multiple medications, faces cognitive or physical decline, and relies on a caregiver, My Memoria Ally was built for you to lend a helping hand.  Because a diagnosis changes everything — but it doesn't have to take everything.
+              <p className="text-medium text-medium-gray leading-relaxed"> <br/>
+                  <span className="text-base text-charcoal font-semibold mb-5"> Being a caregiver is one of the most important—and overwhelming—responsibilities a person can have.</span> Between medications, appointments, mood changes, daily routines, emergency contacts, and countless small details, it can feel impossible to keep everything organized. My Memoria Ally was created to give caregivers a single place to manage, document, and understand every aspect of their loved one's care so nothing important gets overlooked.  
               </p>
+
               <p className="text-medium text-medium-gray leading-relaxed">
-                It becomes more than support—it becomes a reliable record. Symptoms, mood changes, medications, and daily patterns are all captured in one place, so nothing important slips through the cracks. When it’s time to speak with a doctor or specialist, you’re not guessing—you’re prepared, informed, and able to clearly show what’s been happening over time.
+                  Instead of relying on memory, notebooks, sticky notes, text messages, or scattered records, <span className="text-base text-charcoal font-semibold mb-5">My Memoria Ally helps you build a complete picture of your loved one's health and daily life.</span> Track medications, monitor mood and behavior changes, record important events, manage daily activities, store family memories, and maintain a detailed history of care. Over time, the app becomes a living record that helps you recognize patterns, identify concerns earlier, and make more informed caregiving decisions.  
+              </p>
+
+              <p className="text-medium text-medium-gray leading-relaxed">
+                  When it's time to meet with a doctor, specialist, therapist, or care team, you're no longer trying to remember what happened over the past week, month, or year. <span className="text-base text-charcoal font-semibold mb-5">My Memoria Ally provides a clear history of symptoms, behaviors, routines, medications, and changes in condition</span> —allowing healthcare professionals to see what is improving, what is declining, and what interventions have been effective. The result is better conversations, more accurate treatment decisions, less stress for caregivers, and better care for the people who depend on you most.
               </p>
               </div>
 
@@ -147,6 +144,16 @@ export default function LandingPage() {
               transition={{ duration: 0.5, delay: 0.15 }}
               className="space-y-5"
             >
+
+              <p className="text-base text-charcoal font-semibold mb-5">
+                  My Memoria Ally helps caregivers organize medications, monitor changes, document daily care, and walk into every doctor's appointment with the complete story—not just what they can remember.
+              </p>
+
+              <span className="inline-flex items-center gap-2 bg-warm-bronze/10 text-warm-bronze text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-6">
+                <span className="w-1.5 h-1.5 bg-warm-bronze rounded-full animate-pulse" />
+                Compassionate Care, Every Day
+              </span>
+
               {/* Main card */}
             <div className="bg-white rounded-3xl p-8 border border-soft-taupe shadow-lg">
               
@@ -189,7 +196,7 @@ export default function LandingPage() {
                     { emoji: '💛', label: 'Mental health support' },
                     { emoji: '🦽', label: 'Physical assistance' },
                     { emoji: '👐', label: 'Caregiver coordination' },
-                    { emoji: '⏰', label: 'Daily orientat­ion' },
+                    { emoji: '⏰', label: 'Daily orientation' },
                     { emoji: '👨‍👩‍👧', label: 'Family & Caregiver support' },
                   ].map(tag => (
                     <span key={tag.label} className="inline-flex items-justified gap-1 text-sm font-semibold bg-warm-bronze/10 text-warm-bronze border border-warm-bronze/20 px-3 py-1.5 rounded-full">
@@ -199,15 +206,11 @@ export default function LandingPage() {
                 </div>
                 </div>
 
-
-
-
-
                 <div className="mt-5 pt-5 border-t border-soft-taupe">
                   <div className="bg-charcoal rounded-2xl px-5 py-4">
                     <p className="text-[14px] text-white/50 uppercase tracking-widest font-semibold mb-3">Primary: physical & mental decline</p>
                     <div className="flex flex-wrap gap-2 mb-3">
-                      {['Alzheimer\'s & Dementia', 'Parkinson\'s', 'Multiple Sclerosis (MS)', 'ALS', 'Huntington\'s Disease', 'other care provided needs'].map(tag => (
+                      {['Alzheimer\'s & Dementia', 'Parkinson\'s', 'Multiple Sclerosis (MS)', 'ALS', 'Huntington\'s Disease', 'Muscular Dystrophy', 'Hospice Care', 'ADHD', 'Autism', 'PSP', 'MSA', 'TBI'].map(tag => (
                         <span key={tag} className="text-xs font-semibold text-white bg-white/10 px-3 py-1.5 rounded-lg">
                           {tag}
                         </span>
