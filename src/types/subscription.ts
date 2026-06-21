@@ -1,6 +1,6 @@
 // ─── Subscription tier definitions ───────────────────────────────────────────
 
-export type TierName = 'companion' | 'daily_care' | 'full_support' | 'master';
+export type TierName =  'free_tier' | 'paid_tier' | 'master';
 
 export type SubscriptionStatus =
   | 'active'       // paid and current (or master/promo)
@@ -26,7 +26,10 @@ export interface Subscription {
   updatedAt: string;
 }
 
-// ─── No free trial — paid plans only ─────────────────────────────────────────
+// ─── Sprint 1 Tier Scope ────────────────────────────────────────────────────
+// Free Tier and Paid Tier are the only customer plans in the active pricing flow.
+// Legacy promotional and trial declarations remain below for compatibility only;
+// PricingPage_Sprint1.tsx does not use them.
 
 /**
  * Master account detection is DB-driven — managed via the Admin Center.
@@ -69,7 +72,7 @@ export interface PromoCode {
 
 export const PROMO_CODES: PromoCode[] = [
   // Add promo codes here as needed, e.g.:
-  // { code: 'WELCOME30', tier: 'daily_care', days: 30, maxUses: null, expiresAt: null, description: '30 days Daily Care free' },
+  // { code: 'WELCOME30', tier: 'free_tier', days: 30, maxUses: null, expiresAt: null, description: '30 days Daily Care free' },
 ];
 
 export function validatePromoCode(code: string): PromoCode | null {
@@ -101,73 +104,81 @@ export interface TierFeature {
 
 export const TIERS: Record<TierName, TierConfig> = {
 
-  // Companion — legacy internal tier, not shown in public pricing UI
-  companion: {
-    name: 'companion',
-    label: 'Companion',
+  free_tier: {
+    name: 'free_tier',
+    label: 'Free Tier',
     price: 0,
     annualPrice: null,
-    description: 'Legacy internal tier',
-    tagline: 'Internal compatibility only — not shown publicly.',
+    description: '$0.00 / month',
+    tagline: 'Essential caregiving support',
     stripePriceIdMonthly: '',
     stripePriceIdAnnual: null,
+    /*
+     * SPRINT 1 — Original Free Tier feature list retained for review:
+     *
+     * features: [
+     *   { label: 'Daily time & orientation', included: true },
+     *   { label: 'Unlimited reminders', included: true, highlight: true },
+     *   { label: 'Medication tracker + logs', included: true, highlight: true },
+     *   { label: 'Care Partner check-in (A–G)', included: true, highlight: true },
+     *   { label: 'Family memory vault (unlimited)', included: true },
+     *   { label: 'Family & memory categories', included: true },
+     *   { label: '"You are safe" affirmation', included: true },
+     *   { label: 'Videos & media upload', included: true },
+     *   { label: 'Voice messages from family', included: false },
+     *   { label: 'AI comfort voices', included: false },
+     *   { label: 'Document vault', included: false },
+     * ],
+     */
     features: [
       { label: 'Daily time & orientation', included: true },
-      { label: '"You are safe" affirmation', included: true },
-      { label: 'Tap-to-hear chime', included: true },
-      { label: 'Mood check-in (today only)', included: true },
-      { label: '3 daily reminders', included: true },
-      { label: '1 family photo', included: true },
-      { label: 'Medication tracking', included: false },
-      { label: 'Family memory vault', included: false },
-      { label: 'Care Partner check-in', included: false },
-      { label: 'Games & brain training', included: false },
-      { label: 'Videos & media', included: false },
-      { label: 'Voice messages from family', included: false },
-    ],
-  },
-
-  daily_care: {
-    name: 'daily_care',
-    label: 'Daily Care',
-    price: 2.99,
-    annualPrice: null,
-    description: '$2.99 / month',
-    tagline: 'Full daily support',
-    stripePriceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_DAILY_CARE_MONTHLY || '',
-    stripePriceIdAnnual: null,
-    features: [
       { label: 'Unlimited reminders', included: true, highlight: true },
       { label: 'Medication tracker + logs', included: true, highlight: true },
       { label: 'Care Partner check-in (A–G)', included: true, highlight: true },
-      { label: 'Family photo vault (unlimited)', included: true },
+      { label: 'Family memory vault (unlimited)', included: true, highlight: true },
       { label: 'Family & memory categories', included: true },
-      { label: 'Mood history & trends', included: true },
-      { label: 'Games & brain training', included: true },
-      { label: 'Videos & media upload', included: true },
-      { label: 'Voice messages from family', included: false },
-      { label: 'AI comfort voices', included: false },
-      { label: 'Document vault', included: false },
+      { label: '"You are safe" affirmation', included: true },
+      { label: 'Videos & media upload', included: true, highlight: true },
+      { label: 'Voice messages from family', included: true, highlight: true },
+      { label: 'AI comfort voices', included: true, highlight: true },
+      { label: 'Document vault', included: true, highlight: true },
+      { label: 'Mood history & trends', included: false },
+      { label: 'Games & brain training', included: false },
+      { label: 'Medication missed-dose SMS alerts', included: false },
+      { label: 'Weekly mood summary email', included: false },
     ],
   },
 
-  full_support: {
-    name: 'full_support',
-    label: 'Full Service Care',
-    price: 4.99,
+  paid_tier: {
+    name: 'paid_tier',
+    label: 'Paid Tier',
+    price: 2.99,
     annualPrice: null,
-    description: '$4.99 / month',
-    tagline: 'Everything in Daily Care, plus advanced support',
+    description: '$2.99 / month',
+    tagline: 'Every feature in the application',
     stripePriceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_FULL_SUPPORT_MONTHLY || '',
     stripePriceIdAnnual: null,
+    /*
+     * SPRINT 1 — Original Paid Tier feature list retained for review:
+     *
+     * features: [
+     *   { label: 'Voice messages from family', included: true, highlight: true },
+     *   { label: 'AI comfort voices (all 4)', included: true, highlight: true },
+     *   { label: 'Slideshow auto-play', included: true },
+     *   { label: 'Document vault (medical records)', included: true, highlight: true },
+     *   { label: 'Medication missed SMS alerts', included: true },
+     *   { label: 'Weekly mood summary email', included: true },
+     *   { label: 'Priority support', included: true },
+     * ],
+     */
     features: [
-      { label: 'Voice messages from family', included: true, highlight: true },
-      { label: 'AI comfort voices (all 4)', included: true, highlight: true },
-      { label: 'Slideshow auto-play', included: true },
-      { label: 'Document vault (medical records)', included: true, highlight: true },
-      { label: 'Medication missed SMS alerts', included: true },
+      { label: 'Everything in the Free Tier', included: true, highlight: true },
+      { label: 'Mood history & trends', included: true, highlight: true },
+      { label: 'Games & brain training', included: true, highlight: true },
+      { label: 'Medication missed-dose SMS alerts', included: true },
       { label: 'Weekly mood summary email', included: true },
-      { label: 'Priority support', included: true },
+      { label: 'All future application features', included: true },
+      { label: 'Complete application access', included: true, highlight: true },
     ],
   },
 
@@ -202,19 +213,44 @@ export type FeatureKey =
   | 'sms_alerts'
   | 'mood_email';
 
+/*
+ * SPRINT 1 — Original entitlement map retained for review:
+ *
+ * const FEATURE_ACCESS: Record<FeatureKey, TierName[]> = {
+ *   reminders_unlimited:  ['free_tier', 'paid_tier', 'master'],
+ *   medications:          ['free_tier', 'paid_tier', 'master'],
+ *   care_partner_checkin: ['free_tier', 'paid_tier', 'master'],
+ *   memories_unlimited:   ['paid_tier', 'master'],
+ *   mood_history:         ['paid_tier', 'master'],
+ *   games:                ['paid_tier', 'master'],
+ *   media:                ['paid_tier', 'master'],
+ *   voice_messages:       ['paid_tier', 'master'],
+ *   ai_voices:            ['paid_tier', 'master'],
+ *   documents:            ['paid_tier', 'master'],
+ *   sms_alerts:           ['paid_tier', 'master'],
+ *   mood_email:           ['paid_tier', 'master'],
+ * };
+ */
+
+/*
+ * SPRINT 1 ACTIVE ENTITLEMENT MAP
+ *
+ * Free Tier has only the approved caregiving features below.
+ * Paid Tier and Master have all FeatureKey values.
+ */
 const FEATURE_ACCESS: Record<FeatureKey, TierName[]> = {
-  reminders_unlimited:  ['daily_care', 'full_support', 'master'],
-  medications:          ['daily_care', 'full_support', 'master'],
-  care_partner_checkin: ['daily_care', 'full_support', 'master'],
-  memories_unlimited:   ['daily_care', 'full_support', 'master'],
-  mood_history:         ['daily_care', 'full_support', 'master'],
-  games:                ['daily_care', 'full_support', 'master'],
-  media:                ['daily_care', 'full_support', 'master'],
-  voice_messages:       ['full_support', 'master'],
-  ai_voices:            ['full_support', 'master'],
-  documents:            ['full_support', 'master'],
-  sms_alerts:           ['full_support', 'master'],
-  mood_email:           ['full_support', 'master'],
+  reminders_unlimited:  ['free_tier', 'paid_tier', 'master'],
+  medications:          ['free_tier', 'paid_tier', 'master'],
+  care_partner_checkin: ['free_tier', 'paid_tier', 'master'],
+  memories_unlimited:   ['free_tier', 'paid_tier', 'master'],
+  media:                ['free_tier', 'paid_tier', 'master'],
+  voice_messages:       ['free_tier', 'paid_tier', 'master'],
+  ai_voices:            ['free_tier', 'paid_tier', 'master'],
+  documents:            ['free_tier', 'paid_tier', 'master'],
+  mood_history:         ['paid_tier', 'master'],
+  games:                ['paid_tier', 'master'],
+  sms_alerts:           ['paid_tier', 'master'],
+  mood_email:           ['paid_tier', 'master'],
 };
 
 /** Returns true if the given tier has access to the feature. */

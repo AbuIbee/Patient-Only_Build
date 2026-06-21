@@ -552,7 +552,7 @@ function LandingButtons({ onSignIn, onSignUp }: { onSignIn: () => void; onSignUp
       <div className="space-y-3">
         <button onClick={onSignUp}
           className="w-full py-4 bg-warm-bronze hover:bg-deep-bronze text-white rounded-2xl font-semibold text-lg transition-colors shadow-md">
-          Choose Your Plan
+          Create your account
         </button>
         <button onClick={onSignIn}
           className="w-full py-4 border-2 border-warm-bronze text-warm-bronze hover:bg-warm-bronze/5 rounded-2xl font-semibold text-lg transition-colors">
@@ -561,17 +561,10 @@ function LandingButtons({ onSignIn, onSignUp }: { onSignIn: () => void; onSignUp
       </div>
 
       <p className="text-center text-xs text-medium-gray">
-Paid plans start at $2.99/month with immediate access after checkout.
+        Choose a free plan or a paid plan starting at $2.99/month.
       </p>
 
-      {/* Staff access */}
-      <div className="pt-2 border-t border-soft-taupe">
-        <p className="text-center text-xs text-medium-gray mb-3">Staff / Admin access</p>
-        <button onClick={onSignIn}
-          className="w-full py-3 border border-soft-taupe rounded-xl text-sm font-medium text-medium-gray hover:bg-soft-taupe/30 transition-colors">
-          Admin Sign In →
-        </button>
-      </div>
+
     </div>
   );
 }

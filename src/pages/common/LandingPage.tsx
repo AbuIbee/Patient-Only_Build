@@ -65,7 +65,7 @@ export default function LandingPage() {
               Sign In
             </button>
             <button onClick={handleGetStarted} className="bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors shadow-sm">
-              Get Started
+              Create Account
             </button>
           </div>
         </div>
@@ -88,15 +88,15 @@ export default function LandingPage() {
               {/* WHO THIS APP IS FOR — scannable in 5-10 seconds */}
               <div className="mb-8 max-w-lg space-y-3">
 
-              <p className="text-medium text-medium-gray leading-relaxed"> <br/>
+              <p className="text-medium text-medium-gray leading-relaxed text-justify"> <br/>
                   <span className="text-base text-charcoal font-semibold mb-5"> Being a caregiver is one of the most important—and overwhelming—responsibilities a person can have.</span> Between medications, appointments, mood changes, daily routines, emergency contacts, and countless small details, it can feel impossible to keep everything organized. My Memoria Ally was created to give caregivers a single place to manage, document, and understand every aspect of their loved one's care so nothing important gets overlooked.  
               </p>
 
-              <p className="text-medium text-medium-gray leading-relaxed">
+              <p className="text-medium text-medium-gray leading-relaxed text-justify">
                   Instead of relying on memory, notebooks, sticky notes, text messages, or scattered records, <span className="text-base text-charcoal font-semibold mb-5">My Memoria Ally helps you build a complete picture of your loved one's health and daily life.</span> Track medications, monitor mood and behavior changes, record important events, manage daily activities, store family memories, and maintain a detailed history of care. Over time, the app becomes a living record that helps you recognize patterns, identify concerns earlier, and make more informed caregiving decisions.  
               </p>
 
-              <p className="text-medium text-medium-gray leading-relaxed">
+              <p className="text-medium text-medium-gray leading-relaxed text-justify">
                   When it's time to meet with a doctor, specialist, therapist, or care team, you're no longer trying to remember what happened over the past week, month, or year. <span className="text-base text-charcoal font-semibold mb-5">My Memoria Ally provides a clear history of symptoms, behaviors, routines, medications, and changes in condition</span> —allowing healthcare professionals to see what is improving, what is declining, and what interventions have been effective. The result is better conversations, more accurate treatment decisions, less stress for caregivers, and better care for the people who depend on you most.
               </p>
               </div>
@@ -124,7 +124,7 @@ export default function LandingPage() {
                   onClick={() => setShowLearnMore(true)}
                   className="flex items-center gap-2 bg-warm-bronze hover:bg-deep-bronze text-white font-semibold px-8 py-3.5 rounded-xl transition-colors shadow-md text-base"
                 >
-                  Choose Your Plan <ArrowRight className="w-4 h-4" />
+                  Create Account <ArrowRight className="w-4 h-4" />
                 </button>
 
               <p className="mt-5 text-medium text-medium-gray">
