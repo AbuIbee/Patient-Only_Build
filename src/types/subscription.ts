@@ -15,6 +15,8 @@ export interface Subscription {
   userId: string;
   tier: TierName;
   status: SubscriptionStatus;
+  trialStartedAt?: string | null;
+  trialEndsAt?: string | null;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   stripeCustomerId: string | null;

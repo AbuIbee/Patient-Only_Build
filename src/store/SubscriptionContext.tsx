@@ -95,8 +95,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           .from('subscriptions')
           .insert({
             user_id: user.id,
-            tier: 'daily_care',
-            status: 'pending_payment',
+            tier: 'free_tier',
+            status: 'active',
             trial_started_at: now,
             trial_ends_at: now,
           })
@@ -229,7 +229,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   // subscription object already reflects the master tier from a previous load.
   const masterFlag = isMasterEmail(userEmail) || subscription?.tier === 'master';
 
-  const tier: TierName = subscription?.tier ?? 'daily_care';
+  const tier: TierName = subscription?.tier ?? 'free_tier';
 
   // For master accounts isActive must be true regardless of subscription state
   const isActive  = masterFlag ? true : isSubscriptionActive(subscription);

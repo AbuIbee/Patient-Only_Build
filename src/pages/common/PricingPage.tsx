@@ -341,6 +341,7 @@ export default function PricingPage({
           onClose?.();
           return;
         }
+        /*
 
         const priceId = TIERS.paid_tier.stripePriceIdMonthly;
 
@@ -349,7 +350,7 @@ export default function PricingPage({
           return;
         }
 
-        /*
+        
          * IMPORTANT — PAYMENT AUTHORITY
          *
          * Do not set paid_tier / active in this browser code.
@@ -364,20 +365,27 @@ export default function PricingPage({
 
         toast.success('Redirecting to secure checkout…');
 
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError || !session?.access_token) {
+          toast.error('Please sign in again before starting checkout.');
+          return;
+        }
+
         const fnRes = await fetch(
           'https://ktehhvmmwnsbcvpjcmzt.supabase.co/functions/v1/create-checkout-session',
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
+              Authorization: `Bearer ${session.access_token}`,
             },
             body: JSON.stringify({
-              priceId,
               tierName: 'paid_tier',
-              userId: user.id,
-              email: user.email ?? email.toLowerCase().trim(),
-            }),
+              }),
           },
         );
 
