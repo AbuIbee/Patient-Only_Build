@@ -3,14 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-"scripts": {
-  "dev": "vite",
-  "build": "vite build",
-  "appflow:build": "vite build && npx cap sync android && test -f android/app/src/main/assets/public/index.html",
-  "ionic:build": "npm install && vite build && npx cap sync android",
-  "lint": "eslint .",
-  "preview": "vite preview"
-},
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "appflow:build": "vite build && npx cap sync android && test -f android/app/src/main/assets/public/index.html",
+    "ionic:build": "npm install && vite build && npx cap sync android",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
   "dependencies": {
     "@awesome-cordova-plugins/in-app-purchase-2": "^9.1.2",
     "@capacitor/android": "^8.4.0",
@@ -75,7 +75,7 @@
   "devDependencies": {
     "@capacitor/cli": "^8.4.0",
     "@eslint/js": "^9.39.1",
-    "@playwright/test": "^1.59.1",
+    "@playwright/test": "^1.61.0",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",

@@ -85,7 +85,9 @@ export default function AboutUsPage() {
       <header className="bg-white border-b border-stone-200 sticky top-0 z-20 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-9 h-9 rounded-xl object-cover flex-shrink-0" />
+            <div className="w-9 h-9 bg-warm-bronze rounded-xl flex items-center justify-center flex-shrink-0">
+              <Heart className="w-5 h-5 text-white" />
+            </div>
             <div>
               <p className="font-bold text-charcoal leading-tight">My Memoria Ally</p>
               <p className="text-xs text-charcoal/50 leading-tight">About Us</p>
@@ -111,12 +113,8 @@ export default function AboutUsPage() {
               Structured care coordination for people when consistency matters most.
             </h1>
             <p className="text-lg text-charcoal/70 leading-8 mb-8">
-                My Memoria Ally was built for the days that blend together — and the people who hold them steady.  
-                Whether you are caring for a parent Alzheimer's, Dementia or Parkinson's, a spouse with ALS, a partner with MS, a sibling with Huntington's, or someone needing Hospice care — this is for you.</p>
-            <p className="text-lg text-charcoal/70 leading-8 mb-8">
-                Here is what too few tools understand: Cognitive changes, physical changes, and mental health changes do not happen in isolation. A poor night's sleep affects everything. A medication side effect can look like depression. Fatigue can mask as withdrawal. My Memoria Ally helps you see the full picture — not just the fragments.</p>
-            <p className="text-lg text-charcoal/70 leading-8 mb-8">
-                This app does not promise a cure. It does not promise more time. It promises fewer missed doses, fewer forgotten details, fewer moments of panic when a doctor asks, "When did that start?"</p>
+              My Memoria Ally is a care coordination platform built to support individuals experiencing cognitive, behavioral, or memory-related challenges — and every person responsible for their daily well-being. We replace fragmentation with structure, and uncertainty with a system that works.
+            </p>
             <div className="flex flex-wrap gap-3">
               <a
                 href={'https://' + APP_URL}

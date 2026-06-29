@@ -194,7 +194,9 @@ export default function CaregiverVoiceManager() {
       {/* Header */}
       <div className="px-6 pt-6 pb-4 border-b border-soft-taupe">
         <div className="flex items-center gap-3">
-          <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-10 h-10 rounded-xl object-cover" />
+          <div className="w-10 h-10 bg-gradient-to-br from-warm-bronze to-warm-amber rounded-xl flex items-center justify-center">
+            <Heart className="w-5 h-5 text-white" />
+          </div>
           <div>
             <h2 className="font-bold text-charcoal text-lg">Comfort & Reassurance</h2>
             <p className="text-sm text-medium-gray">Manage voice messages and loved one photos</p>

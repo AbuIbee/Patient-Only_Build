@@ -821,7 +821,9 @@ export default function AdminLayout() {
     <div className="h-screen bg-warm-ivory flex overflow-hidden">
       <aside className="fixed left-0 top-0 bottom-0 w-64 bg-white border-r border-soft-taupe z-40 flex flex-col">
         <div className="h-16 flex items-center px-6 border-b border-soft-taupe flex-shrink-0">
-          <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
+          <div className="w-10 h-10 bg-warm-bronze rounded-xl flex items-center justify-center flex-shrink-0">
+            <Heart className="w-5 h-5 text-white" />
+          </div>
           <div className="ml-3">
             <p className="font-semibold text-charcoal text-sm">My Memoria Ally</p>
             <p className="text-xs text-medium-gray">Admin Center</p>

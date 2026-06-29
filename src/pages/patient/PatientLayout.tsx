@@ -16,7 +16,7 @@ import PatientIntakeForm from './PatientIntakeForm';
 import PatientCareTeam from './PatientCareTeam';
 import MediaUploader from '@/components/MediaUploader';
 import {
-  Heart, Volume2, LogOut, ChevronRight, Menu, X, ClipboardCheck,
+  Heart, Volume2, LogOut, ChevronRight, Menu, X, ClipboardCheck, Lock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -36,6 +36,24 @@ type PatientView =
   | 'media'
   | 'games';
 
+type SubscriptionTier = 'free_tier' | 'paid_tier' | 'master';
+
+type NavigationItem = {
+  id: PatientView;
+  label: string;
+  emoji: string;
+};
+
+const PAID_ONLY_VIEWS: Partial<Record<PatientView, string>> = {
+  mood: 'How I Feel',
+  reminders: 'Reminders',
+  routines: 'My Day',
+  checkin: 'Care Partner',
+  documents: 'Documents',
+  media: 'Videos & Media',
+  games: 'Patient Arcade',
+};
+
 export default function PatientLayout() {
   const [currentView, setCurrentView] = useState<PatientView>('dashboard');
   const [selectedGameId, setSelectedGameId] = useState<string | undefined>(undefined);
@@ -43,6 +61,8 @@ export default function PatientLayout() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  // Fail closed: until a paid entitlement is confirmed, Paid Tier items remain locked.
+  const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>('free_tier');
   const { state, dispatch } = useApp();
   const patient = state.patient;
 
@@ -64,6 +84,46 @@ export default function PatientLayout() {
       .then(({ data }) => {
         setIntakeCompleted(data?.intake_completed === true);
       });
+  }, [state.currentUser?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEntitlement = async () => {
+      let userId = state.currentUser?.id;
+
+      if (!userId) {
+        const { data } = await supabase.auth.getUser();
+        userId = data.user?.id;
+      }
+
+      if (!userId) return;
+
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .select('tier, status')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error('Unable to load subscription entitlement:', error.message);
+        setSubscriptionTier('free_tier');
+        return;
+      }
+
+      const tier = data?.tier;
+      const status = data?.status;
+      const paidAndActive = tier === 'paid_tier' && (status === 'active' || status === 'promo');
+
+      setSubscriptionTier(
+        tier === 'master' ? 'master' : paidAndActive ? 'paid_tier' : 'free_tier'
+      );
+    };
+
+    loadEntitlement();
+    return () => { cancelled = true; };
   }, [state.currentUser?.id]);
 
   const loadPatientData = async () => {
@@ -253,31 +313,81 @@ export default function PatientLayout() {
     toast('You have been logged out');
   };
 
-  const navItems = [
-    { id: 'dashboard'   as PatientView, label: 'Home',           emoji: '🏠' },
-    { id: 'memories'    as PatientView, label: 'Family',         emoji: '👨‍👩‍👧' },
-    { id: 'mood'        as PatientView, label: 'How I Feel',     emoji: '😊' },
-    { id: 'reminders'   as PatientView, label: 'Reminders',      emoji: '🔔' },
-    { id: 'medications' as PatientView, label: 'Medications',    emoji: '💊' },
-    { id: 'routines'    as PatientView, label: 'My Day',         emoji: '📅' },
-    { id: 'media'       as PatientView, label: 'Videos & Media', emoji: '🎬' },
-    { id: 'games'       as PatientView, label: 'Patient Arcade',   emoji: '🎮' },
+  // Main navigation order approved for the current plan design.
+  const navItems: NavigationItem[] = [
+    { id: 'dashboard',   label: 'Home',         emoji: '🏠' },
+    { id: 'memories',    label: 'Family',       emoji: '👨‍👩‍👧' },
+    { id: 'mood',        label: 'How I Feel',   emoji: '😊' },
+    { id: 'reminders',   label: 'Reminders',    emoji: '🔔' },
+    { id: 'medications', label: 'Medications',  emoji: '💊' },
+    { id: 'routines',    label: 'My Day',       emoji: '📅' },
+    { id: 'checkin',     label: 'Care Partner', emoji: '📋' },
+    { id: 'documents',   label: 'Documents',    emoji: '📄' },
   ];
 
-  // "More" contains care-admin items only
-  const moreNavItems = [
-    { id: 'checkin'             as PatientView, label: 'Care Partners',       emoji: '📋' },
-    { id: 'documents'           as PatientView, label: 'Documents',            emoji: '📄' },
-    { id: 'intake'              as PatientView, label: 'Patient Intake Form', emoji: '📝' },
-    { id: 'emergency_contacts'  as PatientView, label: 'Emergency Contact',   emoji: '🚨' },
+  // More remains exactly: Patient Intake, Emergency Contact, Videos & Media, Patient Arcade.
+  const moreNavItems: NavigationItem[] = [
+    { id: 'intake',             label: 'Patient Intake',    emoji: '📝' },
+    { id: 'emergency_contacts', label: 'Emergency Contact', emoji: '🚨' },
+    { id: 'media',              label: 'Videos & Media',   emoji: '🎬' },
+    { id: 'games',              label: 'Patient Arcade',   emoji: '🎮' },
   ];
 
-  const allNavItems = [...navItems, ...moreNavItems];
+  const hasPaidAccess = subscriptionTier === 'paid_tier' || subscriptionTier === 'master';
+
+  const isLockedNavigationItem = (item: NavigationItem) =>
+    Boolean(PAID_ONLY_VIEWS[item.id] && !hasPaidAccess);
+
+  const showPaidTierMessage = (label: string) => {
+    toast.error(`${label} is a Paid Tier feature. Upgrade to unlock it.`);
+  };
+
+  const requestView = (view: PatientView): boolean => {
+    const paidLabel = PAID_ONLY_VIEWS[view];
+    if (paidLabel && !hasPaidAccess) {
+      showPaidTierMessage(paidLabel);
+      return false;
+    }
+
+    setCurrentView(view);
+    return true;
+  };
+
+  const selectNavigationItem = (item: NavigationItem, closeMoreMenu = false, closeMobileMenu = false) => {
+    if (!requestView(item.id)) return;
+    if (closeMoreMenu) setShowMoreMenu(false);
+    if (closeMobileMenu) setShowMobileMenu(false);
+  };
+
+  const renderLockedFeature = (label: string) => (
+    <div className="min-h-[55vh] flex items-center justify-center p-6">
+      <div className="max-w-md w-full bg-white border border-soft-taupe rounded-3xl shadow-card p-8 text-center space-y-4">
+        <div className="w-14 h-14 mx-auto rounded-full bg-warm-bronze/10 flex items-center justify-center">
+          <Lock className="w-7 h-7 text-warm-bronze" />
+        </div>
+        <h2 className="text-xl font-bold text-charcoal">{label} is locked</h2>
+        <p className="text-medium-gray">This is a Paid Tier feature. Upgrade to unlock it.</p>
+        <button
+          onClick={() => showPaidTierMessage(label)}
+          className="w-full rounded-xl bg-warm-bronze text-white font-semibold px-4 py-3 hover:bg-deep-bronze transition-colors"
+        >
+          Upgrade to Paid Tier
+        </button>
+      </div>
+    </div>
+  );
 
   const renderView = () => {
+    const paidLabel = PAID_ONLY_VIEWS[currentView];
+    if (paidLabel && !hasPaidAccess) {
+      return renderLockedFeature(paidLabel);
+    }
+
     switch (currentView) {
       case 'dashboard':
-        return <PatientHome onNavigateToGame={(id) => { setSelectedGameId(id); setCurrentView('games'); }} />;
+        return <PatientHome onNavigateToGame={(id) => {
+          if (requestView('games')) setSelectedGameId(id);
+        }} />;
       case 'medications':
         return <PatientMedications />;
       case 'routines':
@@ -303,7 +413,9 @@ export default function PatientLayout() {
       case 'games':
         return <PatientGames initialGame={selectedGameId as any} onNavigateHome={() => setCurrentView('dashboard')} />;
       default:
-        return <PatientHome onNavigateToGame={(id) => { setSelectedGameId(id); setCurrentView('games'); }} />;
+        return <PatientHome onNavigateToGame={(id) => {
+          if (requestView('games')) setSelectedGameId(id);
+        }} />;
     }
   };
 
@@ -377,10 +489,12 @@ export default function PatientLayout() {
         <nav className="p-2 space-y-0.5 flex-1 overflow-y-auto min-h-0">
           {navItems.map((item) => {
             const isActive = currentView === item.id;
+            const isLocked = isLockedNavigationItem(item);
             return (
               <button
                 key={item.id}
-                onClick={() => setCurrentView(item.id)}
+                onClick={() => selectNavigationItem(item)}
+                aria-label={isLocked ? `${item.label} — Paid Tier feature` : item.label}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
                   isActive
                     ? 'bg-warm-bronze text-white font-bold shadow-sm'
@@ -389,9 +503,11 @@ export default function PatientLayout() {
               >
                 <span className="text-xl leading-none flex-shrink-0">{item.emoji}</span>
                 <span className={`text-sm font-medium ${isActive ? 'text-white' : ''}`}>{item.label}</span>
-                {isActive && (
+                {isLocked ? (
+                  <Lock className={`ml-auto w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-warm-bronze'}`} aria-hidden="true" />
+                ) : isActive ? (
                   <div className="ml-auto w-2 h-2 bg-white rounded-full" />
-                )}
+                ) : null}
               </button>
             );
           })}
@@ -422,10 +538,12 @@ export default function PatientLayout() {
                 <div className="pl-3 space-y-0.5 border-l-2 border-warm-bronze/20 ml-4 mt-0.5">
                   {moreNavItems.map((item) => {
                     const isActive = currentView === item.id;
+                    const isLocked = isLockedNavigationItem(item);
                     return (
                       <button
                         key={item.id}
-                        onClick={() => { setCurrentView(item.id); setShowMoreMenu(false); }}
+                        onClick={() => selectNavigationItem(item, true)}
+                        aria-label={isLocked ? `${item.label} — Paid Tier feature` : item.label}
                         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
                           isActive
                             ? 'bg-warm-bronze text-white font-bold shadow-sm'
@@ -434,6 +552,9 @@ export default function PatientLayout() {
                       >
                         <span className="text-xl leading-none flex-shrink-0">{item.emoji}</span>
                         <span className={`text-sm font-medium ${isActive ? 'text-white' : ''}`}>{item.label}</span>
+                        {isLocked && (
+                          <Lock className={`ml-auto w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-warm-bronze'}`} aria-hidden="true" />
+                        )}
                       </button>
                     );
                   })}
@@ -499,7 +620,7 @@ export default function PatientLayout() {
                     <li>✓ Your family knows who to contact</li>
                   </ul>
                 </div>
-                <button onClick={() => setCurrentView('intake')}
+                <button onClick={() => requestView('intake')}
                   className="w-full py-4 bg-warm-bronze hover:bg-deep-bronze text-white rounded-2xl font-bold text-lg transition-colors shadow-md">
                   Fill Out My Profile Now
                 </button>
@@ -516,15 +637,20 @@ export default function PatientLayout() {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-soft-taupe z-50 flex items-stretch h-16 safe-area-pb">
         {[...navItems.slice(0, 4)].map((item) => {
           const isActive = currentView === item.id;
+          const isLocked = isLockedNavigationItem(item);
           return (
             <button
               key={item.id}
-              onClick={() => { setCurrentView(item.id); setShowMobileMenu(false); }}
+              onClick={() => selectNavigationItem(item, false, true)}
+              aria-label={isLocked ? `${item.label} — Paid Tier feature` : item.label}
               className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
                 isActive ? 'text-warm-bronze' : 'text-medium-gray'
               }`}
             >
-              <span className="text-xl leading-none">{item.emoji}</span>
+              <span className="relative text-xl leading-none">
+                {item.emoji}
+                {isLocked && <Lock className="absolute -top-1.5 -right-3 w-3 h-3 text-warm-bronze" aria-hidden="true" />}
+              </span>
               <span className="text-[10px] font-medium leading-none">{item.label}</span>
             </button>
           );
@@ -596,10 +722,12 @@ export default function PatientLayout() {
               <div className="px-4 py-3 grid grid-cols-2 gap-2 max-h-[60vh] overflow-y-auto">
                 {[...navItems, ...moreNavItems].map((item) => {
                   const isActive = currentView === item.id;
+                  const isLocked = isLockedNavigationItem(item);
                   return (
                     <button
                       key={item.id}
-                      onClick={() => { setCurrentView(item.id); setShowMobileMenu(false); }}
+                      onClick={() => selectNavigationItem(item, false, true)}
+                      aria-label={isLocked ? `${item.label} — Paid Tier feature` : item.label}
                       className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left ${
                         isActive
                           ? 'bg-warm-bronze text-white shadow-sm'
@@ -608,6 +736,7 @@ export default function PatientLayout() {
                     >
                       <span className="text-xl leading-none flex-shrink-0">{item.emoji}</span>
                       <span className="font-medium text-sm">{item.label}</span>
+                      {isLocked && <Lock className={`ml-auto w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-warm-bronze'}`} aria-hidden="true" />}
                     </button>
                   );
                 })}

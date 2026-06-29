@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Heart, Shield, Lock, FileText, Users, CheckCircle, AlertTriangle, Bold } from 'lucide-react';
+import { Heart, Shield, Lock, FileText, Users, CheckCircle, AlertTriangle } from 'lucide-react';
 
 const EFFECTIVE_DATE = 'April 19, 2026';
 const COMPANY = 'Salahuddeen Enterprises LLC';
@@ -102,16 +102,16 @@ function PrivacyPolicyContent() {
       <Sec title="2. Who This Policy Covers">
         <p>This Privacy Policy applies to all categories of users of the My Memoria Ally platform:</p>
         <Ul items={[
-          "Patients — individuals living with Alzheimer's, Dementia, Parkinson's, MS (Multiple Sclerosis), ALS (Amyotrophic Lateral Sclerosis), Huntington's, PSP (Progressive Supranuclear Palsy), MSA (Multiple System Atrophy), Muscular Dystrophy, TBI (Traumatic Brain Injury), Hospice Care, ADHD, Autism or other cognitive needs who use the App directly for daily support",
+          "Patients — individuals living with dementia, Alzheimer's disease, mild cognitive impairment, ADHD, autism, traumatic brain injury (TBI), anxiety disorders, or other cognitive conditions who use the App directly for daily support",
           "Patient Care Coordinators — professional caregivers, family members, or designated support persons who manage a patient's care within the App",
           "Therapists — licensed clinical professionals (including occupational therapists, speech-language pathologists, neuropsychologists, and social workers) assigned to patient care",
           "Administrators — facility managers, organizational administrators, or Master Admins who have oversight of accounts within their facility or organization",
+          "Salahuddeen Enterprises Staff — technical and operational personnel who access the platform for maintenance and support purposes only",
         ]} />
       </Sec>
 
-      <Sec title="3. Information We Collect - Salahuddeen Enterprises Staff"> — ",
-        <Sub title="3.1 Technical and operational personnel access the platform for maintenance and support purposes only.">
-           <Sub title="Information You Provide Directly When Creating an Account">
+      <Sec title="3. Information We Collect">
+        <Sub title="3.1 Information You Provide Directly When Creating an Account">
           <Ul items={[
             "Full legal name and preferred name",
             "Email address and password (password stored as a bcrypt hash — never in plaintext)",
@@ -122,10 +122,9 @@ function PrivacyPolicyContent() {
             "Organization or facility affiliation (for administrative and clinical staff)",
             "Emergency contact name, relationship, and phone number",
           ]} />
-          </Sub>
         </Sub>
         <Sub title="3.2 Health and Care Information (Protected Health Information / PHI)">
-          <p>For patient users, we collect and store health-related information that may constitute PHI under HIPAA. This information is provided directly by patients, their care coordinators, or clinical staff.  We take your privacy seriously. We store your health information securely and it is protected by HIPAA laws. We do not sell your personal information or share it with any unauthorized third parties. Your data is used exclusively to provide you with care and for internal operational purposes:</p>
+          <p>For patient users, we collect and store health-related information that may constitute PHI under HIPAA. This information is provided directly by patients, their care coordinators, or clinical staff:</p>
           <Ul items={[
             "Dementia or cognitive condition diagnosis, type, stage, and progression notes",
             "Medication names, dosages, schedules, administration routes, and adherence records",
@@ -174,10 +173,6 @@ function PrivacyPolicyContent() {
           "Access to PHI is restricted by role-based access controls and database-level Row Level Security policies",
           "We support patients' HIPAA rights to access, amend, and request restrictions on their PHI",
           "We maintain an audit log of all access to PHI as required by 45 CFR §164.312(b)",
-          "Strict Security & No Selling: Explicitly state that their health information is never sold, rented, or shared with third parties for marketing purposes.",
-          "Need-to-Know Access: Emphasize that PHI is only accessed on a strict 'need-to-know' basis for necessary care and administrative functions.",
-          "HIPAA Compliance: Reassure them that you comply with all HIPAA regulations, which prohibit unauthorized disclosure of patient information.",
-          "Controlled Access: Explain that they have the right to request access to their records and that you will not disclose their information to third parties without their direct authorization, unless legally permitted.",
         ]} />
       </Sec>
 
@@ -196,7 +191,7 @@ function PrivacyPolicyContent() {
           "Responding to lawful requests from government authorities or courts",
         ]} />
         <InfoBox color="red">
-          <strong>We will NEVER use your information for:</strong> marketing or advertising to you or third parties · sale, rental, or trade to any third party · training artificial intelligence or machine learning models · profiling for commercial purposes · any purpose beyond what is described in this policy.  We do not sell your personal information or share it with any unauthorized third parties. Your data is used exclusively to provide you with care and for internal operational purposes.
+          <strong>We will NEVER use your information for:</strong> marketing or advertising to you or third parties · sale, rental, or trade to any third party · training artificial intelligence or machine learning models · profiling for commercial purposes · any purpose beyond what is described in this policy.
         </InfoBox>
       </Sec>
 
@@ -1157,7 +1152,9 @@ export default function PrivacyPage({ initialDoc }: { initialDoc?: DocId } = {})
       <header className="bg-white border-b border-stone-200 sticky top-0 z-20 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-9 h-9 rounded-xl object-cover flex-shrink-0" />
+            <div className="w-9 h-9 bg-warm-bronze rounded-xl flex items-center justify-center flex-shrink-0">
+              <Heart className="w-5 h-5 text-white" />
+            </div>
             <div>
               <p className="font-bold text-charcoal leading-tight">My Memoria Ally</p>
               <p className="text-xs text-charcoal/50 leading-tight">Privacy & Legal Documents</p>
