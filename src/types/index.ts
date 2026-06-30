@@ -120,7 +120,9 @@ export type MoodType =
   | 'sad'
   | 'angry'
   | 'confused'
-  | 'worried';
+  | 'worried'
+  | 'anxious'
+  | 'scared';
 
 export interface MoodEntry {
   id: string;

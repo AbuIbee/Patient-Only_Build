@@ -52,7 +52,217 @@ function ReminderCalendar() {
   const [editId,     setEditId]     = useState<string | null>(null);
   const [editText,   setEditText]   = useState('');
 
+  // ── Note helpers ─────────────────────────────────────────────────────────
+  const persistNotes = (updated: CalendarNote[]) => { saveCalNotes(updated); setNotes(updated); };
 
+  const addNote = () => {
+    if (!addText.trim() || !popupDate) return;
+    persistNotes([...notes, { id: `note_${Date.now()}`, date: popupDate, text: addText.trim(), type: addType }]);
+    setAddText('');
+  };
+
+  const saveEdit = (id: string) => {
+    if (!editText.trim()) return;
+    persistNotes(notes.map(n => n.id === id ? { ...n, text: editText.trim() } : n));
+    setEditId(null);
+    setEditText('');
+  };
+
+  const deleteNote = (id: string) => persistNotes(notes.filter(n => n.id !== id));
+  const notesOn    = (dateStr: string) => notes.filter(n => n.date === dateStr);
+
+  // ── Month grid ────────────────────────────────────────────────────────────
+  const monthStart  = startOfMonth(baseDate);
+  const totalDays   = getDaysInMonth(baseDate);
+  const gridStart   = startOfWeek(monthStart, { weekStartsOn: 1 }); // Monday
+
+  const monthDays = useMemo(() => {
+    const days: Date[] = [];
+    for (let i = 0; i < 42; i++) days.push(addDays(gridStart, i));
+    return days;
+  }, [baseDate]);
+
+  // ── Week grid ─────────────────────────────────────────────────────────────
+  const weekStart = startOfWeek(baseDate, { weekStartsOn: 1 });
+  const weekDays  = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [baseDate]);
+
+  const today     = new Date();
+  const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  return (
+    <>
+      {/* ── Controls ────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+        {/* Prev / label / Next */}
+        <div className="flex items-center gap-2">
+          <button onClick={() => setBaseDate(v => view === 'monthly' ? subMonths(v, 1) : addDays(v, -7))}
+            aria-label="Previous period"
+            className="w-8 h-8 rounded-full hover:bg-soft-taupe/40 flex items-center justify-center transition-colors">
+            <ChevronLeft className="w-4 h-4 text-charcoal" />
+          </button>
+          <span className="text-sm font-bold text-charcoal min-w-[120px] text-center">
+            {view === 'monthly'
+              ? format(baseDate, 'MMMM yyyy')
+              : `${format(weekStart, 'MMM d')} – ${format(addDays(weekStart, 6), 'MMM d, yyyy')}`}
+          </span>
+          <button onClick={() => setBaseDate(v => view === 'monthly' ? addMonths(v, 1) : addDays(v, 7))}
+            aria-label="Next period"
+            className="w-8 h-8 rounded-full hover:bg-soft-taupe/40 flex items-center justify-center transition-colors">
+            <ChevronRight className="w-4 h-4 text-charcoal" />
+          </button>
+        </div>
+
+        {/* View toggle */}
+        <div className="flex gap-1 bg-soft-taupe/20 rounded-xl p-1">
+          {(['monthly', 'weekly'] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${view === v ? 'bg-white shadow text-charcoal' : 'text-medium-gray hover:text-charcoal'}`}>
+              {v === 'monthly' ? '📅 Monthly' : '🗓️ Weekly'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Day-of-week header ───────────────────────────────────────────── */}
+      <div className="grid grid-cols-7 mb-1">
+        {DAY_NAMES.map(d => (
+          <div key={d} className="text-center text-[10px] font-bold uppercase tracking-wide text-medium-gray py-1">{d}</div>
+        ))}
+      </div>
+
+      {/* ── Calendar grid ───────────────────────────────────────────────── */}
+      {view === 'monthly' ? (
+        <div className="grid grid-cols-7 gap-px bg-soft-taupe/20 rounded-xl overflow-hidden border border-soft-taupe/30">
+          {monthDays.map((day, i) => {
+            const dateStr    = format(day, 'yyyy-MM-dd');
+            const isToday    = isSameDay(day, today);
+            const inMonth    = day.getMonth() === baseDate.getMonth();
+            const dayNotes   = notesOn(dateStr);
+            const isSelected = popupDate === dateStr;
+
+            return (
+              <button key={i} onClick={() => { setPopupDate(isSelected ? null : dateStr); setAddText(''); }}
+                className={`min-h-[56px] p-1 text-left relative transition-colors
+                  ${inMonth ? 'bg-white hover:bg-warm-ivory' : 'bg-soft-taupe/10 hover:bg-soft-taupe/20'}
+                  ${isSelected ? 'ring-2 ring-inset ring-warm-bronze' : ''}`}>
+                <span className={`text-xs font-semibold block mb-0.5 leading-none
+                  ${isToday ? 'w-5 h-5 bg-warm-bronze text-white rounded-full flex items-center justify-center text-[10px]' : inMonth ? 'text-charcoal' : 'text-medium-gray/50'}`}>
+                  {format(day, 'd')}
+                </span>
+                <div className="space-y-px">
+                  {dayNotes.slice(0, 2).map(n => (
+                    <div key={n.id} className={`text-[9px] leading-tight px-0.5 rounded truncate font-medium
+                      ${n.type === 'appointment' ? 'bg-gentle-coral/20 text-gentle-coral' : 'bg-warm-bronze/15 text-warm-bronze'}`}>
+                      {n.text}
+                    </div>
+                  ))}
+                  {dayNotes.length > 2 && (
+                    <div className="text-[9px] text-medium-gray font-medium">+{dayNotes.length - 2} more</div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        /* ── Weekly view ───────────────────────────────────────────────── */
+        <div className="grid grid-cols-7 gap-1">
+          {weekDays.map((day, i) => {
+            const dateStr  = format(day, 'yyyy-MM-dd');
+            const isToday  = isSameDay(day, today);
+            const dayNotes = notesOn(dateStr);
+            const isSelected = popupDate === dateStr;
+
+            return (
+              <button key={i} onClick={() => { setPopupDate(isSelected ? null : dateStr); setAddText(''); }}
+                className={`rounded-xl p-2 min-h-[80px] text-left transition-colors border
+                  ${isToday ? 'bg-warm-bronze/10 border-warm-bronze' : 'bg-white border-soft-taupe/30 hover:border-warm-bronze/40'}
+                  ${isSelected ? 'ring-2 ring-warm-bronze' : ''}`}>
+                <span className={`text-xs font-bold block mb-1 ${isToday ? 'text-warm-bronze' : 'text-charcoal'}`}>
+                  {format(day, 'd')}
+                </span>
+                <div className="space-y-1">
+                  {dayNotes.map(n => (
+                    <div key={n.id} className={`text-[9px] px-1 py-0.5 rounded truncate font-medium
+                      ${n.type === 'appointment' ? 'bg-gentle-coral/20 text-gentle-coral' : 'bg-warm-bronze/15 text-warm-bronze'}`}>
+                      {n.text}
+                    </div>
+                  ))}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Note popup (inline below calendar) ──────────────────────────── */}
+      <AnimatePresence>
+        {popupDate && (
+          <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+            className="mt-3 rounded-2xl border border-soft-taupe/40 bg-warm-ivory p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold text-charcoal">
+                {format(parseISO(popupDate), 'EEEE, MMMM d')}
+              </p>
+              <button onClick={() => setPopupDate(null)} className="w-6 h-6 rounded-full hover:bg-soft-taupe/40 flex items-center justify-center">
+                <X className="w-3 h-3 text-medium-gray" />
+              </button>
+            </div>
+
+            {/* Existing notes */}
+            {notesOn(popupDate).map(n => (
+              <div key={n.id} className="flex items-start gap-2 group">
+                {editId === n.id ? (
+                  <>
+                    <input value={editText} onChange={e => setEditText(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') saveEdit(n.id); if (e.key === 'Escape') { setEditId(null); setEditText(''); } }}
+                      className="flex-1 px-2 py-1 text-sm rounded-lg border border-soft-taupe focus:outline-none focus:ring-2 focus:ring-warm-bronze/40 bg-white"
+                      autoFocus />
+                    <button onClick={() => saveEdit(n.id)} className="text-xs px-2 py-1 bg-warm-bronze text-white rounded-lg">Save</button>
+                    <button onClick={() => { setEditId(null); setEditText(''); }} className="text-xs px-2 py-1 border border-soft-taupe rounded-lg text-medium-gray">✕</button>
+                  </>
+                ) : (
+                  <>
+                    <div className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${n.type === 'appointment' ? 'bg-gentle-coral' : 'bg-warm-bronze'}`} />
+                    <p className="flex-1 text-sm text-charcoal">{n.text}</p>
+                    <button onClick={() => { setEditId(n.id); setEditText(n.text); }}
+                      className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded hover:bg-soft-taupe/40 flex items-center justify-center transition-all">
+                      <Pencil className="w-3 h-3 text-medium-gray" />
+                    </button>
+                    <button onClick={() => deleteNote(n.id)}
+                      className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded hover:bg-gentle-coral/10 flex items-center justify-center transition-all">
+                      <X className="w-3 h-3 text-gentle-coral" />
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+
+            {/* Add new note */}
+            <div className="flex gap-1 text-xs mb-2">
+              {(['reminder', 'appointment'] as const).map(t => (
+                <button key={t} onClick={() => setAddType(t)}
+                  className={`px-2 py-1 rounded-lg capitalize font-medium border transition-colors
+                    ${addType === t ? (t === 'appointment' ? 'bg-gentle-coral/20 border-gentle-coral text-gentle-coral' : 'bg-warm-bronze/15 border-warm-bronze text-warm-bronze') : 'border-soft-taupe text-medium-gray hover:border-warm-bronze/40'}`}>
+                  {t === 'reminder' ? '🔔 Reminder' : '🏥 Appointment'}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input value={addText} onChange={e => setAddText(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addNote(); }}
+                placeholder={addType === 'appointment' ? 'e.g. Doctor visit 10 am…' : 'e.g. Take blood pressure…'}
+                className="flex-1 px-3 py-2 text-sm rounded-xl border border-soft-taupe focus:outline-none focus:ring-2 focus:ring-warm-bronze/40 bg-white" />
+              <button onClick={addNote}
+                className="px-3 py-2 bg-warm-bronze text-white rounded-xl text-sm font-semibold hover:bg-deep-bronze transition-colors flex items-center gap-1">
+                <Plus className="w-3 h-3" /> Add
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
 }
 
 // ── My Tasks component ────────────────────────────────────────────────────────

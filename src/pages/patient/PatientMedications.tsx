@@ -1,4 +1,6 @@
 import { useApp } from '@/store/AppContext';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -9,7 +11,7 @@ import {
   ClipboardList, Check, Minus, Info, RotateCcw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { format, startOfWeek, addDays, startOfMonth, getDaysInMonth, subDays, addWeeks, subWeeks, addMonths, subMonths, isSameDay, parseISO } from 'date-fns';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -59,13 +61,45 @@ const MED_COLORS = [
   'bg-purple-400','bg-warm-amber','bg-teal-400','bg-pink-400',
 ];
 
-const STORAGE_MEDS = 'patientLocalMeds';
-const STORAGE_LOGS = 'patientLocalLogs';
+// Deterministic color per form type — replaces user-picked color since Supabase has no color column
+const FORM_COLORS: Record<MedForm, string> = {
+  pill:      'bg-warm-bronze',
+  liquid:    'bg-calm-blue',
+  injection: 'bg-gentle-coral',
+  patch:     'bg-soft-sage',
+  inhaler:   'bg-purple-400',
+};
 
-function loadMeds(): LocalMed[]  { try { return JSON.parse(localStorage.getItem(STORAGE_MEDS) || '[]'); } catch { return []; } }
-function loadLogs(): LocalLog[]  { try { return JSON.parse(localStorage.getItem(STORAGE_LOGS) || '[]'); } catch { return []; } }
-function saveMeds(m: LocalMed[]) { localStorage.setItem(STORAGE_MEDS, JSON.stringify(m)); }
-function saveLogs(l: LocalLog[]) { localStorage.setItem(STORAGE_LOGS, JSON.stringify(l)); }
+function mapRow(row: any): LocalMed {
+  const schedule: Array<{ time: string; daysOfWeek?: number[] }> = row.schedule || [];
+  return {
+    id:           row.id,
+    name:         row.name,
+    genericName:  row.generic_name || undefined,
+    dosage:       row.dosage,
+    form:         (row.form as MedForm) || 'pill',
+    type:         row.prescribed_by ? 'prescribed' : 'otc',
+    instructions: row.instructions || '',
+    prescribedBy: row.prescribed_by || undefined,
+    times:        schedule.map(s => s.time),
+    daysOfWeek:   schedule[0]?.daysOfWeek ?? [],
+    color:        FORM_COLORS[(row.form as MedForm)] || MED_COLORS[0],
+    isActive:     row.is_active,
+    createdAt:    row.created_at,
+  };
+}
+
+function mapLogRow(row: any): LocalLog {
+  return {
+    id:            row.id,
+    medId:         row.medication_id,
+    medName:       row.medication_name || '',
+    date:          row.date,
+    scheduledTime: row.scheduled_time,
+    takenTime:     row.taken_time || undefined,
+    status:        row.status as DoseStatus,
+  };
+}
 
 const today = () => format(new Date(), 'yyyy-MM-dd');
 
@@ -352,33 +386,99 @@ function DoseRow({
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function PatientMedications() {
-  const { state, dispatch } = useApp();
-  const appMeds    = state.medications.filter(m => m.isActive);
-  const appLogs    = state.medicationLogs;
+  const { state } = useApp();
+  const patientId = state.currentUser?.id || '';
 
-  const [localMeds, setLocalMeds]   = useState<LocalMed[]>(loadMeds);
-  const [localLogs, setLocalLogs]   = useState<LocalLog[]>(loadLogs);
-  const [activeTab, setActiveTab]   = useState<ViewTab>('today');
-  const [showAdd,   setShowAdd]     = useState(false);
-  const [confirm,   setConfirm]     = useState<{ medId: string; time: string; date: string; action: 'take'|'skip' } | null>(null);
-  const [weekStart, setWeekStart]   = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
-  const [monthDate, setMonthDate]   = useState(() => new Date());
-  const [detailMed, setDetailMed]   = useState<LocalMed | null>(null);
-  const [dayPopup,  setDayPopup]    = useState<{ date: string; doses: ReturnType<typeof getDosesForDate> } | null>(null);
+  const [localMeds,   setLocalMeds]   = useState<LocalMed[]>([]);
+  const [localLogs,   setLocalLogs]   = useState<LocalLog[]>([]);
+  const [medsLoading, setMedsLoading] = useState(true);
+  const [activeTab,   setActiveTab]   = useState<ViewTab>('today');
+  const [showAdd,     setShowAdd]     = useState(false);
+  const [confirm,     setConfirm]     = useState<{ medId: string; time: string; date: string; action: 'take'|'skip' } | null>(null);
+  const [weekStart,   setWeekStart]   = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
+  const [monthDate,   setMonthDate]   = useState(() => new Date());
+  const [detailMed,   setDetailMed]   = useState<LocalMed | null>(null);
+  const [dayPopup,    setDayPopup]    = useState<{ date: string; doses: ReturnType<typeof getDosesForDate> } | null>(null);
 
   const todayStr = today();
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
-  const getLogKey = (medId: string, date: string, time: string) => `${medId}__${date}__${time}`;
+  // ── Load from Supabase (+ one-time localStorage migration) ──────────────────
+  useEffect(() => {
+    if (!patientId) { setMedsLoading(false); return; }
 
+    const loadData = async () => {
+      const medSelect = 'id, name, generic_name, dosage, form, instructions, prescribed_by, is_active, schedule, created_at, updated_at';
+
+      const { data: medRows, error: medErr } = await supabase
+        .from('medications')
+        .select(medSelect)
+        .eq('patient_id', patientId)
+        .order('created_at', { ascending: false });
+
+      if (medErr) {
+        toast.error('Failed to load medications');
+        setMedsLoading(false);
+        return;
+      }
+
+      // One-time migration: if Supabase is empty and localStorage has data, migrate it
+      if (medRows !== null && medRows.length === 0) {
+        const oldMeds: LocalMed[] = (() => {
+          try { return JSON.parse(localStorage.getItem('patientLocalMeds') || '[]'); }
+          catch { return []; }
+        })();
+
+        if (oldMeds.length > 0) {
+          await Promise.all(oldMeds.map(m =>
+            supabase.from('medications').insert({
+              patient_id:   patientId,
+              name:         m.name,
+              generic_name: m.genericName || null,
+              dosage:       m.dosage,
+              form:         m.form,
+              instructions: m.instructions || null,
+              prescribed_by: m.prescribedBy || null,
+              schedule:     m.times.map((time, i) => ({ id: `s${i}`, time, daysOfWeek: m.daysOfWeek })),
+              is_active:    m.isActive,
+              side_effects: [],
+            })
+          ));
+          localStorage.removeItem('patientLocalMeds');
+          localStorage.removeItem('patientLocalLogs');
+
+          // Re-fetch after migration
+          const { data: migrated } = await supabase
+            .from('medications')
+            .select(medSelect)
+            .eq('patient_id', patientId)
+            .order('created_at', { ascending: false });
+          setLocalMeds((migrated || []).map(mapRow));
+          setMedsLoading(false);
+          return;
+        }
+      }
+
+      setLocalMeds((medRows || []).map(mapRow));
+
+      // Load recent logs (60-day window)
+      const since = format(subDays(new Date(), 60), 'yyyy-MM-dd');
+      const { data: logRows } = await supabase
+        .from('medication_logs')
+        .select('id, medication_id, medication_name, date, scheduled_time, taken_time, status')
+        .eq('patient_id', patientId)
+        .gte('date', since);
+
+      setLocalLogs((logRows || []).map(mapLogRow));
+      setMedsLoading(false);
+    };
+
+    loadData();
+  }, [patientId]);
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
   const getStatus = useMemo(() => (medId: string, date: string, time: string): DoseStatus => {
-    // Check local logs first
-    const local = localLogs.find(l => l.medId === medId && l.date === date && l.scheduledTime === time);
-    if (local) return local.status;
-    // Check app logs
-    const app = appLogs.find(l => l.medicationId === medId && l.date === date && l.scheduledTime === time);
-    if (app) return app.status as DoseStatus;
-    // Auto-missed if past time and date
+    const log = localLogs.find(l => l.medId === medId && l.date === date && l.scheduledTime === time);
+    if (log) return log.status;
     const now = new Date();
     const logDate = parseISO(date);
     if (logDate < new Date(todayStr)) return 'missed';
@@ -388,29 +488,20 @@ export default function PatientMedications() {
       if (schedDt < now) return 'missed';
     }
     return 'pending';
-  }, [localLogs, appLogs, todayStr]);
+  }, [localLogs, todayStr]);
 
   const getDosesForDate = (date: string) => {
-    const allDoses: { medId: string; med: LocalMed | any; time: string; isLocal: boolean }[] = [];
+    const allDoses: { medId: string; med: LocalMed; time: string }[] = [];
     const dateObj = parseISO(date);
     const dow = dateObj.getDay();
-
     localMeds.filter(m => m.isActive).forEach(med => {
       const applies = med.daysOfWeek.length === 0 || med.daysOfWeek.includes(dow);
-      if (applies) med.times.forEach(t => allDoses.push({ medId: med.id, med, time: t, isLocal: true }));
+      if (applies) med.times.forEach(t => allDoses.push({ medId: med.id, med, time: t }));
     });
-
-    appMeds.forEach(med => {
-      med.schedule.forEach(s => {
-        const applies = !s.daysOfWeek || s.daysOfWeek.length === 0 || s.daysOfWeek.includes(dow);
-        if (applies) allDoses.push({ medId: med.id, med: { ...med, color: 'bg-calm-blue', type: 'prescribed', times: [] }, time: s.time, isLocal: false });
-      });
-    });
-
     return allDoses.sort((a, b) => a.time.localeCompare(b.time));
   };
 
-  const todayDoses = useMemo(() => getDosesForDate(todayStr), [localMeds, appMeds, todayStr]);
+  const todayDoses = useMemo(() => getDosesForDate(todayStr), [localMeds, todayStr]);
 
   const todayStats = useMemo(() => {
     const taken   = todayDoses.filter(d => getStatus(d.medId, todayStr, d.time) === 'taken').length;
@@ -420,58 +511,110 @@ export default function PatientMedications() {
     return { taken, missed, skipped, pending, total: todayDoses.length };
   }, [todayDoses, getStatus, todayStr]);
 
-  // ── Log actions ──────────────────────────────────────────────────────────────
-  const logDose = (medId: string, date: string, time: string, status: 'taken'|'skipped') => {
-    const isLocalMed = localMeds.some(m => m.id === medId);
-    const med = localMeds.find(m => m.id === medId) || appMeds.find(m => m.id === medId);
-    if (!med) return;
+  // ── Log actions (Supabase-backed with optimistic local update) ──────────────
+  const logDose = async (medId: string, date: string, time: string, status: 'taken'|'skipped') => {
+    const med = localMeds.find(m => m.id === medId);
+    if (!med || !patientId) return;
 
-    if (isLocalMed) {
-      const existing = localLogs.findIndex(l => l.medId === medId && l.date === date && l.scheduledTime === time);
-      const newLog: LocalLog = {
-        id: `log_${Date.now()}`, medId, medName: med.name, date, scheduledTime: time,
+    // Optimistic update — instant UI feedback
+    const tempId = `temp_${Date.now()}`;
+    setLocalLogs(prev => {
+      const filtered = prev.filter(l => !(l.medId === medId && l.date === date && l.scheduledTime === time));
+      return [...filtered, {
+        id: tempId, medId, medName: med.name, date, scheduledTime: time,
         takenTime: status === 'taken' ? new Date().toISOString() : undefined, status,
-      };
-      const updated = existing >= 0
-        ? localLogs.map((l, i) => i === existing ? newLog : l)
-        : [...localLogs, newLog];
-      setLocalLogs(updated);
-      saveLogs(updated);
-    } else {
-      const newLog = {
-        id: `log-${Date.now()}`, medicationId: medId, patientId: state.patient?.id || '',
-        medicationName: med.name, scheduledTime: time,
-        takenTime: status === 'taken' ? new Date().toISOString() : undefined,
-        status, recordedBy: state.patient?.id || '', date,
-      };
-      dispatch({ type: 'ADD_MEDICATION_LOG', payload: newLog });
-    }
+      }];
+    });
     setConfirm(null);
+
+    try {
+      const { data: logRow } = await supabase
+        .from('medication_logs')
+        .upsert({
+          medication_id:   medId,
+          patient_id:      patientId,
+          medication_name: med.name,
+          scheduled_time:  time,
+          date,
+          status,
+          taken_time:  status === 'taken' ? new Date().toISOString() : null,
+          recorded_by: patientId,
+        }, { onConflict: 'medication_id,date,scheduled_time' })
+        .select('id, medication_id, medication_name, date, scheduled_time, taken_time, status')
+        .single();
+
+      if (logRow) {
+        // Swap temp entry with the real DB row
+        setLocalLogs(prev => prev.map(l => l.id === tempId ? mapLogRow(logRow) : l));
+      }
+    } catch {
+      // Optimistic state stays; log visible for this session even if Supabase is unreachable
+    }
   };
 
-  const undoLog = (medId: string, date: string, time: string) => {
-    const updated = localLogs.filter(l => !(l.medId === medId && l.date === date && l.scheduledTime === time));
-    setLocalLogs(updated);
-    saveLogs(updated);
+  const undoLog = async (medId: string, date: string, time: string) => {
+    setLocalLogs(prev => prev.filter(l => !(l.medId === medId && l.date === date && l.scheduledTime === time)));
+    if (!patientId) return;
+    try {
+      await supabase
+        .from('medication_logs')
+        .delete()
+        .eq('medication_id', medId)
+        .eq('date', date)
+        .eq('scheduled_time', time)
+        .eq('patient_id', patientId);
+    } catch {
+      // Local state already updated; ignore Supabase error
+    }
   };
 
-  const handleSaveMed = (med: LocalMed) => {
-    const updated = [med, ...localMeds];
-    setLocalMeds(updated);
-    saveMeds(updated);
+  const handleSaveMed = async (med: LocalMed) => {
+    if (!patientId) return;
+    const schedule = med.times.map((time, i) => ({ id: `s${i}`, time, daysOfWeek: med.daysOfWeek }));
+    const { data: row, error } = await supabase
+      .from('medications')
+      .insert({
+        patient_id:   patientId,
+        name:         med.name,
+        generic_name: med.genericName || null,
+        dosage:       med.dosage,
+        form:         med.form,
+        instructions: med.instructions || null,
+        prescribed_by: med.prescribedBy || null,
+        schedule,
+        is_active:    true,
+        side_effects: [],
+      })
+      .select('id, name, generic_name, dosage, form, instructions, prescribed_by, is_active, schedule, created_at, updated_at')
+      .single();
+
+    if (error || !row) {
+      toast.error('Failed to save medication');
+      return;
+    }
+    setLocalMeds(prev => [mapRow(row), ...prev]);
     setShowAdd(false);
   };
 
-  const toggleMedActive = (id: string) => {
-    const updated = localMeds.map(m => m.id === id ? { ...m, isActive: !m.isActive } : m);
-    setLocalMeds(updated);
-    saveMeds(updated);
+  const toggleMedActive = async (id: string) => {
+    const med = localMeds.find(m => m.id === id);
+    if (!med) return;
+    const newActive = !med.isActive;
+    setLocalMeds(prev => prev.map(m => m.id === id ? { ...m, isActive: newActive } : m));
+    await supabase
+      .from('medications')
+      .update({ is_active: newActive })
+      .eq('id', id)
+      .eq('patient_id', patientId);
   };
 
-  const deleteMed = (id: string) => {
-    const updated = localMeds.filter(m => m.id !== id);
-    setLocalMeds(updated);
-    saveMeds(updated);
+  const deleteMed = async (id: string) => {
+    setLocalMeds(prev => prev.filter(m => m.id !== id));
+    await supabase
+      .from('medications')
+      .delete()
+      .eq('id', id)
+      .eq('patient_id', patientId);
   };
 
   // ── Week helpers ─────────────────────────────────────────────────────────────
@@ -520,9 +663,17 @@ export default function PatientMedications() {
     return groups;
   }, [todayDoses]);
 
-  const allMedsCount  = localMeds.filter(m => m.isActive).length + appMeds.length;
-  const rxCount       = localMeds.filter(m => m.isActive && m.type === 'prescribed').length + appMeds.length;
+  const allMedsCount  = localMeds.filter(m => m.isActive).length;
+  const rxCount       = localMeds.filter(m => m.isActive && m.type === 'prescribed').length;
   const otcCount      = localMeds.filter(m => m.isActive && m.type === 'otc').length;
+
+  if (medsLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-10 h-10 border-4 border-warm-bronze border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 max-w-2xl">
@@ -875,33 +1026,6 @@ export default function PatientMedications() {
                   <span className="text-xs bg-calm-blue/15 text-calm-blue px-2 py-0.5 rounded-full font-semibold">{rxCount}</span>
                 </div>
                 <div className="space-y-2">
-                  {/* App meds (always Rx) */}
-                  {appMeds.map(med => {
-                    const FormIcon = FORM_CONFIG[med.form as MedForm]?.icon || Pill;
-                    return (
-                      <Card key={med.id} className="p-4 border-0 shadow-sm">
-                        <div className="flex items-start gap-3">
-                          <div className="w-10 h-10 bg-calm-blue rounded-xl flex items-center justify-center flex-shrink-0">
-                            <FormIcon className="w-5 h-5 text-white" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-bold text-charcoal">{med.name}</p>
-                              {med.genericName && <p className="text-xs text-medium-gray">({med.genericName})</p>}
-                            </div>
-                            <p className="text-sm text-medium-gray">{med.dosage} · {FORM_CONFIG[med.form as MedForm]?.label}</p>
-                            {med.prescribedBy && <p className="text-xs text-medium-gray mt-0.5">Dr. {med.prescribedBy}</p>}
-                            <div className="flex flex-wrap gap-1 mt-1.5">
-                              {med.schedule.map(s => (
-                                <span key={s.id} className="text-xs bg-soft-taupe/30 text-medium-gray px-2 py-0.5 rounded-full">{s.time}</span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                  {/* Local Rx meds */}
                   {localMeds.filter(m => m.type === 'prescribed').map(med => {
                     const FormIcon = FORM_CONFIG[med.form]?.icon || Pill;
                     return (
@@ -1087,7 +1211,7 @@ export default function PatientMedications() {
             </DialogTitle>
           </DialogHeader>
           {confirm && (() => {
-            const med = localMeds.find(m => m.id === confirm.medId) || appMeds.find(m => m.id === confirm.medId);
+            const med = localMeds.find(m => m.id === confirm.medId);
             if (!med) return null;
             const FormIcon = FORM_CONFIG[(med as LocalMed).form as MedForm]?.icon || Pill;
             return (

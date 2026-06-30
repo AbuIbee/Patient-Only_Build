@@ -109,7 +109,7 @@ export async function uploadMedia(
 export async function getPatientMedia(patientId: string): Promise<MediaUpload[]> {
   const { data, error } = await supabase
     .from('media_uploads')
-    .select('*')
+    .select('id, uploader_id, uploader_name, uploader_role, patient_id, file_url, file_type, file_name, file_size, caption, shared_with, created_at')
     .eq('patient_id', patientId)
     .order('created_at', { ascending: false });
 

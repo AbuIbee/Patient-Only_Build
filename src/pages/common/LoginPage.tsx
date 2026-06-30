@@ -100,7 +100,7 @@ function SignInForm({
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('*')
+        .select('first_name, last_name, role, phone, created_at, updated_at')
         .eq('id', data.user.id)
         .maybeSingle();
 

@@ -91,7 +91,7 @@ export default function PatientEmergencyContacts() {
     try {
       const { data } = await supabase
         .from('patient_care_partners')
-        .select('*')
+        .select('full_name, email, phone, relationship, education_level, medical_experience, employment_relevant, notes')
         .eq('patient_id', patientId)
         .maybeSingle();
       if (data) {
@@ -118,7 +118,7 @@ export default function PatientEmergencyContacts() {
     try {
       const { data } = await supabase
         .from('patient_emergency_contacts')
-        .select('*')
+        .select('id, full_name, email, phone, relationship, address, notes')
         .eq('patient_id', patientId)
         .order('created_at', { ascending: true });
       if (data) {

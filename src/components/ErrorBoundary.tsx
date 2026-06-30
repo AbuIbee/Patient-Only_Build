@@ -71,20 +71,22 @@ export class ErrorBoundary extends React.Component<Props, State> {
               </div>
             </div>
 
-            {/* Stack Trace (Collapsible) */}
-            <details className="bg-soft-taupe/30 rounded-xl overflow-hidden">
-              <summary className="cursor-pointer px-4 py-3 font-semibold text-charcoal hover:bg-soft-taupe/50 transition-colors">
-                View Stack Trace
-              </summary>
-              <div className="px-4 py-3 border-t border-soft-taupe">
-                <pre className="text-xs overflow-auto text-medium-gray whitespace-pre-wrap max-h-64 font-mono">
-                  {this.state.error?.stack || 'No stack trace available'}
-                </pre>
-              </div>
-            </details>
+            {/* Stack Trace — dev only: never expose internal paths to production users */}
+            {import.meta.env.DEV && (
+              <details className="bg-soft-taupe/30 rounded-xl overflow-hidden">
+                <summary className="cursor-pointer px-4 py-3 font-semibold text-charcoal hover:bg-soft-taupe/50 transition-colors">
+                  View Stack Trace
+                </summary>
+                <div className="px-4 py-3 border-t border-soft-taupe">
+                  <pre className="text-xs overflow-auto text-medium-gray whitespace-pre-wrap max-h-64 font-mono">
+                    {this.state.error?.stack || 'No stack trace available'}
+                  </pre>
+                </div>
+              </details>
+            )}
 
-            {/* Component Stack (if available) */}
-            {this.state.errorInfo && (
+            {/* Component Stack — dev only */}
+            {import.meta.env.DEV && this.state.errorInfo && (
               <details className="bg-soft-taupe/30 rounded-xl overflow-hidden">
                 <summary className="cursor-pointer px-4 py-3 font-semibold text-charcoal hover:bg-soft-taupe/50 transition-colors">
                   View Component Stack

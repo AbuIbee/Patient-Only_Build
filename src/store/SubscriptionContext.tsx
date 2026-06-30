@@ -80,7 +80,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       // ── Regular user: load from DB ────────────────────────────────────────
       const { data, error } = await supabase
         .from('subscriptions')
-        .select('*')
+        .select('id, user_id, tier, status, trial_started_at, trial_ends_at, current_period_start, current_period_end, stripe_customer_id, stripe_subscription_id, promo_code, promo_expires_at, canceled_at, created_at, updated_at')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -118,14 +118,26 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    loadSubscription();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
-    const channel = supabase
-      .channel('subscription_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'subscriptions' }, () => loadSubscription())
-      .subscribe();
+    const init = async () => {
+      await loadSubscription();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      channel = supabase
+        .channel('subscription_changes')
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'subscriptions',
+          filter: `user_id=eq.${user.id}`,
+        }, () => loadSubscription())
+        .subscribe();
+    };
 
-    return () => { supabase.removeChannel(channel); };
+    init();
+
+    return () => { if (channel) supabase.removeChannel(channel); };
   }, [loadSubscription]);
 
   // ── Promo code redemption ────────────────────────────────────────────────
