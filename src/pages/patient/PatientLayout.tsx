@@ -345,12 +345,12 @@ export default function PatientLayout() {
   // Main navigation order approved for the current plan design.
   const navItems: NavigationItem[] = [
     { id: 'dashboard',   label: 'Home',         emoji: '🏠' },
-    { id: 'memories',    label: 'Family',       emoji: '👨‍👩‍👧' },
     { id: 'mood',        label: 'How I Feel',   emoji: '😊' },
-    { id: 'reminders',   label: 'Reminders',    emoji: '🔔' },
-    { id: 'medications', label: 'Medications',  emoji: '💊' },
-    { id: 'routines',    label: 'My Day',       emoji: '📅' },
     { id: 'checkin',     label: 'Care Partner', emoji: '📋' },
+    { id: 'medications', label: 'Medications',  emoji: '💊' },
+    { id: 'reminders',   label: 'Reminders',    emoji: '🔔' },
+    { id: 'routines',    label: 'My Day',       emoji: '📅' },
+    { id: 'memories',    label: 'Family',       emoji: '👨‍👩‍👧' },
     { id: 'documents',   label: 'Documents',    emoji: '📄' },
   ];
 
