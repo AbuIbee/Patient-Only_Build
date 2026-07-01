@@ -1,12 +1,13 @@
 import { useApp } from '@/store/AppContext';
+import { supabase, getSignedMediaUrl } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  Play, Volume2, Heart, Image as ImageIcon, Mic, Calendar,
+  Play, Heart, Image as ImageIcon, Calendar,
   BookOpen, Upload, X, Camera, Users, MapPin, Star, Sun, ChevronLeft, ChevronRight,
 } from 'lucide-react';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -16,7 +17,8 @@ interface LocalMemory {
   id: string;
   title: string;
   description?: string;
-  photoUrl: string;
+  photoUrl: string;    // signed URL after upload; base64 during optimistic add
+  storagePath?: string; // path in patient-media bucket; undefined until upload completes
   category: Category;
   createdAt: string;
   isFavorite: boolean;
@@ -31,17 +33,6 @@ const CATEGORY_CONFIG: Record<Exclude<Category, 'all'>, {
   milestones: { label: 'Milestones', icon: Star,     color: 'text-warm-amber',    bg: 'bg-warm-amber/10',    borderColor: 'border-warm-amber/30',    emoji: '🌟' },
   daily:      { label: 'Daily',      icon: Sun,      color: 'text-soft-sage',     bg: 'bg-soft-sage/10',     borderColor: 'border-soft-sage/30',     emoji: '☀️' },
 };
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-const STORAGE_KEY = 'patientLocalMemories';
-
-function loadLocalMemories(): LocalMemory[] {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
-}
-
-function saveLocalMemories(memories: LocalMemory[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(memories));
-}
 
 // ─── Upload Zone Component ─────────────────────────────────────────────────────
 function UploadZone({
@@ -173,18 +164,13 @@ function UploadZone({
 
 // ─── Memory Card ──────────────────────────────────────────────────────────────
 function MemoryCard({
-  memory, appMemory, index, onClick,
+  memory, index, onClick,
 }: {
-  memory?: LocalMemory;
-  appMemory?: any;
+  memory: LocalMemory;
   index: number;
   onClick: () => void;
 }) {
-  const photoUrl  = memory?.photoUrl  || appMemory?.photoUrl;
-  const title     = memory?.title     || appMemory?.title     || 'Memory';
-  const category  = (memory?.category || appMemory?.category || 'daily') as Exclude<Category, 'all'>;
-  const createdAt = memory?.createdAt || appMemory?.createdAt;
-  const cfg       = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.daily;
+  const cfg = CATEGORY_CONFIG[memory.category] || CATEGORY_CONFIG.daily;
 
   return (
     <motion.div
@@ -194,35 +180,27 @@ function MemoryCard({
       layout>
       <Card onClick={onClick}
         className="overflow-hidden border-0 shadow-soft hover:shadow-card transition-all cursor-pointer group">
-        {photoUrl ? (
+        {memory.photoUrl ? (
           <div className="relative aspect-square">
-            <img src={photoUrl} alt={title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+            <img src={memory.photoUrl} alt={memory.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-            {/* category badge */}
             <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.color} backdrop-blur-sm`}>
               {cfg.emoji}
             </span>
-            {appMemory?.audioUrl && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-10 h-10 bg-white/80 rounded-full flex items-center justify-center">
-                  <Volume2 className="w-5 h-5 text-warm-bronze" />
-                </div>
-              </div>
-            )}
-            <p className="absolute bottom-2 left-2 right-2 text-white text-xs font-semibold truncate">{title}</p>
+            <p className="absolute bottom-2 left-2 right-2 text-white text-xs font-semibold truncate">{memory.title}</p>
           </div>
         ) : (
           <div className="aspect-square bg-warm-ivory flex flex-col items-center justify-center gap-2">
             <ImageIcon className="w-10 h-10 text-soft-taupe" />
-            <p className="text-xs text-medium-gray px-2 text-center truncate w-full">{title}</p>
+            <p className="text-xs text-medium-gray px-2 text-center truncate w-full">{memory.title}</p>
           </div>
         )}
         <div className="px-3 py-2 flex items-center justify-between">
           <p className="text-xs text-medium-gray flex items-center gap-1">
             <Calendar className="w-3 h-3" />
-            {createdAt ? new Date(createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
+            {memory.createdAt ? new Date(memory.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : ''}
           </p>
-          {(memory?.isFavorite || appMemory?.isFavorite) && (
+          {memory.isFavorite && (
             <Heart className="w-3.5 h-3.5 text-gentle-coral fill-gentle-coral" />
           )}
         </div>
@@ -233,46 +211,172 @@ function MemoryCard({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function PatientMemories() {
-  const { state }                         = useApp();
-  const appMemories                       = state.memories;
-  const [localMemories, setLocalMemories] = useState<LocalMemory[]>(loadLocalMemories);
+  const { state }                           = useApp();
+  const patientId                           = state.currentUser?.id || state.patient?.id || '';
+  const [memories, setMemories]             = useState<LocalMemory[]>([]);
+  const [memoriesLoading, setMemoriesLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<Category>('all');
-  const [selectedMemory, setSelectedMemory] = useState<{ local?: LocalMemory; app?: any } | null>(null);
-  const [slideshowIdx, setSlideshowIdx]   = useState(0);
-  const [showSlideshow, setShowSlideshow] = useState(false);
+  const [selectedMemory, setSelectedMemory] = useState<LocalMemory | null>(null);
+  const [slideshowIdx, setSlideshowIdx]     = useState(0);
+  const [showSlideshow, setShowSlideshow]   = useState(false);
 
-  // ── Merge & filter ────────────────────────────────────────────────────────
-  const getFiltered = (cat: Category) => {
-    const appFiltered   = cat === 'all' ? appMemories   : appMemories.filter(m => m.category === cat);
-    const localFiltered = cat === 'all' ? localMemories : localMemories.filter(m => m.category === cat);
-    return { appFiltered, localFiltered, total: appFiltered.length + localFiltered.length };
+  useEffect(() => {
+    if (!patientId) return;
+    fetchMemories();
+  }, [patientId]);
+
+  // ── Fetch from Supabase (with one-time localStorage migration) ────────────
+  const fetchMemories = async () => {
+    setMemoriesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('memories')
+        .select('id, title, description, photo_url, category, is_favorite, created_at')
+        .eq('patient_id', patientId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const rows = data || [];
+
+      // One-time migration from localStorage
+      if (rows.length === 0) {
+        const raw = localStorage.getItem('patientLocalMemories');
+        if (raw) {
+          try {
+            const local: LocalMemory[] = JSON.parse(raw);
+            if (local.length > 0) {
+              const migrated: LocalMemory[] = [];
+              for (const m of local) {
+                const blob = await fetch(m.photoUrl).then(r => r.blob());
+                const ext  = blob.type.split('/')[1] || 'jpg';
+                const storagePath = `${patientId}/memories/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+                const { error: upErr } = await supabase.storage
+                  .from('patient-media')
+                  .upload(storagePath, blob, { contentType: blob.type });
+                if (upErr) continue;
+                const { data: row, error: dbErr } = await supabase
+                  .from('memories')
+                  .insert({
+                    patient_id:  patientId,
+                    created_by:  patientId,
+                    title:       m.title,
+                    description: m.description ?? null,
+                    photo_url:   storagePath,
+                    category:    m.category,
+                    is_favorite: m.isFavorite,
+                    created_at:  m.createdAt,
+                  })
+                  .select('id')
+                  .single();
+                if (dbErr) continue;
+                const signedUrl = await getSignedMediaUrl(storagePath);
+                if (signedUrl) migrated.push({ id: row.id, title: m.title, description: m.description, photoUrl: signedUrl, storagePath, category: m.category, createdAt: m.createdAt, isFavorite: m.isFavorite });
+              }
+              if (migrated.length > 0) {
+                localStorage.removeItem('patientLocalMemories');
+                setMemories(migrated);
+                return;
+              }
+            }
+          } catch {}
+        }
+      }
+
+      const withUrls = await Promise.all(rows.map(async r => {
+        const signedUrl = r.photo_url ? await getSignedMediaUrl(r.photo_url) : null;
+        return {
+          id:          r.id,
+          title:       r.title,
+          description: r.description ?? undefined,
+          photoUrl:    signedUrl || r.photo_url || '',
+          storagePath: r.photo_url ?? undefined,
+          category:    (r.category as Category) || 'daily',
+          createdAt:   r.created_at,
+          isFavorite:  r.is_favorite,
+        } as LocalMemory;
+      }));
+      setMemories(withUrls);
+    } catch (err) {
+      console.error('fetchMemories error:', err);
+    } finally {
+      setMemoriesLoading(false);
+    }
   };
 
-  const { appFiltered, localFiltered, total } = getFiltered(activeCategory);
+  // ── Filter ────────────────────────────────────────────────────────────────
+  const getFiltered = (cat: Category) => {
+    const filtered = cat === 'all' ? memories : memories.filter(m => m.category === cat);
+    return { filtered, total: filtered.length };
+  };
 
-  const allSlideshowImages = [
-    ...appMemories.filter(m => m.photoUrl).map(m => ({ url: m.photoUrl!, caption: m.title, category: m.category as Category })),
-    ...localMemories.map(m => ({ url: m.photoUrl, caption: m.title, category: m.category })),
-  ];
+  const { filtered, total } = getFiltered(activeCategory);
+
+  const allSlideshowImages = memories
+    .filter(m => m.photoUrl)
+    .map(m => ({ url: m.photoUrl, caption: m.title, category: m.category }));
 
   // ── Handlers ──────────────────────────────────────────────────────────────
-  const handleUploaded = (memory: LocalMemory) => {
-    const updated = [memory, ...localMemories];
-    setLocalMemories(updated);
-    saveLocalMemories(updated);
+  const handleUploaded = async (memory: LocalMemory) => {
+    const tempId = `temp_${Date.now()}`;
+    const optimistic = { ...memory, id: tempId };
+    setMemories(prev => [optimistic, ...prev]);
+
+    const blob = await fetch(memory.photoUrl).then(r => r.blob());
+    const ext  = blob.type.split('/')[1] || 'jpg';
+    const storagePath = `${patientId}/memories/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+
+    const { error: upErr } = await supabase.storage
+      .from('patient-media')
+      .upload(storagePath, blob, { contentType: blob.type });
+    if (upErr) {
+      setMemories(prev => prev.filter(m => m.id !== tempId));
+      return;
+    }
+
+    const { data: row, error: dbErr } = await supabase
+      .from('memories')
+      .insert({
+        patient_id:  patientId,
+        created_by:  patientId,
+        title:       memory.title,
+        description: memory.description ?? null,
+        photo_url:   storagePath,
+        category:    memory.category,
+        is_favorite: false,
+        created_at:  memory.createdAt,
+      })
+      .select('id')
+      .single();
+    if (dbErr) {
+      setMemories(prev => prev.filter(m => m.id !== tempId));
+      return;
+    }
+
+    const signedUrl = await getSignedMediaUrl(storagePath);
+    setMemories(prev => prev.map(m =>
+      m.id === tempId
+        ? { ...m, id: row.id, photoUrl: signedUrl || m.photoUrl, storagePath }
+        : m
+    ));
   };
 
-  const handleRemoveLocal = (id: string) => {
-    const updated = localMemories.filter(m => m.id !== id);
-    setLocalMemories(updated);
-    saveLocalMemories(updated);
+  const handleRemove = async (id: string) => {
+    const memory = memories.find(m => m.id === id);
+    setMemories(prev => prev.filter(m => m.id !== id));
     setSelectedMemory(null);
+    if (memory?.storagePath) {
+      await supabase.storage.from('patient-media').remove([memory.storagePath]);
+    }
+    await supabase.from('memories').delete().eq('id', id).eq('patient_id', patientId);
   };
 
-  const toggleFavorite = (id: string) => {
-    const updated = localMemories.map(m => m.id === id ? { ...m, isFavorite: !m.isFavorite } : m);
-    setLocalMemories(updated);
-    saveLocalMemories(updated);
+  const toggleFavorite = async (id: string) => {
+    const memory = memories.find(m => m.id === id);
+    if (!memory) return;
+    const newFav = !memory.isFavorite;
+    setMemories(prev => prev.map(m => m.id === id ? { ...m, isFavorite: newFav } : m));
+    setSelectedMemory(prev => prev?.id === id ? { ...prev, isFavorite: newFav } : prev);
+    await supabase.from('memories').update({ is_favorite: newFav }).eq('id', id).eq('patient_id', patientId);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -304,7 +408,7 @@ export default function PatientMemories() {
           }`}>
           🗂️ All
           <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${activeCategory === 'all' ? 'bg-white/20 text-white' : 'bg-soft-taupe text-medium-gray'}`}>
-            {appMemories.length + localMemories.length}
+            {memories.length}
           </span>
         </button>
 
@@ -335,7 +439,9 @@ export default function PatientMemories() {
           {/* ── ALL tab ─────────────────────────────────────────────────── */}
           {activeCategory === 'all' && (
             <>
-              {total === 0 ? (
+              {memoriesLoading ? (
+                <p className="text-medium-gray text-sm px-1">Loading memories…</p>
+              ) : total === 0 ? (
                 <Card className="p-10 text-center border-dashed border-2 border-soft-taupe">
                   <ImageIcon className="w-12 h-12 text-soft-taupe mx-auto mb-3" />
                   <p className="text-medium-gray font-medium">No memories yet</p>
@@ -343,11 +449,8 @@ export default function PatientMemories() {
                 </Card>
               ) : (
                 <div className="grid grid-cols-2 gap-4">
-                  {appFiltered.map((m, i) => (
-                    <MemoryCard key={m.id} appMemory={m} index={i} onClick={() => setSelectedMemory({ app: m })} />
-                  ))}
-                  {localFiltered.map((m, i) => (
-                    <MemoryCard key={m.id} memory={m} index={appFiltered.length + i} onClick={() => setSelectedMemory({ local: m })} />
+                  {filtered.map((m, i) => (
+                    <MemoryCard key={m.id} memory={m} index={i} onClick={() => setSelectedMemory(m)} />
                   ))}
                 </div>
               )}
@@ -371,11 +474,8 @@ export default function PatientMemories() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-4">
-                    {appFiltered.map((m, i) => (
-                      <MemoryCard key={m.id} appMemory={m} index={i} onClick={() => setSelectedMemory({ app: m })} />
-                    ))}
-                    {localFiltered.map((m, i) => (
-                      <MemoryCard key={m.id} memory={m} index={appFiltered.length + i} onClick={() => setSelectedMemory({ local: m })} />
+                    {filtered.map((m, i) => (
+                      <MemoryCard key={m.id} memory={m} index={i} onClick={() => setSelectedMemory(m)} />
                     ))}
                   </div>
                 )}
@@ -390,68 +490,49 @@ export default function PatientMemories() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-center">
-              {selectedMemory?.local?.title || selectedMemory?.app?.title}
+              {selectedMemory?.title}
             </DialogTitle>
           </DialogHeader>
           {selectedMemory && (() => {
-            const photoUrl  = selectedMemory.local?.photoUrl  || selectedMemory.app?.photoUrl;
-            const desc      = selectedMemory.local?.description || selectedMemory.app?.description;
-            const createdAt = selectedMemory.local?.createdAt  || selectedMemory.app?.createdAt;
-            const cat       = (selectedMemory.local?.category  || selectedMemory.app?.category || 'daily') as Exclude<Category,'all'>;
-            const cfg       = CATEGORY_CONFIG[cat];
-            const isFav     = selectedMemory.local?.isFavorite || selectedMemory.app?.isFavorite;
-            const isLocal   = !!selectedMemory.local;
-
+            const cfg = CATEGORY_CONFIG[selectedMemory.category] || CATEGORY_CONFIG.daily;
             return (
               <div className="space-y-4">
-                {/* Category badge */}
                 <div className="flex justify-center">
                   <span className={`px-3 py-1 rounded-full text-sm font-semibold ${cfg.bg} ${cfg.color} border ${cfg.borderColor}`}>
                     {cfg.emoji} {cfg.label}
                   </span>
                 </div>
 
-                {photoUrl ? (
-                  <img src={photoUrl} alt="" className="w-full rounded-2xl object-cover max-h-72 shadow-sm" />
-                ) : selectedMemory.app?.audioUrl ? (
-                  <div className="bg-warm-ivory p-8 rounded-2xl text-center">
-                    <Mic className="w-14 h-14 text-warm-bronze mx-auto mb-4" />
-                    <Button className="bg-warm-bronze hover:bg-warm-bronze/90 text-white rounded-xl">
-                      <Play className="w-5 h-5 mr-2" /> Play Recording
-                    </Button>
-                  </div>
+                {selectedMemory.photoUrl ? (
+                  <img src={selectedMemory.photoUrl} alt="" className="w-full rounded-2xl object-cover max-h-72 shadow-sm" />
                 ) : (
                   <div className="bg-warm-ivory p-8 rounded-2xl text-center">
                     <BookOpen className="w-14 h-14 text-warm-bronze mx-auto" />
                   </div>
                 )}
 
-                {desc && (
+                {selectedMemory.description && (
                   <div className="bg-warm-ivory p-4 rounded-xl">
-                    <p className="text-charcoal text-sm leading-relaxed">{desc}</p>
+                    <p className="text-charcoal text-sm leading-relaxed">{selectedMemory.description}</p>
                   </div>
                 )}
 
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-medium-gray flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5" />
-                    {createdAt ? new Date(createdAt).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : ''}
+                    {selectedMemory.createdAt ? new Date(selectedMemory.createdAt).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : ''}
                   </p>
-                  {isLocal && (
-                    <button onClick={() => toggleFavorite(selectedMemory.local!.id)}
-                      className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${isFav ? 'text-gentle-coral' : 'text-medium-gray hover:text-gentle-coral'}`}>
-                      <Heart className={`w-4 h-4 ${isFav ? 'fill-gentle-coral' : ''}`} />
-                      {isFav ? 'Favorited' : 'Favorite'}
-                    </button>
-                  )}
+                  <button onClick={() => toggleFavorite(selectedMemory.id)}
+                    className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${selectedMemory.isFavorite ? 'text-gentle-coral' : 'text-medium-gray hover:text-gentle-coral'}`}>
+                    <Heart className={`w-4 h-4 ${selectedMemory.isFavorite ? 'fill-gentle-coral' : ''}`} />
+                    {selectedMemory.isFavorite ? 'Favorited' : 'Favorite'}
+                  </button>
                 </div>
 
-                {isLocal && (
-                  <button onClick={() => handleRemoveLocal(selectedMemory.local!.id)}
-                    className="w-full py-2.5 text-sm text-gentle-coral border border-gentle-coral/30 rounded-xl hover:bg-gentle-coral/10 transition-colors flex items-center justify-center gap-2">
-                    <X className="w-4 h-4" /> Remove this memory
-                  </button>
-                )}
+                <button onClick={() => handleRemove(selectedMemory.id)}
+                  className="w-full py-2.5 text-sm text-gentle-coral border border-gentle-coral/30 rounded-xl hover:bg-gentle-coral/10 transition-colors flex items-center justify-center gap-2">
+                  <X className="w-4 h-4" /> Remove this memory
+                </button>
               </div>
             );
           })()}

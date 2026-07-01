@@ -30,9 +30,8 @@ export default function CalmMeDialog({ open, onClose }: { open: boolean; onClose
   const VIDEO_FOLDER = 'videos';
 
   const patientId =
-    state.currentPatient?.id ||
+    state.currentUser?.id ||
     state.patient?.id ||
-    state.user?.id ||
     '';
 
   const [playing, setPlaying] = useState<string | null>(null);

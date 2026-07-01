@@ -23,6 +23,7 @@ export interface Tables {
       preferences_audio_enabled: boolean | null;
       preferences_notifications_enabled: boolean | null;
       preferences_tone: string | null;
+      preferences_first_session_done: boolean | null;
       created_at: string;
       updated_at: string;
     };
@@ -48,6 +49,7 @@ export interface Tables {
       preferences_audio_enabled?: boolean | null;
       preferences_notifications_enabled?: boolean | null;
       preferences_tone?: string | null;
+      preferences_first_session_done?: boolean | null;
       created_at?: string;
       updated_at?: string;
     };

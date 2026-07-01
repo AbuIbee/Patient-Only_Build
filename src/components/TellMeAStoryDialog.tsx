@@ -219,6 +219,7 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
   const [duration, setDuration] = useState(0);
   const [playingNature, setPlayingNature] = useState<string | null>(null);
   const [natureAudioUrls, setNatureAudioUrls] = useState<Map<string, string>>(new Map());
+  const [trackList, setTrackList] = useState<{ id: string; title: string; url: string }[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const natureAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -251,16 +252,26 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
     return undefined;
   };
 
-  const getTracksForPath = (path: string | null) => {
-    if (!path) return [];
-    return (AUDIO_FILES[path] || []).map((f) => {
-      const filePath = `${path}/${f.fileName}`;
-      const { data: u } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
-      return { id: filePath, title: f.title, url: u.publicUrl };
-    });
-  };
+  // Load signed URLs whenever the story path changes
+  useEffect(() => {
+    if (!currentPath) { setTrackList([]); return; }
+    const files = AUDIO_FILES[currentPath];
+    if (!files?.length) { setTrackList([]); return; }
+    let cancelled = false;
+    (async () => {
+      const tracks = await Promise.all(
+        files.map(async (f) => {
+          const filePath = `${currentPath}/${f.fileName}`;
+          const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(filePath, 3600);
+          return { id: filePath, title: f.title, url: error ? '' : data.signedUrl };
+        })
+      );
+      if (!cancelled) setTrackList(tracks.filter(t => t.url));
+    })();
+    return () => { cancelled = true; };
+  }, [currentPath]);
 
-  const currentTracks = getTracksForPath(currentPath);
+  const currentTracks = trackList;
 
   const handlePlay = (id: string, url: string) => {
     if (playing === id) {
@@ -301,20 +312,20 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
     return null;
   };
 
-  // Load nature sound URLs when component mounts
+  // Load nature sound signed URLs when dialog opens
   useEffect(() => {
+    if (!open) return;
     const loadNatureUrls = async () => {
-      const urlMap = new Map();
-      for (const sound of NATURE_SOUNDS) {
+      const urlMap = new Map<string, string>();
+      await Promise.all(NATURE_SOUNDS.map(async (sound) => {
         const filePath = `${NATURE_FOLDER}/${sound.fileName}`;
-        const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
-        urlMap.set(sound.id, urlData.publicUrl);
-      }
+        const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(filePath, 3600);
+        if (!error) urlMap.set(sound.id, data.signedUrl);
+      }));
       setNatureAudioUrls(urlMap);
     };
-    
     loadNatureUrls();
-  }, []);
+  }, [open]);
 
   const playNatureSound = (soundId: string, soundTitle: string) => {
     const url = natureAudioUrls.get(soundId);

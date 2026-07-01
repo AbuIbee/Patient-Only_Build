@@ -48,10 +48,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [userEmail, setUserEmail]       = useState<string | null>(null);
   const [isLoading, setIsLoading]       = useState(true);
 
-  const loadSubscription = useCallback(async () => {
+  const loadSubscription = useCallback(async (): Promise<string | null> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setSubscription(null); return; }
+      if (!user) { setSubscription(null); return null; }
 
       setUserEmail(user.email ?? null);
 
@@ -74,7 +74,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           createdAt: user.created_at ?? new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
-        return;
+        return user.id;
       }
 
       // ── Regular user: load from DB ────────────────────────────────────────
@@ -86,8 +86,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
       if (error) {
         console.error('[Subscription] Load error:', error.message);
-        return;
+        return null;
       }
+
+      const COLS = 'id, user_id, tier, status, trial_started_at, trial_ends_at, current_period_start, current_period_end, stripe_customer_id, stripe_subscription_id, promo_code, promo_expires_at, canceled_at, created_at, updated_at';
 
       if (!data) {
         const now = new Date().toISOString();
@@ -100,7 +102,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
             trial_started_at: now,
             trial_ends_at: now,
           })
-          .select()
+          .select(COLS)
           .single();
 
         if (createErr) {
@@ -108,10 +110,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         } else {
           setSubscription(mapRow(created));
         }
-        return;
+        return user.id;
       }
 
       setSubscription(mapRow(data));
+      return user.id;
     } finally {
       setIsLoading(false);
     }
@@ -119,25 +122,28 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let mounted = true;
 
     const init = async () => {
-      await loadSubscription();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const userId = await loadSubscription();
+      if (!mounted || !userId) return;
       channel = supabase
-        .channel('subscription_changes')
+        .channel(`subscription_changes_${userId}`)
         .on('postgres_changes', {
           event: '*',
           schema: 'public',
           table: 'subscriptions',
-          filter: `user_id=eq.${user.id}`,
+          filter: `user_id=eq.${userId}`,
         }, () => loadSubscription())
         .subscribe();
     };
 
     init();
 
-    return () => { if (channel) supabase.removeChannel(channel); };
+    return () => {
+      mounted = false;
+      if (channel) supabase.removeChannel(channel);
+    };
   }, [loadSubscription]);
 
   // ── Promo code redemption ────────────────────────────────────────────────

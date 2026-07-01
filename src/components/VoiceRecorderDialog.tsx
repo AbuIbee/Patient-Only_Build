@@ -5,13 +5,13 @@ import { Mic, Play, Pause, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export default function VoiceRecorderDialog({
-  open, onClose, existingBase64,
+  open, onClose, hasExistingRecording,
   onSave,
 }: {
   open: boolean;
   onClose: () => void;
-  existingBase64: string | null;
-  onSave: (base64: string, label: string) => void;
+  hasExistingRecording: boolean;
+  onSave: (blob: Blob, label: string) => void;
 }) {
   const [phase, setPhase] = useState<'idle' | 'recording' | 'review' | 'confirm'>('idle');
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -66,19 +66,14 @@ export default function VoiceRecorderDialog({
   };
 
   const handleSave = () => {
-    if (existingBase64) { setPhase('confirm'); return; }
+    if (hasExistingRecording) { setPhase('confirm'); return; }
     doSave();
   };
 
   const doSave = () => {
     if (!blob) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result as string;
-      onSave(base64, 'Your voice');
-      onClose();
-    };
-    reader.readAsDataURL(blob);
+    onSave(blob, 'Your voice');
+    onClose();
   };
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;

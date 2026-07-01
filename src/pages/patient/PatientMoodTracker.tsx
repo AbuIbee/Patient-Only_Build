@@ -630,20 +630,6 @@ export default function PatientMoodTracker() {
   const moodEntries = state.moodEntries ?? [];
   const patientId = state.currentUser?.id;
 
-  // Merge any localStorage mood entries that aren't already in state (saved while offline or before Supabase synced)
-  useEffect(() => {
-    try {
-      const stored: typeof moodEntries = JSON.parse(localStorage.getItem('moodEntries') || '[]');
-      if (stored.length === 0) return;
-      const existingIds = new Set(moodEntries.map(e => e.id));
-      const missing = stored.filter(e => !existingIds.has(e.id));
-      if (missing.length > 0) {
-        missing.forEach(e => dispatch({ type: 'ADD_MOOD_ENTRY', payload: e }));
-      }
-    } catch { /* ignore */ }
-  // Only run once on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
 useEffect(() => {
   if (!patientId) return;
@@ -667,6 +653,7 @@ useEffect(() => {
       }
     } catch (err) {
       console.error('Error loading check-ins:', err);
+      if (isActive) toast.error('Could not load care partner check-ins.');
     } finally {
       if (isActive) setLoading(false);
     }
@@ -731,26 +718,16 @@ useEffect(() => {
 
   const submitMood = async () => {
     if (!selectedMood) return;
+    if (!patientId) { toast.error('Sign in to save your mood.'); return; }
 
     const timestamp = new Date().toISOString();
     const timeOfDay = (
       format(new Date(), 'a').toLowerCase().includes('am') ? 'morning' : 'afternoon'
     ) as 'morning' | 'afternoon' | 'evening' | 'night';
 
-    const newEntry = {
-      id: `me${Date.now()}`,
-      patientId: patientId || 'local',
-      mood: selectedMood,
-      intensity: 7,
-      note: moodNote,
-      timeOfDay,
-      timestamp,
-      recordedBy: state.patient?.preferredName || 'Patient',
-    };
-
-    // Try Supabase first; fall back to localStorage silently
-    if (patientId) {
-      const { data, error } = await supabase.from('mood_entries').insert({
+    const { data, error } = await supabase
+      .from('mood_entries')
+      .insert({
         patient_id: patientId,
         mood: selectedMood,
         intensity: 7,
@@ -758,23 +735,29 @@ useEffect(() => {
         time_of_day: timeOfDay,
         timestamp,
         recorded_by: state.patient?.preferredName || 'Patient',
-      }).select().single();
+      })
+      .select('id, patient_id, mood, intensity, note, triggers, time_of_day, timestamp, recorded_by')
+      .single();
 
-      if (!error && data) {
-        newEntry.id = data.id;
-      }
-      // If error, we still save locally below — no toast error shown
+    if (error) {
+      toast.error('Could not save your mood. Please try again.');
+      return;
     }
 
-    // Always update local state and localStorage
-    dispatch({ type: 'ADD_MOOD_ENTRY', payload: newEntry });
-
-    // Persist to localStorage as backup
-    try {
-      const stored = JSON.parse(localStorage.getItem('moodEntries') || '[]');
-      stored.unshift(newEntry);
-      localStorage.setItem('moodEntries', JSON.stringify(stored.slice(0, 200)));
-    } catch { /* ignore */ }
+    dispatch({
+      type: 'ADD_MOOD_ENTRY',
+      payload: {
+        id:          data.id,
+        patientId:   data.patient_id,
+        mood:        data.mood,
+        intensity:   data.intensity,
+        note:        data.note,
+        triggers:    data.triggers ?? [],
+        timeOfDay:   data.time_of_day,
+        timestamp:   data.timestamp,
+        recordedBy:  data.recorded_by,
+      },
+    });
 
     toast.success('Thank you for sharing how you feel 💛');
     setSelectedMood(null);

@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/store/AppContext';
 import { supabase } from '@/lib/supabase';
+import { TempUserProvider, ReadOnlyBanner } from '@/components/TempUserGuard';
+import { SubscriptionProvider } from '@/store/SubscriptionContext';
+import { type TierName } from '@/types/subscription';
 import PatientHome from './PatientHome';
 import PatientRoutine from './PatientRoutine';
 import PatientMemories from './PatientMemories';
@@ -16,7 +19,7 @@ import PatientIntakeForm from './PatientIntakeForm';
 import PatientCareTeam from './PatientCareTeam';
 import MediaUploader from '@/components/MediaUploader';
 import {
-  Heart, Volume2, LogOut, ChevronRight, Menu, X, ClipboardCheck, Lock,
+  Heart, LogOut, ChevronRight, Menu, X, ClipboardCheck, Lock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -36,7 +39,6 @@ type PatientView =
   | 'media'
   | 'games';
 
-type SubscriptionTier = 'free_tier' | 'paid_tier' | 'master';
 
 type NavigationItem = {
   id: PatientView;
@@ -59,10 +61,9 @@ export default function PatientLayout() {
   const [selectedGameId, setSelectedGameId] = useState<string | undefined>(undefined);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   // Fail closed: until a paid entitlement is confirmed, Paid Tier items remain locked.
-  const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>('free_tier');
+  const [subscriptionTier, setSubscriptionTier] = useState<TierName>('free_tier');
   const { state, dispatch } = useApp();
   const patient = state.patient;
 
@@ -115,7 +116,9 @@ export default function PatientLayout() {
 
       const tier = data?.tier;
       const status = data?.status;
-      const paidAndActive = tier === 'paid_tier' && (status === 'active' || status === 'promo');
+      // Recognize current tier names (paid_tier) and legacy DB values (daily_care, full_support)
+      const isPaid = tier === 'paid_tier' || tier === 'daily_care' || tier === 'full_support';
+      const paidAndActive = isPaid && (status === 'active' || status === 'promo');
 
       setSubscriptionTier(
         tier === 'master' ? 'master' : paidAndActive ? 'paid_tier' : 'free_tier'
@@ -146,8 +149,8 @@ export default function PatientLayout() {
       const patientId = session.user.id;
 
       const [{ data: patientRow }, { data: profile }] = await Promise.all([
-        supabase.from('patients').select('*').eq('id', patientId).maybeSingle(),
-        supabase.from('profiles').select('*').eq('id', patientId).maybeSingle(),
+        supabase.from('patients').select('preferred_name, date_of_birth, location, address, affirmation, emergency_contact_name, emergency_contact_relationship, emergency_contact_phone, emergency_contact_email, diagnosis_date, dementia_stage, preferences_first_session_done, created_at, updated_at').eq('id', patientId).maybeSingle(),
+        supabase.from('profiles').select('first_name, last_name, email, phone, photo_url').eq('id', patientId).maybeSingle(),
       ]);
 
       if (patientRow && profile) {
@@ -183,6 +186,7 @@ export default function PatientLayout() {
               audioEnabled: true,
               notificationsEnabled: true,
               tone: 'gentle',
+              firstSessionDone: patientRow.preferences_first_session_done ?? false,
             },
             createdAt: patientRow.created_at || new Date().toISOString(),
             updatedAt: patientRow.updated_at || new Date().toISOString(),
@@ -190,23 +194,32 @@ export default function PatientLayout() {
         });
 
         const [
-          { data: meds },
-          { data: tasks },
-          { data: reminders },
-          { data: memories },
-          { data: moods },
+          { data: meds,      error: medsErr },
+          { data: tasks,     error: tasksErr },
+          { data: reminders, error: remindersErr },
+          { data: memories,  error: memoriesErr },
+          { data: moods,     error: moodsErr },
         ] = await Promise.all([
-          supabase.from('medications').select('*').eq('patient_id', patientId).eq('is_active', true),
-          supabase.from('tasks').select('*').eq('patient_id', patientId).eq('is_active', true),
-          supabase.from('reminders').select('*').eq('patient_id', patientId).eq('is_active', true),
-          supabase.from('memories').select('*').eq('patient_id', patientId).limit(20),
+          supabase.from('medications').select('id, patient_id, name, generic_name, dosage, form, instructions, prescribed_by, prescription_date, side_effects, schedule, is_active, created_at, updated_at').eq('patient_id', patientId).eq('is_active', true).limit(100),
+          supabase.from('tasks').select('id, patient_id, title, description, icon, time_of_day, scheduled_time, days_of_week, status, completed_at, is_recurring, difficulty, is_active').eq('patient_id', patientId).eq('is_active', true).limit(100),
+          supabase.from('reminders').select('id, patient_id, title, message, type, time, days_of_week, is_active, sound, vibrate, created_at, created_by').eq('patient_id', patientId).eq('is_active', true).limit(100),
+          supabase.from('memories').select('id, patient_id, title, description, photo_url, audio_url, date, location, people, category, tags, is_favorite, created_at, created_by').eq('patient_id', patientId).order('created_at', { ascending: false }).limit(50),
           supabase
             .from('mood_entries')
-            .select('*')
+            .select('id, patient_id, mood, intensity, note, triggers, time_of_day, timestamp, recorded_by')
             .eq('patient_id', patientId)
             .order('timestamp', { ascending: false })
-            .limit(500),
+            .limit(50),
         ]);
+
+        if (medsErr)      console.error('Failed to load medications:', medsErr.message);
+        if (tasksErr)     console.error('Failed to load tasks:', tasksErr.message);
+        if (remindersErr) console.error('Failed to load reminders:', remindersErr.message);
+        if (memoriesErr)  console.error('Failed to load memories:', memoriesErr.message);
+        if (moodsErr)     console.error('Failed to load mood entries:', moodsErr.message);
+        if (medsErr || tasksErr || remindersErr || memoriesErr || moodsErr) {
+          toast.error('Some information could not be loaded. Please refresh.');
+        }
 
         dispatch({
           type: 'SET_MEDICATIONS',
@@ -302,12 +315,28 @@ export default function PatientLayout() {
       }
     } catch (err) {
       console.error('Error loading patient data:', err);
+      toast.error('Failed to load your information. Please refresh the page.');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleLogout = async () => {
+    // Clear all patient PHI from localStorage before signing out (HIPAA)
+    const patientKeys = [
+      'patientLocalMeds', 'patientLocalLogs',
+      'patientCalendarNotes', 'patientMyTasks',
+      'moodEntries', 'patientCustomRoutine', 'patientLocalMemories',
+      'carePartnerPersonalNotes',
+      'lovedOnePhotos', 'homePhotos',
+      'customVoiceUrl', 'customVoiceBase64', 'customVoiceLabel', 'selectedVoice',
+    ];
+    patientKeys.forEach(k => localStorage.removeItem(k));
+    // Remove dynamic video_title_* keys
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('video_title_'))
+      .forEach(k => localStorage.removeItem(k));
+
     await supabase.auth.signOut();
     dispatch({ type: 'LOGOUT' });
     toast('You have been logged out');
@@ -419,11 +448,6 @@ export default function PatientLayout() {
     }
   };
 
-  const playSafetyMessage = () => {
-    setIsPlaying(true);
-    setTimeout(() => setIsPlaying(false), 5000);
-  };
-
   const getSidebarBg = () => {
     if (isSundowningTime) return 'bg-gradient-to-b from-warm-amber/20 to-white';
     if (isEvening) return 'bg-gradient-to-b from-deep-slate/10 to-white';
@@ -449,6 +473,8 @@ export default function PatientLayout() {
   }
 
   return (
+    <SubscriptionProvider>
+    <TempUserProvider>
     <div className="h-screen bg-warm-ivory flex overflow-hidden">
       <aside
         className={`fixed left-0 top-0 bottom-0 ${getSidebarBg()} border-r border-soft-taupe z-40 w-64 hidden md:flex flex-col`}
@@ -573,20 +599,12 @@ export default function PatientLayout() {
             <span className="font-medium text-sm">Logout</span>
           </button>
 
-          <button
-            onClick={playSafetyMessage}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-soft-sage/10 text-soft-sage hover:bg-soft-sage/20 transition-colors"
-          >
-            <Volume2 className={`w-5 h-5 flex-shrink-0 ${isPlaying ? 'animate-pulse' : ''}`} />
-            <span className="font-medium text-sm">
-              {isPlaying ? 'Playing...' : 'Hear "You\'re Safe"'}
-            </span>
-          </button>
 
         </div>
       </aside>
 
       <main className="flex-1 md:ml-64 overflow-y-auto pb-16 md:pb-0">
+        <ReadOnlyBanner />
         <div className="min-h-screen">
           {isSundowningTime && (
             <div className="bg-warm-amber/10 border-b border-warm-amber/20 px-4 py-3">
@@ -745,15 +763,8 @@ export default function PatientLayout() {
               {/* Bottom actions */}
               <div className="px-4 pb-6 pt-2 border-t border-soft-taupe flex gap-3">
                 <button
-                  onClick={playSafetyMessage}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-soft-sage/10 text-soft-sage font-medium text-sm"
-                >
-                  <Volume2 className="w-4 h-4" />
-                  {isPlaying ? 'Playing...' : 'You\'re Safe'}
-                </button>
-                <button
                   onClick={handleLogout}
-                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gentle-coral/10 text-gentle-coral font-medium text-sm"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gentle-coral/10 text-gentle-coral font-medium text-sm"
                 >
                   <LogOut className="w-4 h-4" />
                   Logout
@@ -764,5 +775,7 @@ export default function PatientLayout() {
         )}
       </AnimatePresence>
     </div>
+    </TempUserProvider>
+    </SubscriptionProvider>
   );
 }

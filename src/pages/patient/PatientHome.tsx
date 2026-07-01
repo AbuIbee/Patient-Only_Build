@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useApp } from '@/store/AppContext';
-import { supabase } from '@/lib/supabase';
+import { supabase, getSignedMediaUrl } from '@/lib/supabase';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -158,7 +158,7 @@ function GameCard({ game, onPlay }: { game: typeof GAMES[0]; onPlay: () => void 
 
 
 export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (id: string) => void } = {}) {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const patient = state.patient;
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isPlaying, setIsPlaying] = useState(false);
@@ -169,43 +169,118 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showHomePhoto, setShowHomePhoto] = useState(false);
   const [showStoryDialog, setShowStoryDialog] = useState(false);
-  const [customVoiceBase64, setCustomVoiceBase64] = useState<string | null>(() => localStorage.getItem('customVoiceBase64'));
-  const [customVoiceLabel, setCustomVoiceLabel] = useState<string>(() => localStorage.getItem('customVoiceLabel') || '');
+  const patientId = state.currentUser?.id || state.patient?.id || '';
+  const [customVoiceSignedUrl, setCustomVoiceSignedUrl] = useState<string | null>(null);
+  const [customVoiceLabel, setCustomVoiceLabel] = useState<string>('');
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
   const [slideshowAuto, setSlideshowAuto] = useState(false);
   const [showRecorder, setShowRecorder] = useState(false);
-  const [lovedOnePhotos, setLovedOnePhotos] = useState<{id:string; name:string; url:string}[]>(() => {
-    try { return JSON.parse(localStorage.getItem('lovedOnePhotos') || '[]'); } catch { return []; }
-  });
-const [showPhotoPopup, setShowPhotoPopup] = useState<{ id: string; name: string; url: string } | null>(null);
+  const [lovedOnePhotos, setLovedOnePhotos] = useState<{id:string; name:string; url:string; storagePath:string}[]>([]);
+const [showPhotoPopup, setShowPhotoPopup] = useState<{ id: string; name: string; url: string; storagePath: string } | null>(null);
 
-const localMeds: Array<{ id: string; times: string[]; daysOfWeek: number[]; isActive: boolean }> = useMemo(() => {
-  try {
-    return JSON.parse(localStorage.getItem('patientLocalMeds') || '[]');
-  } catch {
-    return [];
-  }
-}, []);
+  useEffect(() => {
+    if (!patientId) return;
+    fetchVoiceSettings();
+    fetchLovedOnePhotos();
+  }, [patientId]);
 
-const localLogs: Array<{ medId: string; date: string; scheduledTime: string; status: string }> = useMemo(() => {
-  try {
-    return JSON.parse(localStorage.getItem('patientLocalLogs') || '[]');
-  } catch {
-    return [];
-  }
-}, []);
+  const fetchVoiceSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('patients')
+        .select('voice_storage_path, voice_label')
+        .eq('id', patientId)
+        .maybeSingle();
+      if (error) return;
+      const storagePath = data?.voice_storage_path as string | null;
+      const label = data?.voice_label as string | null;
+      if (!storagePath) {
+        const b64 = localStorage.getItem('customVoiceBase64');
+        if (b64) {
+          try {
+            const migrLabel = localStorage.getItem('customVoiceLabel') || 'Your voice';
+            const blob = await fetch(b64).then(r => r.blob());
+            const ext = blob.type.split('/')[1] || 'webm';
+            const sp = `${patientId}/voice/${Date.now()}.${ext}`;
+            const { error: upErr } = await supabase.storage
+              .from('patient-media').upload(sp, blob, { contentType: blob.type });
+            if (!upErr) {
+              await supabase.from('patients')
+                .update({ voice_storage_path: sp, voice_label: migrLabel }).eq('id', patientId);
+              localStorage.removeItem('customVoiceBase64');
+              localStorage.removeItem('customVoiceLabel');
+              const signed = await getSignedMediaUrl(sp);
+              if (signed) { setCustomVoiceSignedUrl(signed); setCustomVoiceLabel(migrLabel); }
+            }
+          } catch {}
+        }
+        return;
+      }
+      const signed = await getSignedMediaUrl(storagePath);
+      if (signed) setCustomVoiceSignedUrl(signed);
+      if (label) setCustomVoiceLabel(label);
+    } catch {}
+  };
 
-const firstSessionDone = localStorage.getItem('firstSessionDone') === 'true';
+  const fetchLovedOnePhotos = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('patient_loved_one_photos')
+        .select('id, name, storage_path, created_at')
+        .eq('patient_id', patientId)
+        .order('created_at', { ascending: true });
+      if (error) return;
+      const rows = data || [];
+      if (rows.length === 0) {
+        const raw = localStorage.getItem('lovedOnePhotos');
+        if (raw) {
+          try {
+            const local: {id:string; name:string; url:string}[] = JSON.parse(raw);
+            if (local.length > 0) {
+              const migrated: {id:string; name:string; url:string; storagePath:string}[] = [];
+              for (const photo of local) {
+                const blob = await fetch(photo.url).then(r => r.blob());
+                const ext = blob.type.split('/')[1] || 'jpg';
+                const sp = `${patientId}/loved-ones/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+                const { error: upErr } = await supabase.storage
+                  .from('patient-media').upload(sp, blob, { contentType: blob.type });
+                if (upErr) continue;
+                const { data: row, error: dbErr } = await supabase
+                  .from('patient_loved_one_photos')
+                  .insert({ patient_id: patientId, name: photo.name, storage_path: sp })
+                  .select('id').single();
+                if (dbErr) continue;
+                const signed = await getSignedMediaUrl(sp);
+                if (signed) migrated.push({ id: row.id, name: photo.name, url: signed, storagePath: sp });
+              }
+              if (migrated.length > 0) {
+                localStorage.removeItem('lovedOnePhotos');
+                setLovedOnePhotos(migrated);
+                return;
+              }
+            }
+          } catch {}
+        }
+        return;
+      }
+      const withUrls = await Promise.all(rows.map(async r => {
+        const signed = await getSignedMediaUrl(r.storage_path);
+        return { id: r.id, name: r.name, url: signed || '', storagePath: r.storage_path };
+      }));
+      setLovedOnePhotos(withUrls);
+    } catch {}
+  };
+
+// Medication summary on home screen reads from AppContext (Supabase-backed).
+// Legacy localStorage keys (patientLocalMeds / patientLocalLogs) are no longer read here.
+const localMeds: Array<{ id: string; times: string[]; daysOfWeek: number[]; isActive: boolean }> = [];
+const localLogs: Array<{ medId: string; date: string; scheduledTime: string; status: string }> = [];
+
+const firstSessionDone = state.patient?.preferences?.firstSessionDone ?? false;
 
 const hasLovedOne =
   (patient?.familiarFaces?.length ?? 0) > 0 ||
-  (() => {
-    try {
-      return JSON.parse(localStorage.getItem('lovedOnePhotos') || '[]').length > 0;
-    } catch {
-      return false;
-    }
-  })();
+  lovedOnePhotos.length > 0;
 
 const hasRoutine = (state.tasks?.length ?? 0) > 0;
 
@@ -317,8 +392,7 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
       setCurrentAudio(null);
       return;
     }
-    // Re-read from localStorage each time in case the state is stale
-    const src = customVoiceBase64 || localStorage.getItem('customVoiceBase64');
+    const src = customVoiceSignedUrl;
     if (!src) return;
     const audio = new Audio(src);
     audio.onended = () => { setIsPlaying(false); setCurrentAudio(null); };
@@ -382,13 +456,13 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                   <button
                     onClick={() => setShowRecorder(true)}
                     className="w-9 h-9 rounded-full bg-white/60 hover:bg-white/90 flex items-center justify-center border border-white/60 text-charcoal/60 hover:text-warm-bronze transition-all shadow-sm"
-                    title={customVoiceBase64 ? 'Change recording' : 'Record a loving message'}
+                    title={customVoiceSignedUrl ? 'Change recording' : 'Record a loving message'}
                   >
                     <Mic className="w-5 h-5" />
                   </button>
 
                   {/* Hear a loving message — centre */}
-                  {customVoiceBase64 ? (
+                  {customVoiceSignedUrl ? (
                     <button
                       onClick={playSafetyMessage}
                       className={`inline-flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold shadow-sm transition-all ${
@@ -525,7 +599,15 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                 <p className="text-xs text-medium-gray mt-0.5">Complete these 3 steps to get the most out of the app</p>
               </div>
               <button
-                onClick={() => { localStorage.setItem('firstSessionDone', 'true'); window.location.reload(); }}
+                onClick={async () => {
+                  const patientId = state.currentUser?.id;
+                  if (patientId) {
+                    await supabase.from('patients').update({ preferences_first_session_done: true }).eq('id', patientId);
+                  }
+                  if (state.patient) {
+                    dispatch({ type: 'SET_PATIENT', payload: { ...state.patient, preferences: { ...state.patient.preferences, firstSessionDone: true } } });
+                  }
+                }}
                 className="text-xs text-medium-gray hover:text-charcoal underline ml-3 flex-shrink-0"
               >
                 Skip
@@ -637,20 +719,27 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
               className="flex-shrink-0 text-center cursor-pointer group"
             >
               <input type="file" accept="image/*" className="hidden"
-                onChange={e => {
+                onChange={async e => {
                   const file = e.target.files?.[0];
-                  if (!file) return;
+                  if (!file || !patientId) return;
                   const name = prompt('What is this person\'s name?', '') || 'Loved One';
-                  const reader = new FileReader();
-                  reader.onload = ev => {
-                    const url = ev.target?.result as string;
-                    const newPhoto = { id: Date.now().toString(), name, url };
-                    const updated = [...lovedOnePhotos, newPhoto];
-                    setLovedOnePhotos(updated);
-                    localStorage.setItem('lovedOnePhotos', JSON.stringify(updated));
-                  };
-                  reader.readAsDataURL(file);
                   e.target.value = '';
+                  const tempId = `temp_${Date.now()}`;
+                  const previewUrl = URL.createObjectURL(file);
+                  setLovedOnePhotos(prev => [...prev, { id: tempId, name, url: previewUrl, storagePath: '' }]);
+                  const sp = `${patientId}/loved-ones/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+                  const { error: upErr } = await supabase.storage
+                    .from('patient-media').upload(sp, file, { contentType: file.type });
+                  if (upErr) { setLovedOnePhotos(prev => prev.filter(p => p.id !== tempId)); return; }
+                  const { data: row, error: dbErr } = await supabase
+                    .from('patient_loved_one_photos')
+                    .insert({ patient_id: patientId, name, storage_path: sp })
+                    .select('id').single();
+                  if (dbErr) { setLovedOnePhotos(prev => prev.filter(p => p.id !== tempId)); return; }
+                  const signed = await getSignedMediaUrl(sp);
+                  setLovedOnePhotos(prev => prev.map(p =>
+                    p.id === tempId ? { id: row.id, name, url: signed || previewUrl, storagePath: sp } : p
+                  ));
                 }}
               />
               <div className="relative">
@@ -864,12 +953,18 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
         <VoiceRecorderDialog
           open={showRecorder}
           onClose={() => setShowRecorder(false)}
-          existingBase64={customVoiceBase64}
-          onSave={(base64, label) => {
-            setCustomVoiceBase64(base64);
+          hasExistingRecording={!!customVoiceSignedUrl}
+          onSave={async (blob, label) => {
+            const ext = blob.type.split('/')[1] || 'webm';
+            const sp = `${patientId}/voice/${Date.now()}.${ext}`;
+            const { error: upErr } = await supabase.storage
+              .from('patient-media').upload(sp, blob, { contentType: blob.type });
+            if (upErr) return;
+            await supabase.from('patients')
+              .update({ voice_storage_path: sp, voice_label: label }).eq('id', patientId);
+            const signed = await getSignedMediaUrl(sp);
+            if (signed) setCustomVoiceSignedUrl(signed);
             setCustomVoiceLabel(label);
-            localStorage.setItem('customVoiceBase64', base64);
-            localStorage.setItem('customVoiceLabel', label);
           }}
         />
 
@@ -940,11 +1035,14 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                   {showPhotoPopup.name} loves you very much 💛
                 </p>
                 <Button variant="outline"
-                  onClick={() => {
-                    const updated = lovedOnePhotos.filter(p => p.id !== showPhotoPopup.id);
-                    setLovedOnePhotos(updated);
-                    localStorage.setItem('lovedOnePhotos', JSON.stringify(updated));
+                  onClick={async () => {
+                    setLovedOnePhotos(prev => prev.filter(p => p.id !== showPhotoPopup.id));
                     setShowPhotoPopup(null);
+                    if (showPhotoPopup.storagePath) {
+                      await supabase.storage.from('patient-media').remove([showPhotoPopup.storagePath]);
+                    }
+                    await supabase.from('patient_loved_one_photos')
+                      .delete().eq('id', showPhotoPopup.id).eq('patient_id', patientId);
                   }}
                   className="w-full text-gentle-coral border-gentle-coral/30 hover:bg-gentle-coral/10 rounded-xl">
                   Remove Photo

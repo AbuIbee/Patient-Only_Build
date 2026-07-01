@@ -1,38 +1,129 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Home, Upload, PlusCircle, X, ChevronLeft, ChevronRight, Volume2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { supabase, getSignedMediaUrl } from '@/lib/supabase';
+import { useApp } from '@/store/AppContext';
+
+interface HomePhoto {
+  id: string;
+  label: string;
+  url: string;         // signed URL for display
+  storagePath: string; // path in patient-media bucket
+}
 
 export default function ShowMeHomeDialog({ open, onClose, patientName }: { open: boolean; onClose: () => void; patientName: string }) {
-  const [homePhotos, setHomePhotos] = useState<{ id: string; label: string; url: string }[]>(() => {
-    try { return JSON.parse(localStorage.getItem('homePhotos') || '[]'); } catch { return []; }
-  });
+  const { state } = useApp();
+  const patientId = state.currentUser?.id || state.patient?.id || '';
+  const [homePhotos, setHomePhotos] = useState<HomePhoto[]>([]);
+  const [photosLoading, setPhotosLoading] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const label = prompt('What does this remind you of? (e.g. "Our kitchen", "The back yard")', '') || 'Home';
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const url = ev.target?.result as string;
-      const newPhoto = { id: Date.now().toString(), label, url };
-      const updated = [...homePhotos, newPhoto];
-      setHomePhotos(updated);
-      localStorage.setItem('homePhotos', JSON.stringify(updated));
-      setCurrentIdx(updated.length - 1);
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+  useEffect(() => {
+    if (!open || !patientId) return;
+    fetchHomePhotos();
+  }, [open, patientId]);
+
+  const fetchHomePhotos = async () => {
+    setPhotosLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('patient_home_photos')
+        .select('id, label, storage_path')
+        .eq('patient_id', patientId)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+
+      const rows = data || [];
+
+      // One-time migration from localStorage
+      if (rows.length === 0) {
+        const raw = localStorage.getItem('homePhotos');
+        if (raw) {
+          try {
+            const local: { id: string; label: string; url: string }[] = JSON.parse(raw);
+            if (local.length > 0) {
+              const migrated: HomePhoto[] = [];
+              for (const photo of local) {
+                const blob = await fetch(photo.url).then(r => r.blob());
+                const ext = blob.type.split('/')[1] || 'jpg';
+                const storagePath = `${patientId}/home-photos/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+                const { error: upErr } = await supabase.storage
+                  .from('patient-media')
+                  .upload(storagePath, blob, { contentType: blob.type });
+                if (upErr) continue;
+                const { data: row, error: dbErr } = await supabase
+                  .from('patient_home_photos')
+                  .insert({ patient_id: patientId, label: photo.label, storage_path: storagePath })
+                  .select('id')
+                  .single();
+                if (dbErr) continue;
+                const signedUrl = await getSignedMediaUrl(storagePath);
+                if (signedUrl) migrated.push({ id: row.id, label: photo.label, url: signedUrl, storagePath });
+              }
+              if (migrated.length > 0) {
+                localStorage.removeItem('homePhotos');
+                setHomePhotos(migrated);
+                setCurrentIdx(0);
+                return;
+              }
+            }
+          } catch {}
+        }
+      }
+
+      const withUrls = await Promise.all(rows.map(async r => {
+        const signedUrl = await getSignedMediaUrl(r.storage_path);
+        return { id: r.id, label: r.label, url: signedUrl || '', storagePath: r.storage_path };
+      }));
+      setHomePhotos(withUrls);
+      setCurrentIdx(0);
+    } catch (err) {
+      console.error('fetchHomePhotos error:', err);
+    } finally {
+      setPhotosLoading(false);
+    }
   };
 
-  const removePhoto = (id: string) => {
-    const updated = homePhotos.filter(p => p.id !== id);
-    setHomePhotos(updated);
-    localStorage.setItem('homePhotos', JSON.stringify(updated));
-    setCurrentIdx(Math.max(0, currentIdx - 1));
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !patientId) return;
+    const label = prompt('What does this remind you of? (e.g. "Our kitchen", "The back yard")', '') || 'Home';
+    e.target.value = '';
+
+    const storagePath = `${patientId}/home-photos/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const { error: upErr } = await supabase.storage
+      .from('patient-media')
+      .upload(storagePath, file, { upsert: false, contentType: file.type });
+    if (upErr) { console.error('Upload error:', upErr); return; }
+
+    const { data: row, error: dbErr } = await supabase
+      .from('patient_home_photos')
+      .insert({ patient_id: patientId, label, storage_path: storagePath })
+      .select('id')
+      .single();
+    if (dbErr) { console.error('DB insert error:', dbErr); return; }
+
+    const signedUrl = await getSignedMediaUrl(storagePath);
+    if (!signedUrl) return;
+
+    const newPhoto: HomePhoto = { id: row.id, label, url: signedUrl, storagePath };
+    setHomePhotos(prev => {
+      const updated = [...prev, newPhoto];
+      setCurrentIdx(updated.length - 1);
+      return updated;
+    });
+  };
+
+  const removePhoto = async (id: string) => {
+    const photo = homePhotos.find(p => p.id === id);
+    if (!photo) return;
+    setHomePhotos(prev => prev.filter(p => p.id !== id));
+    setCurrentIdx(prev => Math.max(0, prev - 1));
+    await supabase.storage.from('patient-media').remove([photo.storagePath]);
+    await supabase.from('patient_home_photos').delete().eq('id', id);
   };
 
   const current = homePhotos[currentIdx];
@@ -51,7 +142,11 @@ export default function ShowMeHomeDialog({ open, onClose, patientName }: { open:
         </DialogHeader>
 
         <div className="space-y-4">
-          {homePhotos.length > 0 ? (
+          {photosLoading ? (
+            <div className="h-48 bg-warm-ivory rounded-2xl flex items-center justify-center">
+              <p className="text-medium-gray text-sm">Loading photos…</p>
+            </div>
+          ) : homePhotos.length > 0 ? (
             <>
               <div className="relative rounded-2xl overflow-hidden">
                 <motion.img

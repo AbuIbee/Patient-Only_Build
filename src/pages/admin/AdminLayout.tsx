@@ -58,46 +58,48 @@ interface AccountTypeDef {
   description: string;
 }
 
+// All tier values written to DB use recognized TierName values (free_tier / paid_tier / master).
+// The key/label fields are admin-only display names; they do not flow into the patient app.
 const ACCOUNT_TYPES: AccountTypeDef[] = [
   {
     key: 'temp_user',
     label: 'Temp User (Read-Only)',
-    tier: 'companion', status: 'trialing',
+    tier: 'free_tier', status: 'trialing',
     trialDays: 3, promoDays: null, isTempUser: true,
     color: 'bg-amber-100 text-amber-800',
     description: 'Read-only demo — 72-hour access, no writes allowed',
   },
   {
     key: 'promo',
-    label: 'Promo (45-day Free)',
-    tier: 'companion', status: 'promo',
+    label: 'Promo (45-day Full Access)',
+    tier: 'paid_tier', status: 'promo',
     trialDays: 45, promoDays: 45, isTempUser: false,
     color: 'bg-teal-100 text-teal-800',
-    description: '45 days full access from today, then prompts upgrade',
+    description: '45 days paid-tier access from today, then prompts upgrade',
   },
   {
     key: 'companion',
     label: 'Companion (Internal Only)',
-    tier: 'companion', status: 'trialing',
+    tier: 'free_tier', status: 'trialing',
     trialDays: 30, promoDays: null, isTempUser: false,
     color: 'bg-yellow-100 text-yellow-800',
-    description: 'Internal/basic tier not shown in public pricing',
+    description: 'Internal/basic free-tier account not shown in public pricing',
   },
   {
     key: 'daily_care',
     label: 'Daily Care (Paid)',
-    tier: 'daily_care', status: 'active',
+    tier: 'paid_tier', status: 'active',
     trialDays: null, promoDays: null, isTempUser: false,
     color: 'bg-blue-100 text-blue-800',
-    description: 'Active paid Daily Care tier',
+    description: 'Active paid tier (Daily Care)',
   },
   {
     key: 'full_support',
     label: 'Full Support (Paid)',
-    tier: 'full_support', status: 'active',
+    tier: 'paid_tier', status: 'active',
     trialDays: null, promoDays: null, isTempUser: false,
     color: 'bg-green-100 text-green-800',
-    description: 'Active paid Full Support tier',
+    description: 'Active paid tier (Full Support)',
   },
   {
     key: 'master',
@@ -110,7 +112,7 @@ const ACCOUNT_TYPES: AccountTypeDef[] = [
   {
     key: 'canceled',
     label: 'Canceled / Inactive',
-    tier: 'companion', status: 'canceled',
+    tier: 'free_tier', status: 'canceled',
     trialDays: null, promoDays: null, isTempUser: false,
     color: 'bg-gray-100 text-gray-600',
     description: 'Account is inactive or canceled',
@@ -118,13 +120,13 @@ const ACCOUNT_TYPES: AccountTypeDef[] = [
 ];
 
 function getAccountTypeKey(sub: SubRow | null, email: string): string {
-  // Detect temp user by email pattern first
   if (/^temp-user\d*@/i.test(email || '')) return 'temp_user';
   if (!sub) return 'companion';
-  if (sub.tier === 'master')                                return 'master';
-  if (sub.status === 'promo')                               return 'promo';
-  if (sub.tier === 'daily_care' && sub.status === 'active') return 'daily_care';
-  if (sub.tier === 'full_support' && sub.status === 'active') return 'full_support';
+  if (sub.tier === 'master') return 'master';
+  if (sub.status === 'promo') return 'promo';
+  // Recognize current DB values (paid_tier) and legacy values (daily_care, full_support)
+  const isPaid = sub.tier === 'paid_tier' || sub.tier === 'daily_care' || sub.tier === 'full_support';
+  if (isPaid && sub.status === 'active') return 'full_support';
   if (sub.status === 'canceled' || sub.status === 'expired') return 'canceled';
   return 'companion';
 }

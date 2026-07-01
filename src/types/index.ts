@@ -49,6 +49,7 @@ export interface PatientPreferences {
   audioEnabled: boolean;
   notificationsEnabled: boolean;
   tone: 'gentle' | 'professional' | 'friendly';
+  firstSessionDone?: boolean;
 }
 
 export interface Patient {

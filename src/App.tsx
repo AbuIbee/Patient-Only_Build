@@ -63,7 +63,7 @@ function AppContent() {
         if (session?.user) {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('*')
+            .select('id, email, first_name, last_name, role, phone, created_at, updated_at, must_change_password')
             .eq('id', session.user.id)
             .maybeSingle();
 
@@ -154,6 +154,10 @@ function AppContent() {
         setForcedChange(false);
         setCheckingSession(false);
       }
+
+      // SIGNED_IN fires on new sign-in and on silent token restore in a new tab.
+      // Initial load is handled by restoreSession() above; no extra dispatch needed here.
+      // TOKEN_REFRESHED is handled transparently by the Supabase client.
     });
 
     return () => {
@@ -201,7 +205,7 @@ function AppContent() {
     if (session?.user) {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, email, first_name, last_name, role, phone, created_at, updated_at, must_change_password')
         .eq('id', session.user.id)
         .maybeSingle();
 

@@ -105,9 +105,9 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
       setLoading(true);
       try {
         const [{ data: profile }, { data: patient }, { data: intake }] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
-          supabase.from('patients').select('*').eq('id', userId).maybeSingle(),
-          supabase.from('patient_intake').select('*').eq('patient_profile_id', userId).maybeSingle(),
+          supabase.from('profiles').select('first_name, last_name, phone, email').eq('id', userId).maybeSingle(),
+          supabase.from('patients').select('preferred_name, date_of_birth, dementia_stage, diagnosis_date, location').eq('id', userId).maybeSingle(),
+          supabase.from('patient_intake').select('id, patient_first_name, patient_last_name, patient_preferred_name, patient_date_of_birth, patient_phone, patient_email, patient_street_address, patient_city, patient_state, patient_zip_code, patient_dementia_stage, patient_diagnosis_date, doctor_therapist_name, doctor_therapist_phone, preferred_hospital, caregiver_name, caregiver_relationship, caregiver_phone, medications_and_dosage, emergency_contact_full_name, emergency_contact_phone, emergency_contact_email, emergency_contact_relationship').eq('patient_profile_id', userId).maybeSingle(),
         ]);
 
         setForm({
@@ -130,10 +130,10 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
           caregiverRelationship: intake?.caregiver_relationship || '',
           caregiverPhone:     intake?.caregiver_phone        || '',
           medications:        intake?.medications_and_dosage || '',
-          crFullName:         intake?.closest_relative_full_name    || '',
-          crPhone:            intake?.closest_relative_phone        || '',
-          crEmail:            intake?.closest_relative_email        || '',
-          crRelationship:     intake?.closest_relative_relationship || '',
+          crFullName:         intake?.emergency_contact_full_name    || '',
+          crPhone:            intake?.emergency_contact_phone        || '',
+          crEmail:            intake?.emergency_contact_email        || '',
+          crRelationship:     intake?.emergency_contact_relationship || '',
         });
 
         if (intake?.id) setIntakeId(intake.id);
@@ -177,31 +177,41 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
       const now = new Date().toISOString();
 
       // 1. Update profiles
-      await supabase.from('profiles').update({
+      const { error: profileErr } = await supabase.from('profiles').update({
         first_name: form.firstName.trim(), last_name: form.lastName.trim(),
         phone: form.phone.trim() || null, email: form.email.trim().toLowerCase(),
         updated_at: now,
       }).eq('id', userId);
+      if (profileErr) {
+        toast.error('Failed to save profile: ' + profileErr.message);
+        return;
+      }
 
-      // 2. Upsert patients
-      await supabase.from('patients').upsert({
+      // 2. Upsert patients — column names match the actual patients table schema
+      const { error: patientErr } = await supabase.from('patients').upsert({
         id: userId,
-        first_name:       form.firstName.trim(),
-        last_name:        form.lastName.trim(),
-        preferred_name:   form.preferredName.trim() || null,
-        date_of_birth:    form.dateOfBirth || null,
-        diagnosis_date:   form.diagnosisDate || null,
-        dementia_stage:   form.dementiaStage || null,
-        location:         form.city.trim() || null,
-        address:          [form.streetAddress, form.city, form.state, form.zipCode].filter(Boolean).join(', ') || null,
-        closest_relative_name:         form.crFullName.trim() || null,
-        closest_relative_phone:        form.crPhone.trim() || null,
-        closest_relative_relationship: form.crRelationship.trim() || null,
-        closest_relative_email:        form.crEmail.trim() || null,
+        first_name:                     form.firstName.trim(),
+        last_name:                       form.lastName.trim(),
+        preferred_name:                  form.preferredName.trim() || null,
+        date_of_birth:                   form.dateOfBirth || null,
+        diagnosis_date:                  form.diagnosisDate || null,
+        dementia_stage:                  form.dementiaStage || null,
+        location:                        form.city.trim() || null,
+        address:                         [form.streetAddress, form.city, form.state, form.zipCode].filter(Boolean).join(', ') || null,
+        emergency_contact_name:          form.crFullName.trim() || null,
+        emergency_contact_phone:         form.crPhone.trim() || null,
+        emergency_contact_relationship:  form.crRelationship.trim() || null,
+        emergency_contact_email:         form.crEmail.trim() || null,
         updated_at: now,
       }, { onConflict: 'id' });
+      if (patientErr) {
+        toast.error('Failed to save patient record: ' + patientErr.message);
+        return;
+      }
 
       // 3. Upsert patient_intake — this is what Admin Center reads
+      // NOTE: closest_relative_* column names in patient_intake are intentionally
+      // unchanged here pending live schema confirmation (see audit finding WI-probable).
       const intakePayload = {
         patient_profile_id:             userId,
         caregiver_profile_id:           null,
@@ -225,20 +235,30 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
         caregiver_relationship:         form.caregiverRelationship.trim() || null,
         caregiver_phone:                form.caregiverPhone.trim() || null,
         medications_and_dosage:         form.medications.trim() || null,
-        closest_relative_full_name:    form.crFullName.trim() || null,
-        closest_relative_phone:        form.crPhone.trim() || null,
-        closest_relative_email:        form.crEmail.trim() || null,
-        closest_relative_relationship: form.crRelationship.trim() || null,
+        emergency_contact_full_name:     form.crFullName.trim() || null,
+        emergency_contact_phone:         form.crPhone.trim() || null,
+        emergency_contact_email:         form.crEmail.trim() || null,
+        emergency_contact_relationship:  form.crRelationship.trim() || null,
         intake_completed:               true,
         updated_at:                     now,
       };
 
       if (intakeId) {
-        await supabase.from('patient_intake').update(intakePayload).eq('id', intakeId);
+        const { error: intakeErr } = await supabase
+          .from('patient_intake').update(intakePayload).eq('id', intakeId);
+        if (intakeErr) {
+          toast.error('Failed to save intake record: ' + intakeErr.message);
+          return;
+        }
       } else {
-        const { data: newIntake } = await supabase.from('patient_intake')
+        const { data: newIntake, error: intakeErr } = await supabase
+          .from('patient_intake')
           .upsert(intakePayload, { onConflict: 'patient_profile_id' })
           .select('id').maybeSingle();
+        if (intakeErr) {
+          toast.error('Failed to save intake record: ' + intakeErr.message);
+          return;
+        }
         if (newIntake?.id) setIntakeId(newIntake.id);
       }
 

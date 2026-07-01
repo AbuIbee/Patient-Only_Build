@@ -1,9 +1,11 @@
 import { useApp } from '@/store/AppContext';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Bell, Clock, Calendar, Pill, Stethoscope, CheckCircle2, AlertCircle, Plus, X, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { format, startOfMonth, getDaysInMonth, addMonths, subMonths, startOfWeek, addDays, isSameDay, parseISO } from 'date-fns';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -24,51 +26,114 @@ interface TaskItem {
   createdAt: string;
 }
 
-const CAL_NOTES_KEY  = 'patientCalendarNotes';
-const TASKS_KEY      = 'patientMyTasks';
-const todayStr       = () => new Date().toISOString().split('T')[0];
-const weekStartStr   = () => {
+const todayStr     = () => new Date().toISOString().split('T')[0];
+const weekStartStr = () => {
   const d = new Date();
   const day = d.getDay();
   d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
   return d.toISOString().split('T')[0];
 };
 
-function loadCalNotes(): CalendarNote[] { try { return JSON.parse(localStorage.getItem(CAL_NOTES_KEY) || '[]'); } catch { return []; } }
-function saveCalNotes(n: CalendarNote[]) { localStorage.setItem(CAL_NOTES_KEY, JSON.stringify(n)); }
-function loadTasks(): TaskItem[] { try { return JSON.parse(localStorage.getItem(TASKS_KEY) || '[]'); } catch { return []; } }
-function saveTasks(t: TaskItem[]) { localStorage.setItem(TASKS_KEY, JSON.stringify(t)); }
+function mapNote(r: any): CalendarNote {
+  return { id: r.id, date: r.date, text: r.text, type: r.type as 'reminder' | 'appointment' };
+}
+
+function mapTask(r: any): TaskItem {
+  return {
+    id:            r.id,
+    text:          r.text,
+    period:        r.period as 'daily' | 'weekly',
+    completed:     r.completed,
+    completedDate: r.completed_date ?? undefined,
+    weekKey:       r.week_key ?? undefined,
+    createdAt:     r.created_at,
+  };
+}
 
 // ── Calendar component ────────────────────────────────────────────────────────
 type CalendarView = 'weekly' | 'monthly';
 
 function ReminderCalendar() {
+  const { state } = useApp();
+  const patientId = state.currentUser?.id || '';
+
   const [view,       setView]       = useState<CalendarView>('monthly');
   const [baseDate,   setBaseDate]   = useState(new Date());
-  const [notes,      setNotes]      = useState<CalendarNote[]>(loadCalNotes);
+  const [notes,      setNotes]      = useState<CalendarNote[]>([]);
   const [popupDate,  setPopupDate]  = useState<string | null>(null);
   const [addType,    setAddType]    = useState<'reminder' | 'appointment'>('reminder');
   const [addText,    setAddText]    = useState('');
   const [editId,     setEditId]     = useState<string | null>(null);
   const [editText,   setEditText]   = useState('');
 
-  // ── Note helpers ─────────────────────────────────────────────────────────
-  const persistNotes = (updated: CalendarNote[]) => { saveCalNotes(updated); setNotes(updated); };
+  // ── Load from Supabase + one-time localStorage migration ─────────────────
+  useEffect(() => {
+    if (!patientId) return;
+    const load = async () => {
+      const { data, error } = await supabase
+        .from('patient_calendar_notes')
+        .select('id, date, text, type')
+        .eq('patient_id', patientId);
 
-  const addNote = () => {
-    if (!addText.trim() || !popupDate) return;
-    persistNotes([...notes, { id: `note_${Date.now()}`, date: popupDate, text: addText.trim(), type: addType }]);
+      if (error) return; // table may not exist yet; silent fail keeps UI functional
+
+      if (data.length === 0) {
+        const old: CalendarNote[] = (() => {
+          try { return JSON.parse(localStorage.getItem('patientCalendarNotes') || '[]'); }
+          catch { return []; }
+        })();
+        if (old.length > 0) {
+          await Promise.all(old.map(n =>
+            supabase.from('patient_calendar_notes').insert({
+              patient_id: patientId, date: n.date, text: n.text, type: n.type,
+            })
+          ));
+          localStorage.removeItem('patientCalendarNotes');
+          const { data: migrated } = await supabase
+            .from('patient_calendar_notes').select('id, date, text, type').eq('patient_id', patientId);
+          setNotes((migrated || []).map(mapNote));
+          return;
+        }
+      }
+
+      setNotes(data.map(mapNote));
+    };
+    load();
+  }, [patientId]);
+
+  // ── Note helpers ─────────────────────────────────────────────────────────
+  const addNote = async () => {
+    if (!addText.trim() || !popupDate || !patientId) return;
+    const { data: row, error } = await supabase
+      .from('patient_calendar_notes')
+      .insert({ patient_id: patientId, date: popupDate, text: addText.trim(), type: addType })
+      .select('id, date, text, type')
+      .single();
+    if (error || !row) { toast.error('Failed to save note'); return; }
+    setNotes(prev => [...prev, mapNote(row)]);
     setAddText('');
   };
 
-  const saveEdit = (id: string) => {
+  const saveEdit = async (id: string) => {
     if (!editText.trim()) return;
-    persistNotes(notes.map(n => n.id === id ? { ...n, text: editText.trim() } : n));
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, text: editText.trim() } : n));
     setEditId(null);
     setEditText('');
+    await supabase
+      .from('patient_calendar_notes')
+      .update({ text: editText.trim() })
+      .eq('id', id)
+      .eq('patient_id', patientId);
   };
 
-  const deleteNote = (id: string) => persistNotes(notes.filter(n => n.id !== id));
+  const deleteNote = async (id: string) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+    await supabase
+      .from('patient_calendar_notes')
+      .delete()
+      .eq('id', id)
+      .eq('patient_id', patientId);
+  };
   const notesOn    = (dateStr: string) => notes.filter(n => n.date === dateStr);
 
   // ── Month grid ────────────────────────────────────────────────────────────
@@ -267,7 +332,10 @@ function ReminderCalendar() {
 
 // ── My Tasks component ────────────────────────────────────────────────────────
 function MyTasks() {
-  const [tasks,    setTasks]    = useState<TaskItem[]>(loadTasks);
+  const { state } = useApp();
+  const patientId = state.currentUser?.id || '';
+
+  const [tasks,    setTasks]    = useState<TaskItem[]>([]);
   const [period,   setPeriod]   = useState<'daily'|'weekly'>('daily');
   const [newText,  setNewText]  = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -275,39 +343,86 @@ function MyTasks() {
   const today = todayStr();
   const wk    = weekStartStr();
 
-  const addTask = () => {
-    if (!newText.trim()) return;
-    const task: TaskItem = {
-      id: `task_${Date.now()}`,
-      text: newText.trim(),
-      period,
-      completed: false,
-      createdAt: new Date().toISOString(),
-      weekKey: period === 'weekly' ? wk : undefined,
+  // ── Load from Supabase + one-time localStorage migration ───────────────────
+  useEffect(() => {
+    if (!patientId) return;
+    const load = async () => {
+      const { data, error } = await supabase
+        .from('patient_task_items')
+        .select('id, text, period, completed, completed_date, week_key, created_at')
+        .eq('patient_id', patientId)
+        .order('created_at', { ascending: false });
+
+      if (error) return;
+
+      if (data.length === 0) {
+        const old: TaskItem[] = (() => {
+          try { return JSON.parse(localStorage.getItem('patientMyTasks') || '[]'); }
+          catch { return []; }
+        })();
+        if (old.length > 0) {
+          await Promise.all(old.map(t =>
+            supabase.from('patient_task_items').insert({
+              patient_id: patientId, text: t.text, period: t.period,
+              completed: t.completed, completed_date: t.completedDate ?? null,
+              week_key: t.weekKey ?? null,
+            })
+          ));
+          localStorage.removeItem('patientMyTasks');
+          const { data: migrated } = await supabase
+            .from('patient_task_items')
+            .select('id, text, period, completed, completed_date, week_key, created_at')
+            .eq('patient_id', patientId).order('created_at', { ascending: false });
+          setTasks((migrated || []).map(mapTask));
+          return;
+        }
+      }
+
+      setTasks(data.map(mapTask));
     };
-    const updated = [task, ...tasks];
-    saveTasks(updated);
-    setTasks(updated);
+    load();
+  }, [patientId]);
+
+  const addTask = async () => {
+    if (!newText.trim() || !patientId) return;
+    const { data: row, error } = await supabase
+      .from('patient_task_items')
+      .insert({
+        patient_id: patientId, text: newText.trim(), period,
+        completed: false, week_key: period === 'weekly' ? wk : null,
+      })
+      .select('id, text, period, completed, completed_date, week_key, created_at')
+      .single();
+    if (error || !row) { toast.error('Failed to add task'); return; }
+    setTasks(prev => [mapTask(row), ...prev]);
     setNewText('');
     setShowForm(false);
   };
 
-  const toggleTask = (id: string) => {
-    const updated = tasks.map(t => {
-      if (t.id !== id) return t;
-      const wasCompleted =
-        t.period === 'daily'  ? t.completedDate === today :
-        t.period === 'weekly' ? t.completedDate === today && t.completed : false;
-      return { ...t, completed: !wasCompleted, completedDate: today };
-    });
-    saveTasks(updated);
-    setTasks(updated);
+  const toggleTask = async (id: string) => {
+    const t = tasks.find(t => t.id === id);
+    if (!t) return;
+    const wasCompleted =
+      t.period === 'daily'  ? t.completedDate === today :
+      t.period === 'weekly' ? t.completedDate === today && t.completed : false;
+    const newCompleted = !wasCompleted;
+    setTasks(prev => prev.map(x =>
+      x.id === id ? { ...x, completed: newCompleted, completedDate: today } : x
+    ));
+    await supabase
+      .from('patient_task_items')
+      .update({ completed: newCompleted, completed_date: today })
+      .eq('id', id)
+      .eq('patient_id', patientId);
   };
 
-  const removeTask = (id: string) => {
-    const updated = tasks.filter(t => t.id !== id);
-    saveTasks(updated);
-    setTasks(updated);
+  const removeTask = async (id: string) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
+    await supabase
+      .from('patient_task_items')
+      .delete()
+      .eq('id', id)
+      .eq('patient_id', patientId);
   };
 
   const isTaskActive = (t: TaskItem) => {

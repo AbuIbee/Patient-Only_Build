@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/store/AppContext';
+import { supabase } from '@/lib/supabase';
 import { CheckCircle2, Circle, Sun, Cloud, Moon, Star, Plus, X, Edit2, Check, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -16,14 +17,18 @@ interface CustomRoutineItem {
   completedDate?: string;
 }
 
-const STORAGE_KEY = 'patientCustomRoutine';
 const todayStr = () => new Date().toISOString().split('T')[0];
 
-function loadCustomItems(): CustomRoutineItem[] {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
-}
-function saveCustomItems(items: CustomRoutineItem[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+function mapRow(r: any): CustomRoutineItem {
+  return {
+    id: r.id,
+    timeOfDay: r.time_of_day as TimeOfDay,
+    title: r.title,
+    emoji: r.emoji,
+    time: r.scheduled_time,
+    completed: r.completed,
+    completedDate: r.completed_date ?? undefined,
+  };
 }
 
 function getCurrentTimeOfDay(): TimeOfDay {
@@ -89,8 +94,10 @@ const PERIOD_CONFIG = {
 
 export default function PatientRoutine() {
   const { state, dispatch } = useApp();
+  const patientId = state.currentUser?.id || state.patient?.id || '';
   const [activeTimeOfDay, setActiveTimeOfDay] = useState<TimeOfDay>(getCurrentTimeOfDay);
-  const [customItems, setCustomItems] = useState<CustomRoutineItem[]>(loadCustomItems);
+  const [customItems, setCustomItems] = useState<CustomRoutineItem[]>([]);
+  const [routineLoading, setRoutineLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newTime, setNewTime] = useState('08:00');
@@ -106,14 +113,60 @@ export default function PatientRoutine() {
     .map(i => ({ ...i, completed: i.completedDate === todayStr() ? i.completed : false }));
 
   useEffect(() => {
-    const updated = customItems.map(i => ({
-      ...i,
-      completed: i.completedDate === todayStr() ? i.completed : false,
-    }));
-    setCustomItems(updated);
-    saveCustomItems(updated);
-    // eslint-disable-next-line
-  }, []);
+    if (!patientId) return;
+    fetchRoutineItems();
+  }, [patientId]);
+
+  const fetchRoutineItems = async () => {
+    if (!patientId) return;
+    setRoutineLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('patient_routine_items')
+        .select('id, title, emoji, time_of_day, scheduled_time, completed, completed_date')
+        .eq('patient_id', patientId)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+
+      const rows = data || [];
+
+      if (rows.length === 0) {
+        const raw = localStorage.getItem('patientCustomRoutine');
+        if (raw) {
+          try {
+            const local: CustomRoutineItem[] = JSON.parse(raw);
+            if (local.length > 0) {
+              const inserts = local.map(item => ({
+                patient_id: patientId,
+                title: item.title,
+                emoji: item.emoji,
+                time_of_day: item.timeOfDay,
+                scheduled_time: item.time,
+                completed: item.completed,
+                completed_date: item.completedDate ?? null,
+              }));
+              const { data: migrated, error: migErr } = await supabase
+                .from('patient_routine_items')
+                .insert(inserts)
+                .select('id, title, emoji, time_of_day, scheduled_time, completed, completed_date');
+              if (!migErr && migrated) {
+                localStorage.removeItem('patientCustomRoutine');
+                setCustomItems(migrated.map(mapRow));
+                return;
+              }
+            }
+          } catch {}
+        }
+      }
+
+      setCustomItems(rows.map(mapRow));
+    } catch (err) {
+      console.error('fetchRoutineItems error:', err);
+      toast.error('Could not load your routine.');
+    } finally {
+      setRoutineLoading(false);
+    }
+  };
 
   const handleAppTaskComplete = (taskId: string) => {
     const task = state.tasks.find(t => t.id === taskId);
@@ -127,49 +180,92 @@ export default function PatientRoutine() {
     if (updatedTask.status === 'completed') toast.success(`✓ Done! ${task.title}`);
   };
 
-  const handleCustomComplete = (id: string) => {
-    const updated = customItems.map(i => {
-      if (i.id !== id) return i;
-      const wasCompleted = i.completedDate === todayStr() && i.completed;
-      return { ...i, completed: !wasCompleted, completedDate: todayStr() };
-    });
-    setCustomItems(updated);
-    saveCustomItems(updated);
-    const item = updated.find(i => i.id === id);
-    if (item?.completed) toast.success(`✓ Done! ${item.title}`);
+  const handleCustomComplete = async (id: string) => {
+    const item = customItems.find(i => i.id === id);
+    if (!item) return;
+    const wasCompleted = item.completedDate === todayStr() && item.completed;
+    const newCompleted = !wasCompleted;
+    const newDate = todayStr();
+    setCustomItems(prev => prev.map(i =>
+      i.id === id ? { ...i, completed: newCompleted, completedDate: newDate } : i
+    ));
+    if (newCompleted) toast.success(`✓ Done! ${item.title}`);
+    const { error } = await supabase
+      .from('patient_routine_items')
+      .update({ completed: newCompleted, completed_date: newDate })
+      .eq('id', id)
+      .eq('patient_id', patientId);
+    if (error) {
+      toast.error('Could not save progress.');
+      setCustomItems(prev => prev.map(i => i.id === id ? item : i));
+    }
   };
 
-  const addCustomItem = () => {
-    if (!newTitle.trim()) return;
-    const item: CustomRoutineItem = {
-      id: `custom_${Date.now()}`,
+  const addCustomItem = async () => {
+    if (!newTitle.trim() || !patientId) return;
+    const tempId = `temp_${Date.now()}`;
+    const newItem: CustomRoutineItem = {
+      id: tempId,
       timeOfDay: activeTimeOfDay,
       title: newTitle.trim(),
       emoji: newEmoji,
       time: newTime,
       completed: false,
     };
-    const updated = [...customItems, item];
-    setCustomItems(updated);
-    saveCustomItems(updated);
+    setCustomItems(prev => [...prev, newItem]);
     setNewTitle('');
     setNewTime(cfg.defaultTime);
     setNewEmoji('☀️');
     setShowAddForm(false);
     toast.success('Added to your routine!');
+    const { data, error } = await supabase
+      .from('patient_routine_items')
+      .insert({
+        patient_id: patientId,
+        title: newItem.title,
+        emoji: newItem.emoji,
+        time_of_day: newItem.timeOfDay,
+        scheduled_time: newItem.time,
+        completed: false,
+      })
+      .select('id')
+      .single();
+    if (error) {
+      toast.error('Could not save activity.');
+      setCustomItems(prev => prev.filter(i => i.id !== tempId));
+      return;
+    }
+    setCustomItems(prev => prev.map(i => i.id === tempId ? { ...i, id: data.id } : i));
   };
 
-  const removeCustomItem = (id: string) => {
-    const updated = customItems.filter(i => i.id !== id);
-    setCustomItems(updated);
-    saveCustomItems(updated);
+  const removeCustomItem = async (id: string) => {
+    setCustomItems(prev => prev.filter(i => i.id !== id));
+    const { error } = await supabase
+      .from('patient_routine_items')
+      .delete()
+      .eq('id', id)
+      .eq('patient_id', patientId);
+    if (error) {
+      toast.error('Could not remove activity.');
+      fetchRoutineItems();
+    }
   };
 
-  const saveEdit = (id: string) => {
-    const updated = customItems.map(i => i.id === id ? { ...i, title: editTitle.trim() || i.title } : i);
-    setCustomItems(updated);
-    saveCustomItems(updated);
+  const saveEdit = async (id: string) => {
+    const item = customItems.find(i => i.id === id);
+    if (!item) return;
+    const updatedTitle = editTitle.trim() || item.title;
+    setCustomItems(prev => prev.map(i => i.id === id ? { ...i, title: updatedTitle } : i));
     setEditingId(null);
+    const { error } = await supabase
+      .from('patient_routine_items')
+      .update({ title: updatedTitle })
+      .eq('id', id)
+      .eq('patient_id', patientId);
+    if (error) {
+      toast.error('Could not save changes.');
+      setCustomItems(prev => prev.map(i => i.id === id ? { ...i, title: item.title } : i));
+    }
   };
 
   const getTaskIcon = (iconName: string) => {

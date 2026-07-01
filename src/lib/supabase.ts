@@ -24,15 +24,35 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
 
 // ─── Signed URL helper (private bucket) ──────────────────────────────────────
 // Always use this for patient-media files. Never use getPublicUrl().
-// Signed URLs expire after `expiresIn` seconds (default 1 hour).
+// Results are cached in sessionStorage for 50 minutes (URL valid for 1 hour).
+const SIGNED_URL_CACHE_TTL_MS = 50 * 60 * 1000;
+
 export async function getSignedMediaUrl(
   storagePath: string,
   expiresIn = 3600
 ): Promise<string | null> {
+  const cacheKey = `_su_${storagePath}`;
+  try {
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      const { url, expiresAt } = JSON.parse(cached) as { url: string; expiresAt: number };
+      if (expiresAt > Date.now()) return url;
+      sessionStorage.removeItem(cacheKey);
+    }
+  } catch {}
+
   const { data, error } = await supabase.storage
     .from('patient-media')
     .createSignedUrl(storagePath, expiresIn);
   if (error) { console.error('Signed URL error:', error.message); return null; }
+
+  try {
+    sessionStorage.setItem(cacheKey, JSON.stringify({
+      url: data.signedUrl,
+      expiresAt: Date.now() + SIGNED_URL_CACHE_TTL_MS,
+    }));
+  } catch {}
+
   return data.signedUrl;
 }
 

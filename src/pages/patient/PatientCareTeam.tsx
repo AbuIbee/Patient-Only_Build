@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/store/AppContext';
 import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
 import { User, Phone, Mail, Heart, Stethoscope, UserCheck } from 'lucide-react';
 
 interface TeamMember {
@@ -16,7 +17,7 @@ export default function PatientCareTeam() {
   const [team, setTeam]     = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadTeam(); }, []);
+  useEffect(() => { loadTeam(); }, [state.currentUser?.id]);
 
   const loadTeam = async () => {
     const patientId = state.currentUser?.id;
@@ -59,6 +60,7 @@ export default function PatientCareTeam() {
       setTeam(members);
     } catch (err) {
       console.error('Error loading care team:', err);
+      toast.error('Could not load your care team. Please refresh.');
     } finally {
       setLoading(false);
     }

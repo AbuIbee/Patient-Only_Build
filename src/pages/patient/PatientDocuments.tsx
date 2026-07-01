@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useApp } from '@/store/AppContext';
+import { toast } from 'sonner';
 import { FileText, CalendarDays, CalendarRange, Calendar, Upload, Trash2, FileIcon, Edit2, Check, X, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -44,22 +45,14 @@ interface CareNote {
   createdAt: string;
 }
 
-const NOTES_STORAGE_KEY = 'carePartnerPersonalNotes';
 const DOC_BUCKET = 'patient-documents';
-const MAX_DOC_SIZE = 5 * 1024 * 1024 * 1024; // 5 GB
+const MAX_DOC_SIZE = 5 * 1024 * 1024; // 5 MB
 
 // ─── Supabase document helpers ────────────────────────────────────────────────
 async function signDocUrl(storagePath: string): Promise<string> {
   const { data, error } = await supabase.storage.from(DOC_BUCKET).createSignedUrl(storagePath, 3600);
   if (error || !data) return '';
   return data.signedUrl;
-}
-
-function loadCareNotes(): CareNote[] {
-  try { return JSON.parse(localStorage.getItem(NOTES_STORAGE_KEY) || '[]'); } catch { return []; }
-}
-function saveCareNotes(notes: CareNote[]) {
-  localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(notes));
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -110,7 +103,8 @@ export default function PatientDocuments() {
   const billInputRef = useRef<HTMLInputElement>(null);
 
   // Care Partner personal notes state
-  const [careNotes, setCareNotes] = useState<CareNote[]>(loadCareNotes);
+  const [careNotes, setCareNotes] = useState<CareNote[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
   const [noteFilter, setNoteFilter] = useState<FilterMode>('day');
   const [selectedNoteDate, setSelectedNoteDate] = useState<string>(new Date().toISOString().slice(0,10));
   const [noteInput, setNoteInput] = useState('');
@@ -125,7 +119,69 @@ export default function PatientDocuments() {
     loadLogs();
     loadDocs('medical_docs');
     loadDocs('medical_bills');
+    fetchCareNotes();
   }, [patientId]);
+
+  // ── Load personal notes from Supabase (with one-time localStorage migration) ──
+  const fetchCareNotes = async () => {
+    if (!patientId) return;
+    setNotesLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('patient_notes')
+        .select('id, note, created_at')
+        .eq('patient_id', patientId)
+        .eq('note_type', 'care_partner_personal')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const rows = data || [];
+
+      if (rows.length === 0) {
+        const raw = localStorage.getItem('carePartnerPersonalNotes');
+        if (raw) {
+          try {
+            const local: CareNote[] = JSON.parse(raw);
+            if (local.length > 0) {
+              const inserts = local.map(n => ({
+                patient_id: patientId,
+                caregiver_id: patientId,
+                note: JSON.stringify({ date: n.date, text: n.text }),
+                note_type: 'care_partner_personal',
+                created_at: n.createdAt,
+              }));
+              const { data: migrated, error: migErr } = await supabase
+                .from('patient_notes')
+                .insert(inserts)
+                .select('id, note, created_at');
+              if (!migErr && migrated) {
+                localStorage.removeItem('carePartnerPersonalNotes');
+                setCareNotes(migrated.map(r => {
+                  const parsed = JSON.parse(r.note);
+                  return { id: r.id, date: parsed.date, text: parsed.text, createdAt: r.created_at };
+                }));
+                return;
+              }
+            }
+          } catch {}
+        }
+      }
+
+      setCareNotes(rows.map(r => {
+        try {
+          const parsed = JSON.parse(r.note);
+          return { id: r.id, date: parsed.date ?? r.created_at.slice(0, 10), text: parsed.text ?? r.note, createdAt: r.created_at };
+        } catch {
+          return { id: r.id, date: r.created_at.slice(0, 10), text: r.note, createdAt: r.created_at };
+        }
+      }));
+    } catch (err) {
+      console.error('fetchCareNotes error:', err);
+      toast.error('Could not load personal notes.');
+    } finally {
+      setNotesLoading(false);
+    }
+  };
 
   // ── Load documents from Supabase ──────────────────────────────────────────
   const loadDocs = async (section: UserDocument['section']) => {
@@ -135,7 +191,7 @@ export default function PatientDocuments() {
     try {
       const { data, error } = await supabase
         .from('patient_document_uploads')
-        .select('*')
+        .select('id, file_name, note_text, storage_path, file_type, uploaded_at, section')
         .eq('patient_id', patientId)
         .eq('section', section)
         .order('uploaded_at', { ascending: false });
@@ -157,6 +213,7 @@ export default function PatientDocuments() {
       else setBills(items);
     } catch (err: any) {
       console.error('loadDocs error:', err);
+      toast.error('Could not load documents. Please try again.');
     } finally {
       setter(false);
     }
@@ -170,11 +227,11 @@ export default function PatientDocuments() {
       const cutoffDate = cutoff.toISOString().slice(0, 10);
       const { data, error } = await supabase
         .from('care_partner_logs')
-        .select('*')
+        .select('id, patient_id, report_date, submitted_at, mood, meals, hydration, medications, mobility, exercise, sleep_quality, pain_level, notes, answers')
         .eq('patient_id', patientId)
         .gte('report_date', cutoffDate)
         .order('report_date', { ascending: false });
-      if (error) { console.error(error); setLogs([]); return; }
+      if (error) { console.error(error); toast.error('Could not load care partner logs.'); setLogs([]); return; }
       setLogs((data || []) as LogRow[]);
     } finally {
       setLoading(false);
@@ -217,7 +274,7 @@ export default function PatientDocuments() {
   ) => {
     if (!patientId) return;
     if (file.size > MAX_DOC_SIZE) {
-      setError('File is too large (max 5 GB).');
+      setError('File is too large (max 5 MB).');
       return;
     }
     setError('');
@@ -274,8 +331,9 @@ export default function PatientDocuments() {
   };
 
   const removeDoc = async (id: string, storagePath: string) => {
+    const { error: dbErr } = await supabase.from('patient_document_uploads').delete().eq('id', id);
+    if (dbErr) { console.error('removeDoc DB error:', dbErr.message); return; }
     await supabase.storage.from(DOC_BUCKET).remove([storagePath]);
-    await supabase.from('patient_document_uploads').delete().eq('id', id);
     setUserDocs(prev => prev.filter(d => d.id !== id));
     if (editingDocId === id) setEditingDocId(null);
   };
@@ -300,37 +358,70 @@ export default function PatientDocuments() {
   };
 
   const removeBill = async (id: string, storagePath: string) => {
+    const { error: dbErr } = await supabase.from('patient_document_uploads').delete().eq('id', id);
+    if (dbErr) { console.error('removeBill DB error:', dbErr.message); return; }
     await supabase.storage.from(DOC_BUCKET).remove([storagePath]);
-    await supabase.from('patient_document_uploads').delete().eq('id', id);
     setBills(prev => prev.filter(d => d.id !== id));
   };
 
   // ── Care notes handlers ────────────────────────────────────────────────────
-  const addCareNote = () => {
-    if (!noteInput.trim()) return;
-    const note: CareNote = {
-      id: `cn_${Date.now()}`,
+  const addCareNote = async () => {
+    if (!noteInput.trim() || !patientId) return;
+    const tempId = `temp_${Date.now()}`;
+    const newNote: CareNote = {
+      id: tempId,
       date: selectedNoteDate,
       text: noteInput.trim(),
       createdAt: new Date().toISOString(),
     };
-    const updated = [note, ...careNotes];
-    saveCareNotes(updated);
-    setCareNotes(updated);
+    setCareNotes(prev => [newNote, ...prev]);
     setNoteInput('');
+
+    const { data, error } = await supabase
+      .from('patient_notes')
+      .insert({
+        patient_id: patientId,
+        caregiver_id: patientId,
+        note: JSON.stringify({ date: selectedNoteDate, text: newNote.text }),
+        note_type: 'care_partner_personal',
+        created_at: newNote.createdAt,
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      toast.error('Could not save note.');
+      setCareNotes(prev => prev.filter(n => n.id !== tempId));
+      setNoteInput(newNote.text);
+      return;
+    }
+    setCareNotes(prev => prev.map(n => n.id === tempId ? { ...n, id: data.id } : n));
   };
 
-  const deleteCareNote = (id: string) => {
-    const updated = careNotes.filter(n => n.id !== id);
-    saveCareNotes(updated);
-    setCareNotes(updated);
+  const deleteCareNote = async (id: string) => {
+    setCareNotes(prev => prev.filter(n => n.id !== id));
+    const { error } = await supabase.from('patient_notes').delete().eq('id', id);
+    if (error) {
+      toast.error('Could not delete note.');
+      fetchCareNotes();
+    }
   };
 
-  const saveEditNote = (id: string) => {
-    const updated = careNotes.map(n => n.id === id ? { ...n, text: editNoteText.trim() } : n);
-    saveCareNotes(updated);
-    setCareNotes(updated);
+  const saveEditNote = async (id: string) => {
+    const note = careNotes.find(n => n.id === id);
+    if (!note) return;
+    const newText = editNoteText.trim();
+    setCareNotes(prev => prev.map(n => n.id === id ? { ...n, text: newText } : n));
     setEditNoteId(null);
+
+    const { error } = await supabase
+      .from('patient_notes')
+      .update({ note: JSON.stringify({ date: note.date, text: newText }) })
+      .eq('id', id);
+    if (error) {
+      toast.error('Could not update note.');
+      setCareNotes(prev => prev.map(n => n.id === id ? { ...n, text: note.text } : n));
+    }
   };
 
   // Calendar helpers for notes
@@ -733,8 +824,12 @@ export default function PatientDocuments() {
 
         <div className="px-6 py-6 sm:px-8 space-y-5">
 
+          {notesLoading ? (
+            <p className="text-medium-gray text-sm">Loading notes…</p>
+          ) : null}
+
           {/* Day view */}
-          {noteFilter === 'day' && (
+          {!notesLoading && noteFilter === 'day' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <button onClick={() => { const d = new Date(selectedNoteDate); d.setDate(d.getDate()-1); setSelectedNoteDate(d.toISOString().slice(0,10)); }}
@@ -787,7 +882,7 @@ export default function PatientDocuments() {
           )}
 
           {/* Week view */}
-          {noteFilter === 'week' && (
+          {!notesLoading && noteFilter === 'week' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <button onClick={() => { const d = new Date(calBase); d.setDate(d.getDate()-7); setCalBase(d); }}
@@ -826,7 +921,7 @@ export default function PatientDocuments() {
           )}
 
           {/* Month view */}
-          {noteFilter === 'month' && (
+          {!notesLoading && noteFilter === 'month' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <button onClick={() => { const d = new Date(calBase.getFullYear(), calBase.getMonth()-1, 1); setCalBase(d); }}

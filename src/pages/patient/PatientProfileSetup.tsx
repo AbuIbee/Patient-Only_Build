@@ -88,9 +88,9 @@ export default function PatientProfileSetup() {
       setLoading(true);
       try {
         const [{ data: profile }, { data: patient }, { data: intake }] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
-          supabase.from('patients').select('*').eq('id', userId).maybeSingle(),
-          supabase.from('patient_intake').select('*').eq('patient_profile_id', userId)
+          supabase.from('profiles').select('first_name, last_name, phone').eq('id', userId).maybeSingle(),
+          supabase.from('patients').select('preferred_name, date_of_birth, diagnosis_date, dementia_stage, medications_summary, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship').eq('id', userId).maybeSingle(),
+          supabase.from('patient_intake').select('patient_street_address, patient_city, patient_state, patient_zip_code, preferred_hospital, doctor_therapist_name, doctor_therapist_phone, caregiver_name, caregiver_relationship, caregiver_phone, medications_and_dosage, emergency_contact_full_name, emergency_contact_phone, emergency_contact_email, emergency_contact_relationship').eq('patient_profile_id', userId)
             .order('created_at', { ascending: false }).limit(1).maybeSingle(),
         ]);
 
