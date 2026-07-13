@@ -18,8 +18,9 @@ import PatientGames from './PatientGames';
 import PatientIntakeForm from './PatientIntakeForm';
 import PatientCareTeam from './PatientCareTeam';
 import MediaUploader from '@/components/MediaUploader';
+import PricingPage from '../common/PricingPage';
 import {
-  Heart, LogOut, ChevronRight, Menu, X, ClipboardCheck, Lock,
+  Heart, LogOut, ChevronRight, Menu, X, ClipboardCheck, Lock, RefreshCw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -61,6 +62,7 @@ export default function PatientLayout() {
   const [selectedGameId, setSelectedGameId] = useState<string | undefined>(undefined);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showManagePlan, setShowManagePlan] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   // Fail closed: until a paid entitlement is confirmed, Paid Tier items remain locked.
   const [subscriptionTier, setSubscriptionTier] = useState<TierName>('free_tier');
@@ -364,6 +366,11 @@ export default function PatientLayout() {
 
   const hasPaidAccess = subscriptionTier === 'paid_tier' || subscriptionTier === 'master';
 
+  const planLabel =
+    subscriptionTier === 'master' ? 'Master Access'
+    : subscriptionTier === 'paid_tier' ? 'Paid Plan'
+    : 'Free Plan';
+
   const isLockedNavigationItem = (item: NavigationItem) =>
     Boolean(PAID_ONLY_VIEWS[item.id] && !hasPaidAccess);
 
@@ -397,10 +404,10 @@ export default function PatientLayout() {
         <h2 className="text-xl font-bold text-charcoal">{label} is locked</h2>
         <p className="text-medium-gray">This is a Paid Tier feature. Upgrade to unlock it.</p>
         <button
-          onClick={() => showPaidTierMessage(label)}
+          onClick={() => setShowManagePlan(true)}
           className="w-full rounded-xl bg-warm-bronze text-white font-semibold px-4 py-3 hover:bg-deep-bronze transition-colors"
         >
-          Upgrade to Paid Tier
+          View Plans
         </button>
       </div>
     </div>
@@ -590,16 +597,29 @@ export default function PatientLayout() {
           </AnimatePresence>
         </nav>
 
-        <div className="p-3 border-t border-soft-taupe space-y-1 flex-shrink-0">
+        <div className="p-3 border-t border-soft-taupe flex-shrink-0">
           <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-gentle-coral hover:bg-gentle-coral/10 transition-colors"
+            onClick={() => setShowManagePlan(true)}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-charcoal bg-warm-bronze/10 hover:bg-warm-bronze/20 transition-colors"
           >
-            <LogOut className="w-5 h-5 flex-shrink-0" />
-            <span className="font-medium text-sm">Logout</span>
+            <span className="w-9 h-9 rounded-2xl bg-white border border-warm-bronze/30 flex items-center justify-center shadow-sm flex-shrink-0">
+              <RefreshCw className="w-4.5 h-4.5 text-warm-bronze" />
+            </span>
+            <span className="flex flex-col items-start leading-tight">
+              <span className="font-semibold text-sm">Change Plan</span>
+              <span className="text-xs text-medium-gray">{planLabel}</span>
+            </span>
           </button>
 
+          <div className="my-2 border-t border-soft-taupe" />
 
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-charcoal hover:bg-gentle-coral/10 hover:text-black transition-colors"
+          >
+            <LogOut className="w-5 h-5 flex-shrink-0 text-charcoal" />
+            <span className="font-semibold text-sm text-charcoal">Logout</span>
+          </button>
         </div>
       </aside>
 
@@ -761,12 +781,25 @@ export default function PatientLayout() {
               </div>
 
               {/* Bottom actions */}
-              <div className="px-4 pb-6 pt-2 border-t border-soft-taupe flex gap-3">
+              <div className="px-4 pb-6 pt-2 border-t border-soft-taupe flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    setShowManagePlan(true);
+                  }}
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-warm-bronze/10 text-charcoal font-semibold text-sm"
+                >
+                  <span className="w-8 h-8 rounded-xl bg-white border border-warm-bronze/30 flex items-center justify-center shadow-sm">
+                    <RefreshCw className="w-4 h-4 text-warm-bronze" />
+                  </span>
+                  Change Plan
+                  <span className="text-xs font-normal text-medium-gray">· {planLabel}</span>
+                </button>
                 <button
                   onClick={handleLogout}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gentle-coral/10 text-gentle-coral font-medium text-sm"
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gentle-coral/10 text-charcoal font-semibold text-sm"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-4 h-4 text-charcoal" />
                   Logout
                 </button>
               </div>
@@ -774,6 +807,14 @@ export default function PatientLayout() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showManagePlan && (
+        <PricingPage
+          modal
+          startAtPlans
+          onClose={() => setShowManagePlan(false)}
+        />
+      )}
     </div>
     </TempUserProvider>
     </SubscriptionProvider>

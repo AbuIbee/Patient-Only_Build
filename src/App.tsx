@@ -8,11 +8,14 @@ import PatientLayout from '@/pages/patient/PatientLayout';
 import AdminLayout from '@/pages/admin/AdminLayout';
 import PrivacyPage from '@/pages/privacy/PrivacyPage';
 import { Toaster } from '@/components/ui/sonner';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@/types';
 import { isTempUser } from '@/types/subscription';
 import './App.css';
+
+const PROFILE_COLUMNS =
+  'id, email, first_name, last_name, role, phone, created_at, updated_at, must_change_password';
 
 function AppContent() {
   const { state, dispatch } = useApp();
@@ -20,6 +23,11 @@ function AppContent() {
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [forcedChange, setForcedChange] = useState(false);
   const [currentUserEmail, setCurrentUserEmail] = useState('');
+
+  // Supabase can emit SIGNED_OUT while its client is initializing. The first
+  // getSession() call is the source of truth during startup; genuine SIGNED_OUT
+  // events are honored only after that initial check completes.
+  const initialCheckDoneRef = useRef(false);
 
   const currentPath = useMemo(() => window.location.pathname, []);
   const isPublicPatientIntakeRoute = currentPath === '/patient-intake';
@@ -53,6 +61,18 @@ function AppContent() {
     dispatch({ type: 'SET_AUTHENTICATED', payload: true });
   };
 
+  const buildAuthFallbackProfile = (user: any) => ({
+    id: user.id,
+    email: user.email || '',
+    first_name: user.user_metadata?.first_name || '',
+    last_name: user.user_metadata?.last_name || '',
+    role: (user.user_metadata?.role as UserRole) || 'patient',
+    phone: user.phone || user.user_metadata?.phone || null,
+    created_at: user.created_at,
+    updated_at: user.updated_at || user.created_at,
+    must_change_password: false,
+  });
+
   useEffect(() => {
     const restoreSession = async () => {
       try {
@@ -60,80 +80,99 @@ function AppContent() {
           data: { session },
         } = await supabase.auth.getSession();
 
-        if (session?.user) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle();
+        if (!session?.user) return;
 
-          if (profile) {
-            if (profile.must_change_password) {
-              setCurrentUserEmail(profile.email || '');
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select(PROFILE_COLUMNS)
+          .eq('id', session.user.id)
+          .maybeSingle();
 
-              dispatch({
-                type: 'SET_USER',
-                payload: {
-                  id: profile.id,
-                  email: profile.email,
-                  firstName: profile.first_name,
-                  lastName: profile.last_name,
-                  role: (profile.role as UserRole) || 'patient',
-                  phone: profile.phone || undefined,
-                  createdAt: profile.created_at,
-                  updatedAt: profile.updated_at,
-                },
-              });
+        // A valid Supabase session must not be turned into an apparent logout
+        // merely because the profile query is temporarily unavailable or a
+        // legacy account has no profile row yet.
+        if (profileError) {
+          console.error('Profile restore query failed:', profileError.message);
+        }
 
-              setForcedChange(true);
-              setCheckingSession(false);
+        const activeProfile = profile || buildAuthFallbackProfile(session.user);
+
+        if (profile?.must_change_password) {
+          setCurrentUserEmail(profile.email || '');
+
+          dispatch({
+            type: 'SET_USER',
+            payload: {
+              id: profile.id,
+              email: profile.email,
+              firstName: profile.first_name,
+              lastName: profile.last_name,
+              role: (profile.role as UserRole) || 'patient',
+              phone: profile.phone || undefined,
+              createdAt: profile.created_at,
+              updatedAt: profile.updated_at,
+            },
+          });
+
+          setForcedChange(true);
+          return;
+        }
+
+        // Retain the current subscription policy for accounts with a profile,
+        // but never sign a user out because the subscription query itself failed.
+        if (profile) {
+          const isPrivileged = ['admin', 'caregiver', 'master', 'superadmin'].includes(profile.role);
+
+          if (!isPrivileged) {
+            const { data: sub, error: subError } = await supabase
+              .from('subscriptions')
+              .select('status, tier, stripe_subscription_id')
+              .eq('user_id', profile.id)
+              .maybeSingle();
+
+            const isMaster = sub?.tier === 'master';
+            const blockedStatuses = [
+              'pending_payment',
+              'requires_payment',
+              'expired',
+              'canceled',
+              'past_due',
+              'incomplete',
+            ];
+            const isBlockedStatus = Boolean(sub && blockedStatuses.includes(sub.status));
+            const needsPayment = !subError && (!sub || isBlockedStatus);
+
+            if (!isMaster && needsPayment) {
+              await supabase.auth.signOut();
+
+              let errorMessage = 'Please complete payment to access your account.';
+              if (sub?.status === 'expired') {
+                errorMessage = 'Your subscription has expired. Please renew to continue.';
+              } else if (sub?.status === 'pending_payment') {
+                errorMessage =
+                  'Payment pending. Please complete checkout to access your account.';
+              }
+
+              sessionStorage.setItem('paymentRequiredMessage', errorMessage);
+              window.location.href = '/pricing';
               return;
             }
 
-            const isPrivileged = ['admin', 'caregiver', 'master', 'superadmin'].includes(profile.role);
-
-            if (!isPrivileged) {
-              const { data: sub } = await supabase
-                .from('subscriptions')
-                .select('status, tier, stripe_subscription_id')
-                .eq('user_id', profile.id)
-                .maybeSingle();
-
-              const isMaster = sub?.tier === 'master';
-              const blockedStatuses = [
-                'pending_payment',
-                'requires_payment',
-                'expired',
-                'canceled',
-                'past_due',
-                'incomplete',
-              ];
-              const isBlockedStatus = sub && blockedStatuses.includes(sub.status);
-              const needsPayment = !sub || isBlockedStatus;
-
-              if (!isMaster && needsPayment) {
-                await supabase.auth.signOut();
-
-                let errorMessage = 'Please complete payment to access your account.';
-                if (sub?.status === 'expired') {
-                  errorMessage = 'Your subscription has expired. Please renew to continue.';
-                } else if (sub?.status === 'pending_payment') {
-                  errorMessage =
-                    'Payment pending. Please complete checkout to access your account.';
-                }
-
-                sessionStorage.setItem('paymentRequiredMessage', errorMessage);
-                window.location.href = '/pricing';
-                return;
-              }
+            if (subError) {
+              console.error('Subscription restore query failed:', subError.message);
             }
-
-            restoreUser(profile);
           }
+        } else {
+          console.warn(
+            'Authenticated user has no readable profile row. Restoring the session from Auth metadata; profile setup/repair may still be needed.'
+          );
         }
+
+        restoreUser(activeProfile);
       } catch (err) {
         console.error('Session restore error:', err);
       } finally {
+        initialCheckDoneRef.current = true;
         setCheckingSession(false);
       }
     };
@@ -144,6 +183,8 @@ function AppContent() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event) => {
       if (event === 'SIGNED_OUT') {
+        if (!initialCheckDoneRef.current) return;
+
         dispatch({ type: 'LOGOUT' });
         setShowPasswordReset(false);
         setForcedChange(false);
@@ -169,8 +210,13 @@ function AppContent() {
       const roleForRoute = allowedRoles.includes(state.selectedRole)
         ? state.selectedRole
         : 'patient';
+      const targetPath = `/${roleForRoute}`;
 
-      window.history.pushState({ role: roleForRoute }, '', '/' + roleForRoute);
+      // replaceState prevents building an auth-history stack that can send the
+      // browser Back button to a stale pre-login route.
+      if (window.location.pathname !== targetPath || window.history.state?.role !== roleForRoute) {
+        window.history.replaceState({ role: roleForRoute }, '', targetPath);
+      }
     } else if (!state.isAuthenticated) {
       window.history.replaceState({}, '', '/');
     }
@@ -180,15 +226,22 @@ function AppContent() {
     if (isPublicRoute) return;
 
     const handlePop = () => {
-      if (!window.history.state?.role) {
-        supabase.auth.signOut();
-        dispatch({ type: 'LOGOUT' });
+      // Browser Back must never destroy the Supabase session. If it reaches a
+      // stale pre-login history entry while the user is still authenticated,
+      // normalize the URL back to the authenticated route.
+      if (!window.history.state?.role && state.isAuthenticated && state.selectedRole) {
+        const allowedRoles = ['patient', 'admin', 'superadmin'];
+        const roleForRoute = allowedRoles.includes(state.selectedRole)
+          ? state.selectedRole
+          : 'patient';
+
+        window.history.replaceState({ role: roleForRoute }, '', `/${roleForRoute}`);
       }
     };
 
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
-  }, [dispatch, isPublicRoute]);
+  }, [isPublicRoute, state.isAuthenticated, state.selectedRole]);
 
   const handlePasswordSet = async () => {
     setShowPasswordReset(false);
@@ -199,15 +252,17 @@ function AppContent() {
     } = await supabase.auth.getSession();
 
     if (session?.user) {
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('*')
+        .select(PROFILE_COLUMNS)
         .eq('id', session.user.id)
         .maybeSingle();
 
-      if (profile) {
-        restoreUser(profile);
+      if (profileError) {
+        console.error('Profile reload after password change failed:', profileError.message);
       }
+
+      restoreUser(profile || buildAuthFallbackProfile(session.user));
     }
   };
 

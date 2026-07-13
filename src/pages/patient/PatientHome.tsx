@@ -443,6 +443,21 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
           <Card className={`border-0 shadow-elevated overflow-hidden relative ${isSundowningTime ? 'ring-4 ring-warm-amber/50' : ''}`}>
             <WeatherBackground condition={weather.condition} isDay={weather.isDay} />
 
+            {/* Emergency Help Button — pinned inside the welcome card so it stays visible */}
+            <motion.button
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.6, type: 'spring' }}
+              onClick={handleEmergency}
+              aria-label="Emergency help, call 911"
+              className="absolute top-5 right-5 z-30 min-w-[78px] rounded-2xl bg-gradient-to-b from-red-500 via-red-700 to-red-900 border-2 border-red-200 px-3 py-2 shadow-2xl ring-4 ring-red-500/20 flex flex-col items-center justify-center hover:scale-105 focus:outline-none focus:ring-4 focus:ring-red-300 transition-transform"
+            >
+              <span className="absolute -inset-1 rounded-3xl bg-red-500/25 animate-ping" aria-hidden="true" />
+              <span className="relative text-2xl leading-none mb-0.5" aria-hidden="true">🚨</span>
+              <span className="relative text-white text-[10px] font-extrabold tracking-wide leading-tight">HELP</span>
+              <span className="relative text-white text-sm font-black leading-tight">911</span>
+            </motion.button>
+
             <div className="relative z-10 px-6 pt-8 pb-6 text-center border-b border-white/20">
               {/* Soft decorative rings */}
               <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-t-2xl">
@@ -818,17 +833,6 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
             ))}
           </div>
         </motion.div>
-
-        {/* Emergency Button */}
-        <motion.button
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 1, type: "spring" }}
-          onClick={handleEmergency}
-          className="fixed top-20 right-6 z-50 w-16 h-16 bg-red-800 rounded-full shadow-elevated flex flex-col items-center justify-center hover:scale-110 transition-transform"
-        >
-          <span className="text-white text-xs font-bold">HELP 911</span>
-        </motion.button>
 
         {/* Familiar Face Dialog */}
         <Dialog open={!!selectedFace} onOpenChange={() => setSelectedFace(null)}>
