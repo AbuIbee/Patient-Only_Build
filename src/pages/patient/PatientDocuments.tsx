@@ -145,7 +145,7 @@ export default function PatientDocuments() {
             if (local.length > 0) {
               const inserts = local.map(n => ({
                 patient_id: patientId,
-                caregiver_id: patientId,
+                author_id: patientId,
                 note: JSON.stringify({ date: n.date, text: n.text }),
                 note_type: 'care_partner_personal',
                 created_at: n.createdAt,
@@ -301,7 +301,13 @@ export default function PatientDocuments() {
         })
         .select()
         .single();
-      if (dbErr) throw dbErr;
+      if (dbErr) {
+        // F08 remediation: the storage object above already landed; without
+        // this the file is orphaned (billed, undiscoverable, and blocks
+        // re-upload to the same path) every time the metadata insert fails.
+        await supabase.storage.from(DOC_BUCKET).remove([storagePath]);
+        throw dbErr;
+      }
 
       const signedUrl = await signDocUrl(storagePath);
       const doc: UserDocument = {
@@ -333,7 +339,12 @@ export default function PatientDocuments() {
   const removeDoc = async (id: string, storagePath: string) => {
     const { error: dbErr } = await supabase.from('patient_document_uploads').delete().eq('id', id);
     if (dbErr) { console.error('removeDoc DB error:', dbErr.message); return; }
-    await supabase.storage.from(DOC_BUCKET).remove([storagePath]);
+    const { error: storageErr } = await supabase.storage.from(DOC_BUCKET).remove([storagePath]);
+    if (storageErr) {
+      // DB row is already gone (user-visible outcome is correct); log so an
+      // orphaned storage object can be found/cleaned up operationally.
+      console.error('removeDoc storage cleanup failed:', storageErr.message, storagePath);
+    }
     setUserDocs(prev => prev.filter(d => d.id !== id));
     if (editingDocId === id) setEditingDocId(null);
   };
@@ -360,7 +371,10 @@ export default function PatientDocuments() {
   const removeBill = async (id: string, storagePath: string) => {
     const { error: dbErr } = await supabase.from('patient_document_uploads').delete().eq('id', id);
     if (dbErr) { console.error('removeBill DB error:', dbErr.message); return; }
-    await supabase.storage.from(DOC_BUCKET).remove([storagePath]);
+    const { error: storageErr } = await supabase.storage.from(DOC_BUCKET).remove([storagePath]);
+    if (storageErr) {
+      console.error('removeBill storage cleanup failed:', storageErr.message, storagePath);
+    }
     setBills(prev => prev.filter(d => d.id !== id));
   };
 
@@ -377,11 +391,16 @@ export default function PatientDocuments() {
     setCareNotes(prev => [newNote, ...prev]);
     setNoteInput('');
 
+    // F12 remediation: previously wrote caregiver_id: patientId as a
+    // self-impersonation workaround (patient_notes.caregiver_id was
+    // NOT NULL REFERENCES profiles(id) with no real caregiver authoring
+    // this note). Now uses a dedicated author_id column for patient-authored
+    // notes instead — see 005_patient_notes_author.sql.
     const { data, error } = await supabase
       .from('patient_notes')
       .insert({
         patient_id: patientId,
-        caregiver_id: patientId,
+        author_id: patientId,
         note: JSON.stringify({ date: selectedNoteDate, text: newNote.text }),
         note_type: 'care_partner_personal',
         created_at: newNote.createdAt,
@@ -502,7 +521,7 @@ export default function PatientDocuments() {
               </div>
               <div className="text-center">
                 <p className="font-semibold text-charcoal">Upload your first document</p>
-                <p className="text-sm text-medium-gray mt-1">PDF, images, Word docs, spreadsheets — up to 5 GB</p>
+                <p className="text-sm text-medium-gray mt-1">PDF, images, Word docs, spreadsheets — up to 5 MB</p>
               </div>
             </label>
           ) : (
@@ -648,7 +667,7 @@ export default function PatientDocuments() {
               </div>
               <div className="text-center">
                 <p className="font-semibold text-charcoal">Upload your first medical bill</p>
-                <p className="text-sm text-medium-gray mt-1">PDF, images, Word docs, spreadsheets — up to 5 GB</p>
+                <p className="text-sm text-medium-gray mt-1">PDF, images, Word docs, spreadsheets — up to 5 MB</p>
               </div>
             </label>
           ) : (

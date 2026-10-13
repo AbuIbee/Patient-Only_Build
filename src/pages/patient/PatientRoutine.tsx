@@ -168,16 +168,32 @@ export default function PatientRoutine() {
     }
   };
 
-  const handleAppTaskComplete = (taskId: string) => {
+  // F11 remediation: this previously only dispatched to the in-memory
+  // AppContext store with zero I/O, so a reload (which rebuilds state.tasks
+  // from a fresh `tasks` SELECT) silently reverted every completion. Now
+  // mirrors handleCustomComplete's optimistic-update-with-rollback pattern
+  // and actually persists to the `tasks` table, keyed by id + patient_id.
+  const handleAppTaskComplete = async (taskId: string) => {
     const task = state.tasks.find(t => t.id === taskId);
-    if (!task) return;
-    const updatedTask = {
-      ...task,
-      status: (task.status === 'completed' ? 'pending' : 'completed') as 'pending' | 'completed' | 'skipped',
-      completedAt: task.status === 'completed' ? undefined : new Date().toISOString(),
-    };
+    if (!task || !patientId) return;
+
+    const newStatus = (task.status === 'completed' ? 'pending' : 'completed') as 'pending' | 'completed' | 'skipped';
+    const newCompletedAt = newStatus === 'completed' ? new Date().toISOString() : undefined;
+    const updatedTask = { ...task, status: newStatus, completedAt: newCompletedAt };
+
     dispatch({ type: 'UPDATE_TASK', payload: updatedTask });
-    if (updatedTask.status === 'completed') toast.success(`✓ Done! ${task.title}`);
+    if (newStatus === 'completed') toast.success(`✓ Done! ${task.title}`);
+
+    const { error } = await supabase
+      .from('tasks')
+      .update({ status: newStatus, completed_at: newCompletedAt ?? null })
+      .eq('id', taskId)
+      .eq('patient_id', patientId);
+
+    if (error) {
+      toast.error('Could not save progress.');
+      dispatch({ type: 'UPDATE_TASK', payload: task });
+    }
   };
 
   const handleCustomComplete = async (id: string) => {
