@@ -1,0 +1,39 @@
+-- 008_calm_me_video_PENDING_SEC-006.sql
+-- F14 (Calm Me video upload).
+--
+-- *** DO NOT EXECUTE until SEC-006 is independently approved. ***
+-- The work order explicitly blocks this feature on SEC-006 ("block
+-- persistence until SEC-006 secure storage is approved"). The client-side
+-- upload path is already disabled pending that approval — see
+-- VIDEO_UPLOAD_BLOCKED_PENDING_SEC_006 in src/components/CalmMeDialog.tsx.
+-- This file is the schema half of that same block: a proposal for what a
+-- secure video storage path should look like, not a repair applied today.
+--
+-- CalmMeDialog.tsx currently writes videos into `music-files/videos/<patientId>/...`,
+-- a bucket shared with other (non-video) music content, using whatever
+-- storage.objects policies that bucket already has — which this repo has no
+-- record of (cross-cutting finding in _audit_group_B.md). Mixing patient
+-- video uploads into a shared bucket's existing policy surface is exactly
+-- what the work order prohibits ("insecure shared music-files policies").
+--
+-- Proposal once SEC-006 clears: a dedicated bucket with strict per-patient
+-- path scoping, so a video policy mistake can't also expose unrelated
+-- shared audio content (or vice versa).
+
+-- INSERT INTO storage.buckets (id, name, public, file_size_limit)
+-- VALUES ('patient-calm-videos', 'patient-calm-videos', false, 262144000) -- 250 MiB
+-- ON CONFLICT (id) DO NOTHING;
+--
+-- CREATE POLICY "Patients can manage their own calm-me videos"
+--   ON storage.objects FOR ALL
+--   USING (
+--     bucket_id = 'patient-calm-videos'
+--     AND (storage.foldername(name))[1] = auth.uid()::text
+--   )
+--   WITH CHECK (
+--     bucket_id = 'patient-calm-videos'
+--     AND (storage.foldername(name))[1] = auth.uid()::text
+--   );
+--
+-- Left commented out deliberately: this is a proposal for the owner/
+-- security review to accept, modify, or reject, not a repair to apply.
