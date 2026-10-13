@@ -527,8 +527,13 @@ export default function PatientMedications() {
     });
     setConfirm(null);
 
+    // F04 remediation: the optimistic entry above must never remain shown as
+    // taken/skipped if the write didn't actually persist — on any failure
+    // (RLS denial, missing constraint, network error) roll it back to
+    // whatever `getStatus` would compute without it, and tell the user,
+    // instead of silently swallowing the error.
     try {
-      const { data: logRow } = await supabase
+      const { data: logRow, error: upsertError } = await supabase
         .from('medication_logs')
         .upsert({
           medication_id:   medId,
@@ -543,28 +548,39 @@ export default function PatientMedications() {
         .select('id, medication_id, medication_name, date, scheduled_time, taken_time, status')
         .single();
 
+      if (upsertError) throw upsertError;
+
       if (logRow) {
         // Swap temp entry with the real DB row
         setLocalLogs(prev => prev.map(l => l.id === tempId ? mapLogRow(logRow) : l));
       }
-    } catch {
-      // Optimistic state stays; log visible for this session even if Supabase is unreachable
+    } catch (err: any) {
+      setLocalLogs(prev => prev.filter(l => l.id !== tempId));
+      toast.error(`Could not save dose: ${err?.message || 'please try again'}`);
     }
   };
 
+  // F05 remediation: no blanket UPDATE/DELETE policy is granted on
+  // medication_logs. Undo goes through the `undo_medication_dose`
+  // SECURITY DEFINER RPC (see 004_patient_self_access_and_dose_integrity.sql)
+  // which verifies the caller owns (or is an approved caregiver for) the
+  // dose and performs a soft reversal, preserving an audit trail instead of
+  // hard-deleting the row. Local state is not rolled back until the RPC
+  // confirms success.
   const undoLog = async (medId: string, date: string, time: string) => {
-    setLocalLogs(prev => prev.filter(l => !(l.medId === medId && l.date === date && l.scheduledTime === time)));
     if (!patientId) return;
+
     try {
-      await supabase
-        .from('medication_logs')
-        .delete()
-        .eq('medication_id', medId)
-        .eq('date', date)
-        .eq('scheduled_time', time)
-        .eq('patient_id', patientId);
-    } catch {
-      // Local state already updated; ignore Supabase error
+      const { error: undoError } = await supabase.rpc('undo_medication_dose', {
+        p_medication_id: medId,
+        p_date: date,
+        p_scheduled_time: time,
+      });
+      if (undoError) throw undoError;
+
+      setLocalLogs(prev => prev.filter(l => !(l.medId === medId && l.date === date && l.scheduledTime === time)));
+    } catch (err: any) {
+      toast.error(`Could not undo dose: ${err?.message || 'please try again'}`);
     }
   };
 
