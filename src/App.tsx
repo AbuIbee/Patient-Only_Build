@@ -10,12 +10,13 @@ import PrivacyPage from '@/pages/privacy/PrivacyPage';
 import { Toaster } from '@/components/ui/sonner';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { cancelAllReminderNotifications } from '@/lib/reminderScheduler';
 import type { UserRole } from '@/types';
 import { isTempUser } from '@/types/subscription';
 import './App.css';
 
 const PROFILE_COLUMNS =
-  'id, email, first_name, last_name, role, phone, created_at, updated_at, must_change_password';
+  'id, email, first_name, last_name, role, phone, created_at, updated_at, must_change_password, mfa_enabled';
 
 function AppContent() {
   const { state, dispatch } = useApp();
@@ -50,6 +51,7 @@ function AppContent() {
         phone: profile.phone || undefined,
         createdAt: profile.created_at,
         updatedAt: profile.updated_at,
+        mfaEnabled: Boolean(profile.mfa_enabled),
       },
     });
 
@@ -61,16 +63,24 @@ function AppContent() {
     dispatch({ type: 'SET_AUTHENTICATED', payload: true });
   };
 
+  // Used only when an authenticated user has no readable `profiles` row.
+  // `role` is deliberately NEVER sourced from `user_metadata` here: that field
+  // is editable by the client via supabase.auth.updateUser({ data: {...} }),
+  // so trusting it for authorization would let any user self-elevate simply
+  // by setting their own metadata and then losing/forcing a missing profile
+  // row. A missing profile is treated as "most restrictive known role", not
+  // as a hint to read from an untrusted source. F01 remediation.
   const buildAuthFallbackProfile = (user: any) => ({
     id: user.id,
     email: user.email || '',
     first_name: user.user_metadata?.first_name || '',
     last_name: user.user_metadata?.last_name || '',
-    role: (user.user_metadata?.role as UserRole) || 'patient',
+    role: 'patient' as UserRole,
     phone: user.phone || user.user_metadata?.phone || null,
     created_at: user.created_at,
     updated_at: user.updated_at || user.created_at,
     must_change_password: false,
+    mfa_enabled: false,
   });
 
   useEffect(() => {
@@ -185,6 +195,12 @@ function AppContent() {
       if (event === 'SIGNED_OUT') {
         if (!initialCheckDoneRef.current) return;
 
+        // F16: clear this patient's scheduled reminder notifications on
+        // sign-out so a shared/reused device doesn't keep firing a prior
+        // patient's medication/reminder notifications after they've logged
+        // out (no-ops outside a native build).
+        void cancelAllReminderNotifications();
+
         dispatch({ type: 'LOGOUT' });
         setShowPasswordReset(false);
         setForcedChange(false);
@@ -244,26 +260,42 @@ function AppContent() {
   }, [isPublicRoute, state.isAuthenticated, state.selectedRole]);
 
   const handlePasswordSet = async () => {
-    setShowPasswordReset(false);
-    setForcedChange(false);
-
     const {
       data: { session },
     } = await supabase.auth.getSession();
 
-    if (session?.user) {
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select(PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .maybeSingle();
-
-      if (profileError) {
-        console.error('Profile reload after password change failed:', profileError.message);
-      }
-
-      restoreUser(profile || buildAuthFallbackProfile(session.user));
+    if (!session?.user) {
+      setShowPasswordReset(false);
+      setForcedChange(false);
+      return;
     }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select(PROFILE_COLUMNS)
+      .eq('id', session.user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error('Profile reload after password change failed:', profileError.message);
+    }
+
+    // The forced gate is only cleared once the DB confirms
+    // must_change_password is actually false. If the write that was supposed
+    // to clear it (ResetPasswordPage) failed or hasn't landed yet, re-show the
+    // forced screen instead of letting the user into the app with a stale
+    // local "forcedChange = false" state. F01 remediation: this gate must not
+    // be bypassable by a failed/raced backend write.
+    if (profile?.must_change_password) {
+      setCurrentUserEmail(profile.email || '');
+      setForcedChange(true);
+      setShowPasswordReset(false);
+      return;
+    }
+
+    setShowPasswordReset(false);
+    setForcedChange(false);
+    restoreUser(profile || buildAuthFallbackProfile(session.user));
   };
 
   useEffect(() => {

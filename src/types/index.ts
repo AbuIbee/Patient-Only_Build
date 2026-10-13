@@ -11,6 +11,7 @@ export interface User {
   phone?: string;
   createdAt?: string;
   updatedAt?: string;
+  mfaEnabled?: boolean;
 
   app_metadata?: {
     provider?: string;
@@ -167,8 +168,12 @@ export interface Reminder {
   message: string;
   type: 'medication' | 'appointment' | 'task' | 'custom';
   time: string;
+  daysOfWeek?: number[];  // 0=Sun..6=Sat, JS Date.getDay() convention; empty/undefined = every day
   isActive: boolean;
+  sound?: string;
+  vibrate?: boolean;
   createdAt: string;
+  createdBy?: string;
 }
 
 // ---------------- APP STATE ----------------

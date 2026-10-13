@@ -39,9 +39,15 @@ export default function ResetPasswordPage({ onComplete, forced = false, userEmai
 
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        await supabase.from('profiles')
+        // F01 remediation: a forced reset must not report success unless the
+        // flag that gates re-entry is confirmed cleared — otherwise the next
+        // screen (App.tsx handlePasswordSet) would see a stale
+        // must_change_password=true and correctly re-show this screen, but
+        // the user would see a false "Password set!" confirmation first.
+        const { error: clearError } = await supabase.from('profiles')
           .update({ must_change_password: false })
           .eq('id', user.id);
+        if (clearError) throw clearError;
       }
 
       setDone(true);

@@ -45,6 +45,90 @@ const inp = (err?: string) =>
       : 'border-soft-taupe focus:ring-warm-bronze bg-white'
   }`;
 
+// F15 remediation: there was previously no patient-initiated password-reset
+// entry point anywhere in the login UI (grepped LoginPage.tsx for
+// forgot|reset — no matches). Uses Supabase's own resetPasswordForEmail,
+// which does not reveal whether the address is registered; the UI shows an
+// identical message either way so this component doesn't become the leak
+// instead.
+function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!EMAIL_RE.test(email.trim())) {
+      setError('Enter a valid email address');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+      const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
+      // Deliberately ignore the error here beyond logging it: surfacing
+      // "that email isn't registered" vs "email sent" would let this form be
+      // used to enumerate accounts. Supabase itself returns success for an
+      // unregistered email for the same reason — this UI preserves that.
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        redirectTo: siteUrl,
+      });
+      if (resetError) console.error('resetPasswordForEmail error:', resetError.message);
+    } finally {
+      setSent(true);
+      setLoading(false);
+    }
+  };
+
+  if (sent) {
+    return (
+      <div className="space-y-5 text-center">
+        <h2 className="text-2xl font-bold text-charcoal">Check your email</h2>
+        <p className="text-medium-gray text-sm">
+          If an account exists for <strong>{email.trim()}</strong>, a password reset link is on its way.
+        </p>
+        <button type="button" onClick={onBack} className="text-warm-bronze font-semibold hover:text-deep-bronze text-sm">
+          ← Back to sign in
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="text-center space-y-1">
+        <h2 className="text-2xl font-bold text-charcoal">Reset your password</h2>
+        <p className="text-medium-gray text-sm">We'll email you a link to set a new one.</p>
+      </div>
+      <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-5">
+        <Field label="Email Address" error={error} required>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            className={inp(error)}
+            autoComplete="email"
+          />
+        </Field>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-3 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl font-semibold disabled:opacity-60 transition-colors"
+        >
+          {loading ? 'Sending...' : 'Send reset link'}
+        </button>
+      </form>
+      <p className="text-center text-sm text-medium-gray">
+        <button type="button" onClick={onBack} className="text-warm-bronze font-semibold hover:text-deep-bronze">
+          ← Back to sign in
+        </button>
+      </p>
+    </div>
+  );
+}
+
 function SignInForm({
   onBack,
   onSuccess,
@@ -58,6 +142,7 @@ function SignInForm({
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showForgot, setShowForgot] = useState(false);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -100,13 +185,28 @@ function SignInForm({
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('first_name, last_name, role, phone, created_at, updated_at')
+        .select('first_name, last_name, role, phone, created_at, updated_at, must_change_password')
         .eq('id', data.user.id)
         .maybeSingle();
 
       if (profileError) {
         console.error('Profile lookup error:', profileError);
         toast.error('Signed in, but your profile could not be loaded.');
+        return;
+      }
+
+      // F01 remediation: this component previously dispatched SET_USER /
+      // SET_AUTHENTICATED directly on every successful sign-in, regardless
+      // of must_change_password — completely bypassing the forced-password
+      // gate App.tsx's restoreSession implements (that effect only runs
+      // from its own mount-time getSession() check and its onAuthStateChange
+      // handler doesn't listen for SIGNED_IN, so it never saw this login at
+      // all). Rather than duplicate the gate's logic here, a forced account
+      // reloads so App.tsx's existing, already-correct restoreSession path
+      // is the one that decides and renders the forced-change screen.
+      if (profile?.must_change_password) {
+        toast.success('Signed in — you need to set a new password first.');
+        window.location.reload();
         return;
       }
 
@@ -143,6 +243,10 @@ function SignInForm({
       setLoading(false);
     }
   };
+
+  if (showForgot) {
+    return <ForgotPasswordForm onBack={() => setShowForgot(false)} />;
+  }
 
   return (
     <div className="space-y-5">
@@ -202,6 +306,16 @@ function SignInForm({
             'Sign In'
           )}
         </button>
+
+        <p className="text-center">
+          <button
+            type="button"
+            onClick={() => setShowForgot(true)}
+            className="text-sm text-medium-gray hover:text-charcoal underline"
+          >
+            Forgot password?
+          </button>
+        </p>
       </form>
 
       <p className="text-center text-sm text-medium-gray">

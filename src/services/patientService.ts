@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { Patient, PatientData } from '@/types';
+import { assertUniqueProfileIdentity, normalizeEmail } from '@/lib/identity';
 
 // ─── Get all patients for the logged-in caregiver ────────────────────────────
 export async function getCaregiverPatients(): Promise<PatientData[]> {
@@ -86,82 +87,130 @@ export async function getPatientById(patientId: string): Promise<PatientData | n
 }
 
 // ─── Create a new patient ─────────────────────────────────────────────────────
+// F02 remediation: the four writes below (profile, patient, caregiver link,
+// invite email) cannot share a real DB transaction with auth.signUp (a
+// separate Auth API call), so true atomicity isn't available client-side.
+// Instead this is made *resumable*: `profiles.provisioning_status` records
+// how far a given signup got, so a retry (operator double-click, or retry
+// after a step-3/4 failure) detects the existing auth user + profile by
+// email and continues from there instead of re-calling auth.signUp (which
+// Supabase rejects with "already registered", previously leaving the
+// operator stuck with no way to finish). Requires migration
+// 003_identity_and_provisioning.sql (provisioning_status column).
 export async function createPatient(
   patientData: Partial<Patient>,
   caregiverId: string,
   relationship?: string
 ): Promise<Patient> {
-  // Use caregiver-provided temp password, or auto-generate one
   const tempPassword = (patientData as any).tempPassword?.trim() || (Math.random().toString(36).slice(-8) + 'Mm1!');
+  const email = patientData.email!;
+  const normalizedEmail = normalizeEmail(email);
 
-  // 1. Create auth user
-  const { data: authData, error: authError } = await supabase.auth.signUp({
-    email: patientData.email!,
-    password: tempPassword,
-    options: {
-      data: {
-        first_name: patientData.firstName,
-        last_name:  patientData.lastName,
-        role:       'patient',
+  const { data: existingProfile, error: existingProfileError } = await supabase
+    .from('profiles')
+    .select('id, provisioning_status')
+    .eq('email', normalizedEmail)
+    .maybeSingle();
+  if (existingProfileError) {
+    throw new Error(`Failed to check for an existing account: ${existingProfileError.message}`);
+  }
+  if (existingProfile && (existingProfile as any).provisioning_status === 'complete') {
+    throw new Error('This email address is already registered. Please sign in or use a different email.');
+  }
+
+  let patientId: string;
+
+  if (existingProfile) {
+    // Resume a previously partial attempt instead of re-running auth.signUp.
+    patientId = existingProfile.id;
+  } else {
+    await assertUniqueProfileIdentity({ email, phone: patientData.phone });
+
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email,
+      password: tempPassword,
+      options: {
+        data: {
+          first_name: patientData.firstName,
+          last_name:  patientData.lastName,
+          role:       'patient',
+        },
       },
-    },
-  });
-  if (authError) throw new Error(`Failed to create patient account: ${authError.message}`);
-  if (!authData.user) throw new Error('No user returned from signup');
+    });
+    if (authError) throw new Error(`Failed to create patient account: ${authError.message}`);
+    if (!authData.user) throw new Error('No user returned from signup');
+    patientId = authData.user.id;
+  }
 
-  const patientId = authData.user.id;
-
-  // 2. Create profile row
+  // 2. Create/resume profile row
   const { error: profileError } = await supabase.from('profiles').upsert({
-    id: patientId, email: patientData.email!,
+    id: patientId, email,
     first_name: patientData.firstName || '',
     last_name:  patientData.lastName  || '',
     role: 'patient', phone: patientData.phone || null,
     must_change_password: true,  // Forces patient to set their own password on first login
+    provisioning_status: 'profile_created',
   });
   if (profileError) throw new Error(`Failed to create profile: ${profileError.message}`);
 
-  // 3. Create patients row
-  const { data: patient, error: patientError } = await supabase
-    .from('patients')
-    .insert({
-      id:                             patientId,
-      preferred_name:                 patientData.preferredName                  || null,
-      date_of_birth:                  patientData.dateOfBirth                    || null,
-      diagnosis_date:                 patientData.diagnosisDate                  || null,
-      dementia_stage:                 patientData.dementiaStage                  || null,
-      location:                       patientData.location                       || null,
-      address:                        patientData.address                        || null,
-      affirmation:                    patientData.affirmation                    || null,
-      emergency_contact_name:         patientData.emergencyContact?.name         || null,
-      emergency_contact_relationship: patientData.emergencyContact?.relationship || null,
-      emergency_contact_phone:        patientData.emergencyContact?.phone        || null,
-      emergency_contact_email:        patientData.emergencyContact?.email        || null,
-    })
-    .select().single();
-  if (patientError || !patient) throw new Error(`Failed to create patient record: ${patientError?.message}`);
+  // 3. Create/resume patients row
+  const { data: existingPatientRow } = await supabase
+    .from('patients').select('*').eq('id', patientId).maybeSingle();
 
-  // 4. Link caregiver to patient
+  const patient = existingPatientRow ?? await (async () => {
+    const { data: p, error: patientError } = await supabase
+      .from('patients')
+      .insert({
+        id:                             patientId,
+        preferred_name:                 patientData.preferredName                  || null,
+        date_of_birth:                  patientData.dateOfBirth                    || null,
+        diagnosis_date:                 patientData.diagnosisDate                  || null,
+        dementia_stage:                 patientData.dementiaStage                  || null,
+        location:                       patientData.location                       || null,
+        address:                        patientData.address                        || null,
+        affirmation:                    patientData.affirmation                    || null,
+        emergency_contact_name:         patientData.emergencyContact?.name         || null,
+        emergency_contact_relationship: patientData.emergencyContact?.relationship || null,
+        emergency_contact_phone:        patientData.emergencyContact?.phone        || null,
+        emergency_contact_email:        patientData.emergencyContact?.email        || null,
+      })
+      .select().single();
+    if (patientError || !p) throw new Error(`Failed to create patient record: ${patientError?.message}`);
+    return p;
+  })();
+
+  await supabase.from('profiles').update({ provisioning_status: 'patient_created' }).eq('id', patientId);
+
+  // 4. Link caregiver to patient — upsert so a retry is idempotent against
+  // the existing UNIQUE(caregiver_id, patient_id) constraint.
   const { error: relError } = await supabase
     .from('caregiver_patients')
-    .insert({
+    .upsert({
       caregiver_id:      caregiverId,
       patient_id:        patientId,
       relationship_type: relationship || 'primary',
       is_primary:        true,
-    });
+    }, { onConflict: 'caregiver_id,patient_id' });
   if (relError) throw new Error(`Failed to link caregiver: ${relError.message}`);
 
-  // 5. Send invitation email so patient can set their password
+  await supabase.from('profiles').update({ provisioning_status: 'complete' }).eq('id', patientId);
+
+  // 5. Send invitation email so patient can set their password. The account
+  // is fully provisioned at this point either way, but a failure here is
+  // surfaced (not swallowed) since without this email the patient has no
+  // way to set a password and the operator previously had no visible error.
   try {
-    // redirectTo must match the URL configured in Supabase Auth → URL Configuration
-    // This ensures the password-reset link works on both localhost and production
     const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
-    await supabase.auth.resetPasswordForEmail(patientData.email!, {
+    const { error: inviteError } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: siteUrl,
     });
-  } catch {
-    console.warn('Invitation email could not be sent');
+    if (inviteError) throw inviteError;
+  } catch (inviteErr: any) {
+    throw new Error(
+      `Patient account was created, but the password-setup email failed to send: ${
+        inviteErr?.message || 'unknown error'
+      }. Use "Resend setup email" from the admin panel before the patient can log in.`
+    );
   }
 
   return buildPatient(patient, {
