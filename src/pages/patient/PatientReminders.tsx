@@ -557,8 +557,10 @@ export default function PatientReminders() {
   };
 
   const today = new Date().getDay();
-  const todaysReminders    = reminders.filter(r => r.daysOfWeek.includes(today) || r.daysOfWeek.length === 0);
-  const upcomingReminders  = reminders.filter(r => !r.daysOfWeek.includes(today) && r.daysOfWeek.length > 0);
+  // daysOfWeek is optional on Reminder (absent/empty means "every day") —
+  // this file previously assumed it was always a populated array.
+  const todaysReminders    = reminders.filter(r => (r.daysOfWeek ?? []).includes(today) || (r.daysOfWeek ?? []).length === 0);
+  const upcomingReminders  = reminders.filter(r => !(r.daysOfWeek ?? []).includes(today) && (r.daysOfWeek ?? []).length > 0);
 
   return (
     <div className="space-y-8">
@@ -651,7 +653,7 @@ export default function PatientReminders() {
                         <p className="text-sm text-medium-gray">{reminder.message}</p>
                         <div className="flex items-center gap-3 mt-1">
                           <span className="text-xs text-medium-gray flex items-center gap-1"><Clock className="w-3 h-3" />{reminder.time}</span>
-                          <span className="text-xs text-medium-gray flex items-center gap-1"><Calendar className="w-3 h-3" />{getDaysLabel(reminder.daysOfWeek)}</span>
+                          <span className="text-xs text-medium-gray flex items-center gap-1"><Calendar className="w-3 h-3" />{getDaysLabel(reminder.daysOfWeek ?? [])}</span>
                         </div>
                       </div>
                     </div>

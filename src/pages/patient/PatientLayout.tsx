@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/store/AppContext';
 import { supabase } from '@/lib/supabase';
+import { syncReminderNotifications } from '@/lib/reminderScheduler';
 import { TempUserProvider, ReadOnlyBanner } from '@/components/TempUserGuard';
 import { SubscriptionProvider } from '@/store/SubscriptionContext';
 import { type TierName } from '@/types/subscription';
@@ -72,6 +73,14 @@ export default function PatientLayout() {
   const hour = new Date().getHours();
   const isSundowningTime = hour >= 16 && hour <= 19;
   const isEvening = hour >= 19;
+
+  // F16 remediation: re-sync the device's scheduled notifications whenever
+  // the reminder list changes (initial load, and any future create/edit/
+  // delete flow that dispatches SET_REMINDERS/ADD_REMINDER). No-ops outside
+  // a native Capacitor build — see src/lib/reminderScheduler.ts.
+  useEffect(() => {
+    syncReminderNotifications(state.reminders);
+  }, [state.reminders]);
   const [intakeCompleted, setIntakeCompleted] = useState<boolean | null>(null);
 
   useEffect(() => {

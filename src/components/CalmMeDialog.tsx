@@ -142,9 +142,33 @@ export default function CalmMeDialog({ open, onClose }: { open: boolean; onClose
       return;
     }
 
-    const MAX_VIDEO_SIZE = 5 * 1024 * 1024 * 1024;
+    // F14 remediation, two parts:
+    // 1. The UI previously advertised a 5 GiB limit while the work order
+    //    states the actual `music-files` bucket caps objects at 250 MiB —
+    //    any upload between those two numbers would pass this client check
+    //    and then fail server-side with a generic storage error. Reconciled
+    //    to the real cap so the error surfaces here, with an accurate
+    //    message, before attempting the upload.
+    // 2. Per the work order: "Do not implement private video uploads into
+    //    insecure shared music-files policies; block persistence until
+    //    SEC-006 secure storage is approved." Video uploads into this
+    //    shared bucket are blocked below pending that approval — existing
+    //    playback/delete of already-uploaded videos is untouched. Flip
+    //    VIDEO_UPLOAD_BLOCKED_PENDING_SEC_006 to false once SEC-006 is
+    //    independently approved and a dedicated/secured bucket decision is
+    //    made (see 008_calm_me_video_PENDING_SEC-006.sql).
+    const VIDEO_UPLOAD_BLOCKED_PENDING_SEC_006 = true;
+    if (VIDEO_UPLOAD_BLOCKED_PENDING_SEC_006) {
+      setVideoError(
+        'Video uploads are temporarily unavailable while we finish a storage security review. Existing videos are unaffected.'
+      );
+      e.target.value = '';
+      return;
+    }
+
+    const MAX_VIDEO_SIZE = 250 * 1024 * 1024; // 250 MiB — matches work order's stated bucket cap
     if (file.size > MAX_VIDEO_SIZE) {
-      setVideoError('Video exceeds the 5 GB limit.');
+      setVideoError('Video exceeds the 250 MB limit.');
       e.target.value = '';
       return;
     }
