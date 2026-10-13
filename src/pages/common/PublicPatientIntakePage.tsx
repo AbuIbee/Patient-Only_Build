@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { createPublicPatientIntake } from '@/services/publicPatientIntakeService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,10 @@ const US_STATES = [
 
 export default function PublicPatientIntakePage() {
   const [isLoading, setIsLoading] = useState(false);
+  // F09 remediation: stable across retries of the SAME attempt (so a retry
+  // after a network error is idempotent), reset only after a successful
+  // submit so the next, genuinely new submission gets its own id.
+  const submissionIdRef = useRef<string>(crypto.randomUUID());
   const [currentStep, setCurrentStep] = useState(1);
   const [showTempPass, setShowTempPass] = useState(false);
 
@@ -103,7 +107,7 @@ export default function PublicPatientIntakePage() {
     setIsLoading(true);
 
     try {
-      const { intakeId, error } = await createPublicPatientIntake(formData);
+      const { intakeId, error } = await createPublicPatientIntake(formData, submissionIdRef.current);
 
       if (error) {
         toast.error(error.message || 'Failed to submit intake form');
@@ -111,6 +115,7 @@ export default function PublicPatientIntakePage() {
       }
 
       toast.success('Patient intake submitted successfully!');
+      submissionIdRef.current = crypto.randomUUID(); // next submission is a new attempt
       setCurrentStep(1);
       setFormData({
         patientFirstName: '',

@@ -178,32 +178,41 @@ async function loadUsersWithSubs(roleFilter?: string[]): Promise<UserRow[]> {
 }
 
 // ─── Save account type to subscriptions table ─────────────────────────────────
+// F10 remediation: this previously upserted tier/status/trial_ends_at
+// directly into `subscriptions` from the browser with no server-side
+// transition validation — any authenticated client calling the same
+// supabase-js upsert (not just this admin UI) could set their own tier to
+// 'master'/'active' if RLS allowed it. The write now goes through the
+// `admin_set_subscription` SECURITY DEFINER RPC (see
+// 010_subscriptions_and_admin_rpc.sql), which re-validates the caller is an
+// admin and that tier/status is one of the allowed combinations
+// server-side, so the privilege boundary doesn't depend solely on this
+// admin panel's own code path. Previously trial_ends_at was given a fixed
+// 2099 "never" value only for tier === 'master' specifically to work around
+// a NOT NULL constraint — the migration makes the column nullable instead,
+// so 'canceled'/'companion' (which pass null for trial_ends_at) stop
+// risking a constraint violation and 'master' no longer needs the
+// far-future placeholder.
 async function saveAccountType(userId: string, key: string): Promise<void> {
-  const def   = getAccountTypeDef(key);
-  const now   = new Date();
-  const never = '2099-12-31T00:00:00Z';
+  const def = getAccountTypeDef(key);
+  const now = new Date();
 
   const trialEndsAt = def.trialDays
     ? new Date(now.getTime() + def.trialDays * 86400000).toISOString()
-    : def.tier === 'master' ? never : null;
+    : null;
 
   const promoExpiresAt = def.promoDays
     ? new Date(now.getTime() + def.promoDays * 86400000).toISOString()
     : null;
 
-  const payload = {
-    user_id:          userId,
-    tier:             def.tier,
-    status:           def.status,
-    trial_started_at: now.toISOString(),
-    trial_ends_at:    trialEndsAt,
-    promo_expires_at: promoExpiresAt,
-    updated_at:       now.toISOString(),
-  };
-
-  const { error } = await supabase
-    .from('subscriptions')
-    .upsert(payload, { onConflict: 'user_id' });
+  const { error } = await supabase.rpc('admin_set_subscription', {
+    p_user_id: userId,
+    p_tier: def.tier,
+    p_status: def.status,
+    p_trial_started_at: now.toISOString(),
+    p_trial_ends_at: trialEndsAt,
+    p_promo_expires_at: promoExpiresAt,
+  });
   if (error) throw error;
 }
 

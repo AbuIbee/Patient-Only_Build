@@ -1,10 +1,27 @@
 import { supabase } from '@/lib/supabase';
 import type { PatientIntakeFormData } from '@/types/patientIntake';
+import { isUniqueConstraintError } from '@/lib/identity';
 
+// F09 remediation: anon has INSERT but, by design, no SELECT on
+// patient_intake (sensitive intake data must never be anonymously
+// readable). The previous `.insert().select('id').single()` asked
+// PostgREST to hand the inserted row back, which under that RLS shape
+// returns an empty representation and makes `.single()` throw — even
+// though the row was saved. The caller now generates the receipt id itself
+// and the insert never requests a representation back, so no SELECT grant
+// is needed. That same id doubles as an idempotency key: pass the same
+// `idempotencyKey` on a resubmission (double-click, retry after a flaky
+// response) and a duplicate insert fails on the PK constraint instead of
+// creating a second row — that specific failure is treated as the
+// already-submitted success case, not an error.
 export async function createPublicPatientIntake(
-  formData: PatientIntakeFormData
+  formData: PatientIntakeFormData,
+  idempotencyKey?: string
 ): Promise<{ intakeId: string; error: Error | null }> {
+  const intakeId = idempotencyKey || crypto.randomUUID();
+
   const payload = {
+    id: intakeId,
     patient_profile_id: null,
     caregiver_profile_id: null,
     patient_first_name: formData.patientFirstName,
@@ -33,13 +50,9 @@ export async function createPublicPatientIntake(
     created_by: null,
   };
 
-  const { data, error } = await supabase
-    .from('patient_intake')
-    .insert(payload)
-    .select('id')
-    .single();
+  const { error } = await supabase.from('patient_intake').insert(payload);
 
-  if (error) {
+  if (error && !isUniqueConstraintError(error)) {
     return {
       intakeId: '',
       error: new Error(
@@ -50,5 +63,5 @@ export async function createPublicPatientIntake(
     };
   }
 
-  return { intakeId: data.id, error: null };
+  return { intakeId, error: null };
 }
