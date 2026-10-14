@@ -142,12 +142,16 @@ export async function createPatient(
     patientId = authData.user.id;
   }
 
-  // 2. Create/resume profile row
+  // 2. Create/resume profile row. `role` is deliberately NOT sent — C02-001
+  // (012_profiles_revoke_client_role_authority.sql) removes client INSERT/
+  // UPDATE privilege on profiles.role entirely; new rows get it from the
+  // column DEFAULT 'patient', which is exactly what every patient created
+  // through this function needs.
   const { error: profileError } = await supabase.from('profiles').upsert({
     id: patientId, email,
     first_name: patientData.firstName || '',
     last_name:  patientData.lastName  || '',
-    role: 'patient', phone: patientData.phone || null,
+    phone: patientData.phone || null,
     must_change_password: true,  // Forces patient to set their own password on first login
     provisioning_status: 'profile_created',
   });

@@ -205,7 +205,13 @@ async function saveAccountType(userId: string, key: string): Promise<void> {
     ? new Date(now.getTime() + def.promoDays * 86400000).toISOString()
     : null;
 
-  const { error } = await supabase.rpc('admin_set_subscription', {
+  // C02-002: the RPC now returns the saved row (RETURNS subscriptions) so
+  // the caller can verify the authoritative persisted state rather than
+  // just the absence of an error — a thrown error already rolls back the
+  // whole function (see 013_subscriptions_atomic_lifecycle.sql), but an RPC
+  // reporting no error while returning no row would not be evidence of a
+  // successful save either.
+  const { data: savedRow, error } = await supabase.rpc('admin_set_subscription', {
     p_user_id: userId,
     p_tier: def.tier,
     p_status: def.status,
@@ -214,6 +220,9 @@ async function saveAccountType(userId: string, key: string): Promise<void> {
     p_promo_expires_at: promoExpiresAt,
   });
   if (error) throw error;
+  if (!savedRow || savedRow.tier !== def.tier || savedRow.status !== def.status) {
+    throw new Error('Subscription save could not be confirmed — the saved state did not match the requested account type.');
+  }
 }
 
 // ─── Add User Modal ───────────────────────────────────────────────────────────
@@ -242,10 +251,18 @@ function AddUserModal({ defaultRole = 'patient', onClose, onAdded }: {
     if (Object.keys(errs).length) { toast.error('Please fix the errors'); return; }
     setSaving(true);
     try {
+      // C02-001: signup metadata role is no longer trusted by the trigger
+      // (handle_new_user caps it to patient/caregiver, see
+      // 012_profiles_revoke_client_role_authority.sql) and profiles.role has
+      // no client INSERT/UPDATE privilege at all. The new account is always
+      // created as 'patient'; a non-patient choice is applied afterward as a
+      // separate, explicit, audited admin_set_role() call — this admin's own
+      // session deliberately promoting the new account, not the signup
+      // itself claiming a privileged role.
       const { data, error } = await supabase.auth.signUp({
         email: form.email.trim().toLowerCase(),
         password: form.password,
-        options: { data: { first_name: form.firstName.trim(), last_name: form.lastName.trim(), role: form.role } },
+        options: { data: { first_name: form.firstName.trim(), last_name: form.lastName.trim() } },
       });
       if (error) throw error;
       if (!data.user) throw new Error('No user returned');
@@ -254,11 +271,29 @@ function AddUserModal({ defaultRole = 'patient', onClose, onAdded }: {
         email: form.email.trim().toLowerCase(),
         first_name: form.firstName.trim(),
         last_name:  form.lastName.trim(),
-        role:       form.role,
         phone:      form.phone.trim() || null,
         must_change_password: true,
       });
-      await saveAccountType(data.user.id, form.accountType);
+      if (form.role !== 'patient') {
+        const { error: roleError } = await supabase.rpc('admin_set_role', {
+          p_user_id: data.user.id,
+          p_role: form.role,
+        });
+        if (roleError) throw new Error(`Account created, but role could not be set to "${form.role}": ${roleError.message}`);
+      }
+      try {
+        await saveAccountType(data.user.id, form.accountType);
+      } catch (acctErr: any) {
+        // The auth user + profile already exist at this point (no true
+        // cross-system rollback is available client-side — see
+        // patientService.createPatient's identical constraint). Surface
+        // that explicitly rather than a generic failure message, so the
+        // operator knows to retry setting the account type for this
+        // specific user rather than re-running the whole form.
+        throw new Error(
+          `${form.firstName} ${form.lastName}'s account was created, but the account type could not be set: ${acctErr.message}. Edit this user and re-select the account type to retry.`
+        );
+      }
       toast.success(`${form.firstName} ${form.lastName} added`);
       onAdded(); onClose();
     } catch (err: any) { toast.error('Failed: ' + err.message); }
@@ -418,16 +453,27 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
     if (!e.first_name.trim()) { toast.error('First name required'); return; }
     setSaving(u.id);
     try {
-      // 1. Save profile
+      // 1. Save profile. role is sent through admin_set_role() separately,
+      // never in this plain update — C02-001 removes client UPDATE
+      // privilege on profiles.role entirely (it was reachable by any
+      // caller updating their OWN row, which is exactly the self-escalation
+      // path the live profiles_update policy allowed).
       const { error: pErr } = await supabase.from('profiles').update({
         first_name: e.first_name.trim(),
         last_name:  e.last_name.trim(),
         email:      e.email.trim().toLowerCase(),
         phone:      e.phone.trim() || null,
-        role:       e.role,
         updated_at: new Date().toISOString(),
       }).eq('id', u.id);
       if (pErr) throw pErr;
+
+      if (e.role !== u.role) {
+        const { error: roleError } = await supabase.rpc('admin_set_role', {
+          p_user_id: u.id,
+          p_role: e.role,
+        });
+        if (roleError) throw roleError;
+      }
 
       // 2. Save account type → subscriptions table with correct rules
       const origKey = getAccountTypeKey(u.sub, u.email);

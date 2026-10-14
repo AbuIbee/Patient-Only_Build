@@ -18,7 +18,6 @@ import {
   isWithinRefundWindow,
   isTrialExpired,
   isMasterEmail,
-  validatePromoCode,
   FREE_TRIAL_DAYS,
   PROMO_TOTAL_DAYS,
 } from '@/types/subscription';
@@ -89,25 +88,17 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
-      const COLS = 'id, user_id, tier, status, trial_started_at, trial_ends_at, current_period_start, current_period_end, stripe_customer_id, stripe_subscription_id, promo_code, promo_expires_at, canceled_at, created_at, updated_at';
-
       if (!data) {
-        const now = new Date().toISOString();
-        const { data: created, error: createErr } = await supabase
-          .from('subscriptions')
-          .insert({
-            user_id: user.id,
-            tier: 'free_tier',
-            status: 'active',
-            trial_started_at: now,
-            trial_ends_at: now,
-          })
-          .select(COLS)
-          .single();
+        // C02-003: a direct client .insert() here is unreachable once
+        // 011/013 remove client INSERT/UPDATE on subscriptions — and would
+        // have let any caller insert an arbitrary tier anyway. The RPC only
+        // ever grants the caller's OWN row exactly 'free_tier'/'active',
+        // idempotently, and never touches an existing row of any tier.
+        const { data: created, error: createErr } = await supabase.rpc('provision_free_subscription');
 
         if (createErr) {
-          console.error('[Subscription] Create error:', createErr.message);
-        } else {
+          console.error('[Subscription] Free-tier provisioning error:', createErr.message);
+        } else if (created) {
           setSubscription(mapRow(created));
         }
         return user.id;
@@ -148,97 +139,41 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   // ── Promo code redemption ────────────────────────────────────────────────
 
+  // C02-003: validation, redemption-reservation and the subscription
+  // transition now happen in one atomic server transaction
+  // (redeem_promo_code(), 013_subscriptions_atomic_lifecycle.sql). The
+  // previous client-side version inserted the redemption, THEN updated the
+  // subscription as a separate, unchecked-for-affected-rows call — after
+  // 011 removes client UPDATE on subscriptions, that update would silently
+  // affect zero rows with no error, consuming the code with no entitlement
+  // granted. The client-side rollback .delete() also had no permission to
+  // succeed against the live promo_redemptions policies even before that.
   const redeemPromoCode = useCallback(async (code: string): Promise<{ success: boolean; message: string; promo?: PromoCode }> => {
-    const promo = validatePromoCode(code);
-    if (!promo) {
-      return { success: false, message: 'Invalid or expired promotional code.' };
-    }
-
-    if (subscription?.tier === 'master') {
-      return { success: false, message: 'Master accounts already have full access.' };
-    }
-    if (subscription?.status === 'promo') {
-      return { success: false, message: 'A promotional code is already active on your account.' };
-    }
-
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return { success: false, message: 'Not signed in.' };
+      const { data, error } = await supabase.rpc('redeem_promo_code', { p_code: code });
 
-      const email = user.email?.toLowerCase() ?? '';
-
-      // ── Check this email hasn't already used this code ───────────────────
-      const { data: existingRedemption } = await supabase
-        .from('promo_redemptions')
-        .select('id')
-        .eq('email', email)
-        .eq('promo_code', promo.code)
-        .maybeSingle();
-
-      if (existingRedemption) {
-        return {
-          success: false,
-          message: 'This promotional code has already been used on this email address.',
-        };
+      if (error) {
+        return { success: false, message: error.message || 'Could not apply code. Please try again.' };
       }
-
-      // ── Record the redemption first (unique constraint prevents race conditions) ──
-      const { error: redemptionError } = await supabase
-        .from('promo_redemptions')
-        .insert({
-          email:      email,
-          user_id:    user.id,
-          promo_code: promo.code,
-        });
-
-      if (redemptionError) {
-        // Unique constraint violation — another request beat us to it
-        return {
-          success: false,
-          message: 'This promotional code has already been used on this email address.',
-        };
-      }
-
-      // ── Apply the promo to the subscription ─────────────────────────────
-      // Promo window calculated from original sign-up date so the 45-day
-      // free period counts toward — not in addition to — the 2 months total.
-      const signupDate  = subscription?.trialStartedAt
-        ? new Date(subscription.trialStartedAt)
-        : new Date();
-      const promoExpiry = new Date(signupDate.getTime() + promo.days * 24 * 60 * 60 * 1000);
-
-      const { error: updateError } = await supabase
-        .from('subscriptions')
-        .update({
-          tier:             promo.tier,
-          status:           'promo',
-          promo_code:       promo.code,
-          promo_expires_at: promoExpiry.toISOString(),
-          updated_at:       new Date().toISOString(),
-        })
-        .eq('user_id', user.id);
-
-      if (updateError) {
-        console.error('[Promo] Subscription update error:', updateError.message);
-        // Roll back the redemption record so user can try again
-        await supabase
-          .from('promo_redemptions')
-          .delete()
-          .eq('email', email)
-          .eq('promo_code', promo.code);
-        return { success: false, message: 'Could not apply code. Please try again.' };
+      if (!data) {
+        // The frontend must verify returned state before declaring success
+        // — an RPC that reports no error but also returns no row is not
+        // evidence of a successful redemption.
+        return { success: false, message: 'Could not confirm the code was applied. Please try again.' };
       }
 
       await loadSubscription();
+      const expiry = data.promo_expires_at ? new Date(data.promo_expires_at) : null;
       return {
         success: true,
-        message: `Code applied! Free access until ${promoExpiry.toLocaleDateString()}.`,
-        promo,
+        message: expiry
+          ? `Code applied! Free access until ${expiry.toLocaleDateString()}.`
+          : 'Code applied!',
       };
     } catch {
       return { success: false, message: 'Unexpected error. Please try again.' };
     }
-  }, [subscription, loadSubscription]);
+  }, [loadSubscription]);
 
   // ── Derived values ───────────────────────────────────────────────────────
 

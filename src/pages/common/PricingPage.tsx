@@ -136,19 +136,13 @@ export default function PricingPage({
           return;
         }
 
-        const { error: freePlanError } = await supabase
-          .from('subscriptions')
-          .upsert(
-            {
-              user_id: user.id,
-              tier: 'free_tier',
-              status: 'active',
-              updated_at: now,
-            },
-            { onConflict: 'user_id' },
-          );
+        // C02-003: server-owned, idempotent free-tier provisioning — a
+        // direct client upsert here is unreachable once 011/013 remove
+        // client INSERT/UPDATE on subscriptions, and would have let any
+        // caller claim an arbitrary tier/status via the same call shape.
+        const { data: freeRow, error: freePlanError } = await supabase.rpc('provision_free_subscription');
 
-        if (freePlanError) {
+        if (freePlanError || !freeRow) {
           console.error('Free Tier activation error:', freePlanError);
           toast.error('Could not activate the Free Tier. Please try again.');
           return;
@@ -597,13 +591,14 @@ export default function PricingPage({
 
       const now = new Date().toISOString();
 
+      // role not sent — C02-001 removes client write privilege on
+      // profiles.role; new rows default to 'patient' at the column level.
       const { error: profileError } = await supabase.from('profiles').upsert({
         id: data.user.id,
         email: normalizedEmail,
         username: normalizedUsername,
         first_name: firstName.trim(),
         last_name: lastName.trim(),
-        role: 'patient',
         created_at: now,
         updated_at: now,
       });

@@ -124,12 +124,13 @@ function AddPatientModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
       }
       if (!data.user) throw new Error('No user returned from signup');
 
+      // role not sent — C02-001 removes client write privilege on
+      // profiles.role; new rows default to 'patient' at the column level.
       await supabase.from('profiles').upsert({
         id:                  data.user.id,
         email:               form.email.trim().toLowerCase(),
         first_name:          form.firstName.trim(),
         last_name:           form.lastName.trim(),
-        role:                'patient',
         phone:               form.phone.trim() || null,
         must_change_password: true,
       });
