@@ -162,10 +162,26 @@ COMMENT ON FUNCTION public.admin_set_subscription IS 'F10/SEC-004 correction: ad
 --      with tier='free_tier' AND status='trialing', never an UPDATE of an
 --      existing row's billing fields) — not the original unrestricted
 --      policies.
---   3. `DROP FUNCTION IF EXISTS public.admin_set_subscription(...)` would
---      revert to whatever version 010 left in place (also admin-gated) if
---      this file's redefinition specifically needs reverting without
---      touching the policy changes.
+--   3. *** CORRECTED (C02-009): the step 3 previously written here was
+--      WRONG and must not be followed. *** `DROP FUNCTION
+--      public.admin_set_subscription(...)` does NOT "revert to whatever
+--      010 left in place" — Postgres keeps no history of prior
+--      `CREATE OR REPLACE FUNCTION` bodies at all. Once this file's
+--      `CREATE OR REPLACE FUNCTION` has run, 010's original body is simply
+--      gone; a `DROP FUNCTION` after that removes the ONLY copy that
+--      exists, leaving admin_set_subscription entirely undefined and
+--      breaking every legitimate admin account-type change with no
+--      fallback. If this function specifically needs to be restored to an
+--      earlier behavior: (a) capture the exact function body, owner, and
+--      ACLs (`pg_get_functiondef`, `\df+`) from the environment BEFORE
+--      applying any change there, kept outside this repo if it must stay
+--      out of version control; (b) to roll back, run a fresh
+--      `CREATE OR REPLACE FUNCTION` using that captured definition — never
+--      a bare `DROP FUNCTION` with no replacement; (c) if no prior
+--      definition was captured, the only safe path is forward: write and
+--      review a NEW migration with the corrected behavior, matching the
+--      rest of this file's own approach, rather than attempting to
+--      "restore" anything.
 
 -- ============================================================
 -- STAGING-ONLY AUTHORIZATION TESTS (described for the owner to run in an
