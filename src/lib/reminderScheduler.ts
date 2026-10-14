@@ -13,17 +13,29 @@
 // timer") rather than a setTimeout-based stand-in that would stop firing
 // the moment the tab/app is backgrounded or killed.
 //
-// NOT RUNTIME-VERIFIED: no isolated device/emulator was available in this
-// pass (see 04_OUTSTANDING_BLOCKERS.md). The exact request/response shape
-// of @capacitor/local-notifications below is written against its stable,
-// long-documented v1+ repeating-schedule API (`schedule.on.{weekday,hour,minute}`),
-// but could not be typechecked against the installed 8.0.2 types in this
-// checkout because node_modules here is a stub (see 00_BASELINE_AND_SCOPE.md)
-// and `npm install` was not run pending separate approval. Verify with
-// `tsc`/`npm run build` before relying on this in a device build.
+// CORRECTIVE PASS (MYMEMORIA-CLAUDE-CORRECTIVE-001): verified against the
+// actually-installed @capacitor/local-notifications@8.0.2 package (tsc/vite
+// build both pass against this file — see 04_TEST_RESULTS.md). The plugin's
+// own AAR manifest (node_modules/@capacitor/local-notifications/android/
+// src/main/AndroidManifest.xml) already declares POST_NOTIFICATIONS,
+// RECEIVE_BOOT_COMPLETED, and WAKE_LOCK, and registers its own boot-restore
+// receiver — Android's standard manifest merger pulls all of that into the
+// final app manifest automatically, and the module is correctly wired into
+// the native Gradle build (android/capacitor.settings.gradle,
+// android/app/capacitor.build.gradle both include capacitor-local-
+// notifications). Reboot survival and timezone re-evaluation are therefore
+// handled by the plugin natively, not by this file. What this file is
+// responsible for: requesting permission, converting this app's day
+// convention, generating stable per-dose notification ids, performing a
+// full cancel+reschedule (duplicate prevention), and reporting back the
+// resulting permission state so the UI can show a truthful denied-state
+// message instead of silently doing nothing (see PatientLayout.tsx /
+// PatientReminders.tsx).
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { Reminder } from '@/types';
+
+export type ReminderPermissionStatus = 'granted' | 'denied' | 'unsupported';
 
 let permissionPromptedThisSession = false;
 
@@ -75,11 +87,11 @@ export function toCapacitorWeekday(jsDay: number): number {
  * every call rather than a diff. Call this whenever `state.reminders`
  * changes (see PatientLayout.tsx).
  */
-export async function syncReminderNotifications(reminders: Reminder[]): Promise<void> {
-  if (!Capacitor.isNativePlatform()) return;
+export async function syncReminderNotifications(reminders: Reminder[]): Promise<ReminderPermissionStatus> {
+  if (!Capacitor.isNativePlatform()) return 'unsupported';
 
   const granted = await ensureReminderPermission();
-  if (!granted) return;
+  if (!granted) return 'denied';
 
   try {
     const pending = await LocalNotifications.getPending();
@@ -90,7 +102,7 @@ export async function syncReminderNotifications(reminders: Reminder[]): Promise<
     }
   } catch (err) {
     console.error('Failed to clear previously scheduled reminders before re-sync:', err);
-    return; // don't schedule on top of an unknown existing set
+    return 'granted'; // permission is fine; just don't schedule on top of an unknown existing set
   }
 
   const toSchedule = reminders
@@ -115,13 +127,14 @@ export async function syncReminderNotifications(reminders: Reminder[]): Promise<
       }));
     });
 
-  if (toSchedule.length === 0) return;
+  if (toSchedule.length === 0) return 'granted';
 
   try {
     await LocalNotifications.schedule({ notifications: toSchedule });
   } catch (err) {
     console.error('Failed to schedule reminder notifications:', err);
   }
+  return 'granted';
 }
 
 export async function cancelAllReminderNotifications(): Promise<void> {

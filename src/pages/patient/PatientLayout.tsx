@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/store/AppContext';
 import { supabase } from '@/lib/supabase';
-import { syncReminderNotifications } from '@/lib/reminderScheduler';
+import { syncReminderNotifications, type ReminderPermissionStatus } from '@/lib/reminderScheduler';
 import { TempUserProvider, ReadOnlyBanner } from '@/components/TempUserGuard';
 import { SubscriptionProvider } from '@/store/SubscriptionContext';
 import { type TierName } from '@/types/subscription';
@@ -77,9 +77,18 @@ export default function PatientLayout() {
   // F16 remediation: re-sync the device's scheduled notifications whenever
   // the reminder list changes (initial load, and any future create/edit/
   // delete flow that dispatches SET_REMINDERS/ADD_REMINDER). No-ops outside
-  // a native Capacitor build — see src/lib/reminderScheduler.ts.
+  // a native Capacitor build — see src/lib/reminderScheduler.ts. The
+  // permission result is surfaced to PatientReminders so a denied
+  // permission shows a truthful message instead of silently doing nothing
+  // (corrective pass, MYMEMORIA-CLAUDE-CORRECTIVE-001 / FQA-010).
+  const [reminderPermissionStatus, setReminderPermissionStatus] =
+    useState<ReminderPermissionStatus>('unsupported');
   useEffect(() => {
-    syncReminderNotifications(state.reminders);
+    let cancelled = false;
+    syncReminderNotifications(state.reminders).then(status => {
+      if (!cancelled) setReminderPermissionStatus(status);
+    });
+    return () => { cancelled = true; };
   }, [state.reminders]);
   const [intakeCompleted, setIntakeCompleted] = useState<boolean | null>(null);
 
@@ -444,7 +453,7 @@ export default function PatientLayout() {
       case 'documents':
         return <PatientDocuments />;
       case 'reminders':
-        return <PatientReminders />;
+        return <PatientReminders reminderPermissionDenied={reminderPermissionStatus === 'denied'} />;
       case 'checkin':
         return <CarePartnerCheckin />;
       case 'intake':

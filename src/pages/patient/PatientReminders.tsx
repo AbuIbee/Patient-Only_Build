@@ -527,7 +527,10 @@ function MyTasks() {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function PatientReminders() {
+// reminderPermissionDenied: corrective pass (FQA-010) — surfaces a truthful
+// denied-permission state instead of silently scheduling nothing. See
+// src/lib/reminderScheduler.ts / PatientLayout.tsx.
+export default function PatientReminders({ reminderPermissionDenied = false }: { reminderPermissionDenied?: boolean }) {
   const { state } = useApp();
   const reminders = state.reminders.filter(r => r.isActive);
 
@@ -662,6 +665,24 @@ export default function PatientReminders() {
               ))}
           </div>
         </div>
+      )}
+
+      {/* Denied-permission state — corrective pass (FQA-010): don't claim
+          notifications will arrive if the device has denied permission. */}
+      {reminderPermissionDenied && (
+        <Card className="p-4 bg-gentle-coral/10 border-0">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-gentle-coral/20 rounded-full flex items-center justify-center flex-shrink-0">
+              <AlertCircle className="w-5 h-5 text-gentle-coral" />
+            </div>
+            <div>
+              <h4 className="font-semibold text-charcoal mb-1">Notifications are turned off</h4>
+              <p className="text-sm text-medium-gray">
+                This device isn't allowing My Memoria Ally to send reminder notifications, so you won't see alerts at the scheduled times. Turn on notifications for this app in your device settings to fix this.
+              </p>
+            </div>
+          </div>
+        </Card>
       )}
 
       {/* Info Card — updated copy */}
