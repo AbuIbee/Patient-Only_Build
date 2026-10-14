@@ -1,0 +1,42 @@
+# 02 — Subscription Policy Remediation (F10 / FQA-016 / SEC-004)
+
+## Why migration 010 needed a follow-up
+`010_subscriptions_and_admin_rpc.sql` opened with `CREATE TABLE IF NOT EXISTS subscriptions (...)`. This is standard, documented PostgreSQL behavior: the statement executes as a complete no-op whenever the table already exists — it does not inspect, alter, or remove anything about that existing table, including its RLS policies. The Codex independent-verification pass (session-prior, `codex_verify_001/03_MIGRATION_SECURITY_AUDIT.md`) identified this as the highest-severity open gap in the entire remediation branch.
+
+## Evidence used (read-only; no live connection)
+`C:\Users\solod\OneDrive\Desktop\MyMemoria_Production_Audit\04_SUPABASE_SECURITY_AND_SCHEMA.md` — a static snapshot document (not a live query performed by this session) containing, among other things, an exact policy-name listing for every table in the live project, captured under the heading "Complete reviewed public catalog/policy index." For `public.subscriptions` specifically, that listing names 17 distinct policies and gives their command/permissive-vs-restrictive type. The accompanying "SEC-004" note in the same document states plainly: *"subscriptions own-row INSERT/UPDATE grants allow tier/status/master and period fields; no authoritative billing guard. The policy named 'Service role can update subscriptions' applies to PUBLIC with USING true. A policy label is not enforcement."*
+
+This satisfies the correction order's "if exact grants unclear, stop that subtask and report" condition in the negative — the grants are **not** unclear; they are named explicitly, by source, in evidence already present on this machine. This subtask was not stopped.
+
+## Exact policies removed, and why each one matters
+
+| Policy name | Command | Why it's dangerous | Disposition |
+|---|---|---|---|
+| `Users can insert own subscription` | INSERT | Own-row insert with no column restriction — a client can insert a fresh row claiming `tier='master'` for their own `user_id` before any other row exists. | **DROP**ped |
+| `Users insert own subscription` | INSERT | Apparent duplicate/legacy of the above (same effective risk, different migration generation). | **DROP**ped |
+| `subscriptions_insert` | INSERT | Third INSERT policy with the same apparent intent — all three are OR-combined, so all three had to be removed; removing only one or two would have left the hole open. | **DROP**ped |
+| `Users can update own subscription` | UPDATE | Own-row update with no column restriction — lets a client change their own existing row's `tier`/`status`/`stripe_subscription_id`/expiry fields directly. | **DROP**ped |
+| `Users update own subscription` | UPDATE | Apparent duplicate of the above. | **DROP**ped |
+| `subscriptions_update` | UPDATE | Third UPDATE policy, same reasoning as the INSERT triplicate. | **DROP**ped |
+| `subscriptions_delete` | DELETE | Lets a client destroy their own billing record outright. The correction order's "preserving existing rows" requirement is best served by removing client delete authority entirely, not narrowing it. | **DROP**ped |
+| `Service role can update subscriptions` | UPDATE | **The single most severe entry.** Per the audit evidence, its name is misleading: it is not scoped to the `service_role` Postgres role at all — it applies to `PUBLIC` with `USING (true)`, i.e. unconditionally, for any row, for any authenticated (or possibly anonymous) caller, regardless of ownership. | **DROP**ped |
+
+### Explicitly NOT touched, and why
+- **All SELECT policies** (`Users can read own subscription`, `Users can view own subscription`, `Users view own subscription`, `subscriptions_select`) — read access to one's own row is legitimate and required by `SubscriptionContext`'s entitlement checks and `App.tsx`'s payment gate. The correction order asks to remove **write** authority, not read.
+- **`Service role full access` and `Service role subscriptions`** (both `ALL`, PERMISSIVE) — nothing in the available evidence flags either of these as misscoped (unlike the one named above, which the evidence explicitly calls out). Supabase's actual `service_role` database role carries `BYPASSRLS` by default, meaning a genuine service-role connection (the Stripe webhook, `expire_trials`) does not depend on these policies existing at all. Dropping them on a guess, without evidence they're misconfigured, risked breaking a legitimate server path for no confirmed security benefit — exactly what "preserving... authorized server billing transitions" warns against.
+- **`block_expired_temp_subscriptions`, `block_temp_insert_subscriptions`, `block_temp_update_subscriptions`** (RESTRICTIVE) — these narrow access further for temp/demo accounts; they are additional restrictions layered on top of whatever PERMISSIVE policies apply, and removing permissive policies only makes these restrictive ones redundant-but-harmless, never conflicting.
+
+## Table-shape correction
+010 proposed `user_id UUID PRIMARY KEY` as the table's key. The real live table (confirmed by the same evidence) has a separate `id` primary key column, with `user_id` as an ordinary `NOT NULL` column alongside `current_period_start`, `current_period_end`, `stripe_customer_id`, `canceled_at`, and `promo_code` — none of which 010 proposed. Because 010's `CREATE TABLE IF NOT EXISTS` never executes against an existing table, this mismatch had no live effect, but it did mean 010's `admin_set_subscription()` RPC's `ON CONFLICT (user_id)` clause depends on a UNIQUE constraint on `user_id` that this engagement has no confirmation exists. Migration 011 redefines the RPC to use an explicit `SELECT ... WHERE user_id = p_user_id` existence check followed by a plain `INSERT` or `UPDATE ... WHERE id = v_existing_id`, which is correct regardless of whether that constraint is present.
+
+## Forward-fix / rollback / tests
+All three are embedded directly in `011_subscriptions_revoke_client_billing_authority.sql`'s own comments (per the correction order's "include forward-fix/rollback and staging-only authorization tests" instruction), summarized:
+- **Forward fix:** the `DROP POLICY` statements and RPC redefinition described above.
+- **Rollback:** explicitly does *not* auto-generate reinstatement SQL for the dropped policies, since their exact `USING`/`WITH CHECK` predicates were never captured verbatim by the available evidence (only names and a prose description of behavior were) — reconstructing them precisely would be guessing. The file instructs that any genuine rollback need should instead add back a narrowly-scoped replacement (e.g., own-row INSERT permitted only for a brand-new free-tier/trialing row, never an UPDATE of existing billing fields), not the original unrestricted policies.
+- **Staging-only authorization tests (T1–T8):** three negative tests (non-admin direct INSERT/UPDATE/DELETE all denied), two admin-RPC tests (success for an admin caller, `RAISE EXCEPTION` for a non-admin caller), one upsert-idempotency test, one existing-rows-preserved regression snapshot (row count + `user_id` set before/after), and one note that the service-role path (Stripe webhook / `expire_trials`) should be confirmed unaffected in staging.
+
+## Residual, explicitly-flagged uncertainty
+- The live `status` CHECK constraint's exact allowed values could not be confirmed from the available evidence (only column/policy data, not constraint definitions, were in the source document). FQA-011 (the independent Codex audit, read earlier in this engagement) states the live constraint may not include `'trialing'`. `admin_set_subscription()`'s validated allow-list still includes `'trialing'` (unchanged from 010) because removing it without confirmation would be an unverified guess in the other direction; if the live constraint does exclude it, calling the RPC with that status will fail safely with a visible `CHECK` violation, not a silent miscording.
+- If a future live audit shows `Service role full access` or `Service role subscriptions` are **also** scoped to `PUBLIC` rather than the actual `service_role`, they need the same `DROP POLICY` treatment this file gave `Service role can update subscriptions`. Not assumed here without evidence.
+
+**This migration is NOT executed.** Applying it to any environment requires separate owner authorization, per the correction order and the original work order's standing instructions.
