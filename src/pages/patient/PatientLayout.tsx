@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/store/AppContext';
 import { supabase } from '@/lib/supabase';
-import { syncReminderNotifications, type ReminderPermissionStatus } from '@/lib/reminderScheduler';
+import { syncReminderNotifications, addReminderResumeListener, type SchedulingStatus } from '@/lib/reminderScheduler';
 import { TempUserProvider, ReadOnlyBanner } from '@/components/TempUserGuard';
 import { SubscriptionProvider } from '@/store/SubscriptionContext';
 import { type TierName } from '@/types/subscription';
@@ -69,27 +69,51 @@ export default function PatientLayout() {
   const [subscriptionTier, setSubscriptionTier] = useState<TierName>('free_tier');
   const { state, dispatch } = useApp();
   const patient = state.patient;
+  const accountId = state.currentUser?.id || state.patient?.id || '';
 
   const hour = new Date().getHours();
   const isSundowningTime = hour >= 16 && hour <= 19;
   const isEvening = hour >= 19;
 
-  // F16 remediation: re-sync the device's scheduled notifications whenever
-  // the reminder list changes (initial load, and any future create/edit/
-  // delete flow that dispatches SET_REMINDERS/ADD_REMINDER). No-ops outside
-  // a native Capacitor build — see src/lib/reminderScheduler.ts. The
-  // permission result is surfaced to PatientReminders so a denied
-  // permission shows a truthful message instead of silently doing nothing
-  // (corrective pass, MYMEMORIA-CLAUDE-CORRECTIVE-001 / FQA-010).
-  const [reminderPermissionStatus, setReminderPermissionStatus] =
-    useState<ReminderPermissionStatus>('unsupported');
+  // F16/C02-004/C02-005/C02-007: re-sync the device's scheduled
+  // notifications whenever the reminder list changes. No-ops outside a
+  // native Capacitor build — see src/lib/reminderScheduler.ts.
+  // 'SCHEDULING' is a local, transient UI state (not something the
+  // scheduler itself returns) shown only while the call is in flight — a
+  // permission result of 'granted' is never treated as proof the
+  // notifications were actually scheduled; only a resolved SCHEDULED result
+  // is.
+  const [reminderStatus, setReminderStatus] = useState<SchedulingStatus | 'SCHEDULING'>('SCHEDULING');
   useEffect(() => {
+    if (!accountId) return;
     let cancelled = false;
-    syncReminderNotifications(state.reminders).then(status => {
-      if (!cancelled) setReminderPermissionStatus(status);
+    setReminderStatus('SCHEDULING');
+    syncReminderNotifications(accountId, state.reminders).then(result => {
+      if (!cancelled) setReminderStatus(result.status);
+      if (result.status === 'FAILED' || result.status === 'RETRY_REQUIRED') {
+        console.error('Reminder scheduling did not complete:', result);
+      }
     });
     return () => { cancelled = true; };
-  }, [state.reminders]);
+  }, [accountId, state.reminders]);
+
+  // Device-settings permission changes are only visible on app resume —
+  // re-sync when that happens rather than only when the reminder list itself
+  // changes.
+  useEffect(() => {
+    if (!accountId) return;
+    const cleanup = addReminderResumeListener(
+      (resumedAccountId, reminders) => {
+        setReminderStatus('SCHEDULING');
+        syncReminderNotifications(resumedAccountId, reminders).then(result => {
+          setReminderStatus(result.status);
+        });
+      },
+      () => (accountId ? { accountId, reminders: state.reminders } : null),
+    );
+    return cleanup;
+  }, [accountId, state.reminders]);
+
   const [intakeCompleted, setIntakeCompleted] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -453,7 +477,7 @@ export default function PatientLayout() {
       case 'documents':
         return <PatientDocuments />;
       case 'reminders':
-        return <PatientReminders reminderPermissionDenied={reminderPermissionStatus === 'denied'} />;
+        return <PatientReminders reminderStatus={reminderStatus} />;
       case 'checkin':
         return <CarePartnerCheckin />;
       case 'intake':

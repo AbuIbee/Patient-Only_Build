@@ -30,6 +30,14 @@ function AppContent() {
   // events are honored only after that initial check completes.
   const initialCheckDoneRef = useRef(false);
 
+  // The onAuthStateChange callback below is registered once (effect deps:
+  // [dispatch]) and so closes over `state` as it was at that first render —
+  // reading state.currentUser directly inside it would always see the
+  // stale, pre-login value. A ref kept in sync on every render gives the
+  // callback the live id instead.
+  const currentUserIdRef = useRef<string | undefined>(undefined);
+  currentUserIdRef.current = state.currentUser?.id;
+
   const currentPath = useMemo(() => window.location.pathname, []);
   const isPublicPatientIntakeRoute = currentPath === '/patient-intake';
   const isPrivacyRoute = currentPath === '/privacy';
@@ -195,11 +203,19 @@ function AppContent() {
       if (event === 'SIGNED_OUT') {
         if (!initialCheckDoneRef.current) return;
 
-        // F16: clear this patient's scheduled reminder notifications on
-        // sign-out so a shared/reused device doesn't keep firing a prior
-        // patient's medication/reminder notifications after they've logged
-        // out (no-ops outside a native build).
-        void cancelAllReminderNotifications();
+        // F16/C02-005: clear this patient's scheduled reminder
+        // notifications on sign-out so a shared/reused device doesn't keep
+        // firing a prior patient's medication/reminder notifications after
+        // they've logged out (no-ops outside a native build). Logged, not
+        // silently ignored, if clearance cannot be confirmed.
+        const signedOutUserId = currentUserIdRef.current;
+        if (signedOutUserId) {
+          void cancelAllReminderNotifications(signedOutUserId).then(result => {
+            if (result.status !== 'SCHEDULED' && result.status !== 'UNSUPPORTED') {
+              console.error('Could not confirm reminder notifications were cleared on sign-out:', result);
+            }
+          });
+        }
 
         dispatch({ type: 'LOGOUT' });
         setShowPasswordReset(false);

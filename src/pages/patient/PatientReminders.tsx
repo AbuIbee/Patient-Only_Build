@@ -1,5 +1,6 @@
 import { useApp } from '@/store/AppContext';
 import { supabase } from '@/lib/supabase';
+import type { SchedulingStatus } from '@/lib/reminderScheduler';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -526,11 +527,51 @@ function MyTasks() {
   );
 }
 
+// ── Reminder status message contract (C02-006) ────────────────────────────
+// One message per possible scheduling outcome — never an unconditional
+// "you'll see notifications" promise regardless of whether that's true.
+// SCHEDULING is a transient, UI-only state (PatientLayout.tsx sets it while
+// the async call is in flight); the rest mirror reminderScheduler.ts's
+// SchedulingStatus exactly.
+type ReminderStatus = SchedulingStatus | 'SCHEDULING';
+
+const REMINDER_STATUS_COPY: Record<ReminderStatus, { title: string; body: string; tone: 'neutral' | 'warning' | 'info' } | null> = {
+  UNSUPPORTED: {
+    title: 'Notifications are not available',
+    body: 'Notifications are not available on this device or platform.',
+    tone: 'neutral',
+  },
+  PERMISSION_DENIED: {
+    title: 'Notifications are turned off',
+    body: 'Notifications are turned off. Enable them in device settings to receive reminders.',
+    tone: 'warning',
+  },
+  SCHEDULING: {
+    title: 'Setting up your reminders',
+    body: 'Setting up your reminders…',
+    tone: 'info',
+  },
+  FAILED: {
+    title: "Couldn't schedule reminders",
+    body: "We couldn't schedule your reminders. Please try again.",
+    tone: 'warning',
+  },
+  RETRY_REQUIRED: {
+    title: 'Some reminders need confirming',
+    body: 'Some reminders could not be confirmed. Retry scheduling.',
+    tone: 'warning',
+  },
+  // SCHEDULED renders no banner at all — the existing "How Reminders Work"
+  // card already covers it, with corrected, non-absolute copy below.
+  SCHEDULED: null,
+};
+
 // ── Main component ────────────────────────────────────────────────────────────
-// reminderPermissionDenied: corrective pass (FQA-010) — surfaces a truthful
-// denied-permission state instead of silently scheduling nothing. See
+// reminderStatus: corrective pass (C02-004/C02-006) — a typed scheduling
+// outcome, not a boolean, so the UI can distinguish every state the
+// scheduler can actually report instead of only granted/denied. See
 // src/lib/reminderScheduler.ts / PatientLayout.tsx.
-export default function PatientReminders({ reminderPermissionDenied = false }: { reminderPermissionDenied?: boolean }) {
+export default function PatientReminders({ reminderStatus = 'SCHEDULED' }: { reminderStatus?: ReminderStatus }) {
   const { state } = useApp();
   const reminders = state.reminders.filter(r => r.isActive);
 
@@ -667,25 +708,34 @@ export default function PatientReminders({ reminderPermissionDenied = false }: {
         </div>
       )}
 
-      {/* Denied-permission state — corrective pass (FQA-010): don't claim
-          notifications will arrive if the device has denied permission. */}
-      {reminderPermissionDenied && (
-        <Card className="p-4 bg-gentle-coral/10 border-0">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 bg-gentle-coral/20 rounded-full flex items-center justify-center flex-shrink-0">
-              <AlertCircle className="w-5 h-5 text-gentle-coral" />
+      {/* Reminder scheduling status — corrective pass (C02-006): one
+          coherent message per actual outcome, never an unconditional
+          delivery promise. Live-region so a screen reader announces a
+          status change, but only ever a status that was actually
+          reconciled — SCHEDULED renders no banner/announcement at all, so
+          nothing here ever announces unverified success. */}
+      {REMINDER_STATUS_COPY[reminderStatus] && (() => {
+        const copy = REMINDER_STATUS_COPY[reminderStatus]!;
+        const toneClasses = copy.tone === 'warning'
+          ? { bg: 'bg-gentle-coral/10', iconBg: 'bg-gentle-coral/20', icon: 'text-gentle-coral' }
+          : { bg: 'bg-warm-bronze/10', iconBg: 'bg-warm-bronze/20', icon: 'text-warm-bronze' };
+        return (
+          <Card className={`p-4 ${toneClasses.bg} border-0`} role="status" aria-live="polite">
+            <div className="flex items-start gap-3">
+              <div className={`w-10 h-10 ${toneClasses.iconBg} rounded-full flex items-center justify-center flex-shrink-0`}>
+                <AlertCircle className={`w-5 h-5 ${toneClasses.icon}`} />
+              </div>
+              <div>
+                <h4 className="font-semibold text-charcoal mb-1">{copy.title}</h4>
+                <p className="text-sm text-medium-gray">{copy.body}</p>
+              </div>
             </div>
-            <div>
-              <h4 className="font-semibold text-charcoal mb-1">Notifications are turned off</h4>
-              <p className="text-sm text-medium-gray">
-                This device isn't allowing My Memoria Ally to send reminder notifications, so you won't see alerts at the scheduled times. Turn on notifications for this app in your device settings to fix this.
-              </p>
-            </div>
-          </div>
-        </Card>
-      )}
+          </Card>
+        );
+      })()}
 
-      {/* Info Card — updated copy */}
+      {/* Info Card — corrected copy: no unconditional "at the scheduled
+          times" delivery promise (C02-006). */}
       <Card className="p-4 bg-warm-bronze/10 border-0">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 bg-warm-bronze/20 rounded-full flex items-center justify-center flex-shrink-0">
@@ -694,7 +744,10 @@ export default function PatientReminders({ reminderPermissionDenied = false }: {
           <div>
             <h4 className="font-semibold text-charcoal mb-1">How Reminders Work</h4>
             <p className="text-sm text-medium-gray">
-              You and your Care Partner will set up reminders to help remember important things. You'll see notifications at the scheduled times.
+              You and your Care Partner will set up reminders to help remember important things.
+              {reminderStatus === 'SCHEDULED'
+                ? ' Reminders are scheduled on this device. Delivery timing may vary with device settings.'
+                : ''}
             </p>
           </div>
         </div>
