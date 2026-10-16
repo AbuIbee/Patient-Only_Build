@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   Check,
-  Star,
   Lock,
   RefreshCw,
   ShieldCheck,
@@ -19,8 +18,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { assertUniqueProfileIdentity, isUniqueConstraintError, normalizeEmail, uniqueIdentityMessage } from '@/lib/identity';
-import { TIERS, type TierName /*, validatePromoCode */ } from '@/types/subscription';
-import { useApp } from '@/store/AppContext';
+import { TIERS, PLANS, type TierName, type PlanName /*, validatePromoCode */ } from '@/types/subscription';
+import { useApp } from '@/store/useApp';
 
 interface PricingPageProps {
   modal?: boolean;
@@ -45,7 +44,13 @@ export default function PricingPage({
   const [step, setStep] = useState<Step>(
   startAtPlans ? 'plans' : 'create-account',
 );
-  const [selectedTier, setSelectedTier] = useState<TierName>(preselectedTier ?? 'free_tier');
+  const [, setSelectedTier] = useState<TierName>(preselectedTier ?? 'free_tier');
+  // REPAIR 006: which paid PLAN (Daily Care vs Full Support) is selected —
+  // orthogonal to selectedTier (still just free_tier/paid_tier/master).
+  // null whenever selectedTier !== 'paid_tier'.
+  // Only the setter is read elsewhere (handleSelectTier records which plan
+  // was chosen); the value itself isn't rendered anywhere yet.
+  const [, setSelectedPlan] = useState<PlanName | null>(null);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -67,9 +72,42 @@ export default function PricingPage({
 
   const [isLoading, setIsLoading] = useState(false);
 
-  const tierOrder: TierName[] = ['free_tier', 'paid_tier'];
-  const visibleTiers = tierOrder;
-  const selectedTierConfig = TIERS[selectedTier];
+  // MYMEMORIA-FUNCTIONAL-REPAIR-006: replaces the single generic "Paid
+  // Tier" card with the two real, separately-priced, separately-entitled
+  // products. `daily_care`/`full_support` are never inferred from a label
+  // or guessed — each card below carries its own explicit `plan` value,
+  // which is exactly what gets sent to the plan-aware checkout path (today
+  // a reported, not-yet-implemented blocker — see handleSelectTier).
+  interface PlanCard {
+    key: string;
+    tierName: TierName;
+    plan: PlanName | null;
+    label: string;
+    monthlyPrice: number;
+    annualLicensePrice: number | null; // separate charge — never substitutes the monthly price
+    tagline: string;
+    features: typeof TIERS.free_tier.features;
+  }
+  const visiblePlanCards: PlanCard[] = [
+    {
+      key: 'free_tier', tierName: 'free_tier', plan: null,
+      label: TIERS.free_tier.label, monthlyPrice: TIERS.free_tier.price,
+      annualLicensePrice: null, tagline: TIERS.free_tier.tagline,
+      features: TIERS.free_tier.features,
+    },
+    {
+      key: 'daily_care', tierName: 'paid_tier', plan: 'daily_care',
+      label: PLANS.daily_care.label, monthlyPrice: PLANS.daily_care.monthlyPrice,
+      annualLicensePrice: PLANS.daily_care.annualLicensePrice, tagline: PLANS.daily_care.tagline,
+      features: PLANS.daily_care.features,
+    },
+    {
+      key: 'full_support', tierName: 'paid_tier', plan: 'full_support',
+      label: PLANS.full_support.label, monthlyPrice: PLANS.full_support.monthlyPrice,
+      annualLicensePrice: PLANS.full_support.annualLicensePrice, tagline: PLANS.full_support.tagline,
+      features: PLANS.full_support.features,
+    },
+  ];
 
 
 
@@ -89,8 +127,9 @@ export default function PricingPage({
    * This prevents an unpaid user from receiving Paid Tier access by closing
    * or abandoning the Stripe Checkout page.
    */
-  const handleSelectTier = async (tierName: TierName) => {
+  const handleSelectTier = async (tierName: TierName, plan: PlanName | null = null) => {
     setSelectedTier(tierName);
+    setSelectedPlan(plan);
     setIsLoading(true);
 
     try {
@@ -107,7 +146,7 @@ export default function PricingPage({
 
       const { data: currentSubscription, error: subscriptionLoadError } = await supabase
         .from('subscriptions')
-        .select('tier, status')
+        .select('tier, plan, status')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -172,72 +211,55 @@ export default function PricingPage({
 
       // ── PAID TIER ─────────────────────────────────────────────────────────
       if (tierName === 'paid_tier') {
-        // Do not send a current Paid Tier subscriber through checkout again.
+        if (!plan) {
+          toast.error('Please choose Daily Care or Full Support.');
+          return;
+        }
+
+        // Do not send a current subscriber of THIS SAME plan through
+        // checkout again. REPAIR 006: previously checked generic
+        // tier==='paid_tier', which would have falsely told a Daily Care
+        // subscriber "already active" while they tried to view/choose
+        // Full Support (or vice versa) — now compares the real plan too.
         if (
           currentSubscription?.tier === 'paid_tier' &&
-          currentSubscription?.status === 'active'
+          currentSubscription?.status === 'active' &&
+          currentSubscription?.plan === plan
         ) {
-          toast.success('Your Paid Tier is already active.');
+          toast.success(`Your ${PLANS[plan].label} plan is already active.`);
           onClose?.();
           return;
         }
-        /*
 
-        const priceId = TIERS.paid_tier.stripePriceIdMonthly;
-
-        if (!priceId) {
-          toast.error('Payment configuration is missing. Please contact support.');
-          return;
-        }
-
-        
-         * IMPORTANT — PAYMENT AUTHORITY
-         *
-         * Do not set paid_tier / active in this browser code.
-         *
-         * For an existing Free Tier user, their current free_tier / active record
-         * remains unchanged while Stripe Checkout is open. If they cancel checkout,
-         * they keep Free Tier access.
-         *
-         * For a new user choosing Paid Tier first, the Stripe webhook must create or
-         * update their subscriptions record after Stripe verifies payment.
-         */
-
-        toast.success('Redirecting to secure checkout…');
-
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-
-        if (sessionError || !session?.access_token) {
-          toast.error('Please sign in again before starting checkout.');
-          return;
-        }
-
-        const fnRes = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({
-              tierName: 'paid_tier',
-              }),
-          },
+        // *** MYMEMORIA-FUNCTIONAL-REPAIR-006 — REPORTED BLOCKER, not
+        // silently worked around ***
+        //
+        // The existing live checkout path (supabase/functions/
+        // create-checkout-session/index.ts) was found, during this repair,
+        // to use exactly ONE Stripe price (`STRIPE_PAID_TIER_PRICE_ID`) for
+        // every "Paid Tier" checkout, completely independent of which plan
+        // is selected — by that function's own explicit comment, "Sprint 1
+        // has exactly one Stripe subscription product." The matching
+        // stripe-webhook/index.ts similarly always activates a single
+        // undifferentiated `tier='paid_tier'` with no plan value at all.
+        //
+        // Routing BOTH Daily Care ($4.99/mo) and Full Support ($9.99/mo)
+        // through that same unconfirmed single price would silently charge
+        // every self-service customer the SAME amount regardless of which
+        // plan they believed they were buying — exactly the "accidentally
+        // map both products to unrestricted paid_tier" failure this repair
+        // order requires avoiding, and a real, live billing-accuracy risk,
+        // not a hypothetical one. Neither edge function is modified here —
+        // doing so would mean guessing at or creating a second live Stripe
+        // price, both explicitly prohibited for this repair. Self-service
+        // checkout for a SPECIFIC plan is therefore left honestly
+        // unavailable until the owner confirms two distinct Stripe
+        // products/prices and those two functions are updated accordingly.
+        // Admin-assigned plans (AdminLayout.tsx, via admin_set_subscription())
+        // are unaffected by this and fully functional today.
+        toast.error(
+          `Online checkout for ${PLANS[plan].label} isn't available yet. Please contact support to subscribe.`,
         );
-
-        const fnJson = await fnRes.json().catch(() => ({}));
-
-        if (!fnRes.ok || !fnJson.url) {
-          console.error('Checkout error:', fnJson.error ?? 'No checkout URL returned');
-          toast.error('Unable to begin secure checkout. Please try again.');
-          return;
-        }
-
-        window.location.href = fnJson.url;
         return;
       }
 
@@ -626,13 +648,16 @@ export default function PricingPage({
         .from('patient_intake')
         .upsert(
           {
+            // 009_patient_intake.sql: no DB default for `id` ("client-
+            // generated receipt id") and no `updated_at` column at all —
+            // this is always a brand-new row right after signup above.
+            id: crypto.randomUUID(),
             patient_profile_id: data.user.id,
             caregiver_profile_id: null,
             created_by: data.user.id,
             patient_first_name: firstName.trim(),
             patient_last_name: lastName.trim(),
             patient_email: normalizedEmail,
-            updated_at: now,
           },
           { onConflict: 'patient_profile_id' },
         );
@@ -682,23 +707,20 @@ export default function PricingPage({
 
               <p className="text-medium-gray max-w-2xl mx-auto">
                 Choose the level of support that fits your needs. The Free Tier includes
-                essential caregiving tools. The Paid Tier includes every feature in the app.
-              </p>
-
-              <p className="text-sm text-medium-gray mt-2 font-medium">
-                Start Free, or choose Paid Tier for complete application access at $2.99 per month.
+                three essential caregiving tools. Daily Care and Full Support are two
+                separate paid plans — each with its own monthly price and its own
+                additional annual organization account license.
               </p>
             </div>
 
             {/* Cards — equal height via joined border design */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-0 mb-10 rounded-2xl overflow-hidden border-2 border-warm-bronze shadow-lg">
-              {visibleTiers.map((tierName, i) => {
-                const cfg = TIERS[tierName];
-                const isPopular = tierName === 'free_tier';
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-0 mb-10 rounded-2xl overflow-hidden border-2 border-warm-bronze shadow-lg">
+              {visiblePlanCards.map((card, i) => {
+                const isPopular = card.key === 'free_tier';
 
                 return (
                   <motion.div
-                    key={tierName}
+                    key={card.key}
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.08 }}
@@ -708,21 +730,31 @@ export default function PricingPage({
                         : 'bg-warm-ivory md:border-l-2 border-t-2 md:border-t-0 border-warm-bronze/30'
                     }`}
                   >
-                    {/* Tier label + badge */}
+                    {/* Plan label */}
                     <div className="flex items-start justify-between mb-1">
-                      <h3 className="text-xl font-bold text-charcoal">{cfg.label}</h3>
-                      
+                      <h3 className="text-xl font-bold text-charcoal">{card.label}</h3>
+                    </div>
+                    <p className="text-xs text-medium-gray mb-1">{card.tagline}</p>
+
+                    {/* Price — monthly subscription and, where applicable, the
+                        SEPARATE additional annual organization license. Never
+                        combined into one number — the license is not a
+                        substitute for the monthly charge. */}
+                    <div className="mt-3 mb-6 pb-6 border-b border-soft-taupe">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-4xl font-bold text-charcoal">${card.monthlyPrice.toFixed(2)}</span>
+                        <span className="text-medium-gray text-sm font-medium">/month</span>
+                      </div>
+                      {card.annualLicensePrice !== null && (
+                        <p className="text-xs text-medium-gray mt-1">
+                          + ${card.annualLicensePrice.toFixed(2)}/year organization account license (billed separately)
+                        </p>
+                      )}
                     </div>
 
-                    {/* Price */}
-                    <div className="flex items-baseline gap-1 mt-3 mb-6 pb-6 border-b border-soft-taupe">
-                      <span className="text-4xl font-bold text-charcoal">${cfg.price.toFixed(2)}</span>
-                      <span className="text-medium-gray text-sm font-medium">/month</span>
-                    </div>
-
-                    {/* Features list — flex-1 forces both columns same height */}
+                    {/* Features list — flex-1 forces equal-height columns */}
                     <ul className="space-y-3 flex-1 mb-8">
-                      {cfg.features.map((feat) => (
+                      {card.features.map((feat) => (
                         <li key={feat.label} className="flex items-start gap-2.5">
                           {feat.included ? (
                             <span className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${feat.highlight ? 'bg-warm-bronze/15' : 'bg-soft-sage/20'}`}>
@@ -747,7 +779,7 @@ export default function PricingPage({
                     {/* CTA button */}
                     <button
                       type="button"
-                      onClick={() => void handleSelectTier(tierName)}
+                      onClick={() => void handleSelectTier(card.tierName, card.plan)}
                       disabled={isLoading}
                       aria-busy={isLoading}
                       className={`w-full py-3.5 rounded-xl font-bold text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
@@ -756,15 +788,7 @@ export default function PricingPage({
                           : 'bg-charcoal hover:bg-charcoal/85 text-white'
                       }`}
                     >
-                      {/*
-                        SPRINT 1 — Original CTA retained for review:
-                        {tierName === 'free_tier' ? 'Start Free' : 'Upgrade to Paid'}
-                      */}
-                      {tierName === 'free_tier'
-                        ? 'Start Free'
-                        : startAtPlans
-                          ? 'Upgrade to Paid'
-                          : 'Choose Paid Tier'}
+                      {isPopular ? 'Start Free' : `Choose ${card.label}`}
                     </button>
                   </motion.div>
                 );

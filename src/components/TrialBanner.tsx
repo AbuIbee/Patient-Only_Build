@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { ShieldCheck, X, AlertTriangle, Tag, Crown } from 'lucide-react';
+import { X, AlertTriangle, Tag } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSubscription } from '@/store/SubscriptionContext';
+import { useSubscription } from '@/store/useSubscription';
 
 interface TrialBannerProps {
   onUpgrade: () => void;
@@ -95,58 +95,16 @@ export default function TrialBanner({ onUpgrade }: TrialBannerProps) {
     );
   }
 
-  // ── 45-day free trial ─────────────────────────────────────────────────────
-  if (subscription.status === 'trialing') {
-    const urgent = trialDays <= 5;
-    if (dismissed && !urgent) return null;
-
-    return (
-      <AnimatePresence>
-        <motion.div
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: 'auto', opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
-          className={`w-full border-b px-4 py-2.5 flex items-center justify-between gap-4 ${
-            urgent
-              ? 'bg-warm-amber/20 border-warm-amber/40'
-              : 'bg-soft-sage/15 border-soft-sage/30'
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            <ShieldCheck className={`w-4 h-4 flex-shrink-0 ${urgent ? 'text-warm-amber' : 'text-soft-sage'}`} />
-            <p className={`text-sm font-medium ${urgent ? 'text-amber-900' : 'text-charcoal'}`}>
-              {trialDays === 0
-                ? 'Your 45-day free trial ends today!'
-                : `Free trial — ${trialDays} day${trialDays !== 1 ? 's' : ''} remaining`}
-              {' '}·{' '}
-              <span className="font-normal opacity-80">
-                {urgent ? 'Upgrade to keep access' : 'No credit card needed yet'}
-              </span>
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={onUpgrade}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
-                urgent
-                  ? 'bg-warm-bronze text-white hover:bg-deep-bronze'
-                  : 'bg-soft-sage text-white hover:bg-soft-sage/80'
-              }`}
-            >
-              See plans
-            </button>
-
-            {!urgent && (
-              <button onClick={() => setDismissed(true)} className="text-medium-gray hover:text-charcoal">
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </motion.div>
-      </AnimatePresence>
-    );
-  }
-
+  // PHASE 3 (MYMEMORIA-FUNCTIONAL-CLOSURE-MASTER-009): the "45-day free
+  // trial" branch previously here (`subscription.status === 'trialing'`)
+  // was dead code — 'trialing' is not one of the six approved
+  // SubscriptionStatus values (src/types/subscription.ts) and
+  // 013_subscriptions_atomic_lifecycle.sql's `subscriptions_status_check`
+  // CHECK constraint rejects it outright, so this branch could never
+  // execute. The identical dead branch was already removed from
+  // ProtectedRoute.tsx in an earlier repair; removed here for the same
+  // reason. This component (TrialBanner.tsx) itself has no confirmed
+  // import/render call anywhere in this codebase — see the completion
+  // report.
   return null;
 }

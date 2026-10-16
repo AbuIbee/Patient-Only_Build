@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RotateCcw, ChevronLeft, Award, Zap, Layers, Grid } from 'lucide-react';
+import { RotateCcw, ChevronLeft, Award, Zap } from 'lucide-react';
 
 // STYLISTIC UTILITIES & CONFIGURATIONS
 type Suit = 'spades' | 'hearts' | 'diamonds' | 'clubs';
@@ -101,7 +101,8 @@ function HighEndVictoryCanvas() {
     let width = (canvas.width = window.innerWidth);
     let height = (canvas.height = window.innerHeight);
 
-    const particles: any[] = [];
+    interface Particle { x: number; y: number; vx: number; vy: number; alpha: number; size: number; color: string; decay: number; }
+    const particles: Particle[] = [];
     const colors = ['#3b82f6', '#ec4899', '#f59e0b', '#10b981', '#8b5cf6', '#ef4444'];
 
     const spawnBurst = (x: number, y: number) => {
@@ -219,7 +220,7 @@ export default function SolitaireGame({ onBack }: { onBack: () => void }) {
     if (s.tableau[si].length) s.tableau[si][s.tableau[si].length - 1].faceUp = true;
   };
 
-  const tryFound = (card: SolCard, src: string, state: SolState): SolState | null => {
+  const tryFound = useCallback((card: SolCard, src: string, state: SolState): SolState | null => {
     for (let fi = 0; fi < 4; fi++) {
       if (canFound(card, state.foundations[fi])) {
         const s = clone(state);
@@ -229,9 +230,9 @@ export default function SolitaireGame({ onBack }: { onBack: () => void }) {
       }
     }
     return null;
-  };
+  }, []);
 
-  const cascade = (state: SolState): SolState => {
+  const cascade = useCallback((state: SolState): SolState => {
     let s = clone(state), changed = true, n = 0;
     while (changed && n < 200) {
       changed = false;
@@ -250,9 +251,9 @@ export default function SolitaireGame({ onBack }: { onBack: () => void }) {
       }
     }
     return s;
-  };
+  }, [tryFound]);
 
-  const checkAuto = (state: SolState) => {
+  const checkAuto = useCallback((state: SolState) => {
     const allUp = state.tableau.every(c => c.every(card => card.faceUp)),
           noStock = !state.stock.length && !state.waste.length;
     if (allUp && noStock) {
@@ -263,7 +264,7 @@ export default function SolitaireGame({ onBack }: { onBack: () => void }) {
       return true;
     }
     return false;
-  };
+  }, [cascade]);
 
   const drawStock = () => {
     const s = clone(gs);
@@ -352,22 +353,22 @@ export default function SolitaireGame({ onBack }: { onBack: () => void }) {
           cy = 'touches' in e ? e.touches[0].clientY : e.clientY;
     const d = { src, cards, x: cx, y: cy };
     setDragging(d);
-    (dragRef as any).current = d;
+    dragRef.current = d;
     setSel(null);
   };
 
   useEffect(() => {
     const onMove = (e: MouseEvent | TouchEvent) => {
-      if (!(dragRef as any).current) return;
+      if (!dragRef.current) return;
       const cx = 'touches' in e ? (e as TouchEvent).touches[0].clientX : (e as MouseEvent).clientX,
             cy = 'touches' in e ? (e as TouchEvent).touches[0].clientY : (e as MouseEvent).clientY;
       setDragging(prev => prev ? { ...prev, x: cx, y: cy } : null);
     };
 
     const onUp = (e: MouseEvent | TouchEvent) => {
-      const d = (dragRef as any).current as typeof dragging;
+      const d = dragRef.current as typeof dragging;
       if (!d) return;
-      (dragRef as any).current = null;
+      dragRef.current = null;
       
       const cx = 'changedTouches' in e ? (e as TouchEvent).changedTouches[0].clientX : (e as MouseEvent).clientX,
             cy = 'changedTouches' in e ? (e as TouchEvent).changedTouches[0].clientY : (e as MouseEvent).clientY;
@@ -416,7 +417,7 @@ export default function SolitaireGame({ onBack }: { onBack: () => void }) {
       window.removeEventListener('touchmove', onMove);
       window.removeEventListener('touchend', onUp);
     };
-  }, [gs]);
+  }, [gs, cascade, checkAuto]);
 
   const progress = Math.round(gs.foundations.reduce((a, f) => a + f.length, 0) / 52 * 100);
   const wasteShow = draw === 3 ? gs.waste.slice(-3) : gs.waste.slice(-1);
@@ -755,7 +756,7 @@ export default function SolitaireGame({ onBack }: { onBack: () => void }) {
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
-              style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyCenter: 'center', zIndex: 100, padding: '20px' }}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px' }}
             >
               <motion.div 
                 initial={{ scale: 0.8, y: 40 }} 

@@ -1,10 +1,5 @@
-import {
-  createContext,
-  useContext,
-  useReducer,
-  type ReactNode,
-  type Dispatch,
-} from 'react';
+import { useReducer, type ReactNode } from 'react';
+import { AppContext } from './useApp';
 import type {
   AppState,
   User,
@@ -41,7 +36,7 @@ const initialState: AppState = {
 };
 
 // Action Types
-type Action =
+export type Action =
   | { type: 'SET_USER'; payload: User | null }
   | { type: 'SET_AUTHENTICATED'; payload: boolean }
   | { type: 'SET_ROLE'; payload: UserRole | null }
@@ -154,14 +149,6 @@ function appReducer(state: AppState, action: Action): AppState {
   }
 }
 
-// Context
-interface AppContextType {
-  state: AppState;
-  dispatch: Dispatch<Action>;
-}
-
-const AppContext = createContext<AppContextType | undefined>(undefined);
-
 // Provider
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
@@ -173,14 +160,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// Hook
-export function useApp() {
-  const context = useContext(AppContext);
-
-  if (context === undefined) {
-    throw new Error('useApp must be used within an AppProvider');
-  }
-
-  return context;
-}
+// RELEASE-BLOCKER-CLOSURE PHASE 2: the AppContext object and useApp() hook
+// live in ./useApp.ts, not here — a file exporting both a component
+// (AppProvider) and a non-component value breaks Vite Fast Refresh
+// (react-refresh/only-export-components). Re-exporting them here is not
+// viable (a re-export still counts as a non-component export from this
+// file); every import site was updated instead.
 

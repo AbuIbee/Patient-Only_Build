@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import { Mic, Play, Pause, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -11,7 +10,7 @@ export default function VoiceRecorderDialog({
   open: boolean;
   onClose: () => void;
   hasExistingRecording: boolean;
-  onSave: (blob: Blob, label: string) => void;
+  onSave: (blob: Blob, label: string) => boolean | Promise<boolean>;
 }) {
   const [phase, setPhase] = useState<'idle' | 'recording' | 'review' | 'confirm'>('idle');
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -22,9 +21,11 @@ export default function VoiceRecorderDialog({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   useEffect(() => {
-    if (open) { setPhase('idle'); setBlob(null); setPreviewUrl(null); setElapsed(0); setPreviewPlaying(false); }
+    if (open) { setPhase('idle'); setBlob(null); setPreviewUrl(null); setElapsed(0); setPreviewPlaying(false); setIsSaving(false); setSaveError(false); }
   }, [open]);
 
   const startRecording = async () => {
@@ -70,10 +71,26 @@ export default function VoiceRecorderDialog({
     doSave();
   };
 
-  const doSave = () => {
-    if (!blob) return;
-    onSave(blob, 'Your voice');
-    onClose();
+  const doSave = async () => {
+    if (!blob || isSaving) return;
+    // FQA-023: the dialog previously closed immediately after firing
+    // onSave, without waiting for the parent's async upload/profile-save to
+    // actually finish or succeed — closing (and dropping the recording)
+    // regardless of whether it was ever persisted.
+    setIsSaving(true);
+    setSaveError(false);
+    try {
+      const ok = await onSave(blob, 'Your voice');
+      if (ok === false) {
+        setSaveError(true);
+        setIsSaving(false);
+        return;
+      }
+      onClose();
+    } catch {
+      setSaveError(true);
+      setIsSaving(false);
+    }
   };
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -146,9 +163,14 @@ export default function VoiceRecorderDialog({
             <div className="space-y-3 text-center">
               <p className="text-sm text-charcoal font-medium">You already have a recording saved.</p>
               <p className="text-sm text-medium-gray">Replace it with this new one?</p>
+              {saveError && (
+                <p className="text-sm text-red-600 font-medium">Couldn't save the recording. Please try again.</p>
+              )}
               <div className="flex gap-2">
-                <button onClick={() => setPhase('review')} className="flex-1 py-2.5 rounded-xl border border-soft-taupe text-charcoal text-sm font-medium hover:bg-soft-taupe/20">Keep old</button>
-                <button onClick={doSave} className="flex-1 py-2.5 rounded-xl bg-warm-bronze text-white text-sm font-medium hover:bg-deep-bronze">Replace</button>
+                <button onClick={() => setPhase('review')} disabled={isSaving} className="flex-1 py-2.5 rounded-xl border border-soft-taupe text-charcoal text-sm font-medium hover:bg-soft-taupe/20 disabled:opacity-50">Keep old</button>
+                <button onClick={doSave} disabled={isSaving} className="flex-1 py-2.5 rounded-xl bg-warm-bronze text-white text-sm font-medium hover:bg-deep-bronze disabled:opacity-50">
+                  {isSaving ? 'Saving…' : 'Replace'}
+                </button>
               </div>
             </div>
           )}
@@ -170,12 +192,18 @@ export default function VoiceRecorderDialog({
             </button>
           )}
           {phase === 'review' && (
-            <button
-              onClick={handleSave}
-              className="w-full py-3 bg-soft-sage hover:bg-green-500 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-all"
-            >
-              <CheckCircle2 className="w-5 h-5" /> Save Recording
-            </button>
+            <div className="space-y-2">
+              {saveError && (
+                <p className="text-sm text-red-600 font-medium text-center">Couldn't save the recording. Please try again.</p>
+              )}
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="w-full py-3 bg-soft-sage hover:bg-green-500 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-5 h-5" /> {isSaving ? 'Saving…' : 'Save Recording'}
+              </button>
+            </div>
           )}
         </div>
       </DialogContent>

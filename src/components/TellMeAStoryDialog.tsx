@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { BookOpen, ChevronRight, ChevronLeft, Play, Pause, Waves } from 'lucide-react';
+import { BookOpen, ChevronRight, ChevronLeft, Play, Pause } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 
@@ -299,12 +298,6 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
     audioRef.current = a;
   };
 
-  const getCurrentDisplayName = () => {
-    if (!currentPath) return 'Stories & Nature Sounds';
-    const node = findNode(currentPath);
-    return node ? node.label : currentPath.split('/').pop() || currentPath;
-  };
-
   const getParentPath = (path: string): string | null => {
     for (const n of TREE) {
       if (n.children?.some((c) => c.path === path)) return n.path;
@@ -327,7 +320,7 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
     loadNatureUrls();
   }, [open]);
 
-  const playNatureSound = (soundId: string, soundTitle: string) => {
+  const playNatureSound = (soundId: string) => {
     const url = natureAudioUrls.get(soundId);
     if (!url) {
       console.error('No URL found for sound:', soundId);
@@ -523,7 +516,7 @@ export default function TellMeAStoryDialog({ open, onClose }: { open: boolean; o
             {NATURE_SOUNDS.map((sound) => (
               <button
                 key={sound.id}
-                onClick={() => playNatureSound(sound.id, sound.title)}
+                onClick={() => playNatureSound(sound.id)}
                 className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
                   playingNature === sound.id
                     ? 'border-soft-sage bg-soft-sage/10'

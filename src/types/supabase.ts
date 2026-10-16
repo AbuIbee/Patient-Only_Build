@@ -6,11 +6,24 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export type UserRole = 'admin' | 'therapist' | 'caregiver' | 'patient'
+// PHASE 3 / PHASE 1.3 (MYMEMORIA-FUNCTIONAL-CLOSURE-MASTER-009): `pending`
+// added — confirmed real, extensively-used value (AdminDashboard.tsx,
+// AdminPendingApprovals.tsx both query/count `profiles.role = 'pending'`
+// for the "Pending Approvals" admin screen) that was missing from both
+// this type AND the tracked `profiles_role_check` CHECK constraint
+// (002_identity_and_role_contract.sql) — see migration
+// 022_pending_role_support.sql for the schema side and its own BLOCKER
+// note (nothing in tracked signup code currently ever WRITES this value;
+// only the admin-side read/filter/approve/reject path currently exists).
+export type UserRole = 'admin' | 'therapist' | 'caregiver' | 'patient' | 'pending'
 
 export type DementiaStage = 'early' | 'middle' | 'late'
 
-export type NoteType = 'general' | 'medical' | 'behavior' | 'mood' | 'activity'
+// PHASE 3: `care_partner_personal` added — confirmed via
+// 006_patient_notes_author.sql's own widened CHECK constraint
+// (`patient_notes_note_type_check`), itself added because
+// src/pages/patient/PatientDocuments.tsx writes this exact value.
+export type NoteType = 'general' | 'medical' | 'behavior' | 'mood' | 'activity' | 'care_partner_personal'
 
 export type MedicationForm = 'pill' | 'liquid' | 'injection' | 'patch' | 'inhaler'
 
@@ -18,13 +31,33 @@ export type TaskStatus = 'pending' | 'completed' | 'skipped'
 
 export type MoodType = 'happy' | 'calm' | 'sad' | 'anxious' | 'angry' | 'confused' | 'scared' | 'worried'
 
-export type MemoryCategory = 'photo' | 'audio' | 'video' | 'story'
+// RELEASE-BLOCKER-CLOSURE PHASE 1: corrected from the tracked-but-unused
+// 'photo'|'audio'|'video'|'story' (001's CHECK constraint, never actually
+// read or written anywhere in tracked app code) to the taxonomy
+// PatientMemories.tsx actually and exclusively reads/writes — see
+// 025_memories_category_taxonomy_correction.sql for the full evidence and
+// the matching CHECK-constraint correction.
+export type MemoryCategory = 'family' | 'travel' | 'milestones' | 'daily'
 
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night'
 
 export type RelationshipType = 'daughter' | 'son' | 'spouse' | 'professional' | 'friend' | 'primary' | 'secondary'
 
 export type TherapistRelationshipType = 'primary' | 'consulting' | 'supervising' | 'secondary'
+
+// REPAIR 008 / REPAIR D: `subscriptions` now has a real Tables entry below
+// (it did not before — the root cause of every ".from('subscriptions')"
+// diagnostic reported in Repair 007's completion report: the `from()`
+// overload only accepts keys of Tables|Views, `subscriptions` was a key of
+// neither, so TS fell through every OTHER table name and failed all of
+// them). `SubscriptionRow` is kept as a type alias — not redefined as a
+// separate interface — so it stays structurally identical to the real
+// Tables Row by construction instead of by manual upkeep, and every
+// existing import of this name (the Functions map below) keeps working
+// unchanged. Type aliases may reference a type declared later in the same
+// module (TS resolves the type space independent of declaration order),
+// so this is safe to place before the `Database` interface it reads from.
+export type SubscriptionRow = Database['public']['Tables']['subscriptions']['Row']
 
 export interface Database {
   public: {
@@ -38,6 +71,24 @@ export interface Database {
           role: UserRole
           phone: string | null
           photo_url: string | null
+          // PHASE 3: five columns below are missing from 001's tracked
+          // CREATE TABLE but confirmed by real, live application usage:
+          // `must_change_password`/`mfa_enabled`/`provisioning_status`/
+          // `phone_normalized` are explicitly named in
+          // 012_profiles_revoke_client_role_authority.sql's own column
+          // GRANT list (the clearest possible confirmation — a migration
+          // granting write access to a column it did not itself create
+          // only makes sense if the column already exists live);
+          // `username` has no tracked migration evidence at all (same
+          // "tracked != live" situation as several other tables in this
+          // file) but is read/written/uniqueness-checked directly by
+          // src/pages/common/PricingPage.tsx's signup flow — confirmed via
+          // that application code, not invented.
+          must_change_password: boolean | null
+          mfa_enabled: boolean | null
+          provisioning_status: string | null
+          phone_normalized: string | null
+          username: string | null
           created_at: string
           updated_at: string
         }
@@ -46,9 +97,19 @@ export interface Database {
           email: string
           first_name: string
           last_name: string
-          role: UserRole
+          // RELEASE-BLOCKER-CLOSURE PHASE 1: optional, not required —
+          // 012_profiles_revoke_client_role_authority.sql:121 runs `ALTER
+          // TABLE public.profiles ALTER COLUMN role SET DEFAULT 'patient'`,
+          // confirmed-live-by-migration (not guessed), so an INSERT that
+          // omits `role` is valid and takes that default.
+          role?: UserRole
           phone?: string | null
           photo_url?: string | null
+          must_change_password?: boolean | null
+          mfa_enabled?: boolean | null
+          provisioning_status?: string | null
+          phone_normalized?: string | null
+          username?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -60,9 +121,21 @@ export interface Database {
           role?: UserRole
           phone?: string | null
           photo_url?: string | null
+          must_change_password?: boolean | null
+          mfa_enabled?: boolean | null
+          provisioning_status?: string | null
+          phone_normalized?: string | null
+          username?: string | null
           created_at?: string
           updated_at?: string
         }
+        // REPAIR D: `profiles.id REFERENCES auth.users(id)` is real
+        // (001_initial_schema.sql) but targets the `auth` schema, which
+        // this Database type (public schema only) has no Tables entry
+        // for — expressing it here would reference a relation this type
+        // doesn't model, not a real public-schema embedding target.
+        // Genuinely no outgoing public-schema FK on this table otherwise.
+        Relationships: []
       }
       patients: {
         Row: {
@@ -74,6 +147,24 @@ export interface Database {
           emergency_contact_name: string | null
           emergency_contact_phone: string | null
           emergency_contact_relationship: string | null
+          // PHASE 3: `emergency_contact_email`/`phone`/
+          // `preferences_first_session_done` confirmed via
+          // src/pages/patient/PatientLayout.tsx's own SELECT list;
+          // `voice_storage_path`/`voice_label` confirmed via
+          // src/pages/patient/PatientHome.tsx's select/update of this
+          // table (the "custom voice" feature) — none of these five are
+          // in 001_initial_schema.sql's tracked CREATE TABLE, same
+          // "tracked != live" situation as several other tables/columns
+          // in this file.
+          emergency_contact_email: string | null
+          phone: string | null
+          preferences_first_session_done: boolean | null
+          voice_storage_path: string | null
+          voice_label: string | null
+          // PHASE 3: confirmed via src/pages/patient/PatientProfileSetup.tsx's
+          // own select (read-only fallback source for the "medications"
+          // field there; never written anywhere in tracked app code).
+          medications_summary: string | null
           preferred_name: string | null
           location: string | null
           address: string | null
@@ -96,6 +187,12 @@ export interface Database {
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
           emergency_contact_relationship?: string | null
+          emergency_contact_email?: string | null
+          phone?: string | null
+          preferences_first_session_done?: boolean | null
+          voice_storage_path?: string | null
+          voice_label?: string | null
+          medications_summary?: string | null
           preferred_name?: string | null
           location?: string | null
           address?: string | null
@@ -118,6 +215,12 @@ export interface Database {
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
           emergency_contact_relationship?: string | null
+          emergency_contact_email?: string | null
+          phone?: string | null
+          preferences_first_session_done?: boolean | null
+          voice_storage_path?: string | null
+          voice_label?: string | null
+          medications_summary?: string | null
           preferred_name?: string | null
           location?: string | null
           address?: string | null
@@ -131,6 +234,10 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        // REPAIR D: `patients` has no outgoing FK columns of its own in
+        // 001_initial_schema.sql — it is the REFERENCED side of every
+        // relationship above, never the referencing side.
+        Relationships: []
       }
       caregiver_patients: {
         Row: {
@@ -160,6 +267,28 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        // REPAIR D (FUNCTIONAL-REPAIR-005): confirmed via
+        // 001_initial_schema.sql's inline `REFERENCES` clauses —
+        // `caregiver_id UUID NOT NULL REFERENCES profiles(id)`,
+        // `patient_id UUID NOT NULL REFERENCES patients(id)`. Constraint
+        // names are Postgres' own default for an unnamed inline FK
+        // (`<table>_<column>_fkey`), not invented.
+        Relationships: [
+          {
+            foreignKeyName: "caregiver_patients_caregiver_id_fkey"
+            columns: ["caregiver_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caregiver_patients_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       therapist_relationships: {
         Row: {
@@ -192,6 +321,13 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        // REPAIR D: `therapist_relationships` is not defined in ANY tracked
+        // migration (same "tracked != live" situation `subscriptions` was
+        // in before 010-013) — no `REFERENCES` clause for this table
+        // exists anywhere in this repo to confirm real FK targets/
+        // constraint names against. Left empty rather than guessed; see
+        // Functions section below for the same caution applied elsewhere.
+        Relationships: []
       }
       patient_notes: {
         Row: {
@@ -221,6 +357,28 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        // REPAIR D: `patient_id` confirmed via 001_initial_schema.sql
+        // (`REFERENCES patients(id)`); `author_id` confirmed via
+        // 006_patient_notes_author.sql's `ADD COLUMN author_id UUID
+        // REFERENCES profiles(id)` — matches this Row's actual column
+        // (not 001's original `caregiver_id`, which this generated snapshot
+        // does not carry).
+        Relationships: [
+          {
+            foreignKeyName: "patient_notes_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_notes_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       medications: {
         Row: {
@@ -233,6 +391,14 @@ export interface Database {
           instructions: string
           prescribed_by: string | null
           prescription_date: string | null
+          // RELEASE-BLOCKER-CLOSURE PHASE 1: not in 001's tracked CREATE
+          // TABLE at all (same "tracked != live" situation as several
+          // other columns in this file) — confirmed by real read AND
+          // write usage in src/pages/patient/PatientMedications.tsx
+          // (written as `{ id, time, daysOfWeek }[]` on insert, read back
+          // via `row.schedule || []` to populate dose times on load; the
+          // entire medication-scheduling feature depends on it).
+          schedule: Json
           side_effects: string[]
           is_active: boolean
           created_at: string
@@ -248,6 +414,7 @@ export interface Database {
           instructions: string
           prescribed_by?: string | null
           prescription_date?: string | null
+          schedule?: Json
           side_effects?: string[]
           is_active?: boolean
           created_at?: string
@@ -263,11 +430,23 @@ export interface Database {
           instructions?: string
           prescribed_by?: string | null
           prescription_date?: string | null
+          schedule?: Json
           side_effects?: string[]
           is_active?: boolean
           created_at?: string
           updated_at?: string
         }
+        // REPAIR D: confirmed via 001_initial_schema.sql's `patient_id
+        // UUID NOT NULL REFERENCES patients(id)`.
+        Relationships: [
+          {
+            foreignKeyName: "medications_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tasks: {
         Row: {
@@ -318,6 +497,71 @@ export interface Database {
           is_active?: boolean
           created_at?: string
         }
+        // REPAIR D: confirmed via 001_initial_schema.sql's `patient_id
+        // UUID NOT NULL REFERENCES patients(id)`.
+        Relationships: [
+          {
+            foreignKeyName: "tasks_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // RELEASE-BLOCKER-CLOSURE PHASE 1: not in 001's tracked CREATE TABLE
+      // and not tracked by any migration 001-024 at all (same "tracked !=
+      // live" situation as several other tables in this file; this is the
+      // exact gap FQA-006 named). Confirmed real by the one, read-only
+      // application call site (PatientLayout.tsx's own SELECT list) — no
+      // insert/update/delete call site exists anywhere in tracked app
+      // code (confirmed by repo-wide grep), so Insert/Update exist here
+      // only for Database-type shape completeness, not because any write
+      // path uses them.
+      reminders: {
+        Row: {
+          id: string
+          patient_id: string
+          title: string | null
+          message: string | null
+          type: string | null
+          time: string | null
+          days_of_week: number[] | null
+          is_active: boolean | null
+          sound: string | null
+          vibrate: boolean | null
+          created_at: string | null
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          title?: string | null
+          message?: string | null
+          type?: string | null
+          time?: string | null
+          days_of_week?: number[] | null
+          is_active?: boolean | null
+          sound?: string | null
+          vibrate?: boolean | null
+          created_at?: string | null
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          title?: string | null
+          message?: string | null
+          type?: string | null
+          time?: string | null
+          days_of_week?: number[] | null
+          is_active?: boolean | null
+          sound?: string | null
+          vibrate?: boolean | null
+          created_at?: string | null
+          created_by?: string | null
+        }
+        Relationships: []
       }
       mood_entries: {
         Row: {
@@ -356,6 +600,17 @@ export interface Database {
           recorded_by?: string
           created_at?: string
         }
+        // REPAIR D: confirmed via 001_initial_schema.sql's `patient_id
+        // UUID NOT NULL REFERENCES patients(id)`.
+        Relationships: [
+          {
+            foreignKeyName: "mood_entries_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       memories: {
         Row: {
@@ -406,6 +661,17 @@ export interface Database {
           created_at?: string
           created_by?: string
         }
+        // REPAIR D: confirmed via 001_initial_schema.sql's `patient_id
+        // UUID NOT NULL REFERENCES patients(id)`.
+        Relationships: [
+          {
+            foreignKeyName: "memories_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       appointments: {
         Row: {
@@ -444,6 +710,17 @@ export interface Database {
           reminder_set?: boolean
           created_at?: string
         }
+        // REPAIR D: confirmed via 001_initial_schema.sql's `patient_id
+        // UUID NOT NULL REFERENCES patients(id)`.
+        Relationships: [
+          {
+            foreignKeyName: "appointments_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       care_team_members: {
         Row: {
@@ -482,8 +759,1050 @@ export interface Database {
           is_primary?: boolean
           created_at?: string
         }
+        // REPAIR D: confirmed via 001_initial_schema.sql's `patient_id
+        // UUID NOT NULL REFERENCES patients(id)`.
+        Relationships: [
+          {
+            foreignKeyName: "care_team_members_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // REPAIR 008 / REPAIR D: added — previously missing entirely (see the
+      // note above SubscriptionRow). Shape confirmed against
+      // 013_subscriptions_atomic_lifecycle.sql's authoritative
+      // `CREATE TABLE`/`ALTER TABLE` statements (the one that supersedes
+      // 010's wrong first draft — see 013's own header note), with the
+      // `plan` (017_daily_care_full_support_plan_identity.sql) and
+      // `program` (018_temporary_companion_program_identity.sql) columns
+      // layered on top exactly as those files add them. `tier`/`status`
+      // are kept as plain `string`, not narrowed to TierName/
+      // SubscriptionStatus — consistent with every other loosely-typed
+      // enum-like TEXT column already in this file (e.g. `role: UserRole`
+      // is the one exception, used because UserRole is itself exported
+      // from this same generated-types module; TierName/SubscriptionStatus
+      // live in src/types/subscription.ts, a hand-written application
+      // file this generated-types file does not import from).
+      subscriptions: {
+        Row: {
+          id: string
+          user_id: string
+          tier: string
+          plan: string | null
+          program: string | null
+          status: string
+          trial_started_at: string
+          trial_ends_at: string
+          current_period_start: string | null
+          current_period_end: string | null
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          canceled_at: string | null
+          promo_code: string | null
+          promo_expires_at: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          tier: string
+          plan?: string | null
+          program?: string | null
+          status: string
+          trial_started_at?: string
+          trial_ends_at?: string
+          current_period_start?: string | null
+          current_period_end?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          canceled_at?: string | null
+          promo_code?: string | null
+          promo_expires_at?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          tier?: string
+          plan?: string | null
+          program?: string | null
+          status?: string
+          trial_started_at?: string
+          trial_ends_at?: string
+          current_period_start?: string | null
+          current_period_end?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          canceled_at?: string | null
+          promo_code?: string | null
+          promo_expires_at?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        // REPAIR D: confirmed via 013_subscriptions_atomic_lifecycle.sql's
+        // `user_id UUID NOT NULL UNIQUE REFERENCES profiles(id)` — unnamed
+        // inline FK, so Postgres' own default naming convention applies
+        // (same convention already relied on elsewhere in this file).
+        // `isOneToOne: true` because `user_id` carries its own UNIQUE
+        // constraint (and a second, defensively-added
+        // `subscriptions_user_id_unique` constraint of the same shape) —
+        // unlike every `patient_id` FK above, at most one subscriptions row
+        // can ever reference a given profile.
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3 (MYMEMORIA-FUNCTIONAL-CLOSURE-MASTER-009): added — like
+      // `subscriptions` before this engagement's REPAIR 008/D, this table
+      // had no Tables entry at all. Shape confirmed against
+      // 009_patient_intake.sql's CREATE TABLE, with `intake_completed`
+      // (021_patient_intake_self_access_and_schema_gaps.sql) layered on
+      // top exactly as that file adds it.
+      patient_intake: {
+        Row: {
+          id: string
+          patient_profile_id: string | null
+          caregiver_profile_id: string | null
+          patient_first_name: string
+          patient_last_name: string
+          patient_preferred_name: string | null
+          patient_date_of_birth: string | null
+          patient_diagnosis_date: string | null
+          patient_dementia_stage: string | null
+          patient_street_address: string | null
+          patient_city: string | null
+          patient_state: string | null
+          patient_zip_code: string | null
+          patient_phone: string | null
+          patient_email: string | null
+          preferred_hospital: string | null
+          doctor_therapist_name: string | null
+          doctor_therapist_phone: string | null
+          caregiver_name: string | null
+          caregiver_relationship: string | null
+          caregiver_phone: string | null
+          medications_and_dosage: string | null
+          emergency_contact_full_name: string | null
+          emergency_contact_phone: string | null
+          emergency_contact_email: string | null
+          emergency_contact_relationship: string | null
+          intake_completed: boolean
+          created_by: string | null
+          created_at: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+        }
+        Insert: {
+          id: string
+          patient_profile_id?: string | null
+          caregiver_profile_id?: string | null
+          patient_first_name: string
+          patient_last_name: string
+          patient_preferred_name?: string | null
+          patient_date_of_birth?: string | null
+          patient_diagnosis_date?: string | null
+          patient_dementia_stage?: string | null
+          patient_street_address?: string | null
+          patient_city?: string | null
+          patient_state?: string | null
+          patient_zip_code?: string | null
+          patient_phone?: string | null
+          patient_email?: string | null
+          preferred_hospital?: string | null
+          doctor_therapist_name?: string | null
+          doctor_therapist_phone?: string | null
+          caregiver_name?: string | null
+          caregiver_relationship?: string | null
+          caregiver_phone?: string | null
+          medications_and_dosage?: string | null
+          emergency_contact_full_name?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_email?: string | null
+          emergency_contact_relationship?: string | null
+          intake_completed?: boolean
+          created_by?: string | null
+          created_at?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+        }
+        Update: {
+          id?: string
+          patient_profile_id?: string | null
+          caregiver_profile_id?: string | null
+          patient_first_name?: string
+          patient_last_name?: string
+          patient_preferred_name?: string | null
+          patient_date_of_birth?: string | null
+          patient_diagnosis_date?: string | null
+          patient_dementia_stage?: string | null
+          patient_street_address?: string | null
+          patient_city?: string | null
+          patient_state?: string | null
+          patient_zip_code?: string | null
+          patient_phone?: string | null
+          patient_email?: string | null
+          preferred_hospital?: string | null
+          doctor_therapist_name?: string | null
+          doctor_therapist_phone?: string | null
+          caregiver_name?: string | null
+          caregiver_relationship?: string | null
+          caregiver_phone?: string | null
+          medications_and_dosage?: string | null
+          emergency_contact_full_name?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_email?: string | null
+          emergency_contact_relationship?: string | null
+          intake_completed?: boolean
+          created_by?: string | null
+          created_at?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+        }
+        // REPAIR D: confirmed via 009_patient_intake.sql's own inline
+        // `REFERENCES profiles(id)` on all four columns.
+        Relationships: [
+          {
+            foreignKeyName: "patient_intake_patient_profile_id_fkey"
+            columns: ["patient_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_intake_caregiver_profile_id_fkey"
+            columns: ["caregiver_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_intake_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_intake_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3: tracked (007_patient_documents_storage.sql).
+      patient_document_uploads: {
+        Row: {
+          id: string
+          patient_id: string
+          section: 'medical_docs' | 'medical_bills'
+          file_name: string
+          file_type: string | null
+          storage_path: string
+          note_text: string | null
+          uploaded_at: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          section: 'medical_docs' | 'medical_bills'
+          file_name: string
+          file_type?: string | null
+          storage_path: string
+          note_text?: string | null
+          uploaded_at?: string | null
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          section?: 'medical_docs' | 'medical_bills'
+          file_name?: string
+          file_type?: string | null
+          storage_path?: string
+          note_text?: string | null
+          uploaded_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_document_uploads_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3: NOT in any tracked migration — shape confirmed via
+      // src/services/mediaService.ts's own insert/select column list (the
+      // real backing table for the "Media" feature's uploader/caption/
+      // sharing metadata; actual files live in the `patient-media` storage
+      // bucket, referenced here only by path in `file_url`).
+      media_uploads: {
+        Row: {
+          id: string
+          uploader_id: string
+          uploader_name: string
+          uploader_role: string
+          patient_id: string
+          file_url: string
+          file_type: 'video' | 'image' | 'audio' | 'document'
+          file_name: string
+          file_size: number
+          caption: string | null
+          shared_with: string[] | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          uploader_id: string
+          uploader_name: string
+          uploader_role: string
+          patient_id: string
+          file_url: string
+          file_type: 'video' | 'image' | 'audio' | 'document'
+          file_name: string
+          file_size: number
+          caption?: string | null
+          shared_with?: string[] | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          uploader_id?: string
+          uploader_name?: string
+          uploader_role?: string
+          patient_id?: string
+          file_url?: string
+          file_type?: 'video' | 'image' | 'audio' | 'document'
+          file_name?: string
+          file_size?: number
+          caption?: string | null
+          shared_with?: string[] | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_uploads_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3: NOT in any tracked migration — shape confirmed via
+      // src/pages/patient/PatientHome.tsx's own select/insert column list
+      // (the "Show Me Home" loved-one-photos feature's metadata; actual
+      // files live in the `patient-media` storage bucket).
+      patient_loved_one_photos: {
+        Row: {
+          id: string
+          patient_id: string
+          name: string
+          storage_path: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          name: string
+          storage_path: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          name?: string
+          storage_path?: string
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_loved_one_photos_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3: NOT in any tracked migration — shape confirmed via
+      // src/components/ShowMeHomeDialog.tsx's own select/insert column
+      // list. A DIFFERENT table from `patient_loved_one_photos` above —
+      // two separate untracked "home photo"-style features used by two
+      // different components.
+      patient_home_photos: {
+        Row: {
+          id: string
+          patient_id: string
+          label: string
+          storage_path: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          label: string
+          storage_path: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          label?: string
+          storage_path?: string
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_home_photos_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3: NOT in any tracked migration — shape confirmed via
+      // src/pages/patient/PatientRoutine.tsx's own select/insert/update
+      // column list ("My Day" custom activities — distinct from the
+      // tracked `tasks` table, which this same component also reads/
+      // writes for its built-in app tasks).
+      patient_routine_items: {
+        Row: {
+          id: string
+          patient_id: string
+          title: string
+          emoji: string
+          time_of_day: string
+          scheduled_time: string
+          completed: boolean
+          completed_date: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          title: string
+          emoji: string
+          time_of_day: string
+          scheduled_time: string
+          completed?: boolean
+          completed_date?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          title?: string
+          emoji?: string
+          time_of_day?: string
+          scheduled_time?: string
+          completed?: boolean
+          completed_date?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_routine_items_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3: NOT in any tracked migration — shape confirmed via
+      // src/pages/patient/PatientReminders.tsx's own select/insert/update
+      // column list (a second, distinct "My Tasks" to-do list on that same
+      // page — separate from `patient_calendar_notes` below).
+      patient_task_items: {
+        Row: {
+          id: string
+          patient_id: string
+          text: string
+          period: string
+          completed: boolean
+          completed_date: string | null
+          week_key: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          text: string
+          period: string
+          completed?: boolean
+          completed_date?: string | null
+          week_key?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          text?: string
+          period?: string
+          completed?: boolean
+          completed_date?: string | null
+          week_key?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_task_items_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3: tracked (001_initial_schema.sql + 003_medication_integrity.sql's
+      // ADD COLUMN medication_name/undone_at/undone_by and its UNIQUE
+      // constraint on (medication_id, date, scheduled_time)).
+      medication_logs: {
+        Row: {
+          id: string
+          medication_id: string
+          patient_id: string
+          medication_name: string | null
+          date: string
+          scheduled_time: string
+          taken_time: string | null
+          status: string
+          recorded_by: string | null
+          undone_at: string | null
+          undone_by: string | null
+        }
+        Insert: {
+          id?: string
+          medication_id: string
+          patient_id: string
+          medication_name?: string | null
+          date: string
+          scheduled_time: string
+          taken_time?: string | null
+          status: string
+          recorded_by?: string | null
+          undone_at?: string | null
+          undone_by?: string | null
+        }
+        Update: {
+          id?: string
+          medication_id?: string
+          patient_id?: string
+          medication_name?: string | null
+          date?: string
+          scheduled_time?: string
+          taken_time?: string | null
+          status?: string
+          recorded_by?: string | null
+          undone_at?: string | null
+          undone_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "medication_logs_medication_id_fkey"
+            columns: ["medication_id"]
+            isOneToOne: false
+            referencedRelation: "medications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "medication_logs_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3: NOT in any tracked migration — shape confirmed via
+      // src/pages/patient/PatientReminders.tsx's own select/insert/update
+      // column list ("My Day" calendar notes — this component's own
+      // defensive `if (error) return` comment already documents the
+      // table may not exist in a given environment).
+      patient_calendar_notes: {
+        Row: {
+          id: string
+          patient_id: string
+          date: string
+          text: string
+          type: string
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          date: string
+          text: string
+          type: string
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          date?: string
+          text?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_calendar_notes_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3: NOT in any tracked migration (016_free_tier_entitlement_
+      // backend_enforcement.sql's own note already flags this) — shape
+      // confirmed via src/pages/patient/CarePartnerCheckin.tsx's own
+      // insert column list and its CheckInData interface's field types.
+      care_partner_checkins: {
+        Row: {
+          id: string
+          patient_id: string
+          submitted_by: string
+          submitted_by_name: string
+          check_in_date: string
+          fn_dressing: string
+          fn_bathing: string
+          fn_toileting: string
+          fn_transfers: string
+          fn_mobility: string
+          fn_medication: string
+          fn_comments: string
+          nu_appetite: string
+          nu_meal_pct: string
+          nu_fluids: string
+          nu_swallowing: string
+          nu_comments: string
+          co_urinary: string
+          co_bowel: string
+          co_skin: string
+          co_comments: string
+          sa_falls: string
+          sa_injury_details: string
+          sa_wandering: string
+          sa_safety_concerns: boolean
+          sa_safety_checklist: string[]
+          sa_comments: string
+          be_behaviors: string[]
+          be_trigger: string
+          be_comments: string
+          be_agitation: string
+          be_wandering_risk: string
+          be_responsiveness: string
+          be_hallucinations: string
+          mo_mood: string
+          mo_social: string
+          mo_sleep: string
+          mo_comments: string
+          sy_symptoms: string[]
+          sy_severity: string
+          sy_other: string
+          sy_comments: string
+          sy_pain: string
+          sy_respiratory: string
+          sy_gi: string
+          sy_neurological: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          submitted_by: string
+          submitted_by_name: string
+          check_in_date: string
+          fn_dressing?: string
+          fn_bathing?: string
+          fn_toileting?: string
+          fn_transfers?: string
+          fn_mobility?: string
+          fn_medication?: string
+          fn_comments?: string
+          nu_appetite?: string
+          nu_meal_pct?: string
+          nu_fluids?: string
+          nu_swallowing?: string
+          nu_comments?: string
+          co_urinary?: string
+          co_bowel?: string
+          co_skin?: string
+          co_comments?: string
+          sa_falls?: string
+          sa_injury_details?: string
+          sa_wandering?: string
+          sa_safety_concerns?: boolean
+          sa_safety_checklist?: string[]
+          sa_comments?: string
+          be_behaviors?: string[]
+          be_trigger?: string
+          be_comments?: string
+          be_agitation?: string
+          be_wandering_risk?: string
+          be_responsiveness?: string
+          be_hallucinations?: string
+          mo_mood?: string
+          mo_social?: string
+          mo_sleep?: string
+          mo_comments?: string
+          sy_symptoms?: string[]
+          sy_severity?: string
+          sy_other?: string
+          sy_comments?: string
+          sy_pain?: string
+          sy_respiratory?: string
+          sy_gi?: string
+          sy_neurological?: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          submitted_by?: string
+          submitted_by_name?: string
+          check_in_date?: string
+          fn_dressing?: string
+          fn_bathing?: string
+          fn_toileting?: string
+          fn_transfers?: string
+          fn_mobility?: string
+          fn_medication?: string
+          fn_comments?: string
+          nu_appetite?: string
+          nu_meal_pct?: string
+          nu_fluids?: string
+          nu_swallowing?: string
+          nu_comments?: string
+          co_urinary?: string
+          co_bowel?: string
+          co_skin?: string
+          co_comments?: string
+          sa_falls?: string
+          sa_injury_details?: string
+          sa_wandering?: string
+          sa_safety_concerns?: boolean
+          sa_safety_checklist?: string[]
+          sa_comments?: string
+          be_behaviors?: string[]
+          be_trigger?: string
+          be_comments?: string
+          be_agitation?: string
+          be_wandering_risk?: string
+          be_responsiveness?: string
+          be_hallucinations?: string
+          mo_mood?: string
+          mo_social?: string
+          mo_sleep?: string
+          mo_comments?: string
+          sy_symptoms?: string[]
+          sy_severity?: string
+          sy_other?: string
+          sy_comments?: string
+          sy_pain?: string
+          sy_respiratory?: string
+          sy_gi?: string
+          sy_neurological?: string
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "care_partner_checkins_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3: NOT in any tracked migration — shape confirmed via
+      // src/pages/patient/PatientDocuments.tsx's own `LogRow` type and
+      // select column list (a THIRD, distinct care-partner-related table
+      // from `care_partner_checkins`/`patient_care_partners` above — this
+      // one backs the "Care Partner Logs" history view on the Documents
+      // page specifically).
+      care_partner_logs: {
+        Row: {
+          id: string
+          patient_id: string
+          report_date: string
+          submitted_at: string
+          mood: string | null
+          meals: string | null
+          hydration: string | null
+          medications: string | null
+          mobility: string | null
+          exercise: string | null
+          sleep_quality: string | null
+          pain_level: number | null
+          notes: string | null
+          answers: Json | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          report_date: string
+          submitted_at?: string
+          mood?: string | null
+          meals?: string | null
+          hydration?: string | null
+          medications?: string | null
+          mobility?: string | null
+          exercise?: string | null
+          sleep_quality?: string | null
+          pain_level?: number | null
+          notes?: string | null
+          answers?: Json | null
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          report_date?: string
+          submitted_at?: string
+          mood?: string | null
+          meals?: string | null
+          hydration?: string | null
+          medications?: string | null
+          mobility?: string | null
+          exercise?: string | null
+          sleep_quality?: string | null
+          pain_level?: number | null
+          notes?: string | null
+          answers?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "care_partner_logs_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3: NOT in any tracked migration — shape confirmed via
+      // src/pages/admin/AdminAudit.tsx's own select/interface (a live,
+      // rendered admin screen — AdminLayout.tsx imports AdminAudit).
+      audit_logs: {
+        Row: {
+          id: string
+          created_at: string
+          user_id: string | null
+          user_email: string | null
+          user_role: string | null
+          action: string
+          resource_type: string | null
+          resource_id: string | null
+          before_state: Json | null
+          after_state: Json | null
+          ip_address: string | null
+          severity: 'info' | 'warning' | 'critical'
+          details: Json | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          user_id?: string | null
+          user_email?: string | null
+          user_role?: string | null
+          action: string
+          resource_type?: string | null
+          resource_id?: string | null
+          before_state?: Json | null
+          after_state?: Json | null
+          ip_address?: string | null
+          severity?: 'info' | 'warning' | 'critical'
+          details?: Json | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          user_id?: string | null
+          user_email?: string | null
+          user_role?: string | null
+          action?: string
+          resource_type?: string | null
+          resource_id?: string | null
+          before_state?: Json | null
+          after_state?: Json | null
+          ip_address?: string | null
+          severity?: 'info' | 'warning' | 'critical'
+          details?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3: NOT in any tracked migration — shape confirmed via
+      // src/components/Hipaacompliancepage.tsx's own `ComplianceRecord`
+      // interface. No confirmed import/render call anywhere in this
+      // codebase (see the completion report) — typed anyway since it is
+      // real, evidence-based application code, not invented.
+      compliance_records: {
+        Row: {
+          id: string
+          record_type: string
+          status: string
+          signed_at: string | null
+          signed_by: string | null
+          expires_at: string | null
+          notes: string | null
+          organization_id: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          record_type: string
+          status?: string
+          signed_at?: string | null
+          signed_by?: string | null
+          expires_at?: string | null
+          notes?: string | null
+          organization_id?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          record_type?: string
+          status?: string
+          signed_at?: string | null
+          signed_by?: string | null
+          expires_at?: string | null
+          notes?: string | null
+          organization_id?: string | null
+          created_at?: string | null
+        }
+        Relationships: []
+      }
+      // PHASE 3: NOT in any tracked migration — shape confirmed via
+      // src/pages/patient/PatientEmergencyContacts.tsx's own select/
+      // upsert column list (the "Care Partner" info panel on that page —
+      // distinct from the `care_partner_checkins` table above).
+      patient_care_partners: {
+        Row: {
+          patient_id: string
+          full_name: string
+          email: string | null
+          phone: string | null
+          relationship: string | null
+          education_level: string | null
+          medical_experience: string | null
+          employment_relevant: string | null
+          notes: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          patient_id: string
+          full_name: string
+          email?: string | null
+          phone?: string | null
+          relationship?: string | null
+          education_level?: string | null
+          medical_experience?: string | null
+          employment_relevant?: string | null
+          notes?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          patient_id?: string
+          full_name?: string
+          email?: string | null
+          phone?: string | null
+          relationship?: string | null
+          education_level?: string | null
+          medical_experience?: string | null
+          employment_relevant?: string | null
+          notes?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_care_partners_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: true
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // PHASE 3: NOT in any tracked migration — shape confirmed via
+      // src/pages/patient/PatientEmergencyContacts.tsx's own insert/
+      // update column list (the "Emergency Contacts" list on that page —
+      // one patient may have several).
+      patient_emergency_contacts: {
+        Row: {
+          id: string
+          patient_id: string
+          full_name: string
+          email: string | null
+          phone: string | null
+          relationship: string | null
+          address: string | null
+          notes: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          full_name: string
+          email?: string | null
+          phone?: string | null
+          relationship?: string | null
+          address?: string | null
+          notes?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          full_name?: string
+          email?: string | null
+          phone?: string | null
+          relationship?: string | null
+          address?: string | null
+          notes?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_emergency_contacts_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
+    // NOTE: both views below are proposed for removal by
+    // 014_caregiver_relationship_authorization_and_view_hardening.sql
+    // (SEC-001 — they bypass caller-level RLS, see that file for the full
+    // finding). That migration is still an unexecuted draft, so the real,
+    // currently-live database is believed to still have both views as
+    // described here; this types file describes the REAL schema as it
+    // stands today, not a schema some other unexecuted proposal assumes.
+    // Views don't carry their own FK constraints (only the underlying
+    // tables they SELECT from do) — `Relationships: []` is accurate for a
+    // view regardless, not merely a placeholder.
     Views: {
       caregiver_patient_list: {
         Row: {
@@ -500,6 +1819,7 @@ export interface Database {
           location: string | null
           date_of_birth: string | null
         }
+        Relationships: []
       }
       therapist_relationship_list: {
         Row: {
@@ -512,11 +1832,19 @@ export interface Database {
           related_last_name: string
           related_type: 'patient' | 'caregiver'
         }
+        Relationships: []
       }
     }
     Functions: {
+      // RELEASE-BLOCKER-CLOSURE PHASE 1: corrected to match the actual
+      // function (024_release_blocker_closure_phase_a.sql) — parameterless,
+      // checks auth.uid() internally. It is an RLS-internal helper (used
+      // only inside USING clauses on `profiles`), never called via
+      // supabase.rpc() from any client code (confirmed: zero call sites) —
+      // a parameterized "check an arbitrary given user" signature was never
+      // actually implemented or used anywhere.
       is_admin: {
-        Args: { user_id: string }
+        Args: Record<PropertyKey, never>
         Returns: boolean
       }
       get_caregiver_patients: {
@@ -526,6 +1854,102 @@ export interface Database {
       get_therapist_patients: {
         Args: { therapist_uuid: string }
         Returns: { patient_id: string }[]
+      }
+      // CORRECTIVE-002 / CORRECTION D: trusted SECURITY DEFINER RPCs added
+      // across 012/013/014 (migrations in supabase/migrations/, all still
+      // unexecuted drafts) had no entry here, so every supabase.rpc(...)
+      // call site using them typed its second argument as `undefined` —
+      // a real TypeScript diagnostic (TS2345), not a false positive, since
+      // nothing here described their actual argument shape. Declared below
+      // so those call sites type-check against the RPCs' real signatures
+      // instead of silently falling back to `undefined`.
+      //
+      // STALE NOTE, CORRECTED (REPAIR 008 / REPAIR D): this comment
+      // previously recorded that every `supabase.rpc(...)` call still
+      // failed with "not assignable to parameter of type 'undefined'"
+      // because none of this file's Tables entries carried a
+      // `Relationships` field. That has since been fixed — every Tables
+      // entry below now has one (`subscriptions` included, added in this
+      // same repair) — and re-running `tsc --noEmit` confirms that
+      // specific error no longer reproduces anywhere in the project.
+      // Left as a historical note rather than deleted outright: if this
+      // error class reappears after a future schema change, the
+      // `GenericSchema`/`Relationships` constraint above is exactly where
+      // to look first.
+      admin_set_role: {
+        Args: { p_user_id: string; p_role: string }
+        Returns: void
+      }
+      admin_set_subscription: {
+        // REPAIR 006: `p_plan` added (migration 017) — required (non-null)
+        // whenever p_tier='paid_tier', must be null otherwise.
+        // REPAIR 007: `p_program` added (migration 018) — only valid when
+        // p_tier='free_tier'; when set, the RPC computes trial_ends_at
+        // itself (p_trial_ends_at is ignored for a program assignment).
+        Args: {
+          p_user_id: string
+          p_tier: string
+          p_plan: string | null
+          p_program: string | null
+          p_status: string
+          p_trial_started_at: string | null
+          p_trial_ends_at: string | null
+          p_promo_expires_at: string | null
+        }
+        Returns: SubscriptionRow
+      }
+      provision_free_subscription: {
+        Args: Record<PropertyKey, never>
+        Returns: SubscriptionRow
+      }
+      redeem_promo_code: {
+        Args: { p_code: string }
+        Returns: SubscriptionRow
+      }
+      create_patient_with_caregiver: {
+        Args: {
+          p_patient_id: string
+          p_preferred_name?: string | null
+          p_date_of_birth?: string | null
+          p_diagnosis_date?: string | null
+          p_dementia_stage?: string | null
+          p_location?: string | null
+          p_address?: string | null
+          p_affirmation?: string | null
+          p_emergency_contact_name?: string | null
+          p_emergency_contact_relationship?: string | null
+          p_emergency_contact_phone?: string | null
+          p_emergency_contact_email?: string | null
+          p_relationship_type?: string
+        }
+        Returns: Database['public']['Tables']['patients']['Row']
+      }
+      // REPAIR 007: trusted, server-`now()`-computed Temporary/Companion
+      // program eligibility check (migration 018). Takes no arguments —
+      // reads the caller's OWN subscriptions row via auth.uid() only.
+      is_my_program_active: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      // PHASE 3: F05 (003_medication_integrity.sql); REPAIR 008 / migration
+      // 019 adds an internal temp_user/expired-Companion guard with no
+      // signature change — confirmed real call site:
+      // src/pages/patient/PatientMedications.tsx's undoLog().
+      undo_medication_dose: {
+        Args: {
+          p_medication_id: string
+          p_date: string
+          p_scheduled_time: string
+        }
+        Returns: void
+      }
+      caller_is_temp_user_program: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      caller_is_expired_companion: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
       }
     }
     Enums: {

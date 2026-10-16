@@ -73,7 +73,8 @@ export function isUniqueConstraintError(error: unknown) {
 }
 
 export function uniqueIdentityMessage(error: unknown) {
-  const msg = error instanceof Error ? error.message : String((error as any)?.message ?? '');
+  const maybeMsg = error && typeof error === 'object' ? (error as { message?: string }).message : undefined;
+  const msg = error instanceof Error ? error.message : String(maybeMsg ?? '');
 
   if (/phone/i.test(msg)) {
     return 'This phone number is already registered. Please use a different phone number.';

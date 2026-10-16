@@ -1,9 +1,10 @@
-import { useEffect, useState, useRef } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useCallback, useEffect, useState, useRef } from 'react';
+import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import { getErrorMessage } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Music, Upload, X, Play, Pause, Headphones } from 'lucide-react';
+import { Music, Upload, X, Play, Headphones } from 'lucide-react';
 
 interface MediaItem {
   id: string;
@@ -67,7 +68,7 @@ export default function CalmMeDialog({ open, onClose }: { open: boolean; onClose
     return data.signedUrl;
   };
 
-  const loadVideos = async (): Promise<MediaItem[]> => {
+  const loadVideos = useCallback(async (): Promise<MediaItem[]> => {
     if (!patientId) return [];
 
     const patientFolder = `${VIDEO_FOLDER}/${patientId}`;
@@ -100,9 +101,9 @@ export default function CalmMeDialog({ open, onClose }: { open: boolean; onClose
     );
 
     return urls;
-  };
+  }, [patientId]);
 
-  const refreshMedia = async () => {
+  const refreshMedia = useCallback(async () => {
     if (!open) return;
     setLoading(true);
     setVideoError(null);
@@ -110,17 +111,17 @@ export default function CalmMeDialog({ open, onClose }: { open: boolean; onClose
     try {
       const videos = await loadVideos();
       setMediaItems(videos);
-    } catch (err: any) {
-      setVideoError(err.message || 'Failed to load videos');
+    } catch (err) {
+      setVideoError(getErrorMessage(err, 'Failed to load videos'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [open, loadVideos]);
 
   useEffect(() => {
     if (!open) return;
     refreshMedia();
-  }, [open, patientId]);
+  }, [open, patientId, refreshMedia]);
 
   useEffect(() => {
     if (!open) stopPlayback();
@@ -190,8 +191,8 @@ export default function CalmMeDialog({ open, onClose }: { open: boolean; onClose
       if (error) throw error;
 
       await refreshMedia();
-    } catch (err: any) {
-      setVideoError(err.message || 'Upload failed');
+    } catch (err) {
+      setVideoError(getErrorMessage(err, 'Upload failed'));
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -209,8 +210,8 @@ export default function CalmMeDialog({ open, onClose }: { open: boolean; onClose
 
       if (playing === item.id) stopPlayback();
       await refreshMedia();
-    } catch (err: any) {
-      setVideoError(err.message || 'Delete failed');
+    } catch (err) {
+      setVideoError(getErrorMessage(err, 'Delete failed'));
     }
   };
 

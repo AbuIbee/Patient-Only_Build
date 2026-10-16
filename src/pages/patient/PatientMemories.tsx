@@ -1,14 +1,15 @@
-import { useApp } from '@/store/AppContext';
+import { useApp } from '@/store/useApp';
 import { supabase, getSignedMediaUrl } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   Play, Heart, Image as ImageIcon, Calendar,
-  BookOpen, Upload, X, Camera, Users, MapPin, Star, Sun, ChevronLeft, ChevronRight,
+  BookOpen, X, Camera, Users, MapPin, Star, Sun, ChevronLeft, ChevronRight,
 } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Category = 'all' | 'family' | 'travel' | 'milestones' | 'daily';
@@ -19,7 +20,7 @@ interface LocalMemory {
   description?: string;
   photoUrl: string;    // signed URL after upload; base64 during optimistic add
   storagePath?: string; // path in patient-media bucket; undefined until upload completes
-  category: Category;
+  category: Exclude<Category, 'all'>; // a stored memory always has a real theme — 'all' is a filter-only pseudo-value
   createdAt: string;
   isFavorite: boolean;
 }
@@ -220,13 +221,8 @@ export default function PatientMemories() {
   const [slideshowIdx, setSlideshowIdx]     = useState(0);
   const [showSlideshow, setShowSlideshow]   = useState(false);
 
-  useEffect(() => {
-    if (!patientId) return;
-    fetchMemories();
-  }, [patientId]);
-
   // ── Fetch from Supabase (with one-time localStorage migration) ────────────
-  const fetchMemories = async () => {
+  const fetchMemories = useCallback(async () => {
     setMemoriesLoading(true);
     try {
       const { data, error } = await supabase
@@ -301,7 +297,12 @@ export default function PatientMemories() {
     } finally {
       setMemoriesLoading(false);
     }
-  };
+  }, [patientId]);
+
+  useEffect(() => {
+    if (!patientId) return;
+    fetchMemories();
+  }, [patientId, fetchMemories]);
 
   // ── Filter ────────────────────────────────────────────────────────────────
   const getFiltered = (cat: Category) => {
@@ -362,12 +363,22 @@ export default function PatientMemories() {
 
   const handleRemove = async (id: string) => {
     const memory = memories.find(m => m.id === id);
+    const previous = memories;
     setMemories(prev => prev.filter(m => m.id !== id));
     setSelectedMemory(null);
-    if (memory?.storagePath) {
-      await supabase.storage.from('patient-media').remove([memory.storagePath]);
+    // B5: delete the DB record FIRST — the previous order removed storage
+    // first, so a failed DB delete left a record pointing at a file that
+    // no longer existed (a broken, user-visible thumbnail).
+    const { error } = await supabase.from('memories').delete().eq('id', id).eq('patient_id', patientId);
+    if (error) {
+      setMemories(previous);
+      toast.error('Failed to remove memory');
+      return;
     }
-    await supabase.from('memories').delete().eq('id', id).eq('patient_id', patientId);
+    if (memory?.storagePath) {
+      const { error: storageErr } = await supabase.storage.from('patient-media').remove([memory.storagePath]);
+      if (storageErr) console.error('Memory storage cleanup failed after record removal:', memory.storagePath, storageErr.message);
+    }
   };
 
   const toggleFavorite = async (id: string) => {

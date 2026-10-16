@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Home, Upload, PlusCircle, X, ChevronLeft, ChevronRight, Volume2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase, getSignedMediaUrl } from '@/lib/supabase';
-import { useApp } from '@/store/AppContext';
+import { useApp } from '@/store/useApp';
+import { toast } from 'sonner';
 
 interface HomePhoto {
   id: string;
@@ -21,12 +22,7 @@ export default function ShowMeHomeDialog({ open, onClose, patientName }: { open:
   const [currentIdx, setCurrentIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  useEffect(() => {
-    if (!open || !patientId) return;
-    fetchHomePhotos();
-  }, [open, patientId]);
-
-  const fetchHomePhotos = async () => {
+  const fetchHomePhotos = useCallback(async () => {
     setPhotosLoading(true);
     try {
       const { data, error } = await supabase
@@ -59,7 +55,14 @@ export default function ShowMeHomeDialog({ open, onClose, patientName }: { open:
                   .insert({ patient_id: patientId, label: photo.label, storage_path: storagePath })
                   .select('id')
                   .single();
-                if (dbErr) continue;
+                if (dbErr) {
+                  // FQA-027/B5: don't leave an orphaned storage object
+                  // behind when the matching DB record failed to insert —
+                  // and don't silently drop it if this cleanup ALSO fails.
+                  const { error: cleanupErr } = await supabase.storage.from('patient-media').remove([storagePath]);
+                  if (cleanupErr) console.error('Orphaned home-photo storage object could not be cleaned up:', storagePath, cleanupErr.message);
+                  continue;
+                }
                 const signedUrl = await getSignedMediaUrl(storagePath);
                 if (signedUrl) migrated.push({ id: row.id, label: photo.label, url: signedUrl, storagePath });
               }
@@ -85,7 +88,12 @@ export default function ShowMeHomeDialog({ open, onClose, patientName }: { open:
     } finally {
       setPhotosLoading(false);
     }
-  };
+  }, [patientId]);
+
+  useEffect(() => {
+    if (!open || !patientId) return;
+    fetchHomePhotos();
+  }, [open, patientId, fetchHomePhotos]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -97,17 +105,25 @@ export default function ShowMeHomeDialog({ open, onClose, patientName }: { open:
     const { error: upErr } = await supabase.storage
       .from('patient-media')
       .upload(storagePath, file, { upsert: false, contentType: file.type });
-    if (upErr) { console.error('Upload error:', upErr); return; }
+    if (upErr) { toast.error('Failed to upload photo'); return; }
 
     const { data: row, error: dbErr } = await supabase
       .from('patient_home_photos')
       .insert({ patient_id: patientId, label, storage_path: storagePath })
       .select('id')
       .single();
-    if (dbErr) { console.error('DB insert error:', dbErr); return; }
+    if (dbErr) {
+      // FQA-027/B5: the file was already written to storage above — clean
+      // it up rather than leaving an orphan with no DB record, and log if
+      // that cleanup itself fails rather than dropping it silently.
+      const { error: cleanupErr } = await supabase.storage.from('patient-media').remove([storagePath]);
+      if (cleanupErr) console.error('Orphaned home-photo storage object could not be cleaned up:', storagePath, cleanupErr.message);
+      toast.error('Failed to save photo');
+      return;
+    }
 
     const signedUrl = await getSignedMediaUrl(storagePath);
-    if (!signedUrl) return;
+    if (!signedUrl) { toast.error('Photo saved, but could not load its preview — reopen to see it'); return; }
 
     const newPhoto: HomePhoto = { id: row.id, label, url: signedUrl, storagePath };
     setHomePhotos(prev => {
@@ -120,10 +136,26 @@ export default function ShowMeHomeDialog({ open, onClose, patientName }: { open:
   const removePhoto = async (id: string) => {
     const photo = homePhotos.find(p => p.id === id);
     if (!photo) return;
+    const previous = homePhotos;
+    const removedIdx = homePhotos.findIndex(p => p.id === id);
     setHomePhotos(prev => prev.filter(p => p.id !== id));
     setCurrentIdx(prev => Math.max(0, prev - 1));
-    await supabase.storage.from('patient-media').remove([photo.storagePath]);
-    await supabase.from('patient_home_photos').delete().eq('id', id);
+
+    // FQA-027: delete the DB record FIRST — if that fails, roll the UI
+    // back rather than leaving storage removed but the record (and the
+    // optimistic UI update) now pointing at nothing / out of sync.
+    const { error: dbErr } = await supabase.from('patient_home_photos').delete().eq('id', id);
+    if (dbErr) {
+      setHomePhotos(previous);
+      setCurrentIdx(removedIdx);
+      toast.error('Failed to remove photo');
+      return;
+    }
+    // B5: the record is gone (the correct, authoritative outcome) — log
+    // rather than silently drop it if storage cleanup itself fails, so an
+    // orphaned object can be found operationally instead of vanishing.
+    const { error: storageErr } = await supabase.storage.from('patient-media').remove([photo.storagePath]);
+    if (storageErr) console.error('Home-photo storage cleanup failed after record removal:', photo.storagePath, storageErr.message);
   };
 
   const current = homePhotos[currentIdx];

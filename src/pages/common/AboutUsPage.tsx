@@ -28,7 +28,7 @@ function CalloutBox({
   children,
   color = 'bronze',
 }: {
-  icon: any;
+  icon: React.ElementType;
   title: string;
   children: React.ReactNode;
   color?: 'bronze' | 'sage' | 'blue' | 'slate';

@@ -1,11 +1,13 @@
-import { useEffect, useState, useMemo } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useApp } from '@/store/useApp';
+import { useSubscription } from '@/store/useSubscription';
 import { supabase, getSignedMediaUrl } from '@/lib/supabase';
-import { Card, CardContent } from '@/components/ui/card';
+import { toast } from 'sonner';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Phone, Sun, Cloud, Moon, CheckCircle2, Volume2, Play, ChevronRight, ChevronLeft, X, Music, Home, BookOpen, Wind, Heart, Upload, Camera, Pause, ImageIcon, Mic, Bot, Leaf, Waves, Bird, Piano, Headphones, FileAudio, PlusCircle, Star, Gamepad2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Phone, Sun, Cloud, Moon, CheckCircle2, Volume2, Play, ChevronRight, ChevronLeft, X, Wind, Heart, Camera, Pause, ImageIcon, Mic, Leaf, Gamepad2 } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 
 // Import components
@@ -14,6 +16,7 @@ import CalmMeDialog from '@/components/CalmMeDialog';
 import ShowMeHomeDialog from '@/components/ShowMeHomeDialog';
 import TellMeAStoryDialog from '@/components/TellMeAStoryDialog';
 import VoiceRecorderDialog from '@/components/VoiceRecorderDialog';
+import type { GameId } from './PatientGames';
 
 // Weather types and functions
 type WeatherCondition =
@@ -127,10 +130,10 @@ const GAMES = [
   { id: 'solitaire',  title: 'Solitaire',        img: '/game_cards/solitaire.png'            },
   { id: 'hangman',    title: 'Hangman',          img: '/game_cards/hangman.png'              },
   { id: 'brainapps',  title: 'Brain Training',   img: '/game_cards/brain_training_apps.png'  },
-];
+] as const;
 
 // GameCard — uses generated PNG image, 30% smaller (w-14 aspect ratio 2/3), no whitespace
-function GameCard({ game, onPlay }: { game: typeof GAMES[0]; onPlay: () => void }) {
+function GameCard({ game, onPlay }: { game: (typeof GAMES)[number]; onPlay: () => void }) {
   return (
     <motion.button
       whileHover={{ scale: 1.05, y: -3 }}
@@ -157,8 +160,15 @@ function GameCard({ game, onPlay }: { game: typeof GAMES[0]; onPlay: () => void 
 }
 
 
-export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (id: string) => void } = {}) {
+export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (id: GameId) => void } = {}) {
   const { state, dispatch } = useApp();
+  // MYMEMORIA-FUNCTIONAL-REPAIR-006: recording a NEW voice message
+  // ('voice_messages') and automatic slideshow playback
+  // ('slideshow_autoplay') are Full Support-only. Playing back an ALREADY-
+  // recorded message, and manually stepping through a slideshow, are
+  // unaffected — only the CREATE/AUTO actions are gated, so no previously
+  // stored content or existing manual-use behavior is removed.
+  const { can } = useSubscription();
   const patient = state.patient;
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isPlaying, setIsPlaying] = useState(false);
@@ -171,20 +181,14 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
   const [showStoryDialog, setShowStoryDialog] = useState(false);
   const patientId = state.currentUser?.id || state.patient?.id || '';
   const [customVoiceSignedUrl, setCustomVoiceSignedUrl] = useState<string | null>(null);
-  const [customVoiceLabel, setCustomVoiceLabel] = useState<string>('');
+  const [, setCustomVoiceLabel] = useState<string>('');
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
   const [slideshowAuto, setSlideshowAuto] = useState(false);
   const [showRecorder, setShowRecorder] = useState(false);
   const [lovedOnePhotos, setLovedOnePhotos] = useState<{id:string; name:string; url:string; storagePath:string}[]>([]);
 const [showPhotoPopup, setShowPhotoPopup] = useState<{ id: string; name: string; url: string; storagePath: string } | null>(null);
 
-  useEffect(() => {
-    if (!patientId) return;
-    fetchVoiceSettings();
-    fetchLovedOnePhotos();
-  }, [patientId]);
-
-  const fetchVoiceSettings = async () => {
+  const fetchVoiceSettings = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('patients')
@@ -220,9 +224,9 @@ const [showPhotoPopup, setShowPhotoPopup] = useState<{ id: string; name: string;
       if (signed) setCustomVoiceSignedUrl(signed);
       if (label) setCustomVoiceLabel(label);
     } catch {}
-  };
+  }, [patientId]);
 
-  const fetchLovedOnePhotos = async () => {
+  const fetchLovedOnePhotos = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('patient_loved_one_photos')
@@ -249,7 +253,11 @@ const [showPhotoPopup, setShowPhotoPopup] = useState<{ id: string; name: string;
                   .from('patient_loved_one_photos')
                   .insert({ patient_id: patientId, name: photo.name, storage_path: sp })
                   .select('id').single();
-                if (dbErr) continue;
+                if (dbErr) {
+                  const { error: cleanupErr } = await supabase.storage.from('patient-media').remove([sp]);
+                  if (cleanupErr) console.error('Orphaned loved-one-photo storage object could not be cleaned up:', sp, cleanupErr.message);
+                  continue;
+                }
                 const signed = await getSignedMediaUrl(sp);
                 if (signed) migrated.push({ id: row.id, name: photo.name, url: signed, storagePath: sp });
               }
@@ -269,7 +277,13 @@ const [showPhotoPopup, setShowPhotoPopup] = useState<{ id: string; name: string;
       }));
       setLovedOnePhotos(withUrls);
     } catch {}
-  };
+  }, [patientId]);
+
+  useEffect(() => {
+    if (!patientId) return;
+    fetchVoiceSettings();
+    fetchLovedOnePhotos();
+  }, [patientId, fetchVoiceSettings, fetchLovedOnePhotos]);
 
 // Medication summary on home screen reads from AppContext (Supabase-backed).
 // Legacy localStorage keys (patientLocalMeds / patientLocalLogs) are no longer read here.
@@ -298,7 +312,11 @@ const allFirstSessionDone = firstSessionSteps.every((s) => s.done);
 const showFirstSession = !firstSessionDone && !allFirstSessionDone;
 
 const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(0, 3);
-  const today = new Date().toISOString().split('T')[0];
+  // FQA-026: local calendar day, matching PatientMedications.tsx's own
+  // today() (format(new Date(), 'yyyy-MM-dd')) — state.medicationLogs is
+  // dated using that local day, so filtering against a UTC-derived "today"
+  // here would mismatch during evening hours in US timezones.
+  const today = format(new Date(), 'yyyy-MM-dd');
   const todayDow = new Date().getDay();
 
   const todayLocalDoses = localMeds
@@ -424,10 +442,16 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
   };
 
   const handleEmergency = () => {
+    // B1 (RELEASE-BLOCKER-CLOSURE): opening a tel: link is a request to the
+    // OS to start dialing — the app has no way to confirm a dialer opened,
+    // a call connected, or anyone was reached. Only ever describe this as
+    // "we tried to start a call," never as a completed or confirmed fact
+    // (see the dialog copy below).
+    window.location.href = `tel:${patient?.emergencyContact?.phone || '911'}`;
     setShowEmergencyDialog(true);
   };
 
-    const openGame = (game: typeof GAMES[0]) => {
+    const openGame = (game: (typeof GAMES)[number]) => {
     if (onNavigateToGame) onNavigateToGame(game.id);
   };
 
@@ -469,7 +493,13 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                 <div className="flex justify-center items-center gap-4 mb-4">
                   {/* Microphone — left */}
                   <button
-                    onClick={() => setShowRecorder(true)}
+                    onClick={() => {
+                      if (!can('voice_messages')) {
+                        toast.error('Recording a voice message is a Full Support feature. Upgrade to unlock it.');
+                        return;
+                      }
+                      setShowRecorder(true);
+                    }}
                     className="w-9 h-9 rounded-full bg-white/60 hover:bg-white/90 flex items-center justify-center border border-white/60 text-charcoal/60 hover:text-warm-bronze transition-all shadow-sm"
                     title={customVoiceSignedUrl ? 'Change recording' : 'Record a loving message'}
                   >
@@ -745,12 +775,25 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                   const sp = `${patientId}/loved-ones/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
                   const { error: upErr } = await supabase.storage
                     .from('patient-media').upload(sp, file, { contentType: file.type });
-                  if (upErr) { setLovedOnePhotos(prev => prev.filter(p => p.id !== tempId)); return; }
+                  if (upErr) {
+                    setLovedOnePhotos(prev => prev.filter(p => p.id !== tempId));
+                    toast.error('Failed to upload photo');
+                    return;
+                  }
                   const { data: row, error: dbErr } = await supabase
                     .from('patient_loved_one_photos')
                     .insert({ patient_id: patientId, name, storage_path: sp })
                     .select('id').single();
-                  if (dbErr) { setLovedOnePhotos(prev => prev.filter(p => p.id !== tempId)); return; }
+                  if (dbErr) {
+                    // FQA-027/B5: the file was already written to storage —
+                    // clean it up rather than leaving an orphan with no DB
+                    // record, and log if that cleanup itself fails too.
+                    const { error: cleanupErr } = await supabase.storage.from('patient-media').remove([sp]);
+                    if (cleanupErr) console.error('Orphaned loved-one-photo storage object could not be cleaned up:', sp, cleanupErr.message);
+                    setLovedOnePhotos(prev => prev.filter(p => p.id !== tempId));
+                    toast.error('Failed to save photo');
+                    return;
+                  }
                   const signed = await getSignedMediaUrl(sp);
                   setLovedOnePhotos(prev => prev.map(p =>
                     p.id === tempId ? { id: row.id, name, url: signed || previewUrl, storagePath: sp } : p
@@ -938,7 +981,13 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
 
               <div className="flex justify-center gap-3 mt-4">
                 <Button variant="outline" size="sm"
-                  onClick={() => setSlideshowAuto(a => !a)}
+                  onClick={() => {
+                    if (!slideshowAuto && !can('slideshow_autoplay')) {
+                      toast.error('Automatic slideshow playback is a Full Support feature. Upgrade to unlock it.');
+                      return;
+                    }
+                    setSlideshowAuto(a => !a);
+                  }}
                   className={slideshowAuto ? 'bg-warm-bronze text-white border-warm-bronze' : ''}>
                   {slideshowAuto ? <><Pause className="w-4 h-4 mr-1" />Stop</> : <><Play className="w-4 h-4 mr-1" />Auto Play</>}
                 </Button>
@@ -959,16 +1008,21 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
           onClose={() => setShowRecorder(false)}
           hasExistingRecording={!!customVoiceSignedUrl}
           onSave={async (blob, label) => {
+            // FQA-023: report success/failure back to the dialog so it can
+            // keep itself open (and keep the recorded blob) instead of
+            // closing before the upload/profile-save is actually confirmed.
             const ext = blob.type.split('/')[1] || 'webm';
             const sp = `${patientId}/voice/${Date.now()}.${ext}`;
             const { error: upErr } = await supabase.storage
               .from('patient-media').upload(sp, blob, { contentType: blob.type });
-            if (upErr) return;
-            await supabase.from('patients')
+            if (upErr) { toast.error('Failed to upload voice recording'); return false; }
+            const { error: updErr } = await supabase.from('patients')
               .update({ voice_storage_path: sp, voice_label: label }).eq('id', patientId);
+            if (updErr) { toast.error('Failed to save voice recording'); return false; }
             const signed = await getSignedMediaUrl(sp);
             if (signed) setCustomVoiceSignedUrl(signed);
             setCustomVoiceLabel(label);
+            return true;
           }}
         />
 
@@ -977,10 +1031,10 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
             <DialogHeader>
               <DialogTitle className="text-center text-2xl text-red-800 flex items-center justify-center gap-2">
                 <Heart className="w-8 h-8" />
-                Help is Coming
+                Emergency Help
               </DialogTitle>
               <DialogDescription className="text-center text-lg">
-                You're safe. Help is on the way.
+                We tried to start a call to {patient?.emergencyContact?.phone || '911'}.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
@@ -997,21 +1051,26 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                   </div>
                 )}
               </div>
-              
+
+              {/* B1: never claim a call was completed, connected, or that
+                  help is on the way — the app cannot confirm any of that
+                  (a tel: link can silently do nothing on devices with no
+                  dialer, no SIM, or a canceled call). Only describe the
+                  confirmed app action, and tell the patient what to check. */}
               <div className="p-4 bg-soft-sage/10 rounded-xl text-center">
-                <p className="text-charcoal font-medium">Calling {patient?.emergencyContact?.phone || '911'}...</p>
-                <p className="text-medium-gray text-sm mt-1">Stay calm. Someone will be with you soon.</p>
+                <p className="text-charcoal font-medium">If your phone's call screen did not open, tap "Call Now" below.</p>
+                <p className="text-medium-gray text-sm mt-1">Or ask someone nearby for help right away.</p>
               </div>
-              
+
               <div className="flex gap-3">
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => setShowEmergencyDialog(false)}
                   className="flex-1 rounded-xl"
                 >
                   I'm Okay Now
                 </Button>
-                <Button 
+                <Button
                   onClick={() => window.location.href = `tel:${patient?.emergencyContact?.phone || '911'}`}
                   className="flex-1 bg-red-800 hover:bg-red-900 text-white rounded-xl"
                 >
@@ -1040,13 +1099,27 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                 </p>
                 <Button variant="outline"
                   onClick={async () => {
-                    setLovedOnePhotos(prev => prev.filter(p => p.id !== showPhotoPopup.id));
+                    const removed = showPhotoPopup;
+                    const previous = lovedOnePhotos;
+                    setLovedOnePhotos(prev => prev.filter(p => p.id !== removed.id));
                     setShowPhotoPopup(null);
-                    if (showPhotoPopup.storagePath) {
-                      await supabase.storage.from('patient-media').remove([showPhotoPopup.storagePath]);
+                    // FQA-027: delete the DB record first — if it fails, roll
+                    // the UI back instead of leaving storage removed while
+                    // the (now-broken) record and optimistic update stand.
+                    const { error } = await supabase.from('patient_loved_one_photos')
+                      .delete().eq('id', removed.id).eq('patient_id', patientId);
+                    if (error) {
+                      setLovedOnePhotos(previous);
+                      toast.error('Failed to remove photo');
+                      return;
                     }
-                    await supabase.from('patient_loved_one_photos')
-                      .delete().eq('id', showPhotoPopup.id).eq('patient_id', patientId);
+                    if (removed.storagePath) {
+                      // B5: the record is gone (the correct, authoritative
+                      // outcome) — log rather than silently drop it if
+                      // storage cleanup itself fails.
+                      const { error: storageErr } = await supabase.storage.from('patient-media').remove([removed.storagePath]);
+                      if (storageErr) console.error('Loved-one-photo storage cleanup failed after record removal:', removed.storagePath, storageErr.message);
+                    }
                   }}
                   className="w-full text-gentle-coral border-gentle-coral/30 hover:bg-gentle-coral/10 rounded-xl">
                   Remove Photo

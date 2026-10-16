@@ -1,16 +1,31 @@
 import { useState } from 'react';
-import { useApp } from '@/store/AppContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Clock, Star, Play, X, Wind, Puzzle, Music, Camera, Activity } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import type { Activity as ActivityType } from '@/types';
+
+// RELEASE-BLOCKER-CLOSURE PHASE 1: this component is not imported or
+// routed anywhere in the app (confirmed by a repo-wide reference search)
+// and previously read `state.activities`/dispatched `ADD_ACTIVITY_SESSION`
+// — neither exists anywhere in AppContext's state or reducer, so both were
+// always no-ops/undefined even before this fix. Rather than inventing a
+// new store-wide "activities" feature (data model, loader, persistence)
+// that was never actually built or asked for, this keeps the component
+// exactly as functional as it already was — fully self-contained — while
+// making it type-safe.
+interface ActivityType {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  duration: number;
+  difficulty: string;
+}
 
 export default function PatientActivities() {
-  const { state, dispatch } = useApp();
-  const activities = state.activities;
+  const [activities] = useState<ActivityType[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<ActivityType | null>(null);
   const [isBreathing, setIsBreathing] = useState(false);
   const [breathingPhase, setBreathingPhase] = useState<'inhale' | 'hold' | 'exhale'>('inhale');
@@ -46,17 +61,6 @@ export default function PatientActivities() {
       startBreathingCycle();
     } else {
       toast.success(`Starting: ${activity.title}`);
-      // Record activity session
-      dispatch({
-        type: 'ADD_ACTIVITY_SESSION',
-        payload: {
-          id: `as${Date.now()}`,
-          activityId: activity.id,
-          patientId: state.patient?.id || '',
-          activityTitle: activity.title,
-          startedAt: new Date().toISOString(),
-        },
-      });
     }
   };
 

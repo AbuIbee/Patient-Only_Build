@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RotateCcw, ChevronLeft, User, Users, Trophy, Heart } from 'lucide-react';
 
@@ -269,7 +269,7 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
     }
   }, []);
 
-  const executeMove = (fr: number, fc: number, tr: number, tc: number) => {
+  const executeMove = useCallback((fr: number, fc: number, tr: number, tc: number) => {
     const nextBoard = board.map(row => [...row]);
     const piece = nextBoard[fr][fc];
 
@@ -298,7 +298,7 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
     }
 
     setTurn(prev => prev === 'w' ? 'b' : 'w');
-  };
+  }, [board, gameMode]);
 
   // --- SYSTEM AI PROCESS SCHEDULER EFFECT ---
   useEffect(() => {
@@ -339,7 +339,7 @@ export default function ChessGame({ onBack }: { onBack: () => void }) {
     }, delay);
 
     return () => clearTimeout(timer);
-  }, [turn, gameMode, board, difficulty, winner, aiThinking, minimax]);
+  }, [turn, gameMode, board, difficulty, winner, aiThinking, minimax, executeMove]);
 
   const handleSquareClick = (r: number, c: number) => {
     if (winner || aiThinking) return;

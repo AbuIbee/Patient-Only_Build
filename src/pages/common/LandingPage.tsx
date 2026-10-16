@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { useApp } from '@/store/AppContext';
-import { Button } from '@/components/ui/button';
+import { useApp } from '@/store/useApp';
 import {
   Heart,
   Brain,
@@ -10,7 +9,6 @@ import {
   Shield,
   X,
   ArrowRight,
-  Check,
   Star,
   ChevronDown,
 } from 'lucide-react';
@@ -39,7 +37,7 @@ export default function LandingPage() {
   ];
 
   const faqs = [
-    { q: 'Who is My Memoria Ally designed for?', a: 'It supports people living with  Alzheimer\s, Dementia, Parkinson\s, MS, ALS, Huntington\s, PSP, or MSA, Traumatic Brain Injury, ADHD, Autism or other cognitive needs — and the families who care for them.' },
+    { q: 'Who is My Memoria Ally designed for?', a: "It supports people living with Alzheimer's, Dementia, Parkinson's, MS, ALS, Huntington's, PSP, or MSA, Traumatic Brain Injury, ADHD, Autism or other cognitive needs — and the families who care for them." },
     { q: 'Do I need technical experience to use it?', a: 'Not at all. The interface is designed to be large, clear, and intuitive. If you can tap a button, you can use My Memoria Ally.' },
     { q: 'Can family members see what\'s happening?', a: 'Yes. Care partners get updates, can log check-ins, and stay connected — all without disrupting the patient\'s experience.' },
     { q: 'Is my health data kept private?', a: 'Absolutely. All data is stored securely and never sold. We follow strict privacy standards to protect you and your loved one.' },

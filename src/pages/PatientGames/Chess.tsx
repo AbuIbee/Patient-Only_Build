@@ -1,11 +1,23 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
+import type { CSSProperties } from "react";
 
-const PIECES = {
+type Color = "w" | "b";
+type PieceType = "P" | "N" | "B" | "R" | "Q" | "K";
+interface Piece { t: PieceType; c: Color; }
+type Square = Piece | null;
+type Board = Square[][];
+type Pos = [number, number];
+type EnPassant = Pos | null;
+type CastleRights = Record<string, boolean>;
+interface Move { fr: number; fc: number; tr: number; tc: number; }
+interface MoveResult { board: Board; castleRights: CastleRights; enPassant: EnPassant; }
+
+const PIECES: Record<string, string> = {
   wK: "♔", wQ: "♕", wR: "♖", wB: "♗", wN: "♘", wP: "♙",
   bK: "♚", bQ: "♛", bR: "♜", bB: "♝", bN: "♞", bP: "♟",
 };
 
-const PIECE_VALUES = { P: 100, N: 320, B: 330, R: 500, Q: 900, K: 20000 };
+const PIECE_VALUES: Record<PieceType, number> = { P: 100, N: 320, B: 330, R: 500, Q: 900, K: 20000 };
 
 const PAWN_TABLE = [
   [0,0,0,0,0,0,0,0],
@@ -68,23 +80,23 @@ const KING_MID_TABLE = [
   [20,30,10,0,0,10,30,20],
 ];
 
-function initBoard() {
-  const b = Array(8).fill(null).map(() => Array(8).fill(null));
-  const order = ["R","N","B","Q","K","B","N","R"];
+function initBoard(): Board {
+  const b: Board = Array(8).fill(null).map(() => Array(8).fill(null));
+  const order: PieceType[] = ["R","N","B","Q","K","B","N","R"];
   order.forEach((t,c) => { b[0][c]={t,c:"b"}; b[7][c]={t,c:"w"}; });
   for(let c=0;c<8;c++) { b[1][c]={t:"P",c:"b"}; b[6][c]={t:"P",c:"w"}; }
   return b;
 }
 
-function cloneBoard(b) { return b.map(r => r.map(c => c ? {...c} : null)); }
+function cloneBoard(b: Board): Board { return b.map(r => r.map(c => c ? {...c} : null)); }
 
-function getRawMoves(b, r, c, enPassant) {
+function getRawMoves(b: Board, r: number, c: number, enPassant: EnPassant): Pos[] {
   const p = b[r][c]; if(!p) return [];
   const {t, c: col} = p;
-  const moves = [];
-  const opp = col === "w" ? "b" : "w";
-  const add = (nr,nc) => { if(nr>=0&&nr<8&&nc>=0&&nc<8&&b[nr][nc]?.c!==col) moves.push([nr,nc]); };
-  const slide = (dr,dc) => { let nr=r+dr,nc=c+dc; while(nr>=0&&nr<8&&nc>=0&&nc<8){if(b[nr][nc]){if(b[nr][nc].c!==col)moves.push([nr,nc]);break;}moves.push([nr,nc]);nr+=dr;nc+=dc;} };
+  const moves: Pos[] = [];
+  const opp: Color = col === "w" ? "b" : "w";
+  const add = (nr: number,nc: number) => { if(nr>=0&&nr<8&&nc>=0&&nc<8&&b[nr][nc]?.c!==col) moves.push([nr,nc]); };
+  const slide = (dr: number,dc: number) => { let nr=r+dr,nc=c+dc; while(nr>=0&&nr<8&&nc>=0&&nc<8){if(b[nr][nc]){if(b[nr][nc]!.c!==col)moves.push([nr,nc]);break;}moves.push([nr,nc]);nr+=dr;nc+=dc;} };
 
   if(t==="P") {
     const dir = col==="w" ? -1 : 1;
@@ -107,22 +119,22 @@ function getRawMoves(b, r, c, enPassant) {
   return moves;
 }
 
-function isInCheck(b, col) {
+function isInCheck(b: Board, col: Color): boolean {
   let kr=-1,kc=-1;
-  for(let r=0;r<8;r++) for(let c=0;c<8;c++) if(b[r][c]?.t==="K"&&b[r][c].c===col){kr=r;kc=c;}
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++) if(b[r][c]?.t==="K"&&b[r][c]!.c===col){kr=r;kc=c;}
   if(kr===-1) return true;
-  const opp = col==="w"?"b":"w";
+  const opp: Color = col==="w"?"b":"w";
   for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
     if(b[r][c]?.c===opp) if(getRawMoves(b,r,c,null).some(([mr,mc])=>mr===kr&&mc===kc)) return true;
   }
   return false;
 }
 
-function getLegalMoves(b, r, c, castleRights, enPassant) {
+function getLegalMoves(b: Board, r: number, c: number, castleRights: CastleRights, enPassant: EnPassant): Pos[] {
   const p = b[r][c]; if(!p) return [];
   const col = p.c;
   const raw = getRawMoves(b,r,c,enPassant);
-  const legal = raw.filter(([tr,tc]) => {
+  const legal: Pos[] = raw.filter(([tr,tc]) => {
     const nb = cloneBoard(b);
     if(p.t==="P"&&enPassant&&tr===enPassant[0]&&tc===enPassant[1]) {
       nb[r][tc]=null;
@@ -151,11 +163,11 @@ function getLegalMoves(b, r, c, castleRights, enPassant) {
   return legal;
 }
 
-function applyMove(b, fr, fc, tr, tc, castleRights, enPassant) {
+function applyMove(b: Board, fr: number, fc: number, tr: number, tc: number, castleRights: CastleRights, enPassant: EnPassant): MoveResult {
   const nb = cloneBoard(b);
-  const p = nb[fr][fc];
-  let newEP = null;
-  const newCR = {...castleRights};
+  const p = nb[fr][fc]!;
+  let newEP: EnPassant = null;
+  const newCR: CastleRights = {...castleRights};
 
   if(p.t==="P"&&Math.abs(tr-fr)===2) newEP=[fr+(tr-fr)/2,fc];
   if(p.t==="P"&&enPassant&&tr===enPassant[0]&&tc===enPassant[1]) nb[fr][tc]=null;
@@ -176,7 +188,7 @@ function applyMove(b, fr, fc, tr, tc, castleRights, enPassant) {
   return {board:nb, castleRights:newCR, enPassant:newEP};
 }
 
-function evaluate(b) {
+function evaluate(b: Board): number {
   let score = 0;
   for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
     const p = b[r][c]; if(!p) continue;
@@ -194,8 +206,8 @@ function evaluate(b) {
   return score;
 }
 
-function getAllMoves(b, col, castleRights, enPassant) {
-  const moves = [];
+function getAllMoves(b: Board, col: Color, castleRights: CastleRights, enPassant: EnPassant): Move[] {
+  const moves: Move[] = [];
   for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
     if(b[r][c]?.c===col) {
       getLegalMoves(b,r,c,castleRights,enPassant).forEach(([tr,tc]) => moves.push({fr:r,fc:c,tr,tc}));
@@ -204,9 +216,9 @@ function getAllMoves(b, col, castleRights, enPassant) {
   return moves;
 }
 
-function minimax(b, depth, alpha, beta, maximizing, castleRights, enPassant) {
+function minimax(b: Board, depth: number, alpha: number, beta: number, maximizing: boolean, castleRights: CastleRights, enPassant: EnPassant): number {
   if(depth===0) return evaluate(b);
-  const col = maximizing ? "b" : "w";
+  const col: Color = maximizing ? "b" : "w";
   const moves = getAllMoves(b,col,castleRights,enPassant);
   if(!moves.length) {
     if(isInCheck(b,col)) return maximizing ? -30000 : 30000;
@@ -214,8 +226,8 @@ function minimax(b, depth, alpha, beta, maximizing, castleRights, enPassant) {
   }
   // Order moves: captures first
   moves.sort((a,z) => {
-    const az = b[z.tr][z.tc] ? PIECE_VALUES[b[z.tr][z.tc].t] : 0;
-    const aa = b[a.tr][a.tc] ? PIECE_VALUES[b[a.tr][a.tc].t] : 0;
+    const az = b[z.tr][z.tc] ? PIECE_VALUES[b[z.tr][z.tc]!.t] : 0;
+    const aa = b[a.tr][a.tc] ? PIECE_VALUES[b[a.tr][a.tc]!.t] : 0;
     return az - aa;
   });
   if(maximizing) {
@@ -239,15 +251,15 @@ function minimax(b, depth, alpha, beta, maximizing, castleRights, enPassant) {
   }
 }
 
-function getBestMove(b, castleRights, enPassant, depth=3) {
+function getBestMove(b: Board, castleRights: CastleRights, enPassant: EnPassant, depth=3): Move | null {
   const moves = getAllMoves(b,"b",castleRights,enPassant);
   if(!moves.length) return null;
   moves.sort((a,z) => {
-    const az = b[z.tr][z.tc] ? PIECE_VALUES[b[z.tr][z.tc].t] : 0;
-    const aa = b[a.tr][a.tc] ? PIECE_VALUES[b[a.tr][a.tc].t] : 0;
+    const az = b[z.tr][z.tc] ? PIECE_VALUES[b[z.tr][z.tc]!.t] : 0;
+    const aa = b[a.tr][a.tc] ? PIECE_VALUES[b[a.tr][a.tc]!.t] : 0;
     return az - aa;
   });
-  let bestVal = -Infinity, bestMove = moves[0];
+  let bestVal = -Infinity, bestMove: Move = moves[0];
   for(const m of moves) {
     const {board:nb,castleRights:ncr,enPassant:nep} = applyMove(b,m.fr,m.fc,m.tr,m.tc,castleRights,enPassant);
     const val = minimax(nb,depth-1,-Infinity,Infinity,false,ncr,nep);
@@ -260,26 +272,27 @@ const FILES = ["a","b","c","d","e","f","g","h"];
 const RANKS = ["8","7","6","5","4","3","2","1"];
 
 // Medium maps to 4 ply deep (2 full moves) and Hard maps to 6 ply deep (3 full moves)
-const DIFFICULTY = { easy: 1, medium: 4, hard: 6 };
+type Difficulty = "easy" | "medium" | "hard";
+const DIFFICULTY: Record<Difficulty, number> = { easy: 1, medium: 4, hard: 6 };
 
-export default function ChessGame({ onBack }) {
-  const [board, setBoard] = useState(initBoard);
-  const [selected, setSelected] = useState(null);
-  const [legalMoves, setLegalMoves] = useState([]);
-  const [turn, setTurn] = useState("w");
-  const [castleRights, setCastleRights] = useState({wK:true,wQ:true,bK:true,bQ:true});
-  const [enPassant, setEnPassant] = useState(null);
+export default function ChessGame({ onBack }: { onBack?: () => void }) {
+  const [board, setBoard] = useState<Board>(initBoard);
+  const [selected, setSelected] = useState<Pos | null>(null);
+  const [legalMoves, setLegalMoves] = useState<Pos[]>([]);
+  const [turn, setTurn] = useState<Color>("w");
+  const [castleRights, setCastleRights] = useState<CastleRights>({wK:true,wQ:true,bK:true,bQ:true});
+  const [enPassant, setEnPassant] = useState<EnPassant>(null);
   const [status, setStatus] = useState("Your turn");
   const [gameOver, setGameOver] = useState(false);
   const [inCheck, setInCheck] = useState(false);
-  const [capturedW, setCapturedW] = useState([]);
-  const [capturedB, setCapturedB] = useState([]);
-  const [lastMove, setLastMove] = useState(null);
+  const [capturedW, setCapturedW] = useState<Piece[]>([]);
+  const [capturedB, setCapturedB] = useState<Piece[]>([]);
+  const [lastMove, setLastMove] = useState<[number, number, number, number] | null>(null);
   const [aiThinking, setAiThinking] = useState(false);
-  const [difficulty, setDifficulty] = useState("medium");
+  const [difficulty, setDifficulty] = useState<Difficulty>("medium");
   const [moveCount, setMoveCount] = useState(0);
-  const [promotionPending, setPromotionPending] = useState(null);
-  const aiRef = useRef(null);
+  const [promotionPending, setPromotionPending] = useState<Move | null>(null);
+  const aiRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reset = () => {
     setBoard(initBoard());
@@ -292,7 +305,7 @@ export default function ChessGame({ onBack }) {
     if(aiRef.current) clearTimeout(aiRef.current);
   };
 
-  const doAIMove = useCallback((b, cr, ep) => {
+  const doAIMove = useCallback((b: Board, cr: CastleRights, ep: EnPassant) => {
     setAiThinking(true);
     aiRef.current = setTimeout(() => {
       const depth = DIFFICULTY[difficulty];
@@ -322,7 +335,7 @@ export default function ChessGame({ onBack }) {
     }, 300);
   }, [difficulty]);
 
-  const handleSquare = (r, c) => {
+  const handleSquare = (r: number, c: number) => {
     if(gameOver || turn!=="w" || aiThinking || promotionPending) return;
     if(selected) {
       const [sr,sc] = selected;
@@ -357,16 +370,48 @@ export default function ChessGame({ onBack }) {
     }
   };
 
-  const isLastMove = (r,c) => lastMove&&(lastMove[0]===r&&lastMove[1]===c||lastMove[2]===r&&lastMove[3]===c);
-  const isSelected = (r,c) => selected&&selected[0]===r&&selected[1]===c;
-  const isLegal = (r,c) => legalMoves.some(([mr,mc])=>mr===r&&mc===c);
-  const isKingInCheck = (r,c) => inCheck&&board[r][c]?.t==="K"&&board[r][c]?.c==="w";
+  const isLastMove = (r: number,c: number) => lastMove&&(lastMove[0]===r&&lastMove[1]===c||lastMove[2]===r&&lastMove[3]===c);
+  const isSelected = (r: number,c: number) => selected&&selected[0]===r&&selected[1]===c;
+  const isLegal = (r: number,c: number) => legalMoves.some(([mr,mc])=>mr===r&&mc===c);
+  const isKingInCheck = (r: number,c: number) => inCheck&&board[r][c]?.t==="K"&&board[r][c]?.c==="w";
 
   const totalCapturedW = capturedW.reduce((s,p)=>s+(PIECE_VALUES[p.t]||0),0);
   const totalCapturedB = capturedB.reduce((s,p)=>s+(PIECE_VALUES[p.t]||0),0);
   const advantage = totalCapturedW - totalCapturedB;
 
-  const styles = {
+  const styles: {
+    container: CSSProperties;
+    header: CSSProperties;
+    backBtn: CSSProperties;
+    title: CSSProperties;
+    diffRow: CSSProperties;
+    diffLabel: CSSProperties;
+    diffBtn: (active: boolean) => CSSProperties;
+    statusBar: CSSProperties;
+    statusText: CSSProperties;
+    moveCount: CSSProperties;
+    capturedRow: CSSProperties;
+    capturedPieces: CSSProperties;
+    advantageTag: (val: number) => CSSProperties;
+    boardWrap: CSSProperties;
+    coordRow: CSSProperties;
+    coordFile: CSSProperties;
+    board: CSSProperties;
+    rankLabel: CSSProperties;
+    square: (r: number, c: number) => CSSProperties;
+    piece: (col: Color) => CSSProperties;
+    legalDot: (hasPiece: boolean) => CSSProperties;
+    dot: (hasPiece: boolean) => CSSProperties;
+    footer: CSSProperties;
+    resetBtn: CSSProperties;
+    turnIndicator: (active: boolean) => CSSProperties;
+    turnLabel: (isUser: boolean) => CSSProperties;
+    gameOverOverlay: CSSProperties;
+    gameOverBox: CSSProperties;
+    gameOverTitle: CSSProperties;
+    gameOverSub: CSSProperties;
+    playAgainBtn: CSSProperties;
+  } = {
     container: {
       fontFamily: "var(--font-sans)",
       maxWidth: 560,
@@ -492,7 +537,6 @@ export default function ChessGame({ onBack }) {
     square: (r,c) => {
       const light = (r+c)%2===0;
       const sel = isSelected(r,c);
-      const legal = isLegal(r,c);
       const last = isLastMove(r,c);
       const check = isKingInCheck(r,c);
       let bg = light ? "#f0d9b5" : "#b58863";
@@ -519,7 +563,7 @@ export default function ChessGame({ onBack }) {
       transition: "transform 0.1s",
       zIndex: 2,
     }),
-    legalDot: (hasPiece) => ({
+    legalDot: (_hasPiece) => ({
       position: "absolute",
       inset: 0,
       display: "flex",
@@ -559,7 +603,7 @@ export default function ChessGame({ onBack }) {
       background: active ? "#4CAF50" : "var(--color-border-tertiary)",
       flexShrink: 0,
     }),
-    turnLabel: (isUser) => ({
+    turnLabel: (_isUser) => ({
       fontSize: 12,
       color: "var(--color-text-secondary)",
       display: "flex",
@@ -635,7 +679,7 @@ export default function ChessGame({ onBack }) {
 
       <div style={styles.diffRow}>
         <span style={styles.diffLabel}>Difficulty:</span>
-        {["easy","medium","hard"].map(d => (
+        {(["easy","medium","hard"] as const).map(d => (
           <button key={d} style={styles.diffBtn(difficulty===d)} onClick={()=>{setDifficulty(d);reset();}}>
             {d}
           </button>

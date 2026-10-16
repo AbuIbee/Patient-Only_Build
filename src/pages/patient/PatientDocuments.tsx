@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useApp } from '@/store/AppContext';
+import { getErrorMessage } from '@/lib/utils';
+import { useApp } from '@/store/useApp';
 import { toast } from 'sonner';
 import { FileText, CalendarDays, CalendarRange, Calendar, Upload, Trash2, FileIcon, Edit2, Check, X, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { format, addDays, subDays } from 'date-fns';
+import { parseLocalDate } from '@/lib/localDate';
 
 // ─── Care Partner Log types ───────────────────────────────────────────────────
 type LogRow = {
@@ -56,12 +59,16 @@ async function signDocUrl(storagePath: string): Promise<string> {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+// B6: these report_date/note-date values are calendar DAYS, not instants —
+// parse/format using local date components only, never round-trip through
+// toISOString() (UTC), which can shift the result to the wrong day
+// depending on the caller's timezone offset and time of day.
 function getWeekStart(dateString: string) {
-  const date = new Date(dateString + 'T12:00:00');
+  const date = parseLocalDate(dateString);
   const day = date.getDay();
   const diff = day === 0 ? -6 : 1 - day;
   date.setDate(date.getDate() + diff);
-  return date.toISOString().slice(0, 10);
+  return format(date, 'yyyy-MM-dd');
 }
 
 function getMonthKey(dateString: string) {
@@ -98,6 +105,11 @@ export default function PatientDocuments() {
   // Medical Bills state (Supabase-backed)
   const [bills, setBills] = useState<UserDocument[]>([]);
   const [billUploadError, setBillUploadError] = useState('');
+  // B4: loadDocs()/handleBillUpload() referenced setBillsLoading/
+  // setBillUploading without either ever being declared — a ReferenceError
+  // on every mount (loadDocs('medical_bills') runs unconditionally in the
+  // init effect), silently failing before its own try/catch and leaving
+  // bills perpetually unloaded with no error shown.
   const [billsLoading, setBillsLoading] = useState(false);
   const [billUploading, setBillUploading] = useState(false);
   const billInputRef = useRef<HTMLInputElement>(null);
@@ -106,7 +118,7 @@ export default function PatientDocuments() {
   const [careNotes, setCareNotes] = useState<CareNote[]>([]);
   const [notesLoading, setNotesLoading] = useState(false);
   const [noteFilter, setNoteFilter] = useState<FilterMode>('day');
-  const [selectedNoteDate, setSelectedNoteDate] = useState<string>(new Date().toISOString().slice(0,10));
+  const [selectedNoteDate, setSelectedNoteDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [noteInput, setNoteInput] = useState('');
   const [editNoteId, setEditNoteId] = useState<string | null>(null);
   const [editNoteText, setEditNoteText] = useState('');
@@ -114,16 +126,8 @@ export default function PatientDocuments() {
   // Calendar week/month state for notes
   const [calBase, setCalBase] = useState(new Date());
 
-  useEffect(() => {
-    if (!patientId) return;
-    loadLogs();
-    loadDocs('medical_docs');
-    loadDocs('medical_bills');
-    fetchCareNotes();
-  }, [patientId]);
-
   // ── Load personal notes from Supabase (with one-time localStorage migration) ──
-  const fetchCareNotes = async () => {
+  const fetchCareNotes = useCallback(async () => {
     if (!patientId) return;
     setNotesLoading(true);
     try {
@@ -147,7 +151,7 @@ export default function PatientDocuments() {
                 patient_id: patientId,
                 author_id: patientId,
                 note: JSON.stringify({ date: n.date, text: n.text }),
-                note_type: 'care_partner_personal',
+                note_type: 'care_partner_personal' as const,
                 created_at: n.createdAt,
               }));
               const { data: migrated, error: migErr } = await supabase
@@ -181,10 +185,10 @@ export default function PatientDocuments() {
     } finally {
       setNotesLoading(false);
     }
-  };
+  }, [patientId]);
 
   // ── Load documents from Supabase ──────────────────────────────────────────
-  const loadDocs = async (section: UserDocument['section']) => {
+  const loadDocs = useCallback(async (section: UserDocument['section']) => {
     if (!patientId) return;
     const setter = section === 'medical_docs' ? setDocsLoading : setBillsLoading;
     setter(true);
@@ -196,7 +200,7 @@ export default function PatientDocuments() {
         .eq('section', section)
         .order('uploaded_at', { ascending: false });
       if (error) throw error;
-      const items = await Promise.all((data || []).map(async (row: any) => {
+      const items = await Promise.all((data || []).map(async (row) => {
         const signedUrl = await signDocUrl(row.storage_path);
         return {
           id: row.id,
@@ -204,27 +208,27 @@ export default function PatientDocuments() {
           noteText: row.note_text || '',
           storagePath: row.storage_path,
           fileType: row.file_type,
-          uploadedAt: row.uploaded_at,
+          uploadedAt: row.uploaded_at || new Date().toISOString(),
           signedUrl,
           section: row.section,
         } as UserDocument;
       }));
       if (section === 'medical_docs') setUserDocs(items);
       else setBills(items);
-    } catch (err: any) {
+    } catch (err) {
       console.error('loadDocs error:', err);
       toast.error('Could not load documents. Please try again.');
     } finally {
       setter(false);
     }
-  };
+  }, [patientId]);
 
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     setLoading(true);
     try {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 30);
-      const cutoffDate = cutoff.toISOString().slice(0, 10);
+      const cutoffDate = format(cutoff, 'yyyy-MM-dd'); // report_date is a calendar day, not an instant
       const { data, error } = await supabase
         .from('care_partner_logs')
         .select('id, patient_id, report_date, submitted_at, mood, meals, hydration, medications, mobility, exercise, sleep_quality, pain_level, notes, answers')
@@ -236,7 +240,15 @@ export default function PatientDocuments() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [patientId]);
+
+  useEffect(() => {
+    if (!patientId) return;
+    loadLogs();
+    loadDocs('medical_docs');
+    loadDocs('medical_bills');
+    fetchCareNotes();
+  }, [patientId, loadLogs, loadDocs, fetchCareNotes]);
 
   const groupedLogs = useMemo(() => {
     if (filterMode === 'day') {
@@ -280,7 +292,6 @@ export default function PatientDocuments() {
     setError('');
     setUploadingFlag(true);
     try {
-      const ext = file.name.split('.').pop() ?? 'bin';
       const storagePath = `${patientId}/${section}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
 
       const { error: upErr } = await supabase.storage
@@ -302,10 +313,13 @@ export default function PatientDocuments() {
         .select()
         .single();
       if (dbErr) {
-        // F08 remediation: the storage object above already landed; without
-        // this the file is orphaned (billed, undiscoverable, and blocks
-        // re-upload to the same path) every time the metadata insert fails.
-        await supabase.storage.from(DOC_BUCKET).remove([storagePath]);
+        // F08/B5: the storage object above already landed; without this
+        // the file is orphaned (billed, undiscoverable, and blocks
+        // re-upload to the same path) every time the metadata insert
+        // fails — and log if the cleanup itself fails too, rather than
+        // dropping that separately.
+        const { error: cleanupErr } = await supabase.storage.from(DOC_BUCKET).remove([storagePath]);
+        if (cleanupErr) console.error('Orphaned document storage object could not be cleaned up:', storagePath, cleanupErr.message);
         throw dbErr;
       }
 
@@ -316,14 +330,14 @@ export default function PatientDocuments() {
         noteText: '',
         storagePath,
         fileType: file.type,
-        uploadedAt: row.uploaded_at,
+        uploadedAt: row.uploaded_at || new Date().toISOString(),
         signedUrl,
         section,
       };
       if (section === 'medical_docs') setUserDocs(prev => [doc, ...prev]);
       else setBills(prev => [doc, ...prev]);
-    } catch (err: any) {
-      setError('Upload failed: ' + (err.message || 'Unknown error'));
+    } catch (err) {
+      setError('Upload failed: ' + getErrorMessage(err));
     } finally {
       setUploadingFlag(false);
     }
@@ -444,11 +458,11 @@ export default function PatientDocuments() {
   };
 
   // Calendar helpers for notes
-  const today = new Date().toISOString().slice(0, 10);
+  const today = format(new Date(), 'yyyy-MM-dd');
   const calWeekDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(calBase);
     d.setDate(d.getDate() - d.getDay() + i);
-    return d.toISOString().slice(0, 10);
+    return format(d, 'yyyy-MM-dd');
   });
   const calMonthDays = (() => {
     const y = calBase.getFullYear();
@@ -456,7 +470,7 @@ export default function PatientDocuments() {
     const first = new Date(y, m, 1);
     const last = new Date(y, m + 1, 0);
     const blanks = Array(first.getDay()).fill(null);
-    const days = Array.from({ length: last.getDate() }, (_, i) => new Date(y, m, i + 1).toISOString().slice(0, 10));
+    const days = Array.from({ length: last.getDate() }, (_, i) => format(new Date(y, m, i + 1), 'yyyy-MM-dd'));
     return [...blanks, ...days];
   })();
 
@@ -645,7 +659,7 @@ export default function PatientDocuments() {
             </div>
             <label className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 bg-warm-amber text-white text-sm font-semibold cursor-pointer hover:bg-warm-amber/90 transition-colors">
               <Plus className="w-4 h-4" />
-              Upload Bill
+              {billUploading ? "Uploading…" : "Upload Bill"}
               <input ref={billInputRef} type="file" className="hidden"
                 accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
                 onChange={handleBillUpload} />
@@ -657,7 +671,9 @@ export default function PatientDocuments() {
         </div>
 
         <div className="px-6 py-6 sm:px-8">
-          {bills.length === 0 ? (
+          {billsLoading ? (
+            <p className="text-medium-gray text-sm">Loading bills…</p>
+          ) : bills.length === 0 ? (
             <label className="flex flex-col items-center justify-center gap-4 py-14 border-2 border-dashed border-soft-taupe rounded-2xl cursor-pointer hover:border-warm-amber hover:bg-warm-amber/5 transition-all group">
               <input type="file" className="hidden"
                 accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
@@ -851,14 +867,14 @@ export default function PatientDocuments() {
           {!notesLoading && noteFilter === 'day' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <button onClick={() => { const d = new Date(selectedNoteDate); d.setDate(d.getDate()-1); setSelectedNoteDate(d.toISOString().slice(0,10)); }}
+                <button onClick={() => setSelectedNoteDate(format(subDays(parseLocalDate(selectedNoteDate), 1), 'yyyy-MM-dd'))}
                   className="p-2 rounded-xl hover:bg-soft-taupe/40 transition-colors">
                   <svg className="w-5 h-5 text-charcoal" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 <p className="font-semibold text-charcoal">
                   {selectedNoteDate === today ? 'Today — ' : ''}{new Date(selectedNoteDate + 'T12:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}
                 </p>
-                <button onClick={() => { const d = new Date(selectedNoteDate); d.setDate(d.getDate()+1); setSelectedNoteDate(d.toISOString().slice(0,10)); }}
+                <button onClick={() => setSelectedNoteDate(format(addDays(parseLocalDate(selectedNoteDate), 1), 'yyyy-MM-dd'))}
                   className="p-2 rounded-xl hover:bg-soft-taupe/40 transition-colors">
                   <svg className="w-5 h-5 text-charcoal" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </button>

@@ -10,10 +10,12 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useApp } from '@/store/AppContext';
+import type { DementiaStage } from '@/types/supabase';
+import { getErrorMessage } from '@/lib/utils';
+import { useApp } from '@/store/useApp';
 import {
   Save, CheckCircle2, AlertCircle, Loader2, User,
-  MapPin, Phone, Heart, Stethoscope, Shield, FileText,
+  MapPin, Heart, Stethoscope, Shield, FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -75,7 +77,7 @@ const inp = (err?: string) =>
   }`;
 
 // ─── Section header ───────────────────────────────────────────────────────────
-function Section({ icon: Icon, title, color }: { icon: any; title: string; color: string }) {
+function Section({ icon: Icon, title, color }: { icon: React.ElementType; title: string; color: string }) {
   return (
     <div className={`flex items-center gap-3 py-3 border-b border-soft-taupe mb-4`}>
       <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${color}`}>
@@ -97,6 +99,11 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
   const [saved,   setSaved]   = useState(false);
   const [loading, setLoading] = useState(true);
   const [intakeId, setIntakeId] = useState<string | null>(null);
+  // REPAIR C: the verified login identity's current email, captured at
+  // load time, so handleSave() can detect an actual change and route it
+  // through Supabase Auth's verification flow instead of a raw profiles
+  // write (see handleSave() below).
+  const [originalEmail, setOriginalEmail] = useState('');
 
   // ── Load existing data ────────────────────────────────────────────────────
   useEffect(() => {
@@ -137,8 +144,9 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
         });
 
         if (intake?.id) setIntakeId(intake.id);
-      } catch (err: any) {
-        toast.error('Failed to load your information: ' + err.message);
+        setOriginalEmail((profile?.email || '').trim().toLowerCase());
+      } catch (err) {
+        toast.error('Failed to load your information: ' + getErrorMessage(err));
       } finally { setLoading(false); }
     };
     load();
@@ -176,15 +184,37 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
     try {
       const now = new Date().toISOString();
 
-      // 1. Update profiles
+      // 1. Update profiles. REPAIR C: `email` deliberately NOT included —
+      // a plain profiles write let a signed-in user overwrite their own
+      // verified identity email with no confirmation step, independent of
+      // Supabase Auth's actual login identity (auth.users.email). See the
+      // dedicated email-change step below instead.
       const { error: profileErr } = await supabase.from('profiles').update({
         first_name: form.firstName.trim(), last_name: form.lastName.trim(),
-        phone: form.phone.trim() || null, email: form.email.trim().toLowerCase(),
+        phone: form.phone.trim() || null,
         updated_at: now,
       }).eq('id', userId);
       if (profileErr) {
         toast.error('Failed to save profile: ' + profileErr.message);
         return;
+      }
+
+      // 1b. Email change, if any, goes through Supabase Auth's own
+      // verification flow (sends a confirmation link to the new address;
+      // the change only takes effect once confirmed) rather than a raw
+      // table write. profiles.email intentionally stays as the OLD value
+      // until Auth confirms the new one — there is no trigger in this
+      // project syncing auth.users.email back into profiles.email after a
+      // change, so updating it here early would claim a change that has
+      // not actually been verified yet.
+      const normalizedEmail = form.email.trim().toLowerCase();
+      if (normalizedEmail !== originalEmail) {
+        const { error: emailErr } = await supabase.auth.updateUser({ email: normalizedEmail });
+        if (emailErr) {
+          toast.error('Failed to update email: ' + emailErr.message);
+          return;
+        }
+        toast.success('A confirmation link has been sent to your new email address. Your email will update once you confirm it.');
       }
 
       // 2. Upsert patients — column names match the actual patients table schema
@@ -195,7 +225,7 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
         preferred_name:                  form.preferredName.trim() || null,
         date_of_birth:                   form.dateOfBirth || null,
         diagnosis_date:                  form.diagnosisDate || null,
-        dementia_stage:                  form.dementiaStage || null,
+        dementia_stage:                  (form.dementiaStage || null) as DementiaStage | null, // the <select> below only ever offers '' | 'early' | 'middle' | 'late'
         location:                        form.city.trim() || null,
         address:                         [form.streetAddress, form.city, form.state, form.zipCode].filter(Boolean).join(', ') || null,
         emergency_contact_name:          form.crFullName.trim() || null,
@@ -251,9 +281,12 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
           return;
         }
       } else {
+        // patient_intake.id has no DB default (009: "client-generated
+        // receipt id") — generate one for a brand-new row, matching
+        // publicPatientIntakeService.ts's own established pattern.
         const { data: newIntake, error: intakeErr } = await supabase
           .from('patient_intake')
-          .upsert(intakePayload, { onConflict: 'patient_profile_id' })
+          .upsert({ id: crypto.randomUUID(), ...intakePayload }, { onConflict: 'patient_profile_id' })
           .select('id').maybeSingle();
         if (intakeErr) {
           toast.error('Failed to save intake record: ' + intakeErr.message);
@@ -266,8 +299,8 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
       toast.success('Your information has been saved and synced to your care team!');
       setTimeout(() => setSaved(false), 3000);
       onCompleted?.();
-    } catch (err: any) {
-      toast.error('Failed to save: ' + err.message);
+    } catch (err) {
+      toast.error('Failed to save: ' + getErrorMessage(err));
     } finally { setSaving(false); }
   };
 

@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useState, useEffect, useCallback, type CSSProperties } from 'react';
+import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { CheckCircle2, Circle, Sun, Cloud, Moon, Star, Plus, X, Edit2, Check, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
+import type { Database } from '@/types/supabase';
 
 type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
 
@@ -17,9 +19,13 @@ interface CustomRoutineItem {
   completedDate?: string;
 }
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+// FQA-026: local calendar day, not UTC — toISOString() pushes evening
+// entries (US timezones, after UTC midnight) onto the wrong date, which
+// here would prematurely reset "completed today" state mid-evening.
+const todayStr = () => format(new Date(), 'yyyy-MM-dd');
 
-function mapRow(r: any): CustomRoutineItem {
+function mapRow(r: Pick<Database['public']['Tables']['patient_routine_items']['Row'],
+  'id' | 'title' | 'emoji' | 'time_of_day' | 'scheduled_time' | 'completed' | 'completed_date'>): CustomRoutineItem {
   return {
     id: r.id,
     timeOfDay: r.time_of_day as TimeOfDay,
@@ -97,7 +103,7 @@ export default function PatientRoutine() {
   const patientId = state.currentUser?.id || state.patient?.id || '';
   const [activeTimeOfDay, setActiveTimeOfDay] = useState<TimeOfDay>(getCurrentTimeOfDay);
   const [customItems, setCustomItems] = useState<CustomRoutineItem[]>([]);
-  const [routineLoading, setRoutineLoading] = useState(false);
+  const [, setRoutineLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newTime, setNewTime] = useState('08:00');
@@ -112,12 +118,7 @@ export default function PatientRoutine() {
     .filter(i => i.timeOfDay === activeTimeOfDay)
     .map(i => ({ ...i, completed: i.completedDate === todayStr() ? i.completed : false }));
 
-  useEffect(() => {
-    if (!patientId) return;
-    fetchRoutineItems();
-  }, [patientId]);
-
-  const fetchRoutineItems = async () => {
+  const fetchRoutineItems = useCallback(async () => {
     if (!patientId) return;
     setRoutineLoading(true);
     try {
@@ -166,7 +167,12 @@ export default function PatientRoutine() {
     } finally {
       setRoutineLoading(false);
     }
-  };
+  }, [patientId]);
+
+  useEffect(() => {
+    if (!patientId) return;
+    fetchRoutineItems();
+  }, [patientId, fetchRoutineItems]);
 
   // F11 remediation: this previously only dispatched to the in-memory
   // AppContext store with zero I/O, so a reload (which rebuilds state.tasks
@@ -673,7 +679,7 @@ export default function PatientRoutine() {
                           ? 'ring-2 ring-offset-1 scale-110 shadow-sm'
                           : 'bg-stone-50 hover:bg-stone-100'
                       }`}
-                      style={newEmoji === e ? { ringColor: cfg.accent, backgroundColor: cfg.accentLight } : {}}
+                      style={newEmoji === e ? ({ '--tw-ring-color': cfg.accent, backgroundColor: cfg.accentLight } as CSSProperties) : {}}
                     >
                       {e}
                     </button>

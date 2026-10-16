@@ -1,12 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import type { UserRole } from '@/types/supabase';
+import { getErrorMessage } from '@/lib/utils';
 import { AdminAudit } from './AdminAudit';
+import {
+  type SubRow,
+  UNASSIGNED_KEY,
+  ACCOUNT_TYPES,
+  getAccountTypeKey,
+  getAccountTypeDef,
+  saveAccountType,
+} from './accountTypes';
 import {
   LayoutDashboard, Users, FileText, LogOut, Heart,
   Eye, EyeOff, UserPlus, Search, Save, RotateCcw,
   KeyRound, Loader2, X, CheckCircle, ShieldCheck,
-  UserCheck, Stethoscope, ToggleLeft, ToggleRight,
+  UserCheck, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -14,13 +24,12 @@ import { toast } from 'sonner';
 // ─── Types ────────────────────────────────────────────────────────────────────
 type AdminView = 'overview' | 'all_users' | 'patients' | 'admins' | 'audit';
 
-interface SubRow {
-  user_id: string;
-  tier: string;
-  status: string;
-  trial_ends_at: string | null;
-  promo_expires_at: string | null;
-}
+// Module-level (not recreated per render) so UserTable's roleFilter prop
+// keeps a stable reference across re-renders of this layout — otherwise an
+// inline array literal at the call site would give load() a "new" filter
+// on every unrelated re-render, defeating useCallback's memoization.
+const PATIENT_ROLE_FILTER: UserRole[] = ['patient'];
+const ADMIN_ROLE_FILTER: UserRole[] = ['admin'];
 
 interface UserRow {
   id: string;
@@ -42,99 +51,6 @@ interface EditState {
   account_type: string; // composite key like 'temp_user|trialing' or 'master|active'
 }
 
-// ─── Account Type Definitions ─────────────────────────────────────────────────
-// Each entry defines exactly what gets written to the subscriptions table
-// and what rules/policies apply.
-
-interface AccountTypeDef {
-  key: string;           // unique key used in the dropdown value
-  label: string;         // display name
-  tier: string;          // subscriptions.tier
-  status: string;        // subscriptions.status
-  trialDays: number | null;  // days from now for trial_ends_at (null = never)
-  promoDays: number | null;  // days from now for promo_expires_at (null = not promo)
-  isTempUser: boolean;   // marks as read-only demo account
-  color: string;         // badge colour
-  description: string;
-}
-
-// All tier values written to DB use recognized TierName values (free_tier / paid_tier / master).
-// The key/label fields are admin-only display names; they do not flow into the patient app.
-const ACCOUNT_TYPES: AccountTypeDef[] = [
-  {
-    key: 'temp_user',
-    label: 'Temp User (Read-Only)',
-    tier: 'free_tier', status: 'trialing',
-    trialDays: 3, promoDays: null, isTempUser: true,
-    color: 'bg-amber-100 text-amber-800',
-    description: 'Read-only demo — 72-hour access, no writes allowed',
-  },
-  {
-    key: 'promo',
-    label: 'Promo (45-day Full Access)',
-    tier: 'paid_tier', status: 'promo',
-    trialDays: 45, promoDays: 45, isTempUser: false,
-    color: 'bg-teal-100 text-teal-800',
-    description: '45 days paid-tier access from today, then prompts upgrade',
-  },
-  {
-    key: 'companion',
-    label: 'Companion (Internal Only)',
-    tier: 'free_tier', status: 'trialing',
-    trialDays: 30, promoDays: null, isTempUser: false,
-    color: 'bg-yellow-100 text-yellow-800',
-    description: 'Internal/basic free-tier account not shown in public pricing',
-  },
-  {
-    key: 'daily_care',
-    label: 'Daily Care (Paid)',
-    tier: 'paid_tier', status: 'active',
-    trialDays: null, promoDays: null, isTempUser: false,
-    color: 'bg-blue-100 text-blue-800',
-    description: 'Active paid tier (Daily Care)',
-  },
-  {
-    key: 'full_support',
-    label: 'Full Support (Paid)',
-    tier: 'paid_tier', status: 'active',
-    trialDays: null, promoDays: null, isTempUser: false,
-    color: 'bg-green-100 text-green-800',
-    description: 'Active paid tier (Full Support)',
-  },
-  {
-    key: 'master',
-    label: 'Master (Free Forever)',
-    tier: 'master', status: 'active',
-    trialDays: null, promoDays: null, isTempUser: false,
-    color: 'bg-purple-100 text-purple-800',
-    description: 'Free forever — full access, never expires',
-  },
-  {
-    key: 'canceled',
-    label: 'Canceled / Inactive',
-    tier: 'free_tier', status: 'canceled',
-    trialDays: null, promoDays: null, isTempUser: false,
-    color: 'bg-gray-100 text-gray-600',
-    description: 'Account is inactive or canceled',
-  },
-];
-
-function getAccountTypeKey(sub: SubRow | null, email: string): string {
-  if (/^temp-user\d*@/i.test(email || '')) return 'temp_user';
-  if (!sub) return 'companion';
-  if (sub.tier === 'master') return 'master';
-  if (sub.status === 'promo') return 'promo';
-  // Recognize current DB values (paid_tier) and legacy values (daily_care, full_support)
-  const isPaid = sub.tier === 'paid_tier' || sub.tier === 'daily_care' || sub.tier === 'full_support';
-  if (isPaid && sub.status === 'active') return 'full_support';
-  if (sub.status === 'canceled' || sub.status === 'expired') return 'canceled';
-  return 'companion';
-}
-
-function getAccountTypeDef(key: string): AccountTypeDef {
-  return ACCOUNT_TYPES.find(t => t.key === key) ?? ACCOUNT_TYPES[2];
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const ROLES = [
   { value: 'patient',   label: 'Patient',   color: 'bg-soft-sage/20 text-green-700'     },
@@ -150,7 +66,7 @@ const minputCls = (err?: string) =>
     : 'border-soft-taupe focus:ring-warm-bronze bg-white'}`;
 
 // ─── Shared: load profiles + subscriptions separately ────────────────────────
-async function loadUsersWithSubs(roleFilter?: string[]): Promise<UserRow[]> {
+async function loadUsersWithSubs(roleFilter?: UserRole[]): Promise<UserRow[]> {
   // Query 1: profiles
   let q = supabase
     .from('profiles')
@@ -165,7 +81,11 @@ async function loadUsersWithSubs(roleFilter?: string[]): Promise<UserRow[]> {
   const ids = profiles.map(p => p.id);
   const { data: subs } = await supabase
     .from('subscriptions')
-    .select('user_id, tier, status, trial_ends_at, promo_expires_at')
+    // REPAIR 007: `program` and `trial_started_at` added — program is the
+    // trusted Temporary/Companion identity (see getAccountTypeKey() above),
+    // and trial_started_at is the trusted issuance timestamp shown to
+    // admins (requirement 6.2) alongside trial_ends_at.
+    .select('user_id, tier, plan, program, status, trial_started_at, trial_ends_at, promo_expires_at')
     .in('user_id', ids);
 
   const subMap: Record<string, SubRow> = {};
@@ -177,59 +97,19 @@ async function loadUsersWithSubs(roleFilter?: string[]): Promise<UserRow[]> {
   }));
 }
 
-// ─── Save account type to subscriptions table ─────────────────────────────────
-// F10 remediation: this previously upserted tier/status/trial_ends_at
-// directly into `subscriptions` from the browser with no server-side
-// transition validation — any authenticated client calling the same
-// supabase-js upsert (not just this admin UI) could set their own tier to
-// 'master'/'active' if RLS allowed it. The write now goes through the
-// `admin_set_subscription` SECURITY DEFINER RPC (see
-// 010_subscriptions_and_admin_rpc.sql), which re-validates the caller is an
-// admin and that tier/status is one of the allowed combinations
-// server-side, so the privilege boundary doesn't depend solely on this
-// admin panel's own code path. Previously trial_ends_at was given a fixed
-// 2099 "never" value only for tier === 'master' specifically to work around
-// a NOT NULL constraint — the migration makes the column nullable instead,
-// so 'canceled'/'companion' (which pass null for trial_ends_at) stop
-// risking a constraint violation and 'master' no longer needs the
-// far-future placeholder.
-async function saveAccountType(userId: string, key: string): Promise<void> {
-  const def = getAccountTypeDef(key);
-  const now = new Date();
-
-  const trialEndsAt = def.trialDays
-    ? new Date(now.getTime() + def.trialDays * 86400000).toISOString()
-    : null;
-
-  const promoExpiresAt = def.promoDays
-    ? new Date(now.getTime() + def.promoDays * 86400000).toISOString()
-    : null;
-
-  // C02-002: the RPC now returns the saved row (RETURNS subscriptions) so
-  // the caller can verify the authoritative persisted state rather than
-  // just the absence of an error — a thrown error already rolls back the
-  // whole function (see 013_subscriptions_atomic_lifecycle.sql), but an RPC
-  // reporting no error while returning no row would not be evidence of a
-  // successful save either.
-  const { data: savedRow, error } = await supabase.rpc('admin_set_subscription', {
-    p_user_id: userId,
-    p_tier: def.tier,
-    p_status: def.status,
-    p_trial_started_at: now.toISOString(),
-    p_trial_ends_at: trialEndsAt,
-    p_promo_expires_at: promoExpiresAt,
-  });
-  if (error) throw error;
-  if (!savedRow || savedRow.tier !== def.tier || savedRow.status !== def.status) {
-    throw new Error('Subscription save could not be confirmed — the saved state did not match the requested account type.');
-  }
-}
-
 // ─── Add User Modal ───────────────────────────────────────────────────────────
 function AddUserModal({ defaultRole = 'patient', onClose, onAdded }: {
   defaultRole?: string; onClose: () => void; onAdded: () => void;
 }) {
-  const [form, setForm]     = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', role: defaultRole, accountType: 'companion' });
+  // REPAIR 1 (FUNCTIONAL-REPAIR-004): no default account type at all —
+  // 'companion' (Finalization-003) and then 'canceled' (an interim fix)
+  // were both still an implicit, un-chosen state getting written as a REAL
+  // account-type assignment. 'canceled' is itself a specific, meaningful
+  // status, not a neutral placeholder — defaulting to it meant an account
+  // could end up canceled merely because the admin opened this form and
+  // didn't touch the dropdown. UNASSIGNED_KEY forces an explicit choice:
+  // the submit handler below refuses to proceed while it's still selected.
+  const [form, setForm]     = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', role: defaultRole, accountType: UNASSIGNED_KEY });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showPass, setShowPass] = useState(false);
   const [saving, setSaving]     = useState(false);
@@ -242,6 +122,11 @@ function AddUserModal({ defaultRole = 'patient', onClose, onAdded }: {
     else if (!EMAIL_RE.test(form.email)) e.email = 'Invalid email';
     if (!form.password)         e.password  = 'Required';
     else if (form.password.length < 8) e.password = 'Min 8 characters';
+    // REPAIR 1: an explicit account type is required — no default, no
+    // falling through to a guessed or neutral-seeming value.
+    if (!form.accountType || !getAccountTypeDef(form.accountType).available) {
+      e.accountType = 'Select a valid account type';
+    }
     return e;
   };
 
@@ -266,14 +151,19 @@ function AddUserModal({ defaultRole = 'patient', onClose, onAdded }: {
       });
       if (error) throw error;
       if (!data.user) throw new Error('No user returned');
-      await supabase.from('profiles').upsert({
-        id: data.user.id,
+      // signUp() already triggered handle_new_user(), which creates the row
+      // (role included) — this call only patches the remaining fields onto
+      // an already-existing row, so it's an update, not an insert-or-update.
+      // (.upsert() here required a `role` the Insert type correctly demands
+      // but this call never had — update() has no such requirement, since
+      // every field it accepts is already optional.)
+      await supabase.from('profiles').update({
         email: form.email.trim().toLowerCase(),
         first_name: form.firstName.trim(),
         last_name:  form.lastName.trim(),
         phone:      form.phone.trim() || null,
         must_change_password: true,
-      });
+      }).eq('id', data.user.id);
       if (form.role !== 'patient') {
         const { error: roleError } = await supabase.rpc('admin_set_role', {
           p_user_id: data.user.id,
@@ -283,7 +173,7 @@ function AddUserModal({ defaultRole = 'patient', onClose, onAdded }: {
       }
       try {
         await saveAccountType(data.user.id, form.accountType);
-      } catch (acctErr: any) {
+      } catch (acctErr) {
         // The auth user + profile already exist at this point (no true
         // cross-system rollback is available client-side — see
         // patientService.createPatient's identical constraint). Surface
@@ -291,12 +181,12 @@ function AddUserModal({ defaultRole = 'patient', onClose, onAdded }: {
         // operator knows to retry setting the account type for this
         // specific user rather than re-running the whole form.
         throw new Error(
-          `${form.firstName} ${form.lastName}'s account was created, but the account type could not be set: ${acctErr.message}. Edit this user and re-select the account type to retry.`
+          `${form.firstName} ${form.lastName}'s account was created, but the account type could not be set: ${getErrorMessage(acctErr)}. Edit this user and re-select the account type to retry.`
         );
       }
       toast.success(`${form.firstName} ${form.lastName} added`);
       onAdded(); onClose();
-    } catch (err: any) { toast.error('Failed: ' + err.message); }
+    } catch (err) { toast.error('Failed: ' + getErrorMessage(err)); }
     finally { setSaving(false); }
   };
 
@@ -351,10 +241,14 @@ function AddUserModal({ defaultRole = 'patient', onClose, onAdded }: {
             <select value={form.accountType} onChange={e => setForm(p => ({...p, accountType: e.target.value}))}
               className={minputCls()}>
               {ACCOUNT_TYPES.map(t => (
-                <option key={t.key} value={t.key}>{t.label}</option>
+                <option key={t.key} value={t.key} disabled={!t.available}>
+                  {t.label}{!t.available && t.key !== UNASSIGNED_KEY ? ' (unavailable)' : ''}
+                </option>
               ))}
             </select>
-            <p className="text-xs text-medium-gray">{getAccountTypeDef(form.accountType).description}</p>
+            {errors.accountType
+              ? <p className="text-xs text-gentle-coral">{errors.accountType}</p>
+              : <p className="text-xs text-medium-gray">{getAccountTypeDef(form.accountType).description}</p>}
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-charcoal">Temporary Password *</label>
@@ -386,7 +280,7 @@ function AddUserModal({ defaultRole = 'patient', onClose, onAdded }: {
 
 // ─── Inline-Edit User Table ───────────────────────────────────────────────────
 function UserTable({ roleFilter, title, showAccountType = false }: {
-  roleFilter?: string[]; title: string; showAccountType?: boolean;
+  roleFilter?: UserRole[]; title: string; showAccountType?: boolean;
 }) {
   const [users,        setUsers]        = useState<UserRow[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -413,15 +307,20 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
         };
       });
       setEdits(states);
-    } catch (err: any) { toast.error('Failed to load: ' + err.message); }
+    } catch (err) { toast.error('Failed to load: ' + getErrorMessage(err)); }
     finally { setLoading(false); }
-  }, [roleFilter?.join(',')]);
+  }, [roleFilter]);
 
   useEffect(() => { load(); }, [load]);
 
   const setField = (id: string, field: keyof EditState, val: string) =>
     setEdits(p => ({ ...p, [id]: { ...p[id], [field]: val } }));
 
+  // REPAIR C: `email` deliberately excluded from this comparison (and from
+  // saveUser()'s write below) — see saveUser() for why. The input is
+  // disabled in the row UI, so e.email can never actually diverge from
+  // u.email in practice; excluded here too so this stays correct even if
+  // that ever changes.
   const isDirty = (u: UserRow) => {
     const e = edits[u.id];
     if (!e) return false;
@@ -429,7 +328,6 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
     return (
       e.first_name   !== (u.first_name || '') ||
       e.last_name    !== (u.last_name  || '') ||
-      e.email        !== (u.email      || '') ||
       e.phone        !== (u.phone      || '') ||
       e.role         !== u.role ||
       e.account_type !== origKey
@@ -449,7 +347,6 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
   const saveUser = async (u: UserRow) => {
     const e = edits[u.id];
     if (!e || !isDirty(u)) return;
-    if (!e.email.trim() || !EMAIL_RE.test(e.email)) { toast.error('Invalid email'); return; }
     if (!e.first_name.trim()) { toast.error('First name required'); return; }
     setSaving(u.id);
     try {
@@ -458,10 +355,22 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
       // privilege on profiles.role entirely (it was reachable by any
       // caller updating their OWN row, which is exactly the self-escalation
       // path the live profiles_update policy allowed).
+      //
+      // REPAIR C: `email` is deliberately NOT sent here, and
+      // 012_profiles_revoke_client_role_authority.sql's UPDATE grant no
+      // longer includes it — a plain profiles write let anyone overwrite
+      // their own (or, with RLS permitting it, another account's) verified
+      // identity email with no confirmation step at all, independent of
+      // Supabase Auth's actual login identity (auth.users.email). There is
+      // no trusted backend path available to this client (changing a
+      // DIFFERENT account's email safely needs the service-role admin API,
+      // which this browser session never holds) — per this corrective
+      // order's instruction, that capability stays explicitly unavailable
+      // from this screen rather than exposing an unsafe write. The email
+      // input in this row is disabled for the same reason.
       const { error: pErr } = await supabase.from('profiles').update({
         first_name: e.first_name.trim(),
         last_name:  e.last_name.trim(),
-        email:      e.email.trim().toLowerCase(),
         phone:      e.phone.trim() || null,
         updated_at: new Date().toISOString(),
       }).eq('id', u.id);
@@ -483,7 +392,7 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
 
       toast.success(`${e.first_name} ${e.last_name} saved`);
       load();
-    } catch (err: any) { toast.error('Failed: ' + err.message); resetEdit(u); }
+    } catch (err) { toast.error('Failed: ' + getErrorMessage(err)); resetEdit(u); }
     finally { setSaving(null); }
   };
 
@@ -491,7 +400,7 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: import.meta.env.VITE_SITE_URL || window.location.origin,
     });
-    error ? toast.error(error.message) : toast.success(`Reset email sent to ${email}`);
+    if (error) toast.error(error.message); else toast.success(`Reset email sent to ${email}`);
   };
 
   const isInactive = (u: UserRow) =>
@@ -585,6 +494,14 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
 
                   const acctDef = getAccountTypeDef(e.account_type);
 
+                  // REPAIR 007 requirement 6.2: show trusted issuance/
+                  // expiration info when available, read directly from the
+                  // stored subscription row — never recomputed or guessed
+                  // client-side.
+                  const programInfo = u.sub?.program
+                    ? ` | Issued: ${u.sub.trial_started_at ? new Date(u.sub.trial_started_at).toLocaleString() : 'unknown'} | Expires: ${u.sub.trial_ends_at ? new Date(u.sub.trial_ends_at).toLocaleString() : 'unknown'}`
+                    : '';
+
                   return (
                     <tr key={u.id} className={`transition-colors ${
                       dirty    ? 'bg-warm-bronze/5' :
@@ -609,11 +526,16 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
                           onChange={ev => setField(u.id, 'last_name', ev.target.value)}
                           className={inputCls} placeholder="Last name" />
                       </td>
-                      {/* Email */}
+                      {/* Email — REPAIR C: disabled. Changing another
+                          account's verified identity email has no safe,
+                          trusted backend path from this admin screen (that
+                          needs the service-role admin API, not available
+                          to this browser session) — left unavailable
+                          rather than exposing an unverified write. */}
                       <td className="px-4 py-2.5 min-w-[180px]">
-                        <input type="email" value={e.email}
-                          onChange={ev => setField(u.id, 'email', ev.target.value)}
-                          className={inputCls} placeholder="Email" />
+                        <input type="email" value={e.email} disabled
+                          title="Email changes aren't available from this screen — no verified, trusted change path exists yet."
+                          className={`${inputCls} opacity-60 cursor-not-allowed`} placeholder="Email" />
                       </td>
                       {/* Phone */}
                       <td className="px-4 py-2.5 min-w-[130px]">
@@ -636,10 +558,12 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
                             value={e.account_type}
                             onChange={ev => setField(u.id, 'account_type', ev.target.value)}
                             className={`${inputCls} ${dirty && e.account_type !== getAccountTypeKey(u.sub, u.email) ? 'border-warm-bronze font-medium' : ''}`}
-                            title={acctDef.description}
+                            title={`${acctDef.description}${programInfo}`}
                           >
                             {ACCOUNT_TYPES.map(t => (
-                              <option key={t.key} value={t.key}>{t.label}</option>
+                              <option key={t.key} value={t.key} disabled={!t.available}>
+                                {t.label}{!t.available && t.key !== UNASSIGNED_KEY ? ' (unavailable)' : ''}
+                              </option>
                             ))}
                           </select>
                         </td>
@@ -695,16 +619,28 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
+interface RecentUserRow {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: string;
+  created_at: string;
+}
+
 function DashboardOverview({ onNavigate }: { onNavigate: (v: AdminView) => void }) {
-  const [stats,   setStats]   = useState({ patients: 0, admins: 0, newWeek: 0, masters: 0, promos: 0, trials: 0, temps: 0, inactive: 0 });
-  const [recent,  setRecent]  = useState<any[]>([]);
+  const [stats,   setStats]   = useState({ patients: 0, admins: 0, newWeek: 0, masters: 0, promos: 0, trials: 0, temps: 0, companions: 0, inactive: 0 });
+  const [recent,  setRecent]  = useState<RecentUserRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
       const [profRes, subRes, weekRes, recentRes] = await Promise.all([
         supabase.from('profiles').select('role'),
-        supabase.from('subscriptions').select('tier, status'),
+        // REPAIR 007: `program` added so Temp/Companion counts below read
+        // the trusted column directly, instead of guessing from an email
+        // pattern (see the removed tempCheck query this replaced).
+        supabase.from('subscriptions').select('tier, status, program'),
         supabase.from('profiles').select('*', { count: 'exact', head: true })
           .gte('created_at', new Date(Date.now() - 7 * 86400000).toISOString()),
         supabase.from('profiles')
@@ -713,12 +649,6 @@ function DashboardOverview({ onNavigate }: { onNavigate: (v: AdminView) => void 
       ]);
       const p = profRes.data  || [];
       const s = subRes.data   || [];
-      // Count temp users by fetching emails
-      const { data: tempCheck } = await supabase
-        .from('profiles')
-        .select('email')
-        .ilike('email', 'temp-user%');
-      const tempCount = (tempCheck || []).length;
 
       setStats({
         patients:   p.filter(x => x.role === 'patient').length,
@@ -727,7 +657,11 @@ function DashboardOverview({ onNavigate }: { onNavigate: (v: AdminView) => void 
         masters:    s.filter(x => x.tier === 'master').length,
         promos:     s.filter(x => x.status === 'promo').length,
         trials:     s.filter(x => x.status === 'trialing').length,
-        temps:      tempCount,
+        // REPAIR 007 requirement 3: counted from the trusted `program`
+        // column, never from an email address pattern (the previous
+        // tempCheck query this replaced).
+        temps:      s.filter(x => x.program === 'temp_user').length,
+        companions: s.filter(x => x.program === 'companion').length,
         inactive:   s.filter(x => ['canceled','expired','past_due'].includes(x.status)).length,
       });
       setRecent(recentRes.data || []);
@@ -764,13 +698,14 @@ function DashboardOverview({ onNavigate }: { onNavigate: (v: AdminView) => void 
 
       <div>
         <h3 className="text-xs font-semibold text-medium-gray uppercase tracking-wide mb-3">Account Types</h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           {[
-            { label: 'Master',   value: stats.masters,  color: 'text-purple-700' },
-            { label: 'Promo',    value: stats.promos,   color: 'text-teal-700'   },
-            { label: 'Trial',    value: stats.trials,   color: 'text-amber-600'  },
-            { label: 'Temp',     value: stats.temps,    color: 'text-orange-600' },
-            { label: 'Inactive', value: stats.inactive, color: 'text-gentle-coral' },
+            { label: 'Master',    value: stats.masters,    color: 'text-purple-700' },
+            { label: 'Promo',     value: stats.promos,     color: 'text-teal-700'   },
+            { label: 'Trial',     value: stats.trials,     color: 'text-amber-600'  },
+            { label: 'Temp',      value: stats.temps,      color: 'text-orange-600' },
+            { label: 'Companion', value: stats.companions, color: 'text-yellow-700' },
+            { label: 'Inactive',  value: stats.inactive,   color: 'text-gentle-coral' },
           ].map(s => (
             <div key={s.label} className="bg-white rounded-2xl p-4 border border-soft-taupe shadow-sm">
               <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
@@ -830,7 +765,7 @@ export default function AdminLayout() {
           setLoading(false);
         });
     });
-  }, []);
+  }, [dispatch]);
 
   const navigate = (v: AdminView) => { setView(v); sessionStorage.setItem('adminView', v); };
   const handleLogout = async () => {
@@ -851,8 +786,8 @@ export default function AdminLayout() {
     switch (view) {
       case 'overview':  return <DashboardOverview onNavigate={navigate} />;
       case 'all_users': return <UserTable title="All Users" showAccountType />;
-      case 'patients':  return <UserTable roleFilter={['patient']} title="Patients" showAccountType />;
-      case 'admins':    return <UserTable roleFilter={['admin']} title="Admins" />;
+      case 'patients':  return <UserTable roleFilter={PATIENT_ROLE_FILTER} title="Patients" showAccountType />;
+      case 'admins':    return <UserTable roleFilter={ADMIN_ROLE_FILTER} title="Admins" />;
       case 'audit':     return <AdminAudit />;
       default:          return <DashboardOverview onNavigate={navigate} />;
     }

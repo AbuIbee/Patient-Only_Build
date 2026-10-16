@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { RotateCcw, CheckCircle2, ChevronLeft } from "lucide-react";
 
 // EXTENDED ACCESSIBLE THEMES (50 Themes, 500+ Unique Words)
@@ -72,11 +72,16 @@ const THEME_COLORS = {
   emeraldSuccess: '#10b981' // Refreshing visual checklist green
 };
 
-function buildWordSearch(words) {
-  const grid = Array.from({ length: WS_SIZE }, () => Array(WS_SIZE).fill(''));
-  const placed = [];
+type Cell = [number, number];
+interface PlacedWord { word: string; cells: Cell[]; }
+interface WordSearchData { grid: string[][]; placed: PlacedWord[]; }
+interface ConfettiParticle { id: number; x: number; y: number; size: number; color: string; delay: number; }
+
+function buildWordSearch(words: string[]): WordSearchData {
+  const grid: string[][] = Array.from({ length: WS_SIZE }, () => Array(WS_SIZE).fill(''));
+  const placed: PlacedWord[] = [];
   const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  
+
   const sortedWords = [...words].sort((a,b) => b.length - a.length);
 
   for (const word of sortedWords) {
@@ -85,7 +90,7 @@ function buildWordSearch(words) {
       const [dr, dc] = WS_DIRS[Math.floor(Math.random() * WS_DIRS.length)];
       const r = Math.floor(Math.random() * WS_SIZE);
       const c = Math.floor(Math.random() * WS_SIZE);
-      const cells = [];
+      const cells: Cell[] = [];
       let valid = true;
 
       for (let i = 0; i < word.length; i++) {
@@ -111,18 +116,18 @@ function buildWordSearch(words) {
   return { grid, placed };
 }
 
-export default function WordSearchGame({ onBack }) {
+export default function WordSearchGame({ onBack }: { onBack: () => void }) {
   const [themeIdx, setThemeIdx] = useState(0);
-  const [gameData, setGameData] = useState(() => buildWordSearch(WS_THEMES[0].words));
-  const [found, setFound] = useState(new Set());
-  const [highlighted, setHighlighted] = useState(new Set());
+  const [gameData, setGameData] = useState<WordSearchData>(() => buildWordSearch(WS_THEMES[0].words));
+  const [found, setFound] = useState<Set<string>>(new Set());
+  const [highlighted, setHighlighted] = useState<Set<string>>(new Set());
   const [dragging, setDragging] = useState(false);
-  const [dragCells, setDragCells] = useState([]);
-  const [dragStart, setDragStart] = useState(null);
+  const [dragCells, setDragCells] = useState<Cell[]>([]);
+  const [dragStart, setDragStart] = useState<Cell | null>(null);
   const [won, setWon] = useState(false);
-  const [confetti, setConfetti] = useState([]);
+  const [confetti, setConfetti] = useState<ConfettiParticle[]>([]);
 
-  const startGame = useCallback((idx) => {
+  const startGame = useCallback((idx: number) => {
     setThemeIdx(idx);
     setGameData(buildWordSearch(WS_THEMES[idx].words));
     setFound(new Set());
@@ -137,7 +142,7 @@ export default function WordSearchGame({ onBack }) {
   // Celebration Sparkle/Confetti Engine
   useEffect(() => {
     if (won) {
-      const particles = [];
+      const particles: ConfettiParticle[] = [];
       const colors = ['#f59e0b', '#3b82f6', '#10b981', '#ec4899', '#8b5cf6'];
       for (let i = 0; i < 120; i++) {
         particles.push({
@@ -153,23 +158,23 @@ export default function WordSearchGame({ onBack }) {
     }
   }, [won]);
 
-  const getLine = (r1, c1, r2, c2) => {
+  const getLine = (r1: number, c1: number, r2: number, c2: number): Cell[] => {
     const dr = r2 - r1, dc = c2 - c1;
     const len = Math.max(Math.abs(dr), Math.abs(dc));
     if (len === 0) return [[r1, c1]];
     if (dr !== 0 && dc !== 0 && Math.abs(dr) !== Math.abs(dc)) return [[r1, c1]];
     const sr = dr === 0 ? 0 : dr / Math.abs(dr);
     const sc = dc === 0 ? 0 : dc / Math.abs(dc);
-    return Array.from({ length: len + 1 }, (_, i) => [r1 + sr * i, c1 + sc * i]);
+    return Array.from({ length: len + 1 }, (_, i) => [r1 + sr * i, c1 + sc * i] as Cell);
   };
 
-  const onDown = (r, c) => {
+  const onDown = (r: number, c: number) => {
     setDragging(true);
     setDragStart([r, c]);
     setDragCells([[r, c]]);
   };
 
-  const onEnter = (r, c) => {
+  const onEnter = (r: number, c: number) => {
     if (dragging && dragStart) {
       setDragCells(getLine(dragStart[0], dragStart[1], r, c));
     }
@@ -195,12 +200,12 @@ export default function WordSearchGame({ onBack }) {
   };
 
   // Handles responsive drag movement tracking on continuous finger sweeps (Mobile/Tablets)
-  const handleTouchMove = (e) => {
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
     if (!dragging || !dragStart) return;
     e.preventDefault();
     const touch = e.touches[0];
-    const element = document.elementFromPoint(touch.clientX, touch.clientY);
-    if (element && element.dataset && element.dataset.cell) {
+    const element = document.elementFromPoint(touch.clientX, touch.clientY) as HTMLElement | null;
+    if (element?.dataset?.cell) {
       const [tr, tc] = element.dataset.cell.split(',').map(Number);
       onEnter(tr, tc);
     }

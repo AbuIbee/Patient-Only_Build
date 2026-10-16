@@ -53,7 +53,7 @@ const SNOW_FLAKES = Array.from({ length: 24 }, (_, i) => ({ left: (i * 4.2)  % 1
 const LEAVES      = Array.from({ length: 14 }, (_, i) => ({ left: (i * 7.1)  % 95,  delay: (i * 0.3)  % 4,   dur: 3   + (i % 3) * 0.8 }));
 const STARS       = Array.from({ length: 30 }, (_, i) => ({ left: (i * 3.37) % 100, top: (i * 2.93) % 80,    delay: (i * 0.2) % 2 }));
 
-export default function WeatherBackground({ condition, isDay }: { condition: WeatherCondition; isDay: boolean }) {
+export default function WeatherBackground({ condition, isDay: _isDay }: { condition: WeatherCondition; isDay: boolean }) {
   const scene = WEATHER_SCENES[condition];
 
   return (

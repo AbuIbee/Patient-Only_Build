@@ -1,22 +1,23 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Download, Search, Filter, Shield, AlertTriangle, Info, RefreshCw } from 'lucide-react';
+import { getErrorMessage } from '@/lib/utils';
+import { Download, Search, Shield, AlertTriangle, Info, RefreshCw } from 'lucide-react';
 
 interface AuditLog {
   id: string;
   created_at: string;
-  user_id: string;
-  user_email: string;
-  user_role: string;
+  user_id: string | null;
+  user_email: string | null;
+  user_role: string | null;
   action: string;
-  resource_type: string;
-  resource_id: string;
-  before_state: any;
-  after_state: any;
-  ip_address: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  before_state: unknown;
+  after_state: unknown;
+  ip_address: string | null;
   severity: 'info' | 'warning' | 'critical';
-  details: any;
-  profiles?: { email: string; first_name: string; last_name: string };
+  details: unknown;
+  profiles?: { email: string; first_name: string; last_name: string } | null;
 }
 
 const SEVERITY_CONFIG = {
@@ -46,8 +47,8 @@ export function AdminAudit() {
       const { data, error } = await query;
       if (error) throw error;
       setLogs(data || []);
-    } catch (err: any) {
-      console.error('Audit log error:', err.message);
+    } catch (err) {
+      console.error('Audit log error:', getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -187,7 +188,7 @@ export function AdminAudit() {
                 {filtered.map(log => {
                   const sev = SEVERITY_CONFIG[log.severity as keyof typeof SEVERITY_CONFIG] || SEVERITY_CONFIG.info;
                   const isOpen = expanded === log.id;
-                  const hasChanges = log.before_state || log.after_state;
+                  const hasChanges = Boolean(log.before_state || log.after_state);
                   return (
                     <Fragment key={log.id}>
                       <tr className={`hover:bg-soft-taupe/10 transition-colors ${log.severity === 'critical' ? 'bg-gentle-coral/5' : ''}`}>

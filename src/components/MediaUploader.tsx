@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { getErrorMessage } from '@/lib/utils';
+import { useApp } from '@/store/useApp';
 import { useSelectedPatient } from '@/hooks/useSelectedPatient';
 import { uploadMedia, getPatientMedia, deleteMedia } from '@/services/mediaService';
 import type { MediaUpload } from '@/services/mediaService';
 import {
-  Video, Image as ImageIcon, Upload, X, Play, Pause,
+  Image as ImageIcon, Upload, X, Play,
   Trash2, Loader2, Film, FileVideo, Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -26,8 +27,8 @@ export default function MediaUploader({ patientId, patientName, readOnly = false
   const { state } = useApp();
   const selectedPatient = useSelectedPatient();
 
-  const effectivePatientId   = patientId   || selectedPatient?.patient.id;
-  const effectivePatientName = patientName || `${selectedPatient?.patient.firstName} ${selectedPatient?.patient.lastName}`;
+  const effectivePatientId   = patientId   || selectedPatient?.id;
+  const effectivePatientName = patientName || `${selectedPatient?.firstName} ${selectedPatient?.lastName}`;
 
   const [media,        setMedia]        = useState<MediaUpload[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -38,22 +39,22 @@ export default function MediaUploader({ patientId, patientName, readOnly = false
   const [filter,       setFilter]       = useState<'all' | 'video' | 'image'>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (effectivePatientId) loadMedia();
-  }, [effectivePatientId]);
-
-  const loadMedia = async () => {
+  const loadMedia = useCallback(async () => {
     if (!effectivePatientId) return;
     setLoading(true);
     try {
       const items = await getPatientMedia(effectivePatientId);
       setMedia(items);
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to load media');
     } finally {
       setLoading(false);
     }
-  };
+  }, [effectivePatientId]);
+
+  useEffect(() => {
+    if (effectivePatientId) loadMedia();
+  }, [effectivePatientId, loadMedia]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -87,8 +88,8 @@ export default function MediaUploader({ patientId, patientName, readOnly = false
       if (fileInputRef.current) fileInputRef.current.value = '';
       // Prepend instantly — no reload needed, signedUrl already on the record
       setMedia(prev => [newItem, ...prev]);
-    } catch (err: any) {
-      toast.error('Upload failed: ' + err.message);
+    } catch (err) {
+      toast.error('Upload failed: ' + getErrorMessage(err));
     } finally {
       clearInterval(timer);
       setUploading(false);
@@ -102,8 +103,8 @@ export default function MediaUploader({ patientId, patientName, readOnly = false
       await deleteMedia(item.id, item.file_url);
       setMedia(prev => prev.filter(m => m.id !== item.id));
       toast.success('Deleted');
-    } catch (err: any) {
-      toast.error('Delete failed: ' + err.message);
+    } catch (err) {
+      toast.error('Delete failed: ' + getErrorMessage(err));
     }
   };
 

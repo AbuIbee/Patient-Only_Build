@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getErrorMessage } from '@/lib/utils';
 import {
   Search, User, UserPlus, X, Mail, Phone, Eye, EyeOff,
   Save, RotateCcw, Loader2, KeyRound, AlertCircle, CheckCircle,
@@ -41,9 +42,9 @@ interface FormErrors {
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 const EMAIL_REGEX    = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_REGEX    = /^[\+]?[(]?[0-9]{1,4}[)]?[-\s\.\/0-9]{6,14}$/;
+const PHONE_REGEX    = /^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]{6,14}$/;
 const ONLY_LETTERS   = /^[A-Za-z\s\-']+$/;
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+=[\]{};':"\\|,.<>/?-]).{8,}$/;
 
 // ─── Add Patient Modal ────────────────────────────────────────────────────────
 function AddPatientModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
@@ -138,14 +139,16 @@ function AddPatientModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
       toast.success(`${form.firstName} ${form.lastName} added as a patient`);
       onAdded();
       onClose();
-    } catch (err: any) {
-      toast.error('Failed to add patient: ' + err.message);
+    } catch (err) {
+      toast.error('Failed to add patient: ' + getErrorMessage(err));
     } finally {
       setSaving(false);
     }
   };
 
-  const Field = ({ label, required, icon: Icon, error, hint, children }: any) => (
+  const Field = ({ label, required, icon: Icon, error, hint, children }: {
+    label: string; required?: boolean; icon?: React.ElementType; error?: string; hint?: string; children: React.ReactNode;
+  }) => (
     <div className="space-y-1.5">
       <label className="flex items-center gap-1.5 text-sm font-medium text-charcoal">
         {Icon && <Icon className="w-3.5 h-3.5 text-warm-bronze" />}
@@ -256,8 +259,8 @@ export function AdminPatients() {
         states[p.id] = { email: p.email, first_name: p.first_name, last_name: p.last_name, phone: p.phone || '' };
       });
       setEditStates(states);
-    } catch (err: any) {
-      toast.error('Failed to load patients: ' + err.message);
+    } catch (err) {
+      toast.error('Failed to load patients: ' + getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -267,10 +270,11 @@ export function AdminPatients() {
     setEditStates(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
   };
 
+  // REPAIR C: `email` deliberately excluded — see saveRow() below.
   const isDirty = (p: PatientRow) => {
     const e = editStates[p.id];
     if (!e) return false;
-    return e.email !== p.email || e.first_name !== p.first_name ||
+    return e.first_name !== p.first_name ||
            e.last_name !== p.last_name || e.phone !== (p.phone || '');
   };
 
@@ -281,14 +285,20 @@ export function AdminPatients() {
   const saveRow = async (p: PatientRow) => {
     const e = editStates[p.id];
     if (!e || !isDirty(p)) return;
-    if (!e.email.trim() || !EMAIL_REGEX.test(e.email.trim())) { toast.error('Invalid email address'); return; }
     if (!e.first_name.trim()) { toast.error('First name is required'); return; }
     if (!e.last_name.trim())  { toast.error('Last name is required'); return; }
 
     setSaving(p.id);
     try {
+      // REPAIR C: `email` is deliberately NOT sent — a plain profiles write
+      // let anyone overwrite a verified identity email with no Supabase
+      // Auth confirmation step, independent of the real login identity
+      // (auth.users.email). No trusted backend path is available to this
+      // client for changing ANOTHER account's email (that needs the
+      // service-role admin API); left unavailable rather than exposing an
+      // unsafe write. The email input in this row is disabled for the same
+      // reason — see its JSX below.
       const { error } = await supabase.from('profiles').update({
-        email:      e.email.trim().toLowerCase(),
         first_name: e.first_name.trim(),
         last_name:  e.last_name.trim(),
         phone:      e.phone.trim() || null,
@@ -297,8 +307,8 @@ export function AdminPatients() {
       if (error) throw error;
       toast.success(`${e.first_name} ${e.last_name} updated`);
       await loadPatients();
-    } catch (err: any) {
-      toast.error('Failed to save: ' + err.message);
+    } catch (err) {
+      toast.error('Failed to save: ' + getErrorMessage(err));
       resetRow(p);
     } finally {
       setSaving(null);
@@ -312,8 +322,8 @@ export function AdminPatients() {
       });
       if (error) throw error;
       toast.success(`Password reset email sent to ${email}`);
-    } catch (err: any) {
-      toast.error('Failed: ' + err.message);
+    } catch (err) {
+      toast.error('Failed: ' + getErrorMessage(err));
     }
   };
 
@@ -394,9 +404,13 @@ export function AdminPatients() {
                         <input value={e.last_name} onChange={ev => setField(p.id, 'last_name', ev.target.value)}
                           className={inputCls} placeholder="Last name" />
                       </td>
+                      {/* REPAIR C: disabled — no safe, trusted path exists
+                          to change another account's verified email from
+                          this screen. */}
                       <td className="px-4 py-2.5">
-                        <input type="email" value={e.email} onChange={ev => setField(p.id, 'email', ev.target.value)}
-                          className={inputCls} placeholder="Email" />
+                        <input type="email" value={e.email} disabled
+                          title="Email changes aren't available from this screen — no verified, trusted change path exists yet."
+                          className={`${inputCls} opacity-60 cursor-not-allowed`} placeholder="Email" />
                       </td>
                       <td className="px-4 py-2.5">
                         <input type="tel" value={e.phone} onChange={ev => setField(p.id, 'phone', ev.target.value)}

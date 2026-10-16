@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, RotateCcw, ChevronLeft, Award, HelpCircle, CheckCircle, Flame, Star, Sparkles } from "lucide-react";
+import { Clock, RotateCcw, ChevronLeft, Award, CheckCircle, Flame } from "lucide-react";
 
 // PREMIUM EXPANSED PATIENT-OPTIMIZED VECTOR ARTIFACT DICTIONARY (48 UNIQUE ILLUSTRATIONS)
 const VECTOR_ITEMS = [
@@ -92,8 +92,8 @@ function MediumBubbleOverlay() {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
     let animId: number;
-    let w = (canvas.width = window.innerWidth);
-    let h = (canvas.height = window.innerHeight);
+    const w = (canvas.width = window.innerWidth);
+    const h = (canvas.height = window.innerHeight);
 
     const bubbles = Array.from({ length: 30 }, () => ({
       x: Math.random() * w,
@@ -136,8 +136,8 @@ function HardConstellationOverlay() {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
     let animId: number;
-    let w = (canvas.width = window.innerWidth);
-    let h = (canvas.height = window.innerHeight);
+    const w = (canvas.width = window.innerWidth);
+    const h = (canvas.height = window.innerHeight);
 
     const nodes = Array.from({ length: 45 }, () => ({
       x: Math.random() * w,
@@ -335,11 +335,11 @@ const initGame = useCallback(() => {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginLeft: 'auto' }}>
             <div style={{ textAlign: 'center' }}>
-              <span style={{ block: 'span', fontSize: '18px', fontWeight: '900', color: 'white' }}>{moves}</span>
+              <span style={{ display: 'block', fontSize: '18px', fontWeight: '900', color: 'white' }}>{moves}</span>
               <p style={{ margin: 0, fontSize: '11px', color: '#64748b', fontWeight: '600' }}>Moves Made</p>
             </div>
             <div style={{ textAlign: 'center', borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '20px' }}>
-              <span style={{ block: 'span', fontSize: '18px', fontWeight: '900', color: '#10b981' }}>{matches} / {imageCount}</span>
+              <span style={{ display: 'block', fontSize: '18px', fontWeight: '900', color: '#10b981' }}>{matches} / {imageCount}</span>
               <p style={{ margin: 0, fontSize: '11px', color: '#64748b', fontWeight: '600' }}>Matched Pairs</p>
             </div>
 

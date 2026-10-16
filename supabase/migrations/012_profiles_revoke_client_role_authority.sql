@@ -46,13 +46,59 @@
 -- ── Column-level privilege restriction ──────────────────────────────────────
 -- Revoke the existing broad table-level grants, then regrant only the
 -- non-privileged, already-self-service columns. `role` is excluded from
--- both lists on purpose. `id`, `email`, `created_at` are also excluded:
--- `id` must never change; `email` changes should go through Supabase Auth's
--- own flow (not a raw profiles write); `created_at` is a historical record.
+-- both lists on purpose. `id` and `created_at` are also excluded: `id`
+-- must never change; `created_at` is a historical record.
+--
+-- CORRECTIVE-002 / CORRECTION C restored `email` to this UPDATE list,
+-- because two live application flows (AdminLayout.tsx/AdminPatients.tsx
+-- admin edits, and PatientIntakeForm.tsx's self-service save) sent `email`
+-- in a plain profiles UPDATE and would have broken outright. That
+-- correction explicitly flagged, as an open follow-up, that restoring the
+-- column also let any signed-in user overwrite their own `email` with no
+-- Supabase Auth confirmation step — i.e. exactly the risk the column was
+-- originally excluded to prevent.
+--
+-- *** CORRECTED AGAIN (FINALIZATION-003 / REPAIR C): `email` is excluded
+-- from the UPDATE grant once more — this time with the application code
+-- actually fixed instead of merely flagged. All three call sites that
+-- previously depended on writing `email` through this grant have been
+-- changed to stop doing so:
+--   - src/pages/admin/AdminLayout.tsx `saveUser()` and
+--     src/pages/admin/AdminPatients.tsx `saveRow()` no longer send `email`
+--     in their profiles UPDATE payload at all; their row-edit UI disables
+--     the email input with an explanatory tooltip. Changing ANOTHER
+--     account's email has no safe, trusted backend path available to a
+--     plain browser session (it needs the service-role admin API) — left
+--     explicitly unavailable from these screens rather than exposing an
+--     unverified write, per this corrective order's own instruction.
+--   - src/pages/patient/PatientIntakeForm.tsx (self-service, id =
+--     auth.uid()) now detects an actual email change against the value
+--     loaded at form-open time and calls `supabase.auth.updateUser({
+--     email })` instead of writing `profiles.email` directly — Supabase
+--     Auth's own confirmation-link flow, which only applies the change
+--     once the new address is confirmed. `profiles.email` is intentionally
+--     left as the OLD value by this path (nothing in this project syncs
+--     `auth.users.email` back into `profiles.email` after a confirmed Auth-
+--     side change — a separate, lower-severity display-staleness gap,
+--     flagged below, not fixed here, since building that sync is a new
+--     piece of infrastructure, not implied by this corrective order).
+-- `provisioning_status` remains granted — CORRECTIVE-002's finding for that
+-- column is unaffected by this reversal; nothing about it involves `email`.
+--
+-- *** RESIDUAL GAP, EXPLICITLY NOT FIXED HERE ***: after a user confirms a
+-- new email through the Auth-side flow above, `profiles.email` has no
+-- mechanism to ever catch up — it stays showing the OLD address
+-- indefinitely (a staleness/display bug, not a security one: the actual
+-- login identity is `auth.users.email`, which this change never touches
+-- directly, and every confirmed email change still goes through Supabase
+-- Auth's own verification regardless). Closing it needs a trigger or
+-- webhook reacting to Supabase Auth's own email-change-confirmed event —
+-- new infrastructure this corrective order's scope does not call for and
+-- this file does not invent.
 REVOKE UPDATE ON public.profiles FROM authenticated;
 GRANT UPDATE (
   first_name, last_name, phone, photo_url, phone_normalized,
-  must_change_password, mfa_enabled, updated_at
+  must_change_password, mfa_enabled, provisioning_status, updated_at
 ) ON public.profiles TO authenticated;
 
 REVOKE INSERT ON public.profiles FROM authenticated;
@@ -178,3 +224,34 @@ COMMENT ON FUNCTION public.admin_set_role IS 'C02-001: the only path by which an
 --   `auth.signUp({ email, password, options: { data: { role: 'admin' } } })`.
 --   Expected: the resulting profiles row has role='patient', not 'admin' —
 --   the trigger ignores the unrecognized/privileged value.
+-- T9 (positive, CORRECTIVE-002 regression — provisioning_status): the exact
+--   write patientService.ts createPatient() performs,
+--   `update profiles set provisioning_status='complete' where id=<new-
+--   patient-id>`, run by the caregiver/admin who created that patient.
+--   Expected: succeeds (this is the write the original grant list omitted
+--   and this correction restores).
+-- T10 (positive, admin name/phone edit still works — FINALIZATION-003
+--   reversal check): an actual admin runs the write AdminLayout.tsx
+--   saveUser() / AdminPatients.tsx now actually perform (no `email` field),
+--   `update profiles set first_name=..., last_name=..., phone=...,
+--   updated_at=now() where id=<other_user_id>`. Expected: succeeds (depends
+--   on whatever live, untracked admin-bypass row policy already permits the
+--   admin to target another user's row at all — unchanged by this file,
+--   which only touches the column grant).
+-- T11 (negative, FINALIZATION-003 / REPAIR C — the actual fix, not merely
+--   flagged this time): a non-admin patient attempts `update profiles set
+--   email=<attacker-chosen-value> where id=auth.uid()` directly (bypassing
+--   the app entirely, e.g. via a raw REST call). Expected: permission
+--   denied (column privilege) — `email` has no client UPDATE grant at all
+--   now, for any role, any row. This is the regression test for the exact
+--   gap CORRECTIVE-002 left open and FINALIZATION-003 closes.
+-- T12 (positive, FINALIZATION-003 — legitimate self-service email change
+--   still works, just through the correct path): a signed-in patient calls
+--   `supabase.auth.updateUser({ email: newEmail })` (what
+--   PatientIntakeForm.tsx now does instead of a raw profiles write).
+--   Expected: succeeds via Supabase Auth's own mechanism, independent of
+--   this migration's profiles grants entirely (auth.users is a different
+--   table, governed by GoTrue, not by this file's REVOKE/GRANT statements);
+--   a confirmation is sent to the new address; `profiles.email` remains
+--   the OLD value afterward (the flagged, not-fixed, display-staleness
+--   gap above) until confirmed and until a sync mechanism exists.

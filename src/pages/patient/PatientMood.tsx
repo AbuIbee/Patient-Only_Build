@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useApp } from '@/store/useApp';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';

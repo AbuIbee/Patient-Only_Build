@@ -101,7 +101,16 @@ export async function uploadMedia(
     signOne(storagePath),
   ]);
 
-  if (dbResult.error) throw new Error(`Failed to save record: ${dbResult.error.message}`);
+  if (dbResult.error) {
+    // FQA-027/B5: the file was already written to storage above — without
+    // this cleanup, a failed DB insert leaves an orphaned object in
+    // patient-media with no record pointing to it (same class of defect
+    // PatientDocuments.tsx's uploadDoc/removeDoc were already fixed for).
+    // Log rather than silently drop it if the cleanup itself also fails.
+    const { error: cleanupErr } = await supabase.storage.from(BUCKET).remove([storagePath]);
+    if (cleanupErr) console.error('Orphaned media storage object could not be cleaned up:', storagePath, cleanupErr.message);
+    throw new Error(`Failed to save record: ${dbResult.error.message}`);
+  }
   return { ...(dbResult.data as MediaUpload), signedUrl };
 }
 
@@ -121,10 +130,18 @@ export async function getPatientMedia(patientId: string): Promise<MediaUpload[]>
 
 // ─── Delete ───────────────────────────────────────────────────────────────────
 export async function deleteMedia(mediaId: string, fileUrl: string): Promise<void> {
-  const storagePath = toStoragePath(fileUrl);
-  if (storagePath) {
-    await supabase.storage.from(BUCKET).remove([storagePath]);
-  }
+  // FQA-027: delete the DB record FIRST. The previous order removed the
+  // storage object first — if the DB delete then failed, the record was
+  // left pointing at a file that no longer existed (a broken, user-visible
+  // thumbnail) instead of just an orphaned-but-harmless storage object.
   const { error } = await supabase.from('media_uploads').delete().eq('id', mediaId);
   if (error) throw new Error(`Failed to delete record: ${error.message}`);
+
+  const storagePath = toStoragePath(fileUrl);
+  if (storagePath) {
+    // B5: the record is gone (the correct, authoritative outcome) — log
+    // rather than silently drop it if storage cleanup itself fails.
+    const { error: storageErr } = await supabase.storage.from(BUCKET).remove([storagePath]);
+    if (storageErr) console.error('Media storage cleanup failed after record removal:', storagePath, storageErr.message);
+  }
 }

@@ -1,13 +1,14 @@
-import { useApp } from '@/store/AppContext';
+import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import type { Database } from '@/types/supabase';
 import type { SchedulingStatus } from '@/lib/reminderScheduler';
+import { loadMigratedIdSet, saveMigratedIdSet, filterPending, isFullyMigrated } from '@/lib/legacyMigration';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Bell, Clock, Calendar, Pill, Stethoscope, CheckCircle2, AlertCircle, Plus, X, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useMemo, useEffect } from 'react';
-import { format, startOfMonth, getDaysInMonth, addMonths, subMonths, startOfWeek, addDays, isSameDay, parseISO } from 'date-fns';
+import { format, startOfMonth, addMonths, subMonths, startOfWeek, addDays, isSameDay, parseISO } from 'date-fns';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface CalendarNote {
@@ -27,19 +28,24 @@ interface TaskItem {
   createdAt: string;
 }
 
-const todayStr     = () => new Date().toISOString().split('T')[0];
+// FQA-026: local calendar day, not UTC — toISOString() pushes evening
+// entries (US timezones, after UTC midnight) onto the wrong date, which
+// here would prematurely reset "completed today" state mid-evening.
+const todayStr     = () => format(new Date(), 'yyyy-MM-dd');
 const weekStartStr = () => {
   const d = new Date();
   const day = d.getDay();
   d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return d.toISOString().split('T')[0];
+  // FQA-026: format() uses local getters — toISOString() here could still
+  // shift the computed Monday to the wrong UTC date near midnight.
+  return format(d, 'yyyy-MM-dd');
 };
 
-function mapNote(r: any): CalendarNote {
+function mapNote(r: Pick<Database['public']['Tables']['patient_calendar_notes']['Row'], 'id' | 'date' | 'text' | 'type'>): CalendarNote {
   return { id: r.id, date: r.date, text: r.text, type: r.type as 'reminder' | 'appointment' };
 }
 
-function mapTask(r: any): TaskItem {
+function mapTask(r: Pick<Database['public']['Tables']['patient_task_items']['Row'], 'id' | 'text' | 'period' | 'completed' | 'completed_date' | 'week_key' | 'created_at'>): TaskItem {
   return {
     id:            r.id,
     text:          r.text,
@@ -47,7 +53,7 @@ function mapTask(r: any): TaskItem {
     completed:     r.completed,
     completedDate: r.completed_date ?? undefined,
     weekKey:       r.week_key ?? undefined,
-    createdAt:     r.created_at,
+    createdAt:     r.created_at ?? '',
   };
 }
 
@@ -78,23 +84,40 @@ function ReminderCalendar() {
 
       if (error) return; // table may not exist yet; silent fail keeps UI functional
 
-      if (data.length === 0) {
-        const old: CalendarNote[] = (() => {
-          try { return JSON.parse(localStorage.getItem('patientCalendarNotes') || '[]'); }
-          catch { return []; }
-        })();
-        if (old.length > 0) {
-          await Promise.all(old.map(n =>
+      // B3: resumable migration reconciled by a persisted progress set,
+      // not gated on "the destination table is empty" — that gate is
+      // permanently false after even one successful insert, which would
+      // silently strand every remaining unmigrated note forever.
+      const old: CalendarNote[] = (() => {
+        try { return JSON.parse(localStorage.getItem('patientCalendarNotes') || '[]'); }
+        catch { return []; }
+      })();
+
+      if (old.length > 0) {
+        const migratedKey = `patientCalendarNotesMigrated_${patientId}`;
+        const migratedSet = loadMigratedIdSet(migratedKey);
+
+        const pending = filterPending(old, migratedSet);
+
+        if (pending.length > 0) {
+          const migrationResults = await Promise.all(pending.map(n =>
             supabase.from('patient_calendar_notes').insert({
               patient_id: patientId, date: n.date, text: n.text, type: n.type,
             })
           ));
-          localStorage.removeItem('patientCalendarNotes');
-          const { data: migrated } = await supabase
-            .from('patient_calendar_notes').select('id, date, text, type').eq('patient_id', patientId);
-          setNotes((migrated || []).map(mapNote));
-          return;
+          migrationResults.forEach((r, i) => { if (!r.error) migratedSet.add(pending[i].id); });
+          saveMigratedIdSet(migratedKey, migratedSet);
         }
+
+        if (isFullyMigrated(old, migratedSet)) {
+          localStorage.removeItem('patientCalendarNotes');
+          localStorage.removeItem(migratedKey);
+        }
+
+        const { data: migrated } = await supabase
+          .from('patient_calendar_notes').select('id, date, text, type').eq('patient_id', patientId);
+        setNotes((migrated || []).map(mapNote));
+        return;
       }
 
       setNotes(data.map(mapNote));
@@ -117,40 +140,49 @@ function ReminderCalendar() {
 
   const saveEdit = async (id: string) => {
     if (!editText.trim()) return;
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, text: editText.trim() } : n));
+    const previous = notes;
+    const nextText = editText.trim();
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, text: nextText } : n));
     setEditId(null);
     setEditText('');
-    await supabase
+    const { error } = await supabase
       .from('patient_calendar_notes')
-      .update({ text: editText.trim() })
+      .update({ text: nextText })
       .eq('id', id)
       .eq('patient_id', patientId);
+    if (error) {
+      setNotes(previous);
+      toast.error('Failed to save note — your change was not kept');
+    }
   };
 
   const deleteNote = async (id: string) => {
+    const previous = notes;
     setNotes(prev => prev.filter(n => n.id !== id));
-    await supabase
+    const { error } = await supabase
       .from('patient_calendar_notes')
       .delete()
       .eq('id', id)
       .eq('patient_id', patientId);
+    if (error) {
+      setNotes(previous);
+      toast.error('Failed to delete note');
+    }
   };
   const notesOn    = (dateStr: string) => notes.filter(n => n.date === dateStr);
 
   // ── Month grid ────────────────────────────────────────────────────────────
-  const monthStart  = startOfMonth(baseDate);
-  const totalDays   = getDaysInMonth(baseDate);
-  const gridStart   = startOfWeek(monthStart, { weekStartsOn: 1 }); // Monday
+  const gridStart = useMemo(() => startOfWeek(startOfMonth(baseDate), { weekStartsOn: 1 }), [baseDate]); // Monday
 
   const monthDays = useMemo(() => {
     const days: Date[] = [];
     for (let i = 0; i < 42; i++) days.push(addDays(gridStart, i));
     return days;
-  }, [baseDate]);
+  }, [gridStart]);
 
   // ── Week grid ─────────────────────────────────────────────────────────────
-  const weekStart = startOfWeek(baseDate, { weekStartsOn: 1 });
-  const weekDays  = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [baseDate]);
+  const weekStart = useMemo(() => startOfWeek(baseDate, { weekStartsOn: 1 }), [baseDate]);
+  const weekDays  = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
   const today     = new Date();
   const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -356,27 +388,44 @@ function MyTasks() {
 
       if (error) return;
 
-      if (data.length === 0) {
-        const old: TaskItem[] = (() => {
-          try { return JSON.parse(localStorage.getItem('patientMyTasks') || '[]'); }
-          catch { return []; }
-        })();
-        if (old.length > 0) {
-          await Promise.all(old.map(t =>
+      // B3: resumable migration reconciled by a persisted progress set,
+      // not gated on "the destination table is empty" — that gate is
+      // permanently false after even one successful insert, which would
+      // silently strand every remaining unmigrated task forever.
+      const old: TaskItem[] = (() => {
+        try { return JSON.parse(localStorage.getItem('patientMyTasks') || '[]'); }
+        catch { return []; }
+      })();
+
+      if (old.length > 0) {
+        const migratedKey = `patientMyTasksMigrated_${patientId}`;
+        const migratedSet = loadMigratedIdSet(migratedKey);
+
+        const pending = filterPending(old, migratedSet);
+
+        if (pending.length > 0) {
+          const migrationResults = await Promise.all(pending.map(t =>
             supabase.from('patient_task_items').insert({
               patient_id: patientId, text: t.text, period: t.period,
               completed: t.completed, completed_date: t.completedDate ?? null,
               week_key: t.weekKey ?? null,
             })
           ));
-          localStorage.removeItem('patientMyTasks');
-          const { data: migrated } = await supabase
-            .from('patient_task_items')
-            .select('id, text, period, completed, completed_date, week_key, created_at')
-            .eq('patient_id', patientId).order('created_at', { ascending: false });
-          setTasks((migrated || []).map(mapTask));
-          return;
+          migrationResults.forEach((r, i) => { if (!r.error) migratedSet.add(pending[i].id); });
+          saveMigratedIdSet(migratedKey, migratedSet);
         }
+
+        if (isFullyMigrated(old, migratedSet)) {
+          localStorage.removeItem('patientMyTasks');
+          localStorage.removeItem(migratedKey);
+        }
+
+        const { data: migrated } = await supabase
+          .from('patient_task_items')
+          .select('id, text, period, completed, completed_date, week_key, created_at')
+          .eq('patient_id', patientId).order('created_at', { ascending: false });
+        setTasks((migrated || []).map(mapTask));
+        return;
       }
 
       setTasks(data.map(mapTask));
@@ -407,23 +456,33 @@ function MyTasks() {
       t.period === 'daily'  ? t.completedDate === today :
       t.period === 'weekly' ? t.completedDate === today && t.completed : false;
     const newCompleted = !wasCompleted;
+    const previous = tasks;
     setTasks(prev => prev.map(x =>
       x.id === id ? { ...x, completed: newCompleted, completedDate: today } : x
     ));
-    await supabase
+    const { error } = await supabase
       .from('patient_task_items')
       .update({ completed: newCompleted, completed_date: today })
       .eq('id', id)
       .eq('patient_id', patientId);
+    if (error) {
+      setTasks(previous);
+      toast.error('Failed to update task');
+    }
   };
 
   const removeTask = async (id: string) => {
+    const previous = tasks;
     setTasks(prev => prev.filter(t => t.id !== id));
-    await supabase
+    const { error } = await supabase
       .from('patient_task_items')
       .delete()
       .eq('id', id)
       .eq('patient_id', patientId);
+    if (error) {
+      setTasks(previous);
+      toast.error('Failed to remove task');
+    }
   };
 
   const isTaskActive = (t: TaskItem) => {

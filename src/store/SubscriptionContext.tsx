@@ -1,6 +1,4 @@
 import {
-  createContext,
-  useContext,
   useEffect,
   useState,
   useCallback,
@@ -18,27 +16,8 @@ import {
   isWithinRefundWindow,
   isTrialExpired,
   isMasterEmail,
-  FREE_TRIAL_DAYS,
-  PROMO_TOTAL_DAYS,
 } from '@/types/subscription';
-
-// ─── Context shape ────────────────────────────────────────────────────────────
-
-interface SubscriptionContextType {
-  subscription: Subscription | null;
-  tier: TierName;
-  isLoading: boolean;
-  isActive: boolean;
-  isMaster: boolean;
-  trialDays: number;
-  canRefund: boolean;
-  isExpired: boolean;
-  can: (feature: FeatureKey) => boolean;
-  refresh: () => Promise<void>;
-  redeemPromoCode: (code: string) => Promise<{ success: boolean; message: string; promo?: PromoCode }>;
-}
-
-const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
+import { SubscriptionContext } from './useSubscription';
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
@@ -46,6 +25,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [userEmail, setUserEmail]       = useState<string | null>(null);
   const [isLoading, setIsLoading]       = useState(true);
+  // REPAIR 007: starts null (not yet confirmed) and fails closed — see
+  // isSubscriptionActive()'s own doc comment for why an unconfirmed program
+  // must never be treated as active.
+  const [programActive, setProgramActive] = useState<boolean | null>(null);
 
   const loadSubscription = useCallback(async (): Promise<string | null> => {
     try {
@@ -56,10 +39,13 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
       // ── Master account: skip DB entirely, synthesise a master subscription ──
       if (isMasterEmail(user.email)) {
+        setProgramActive(null);
         setSubscription({
           id: `master-${user.id}`,
           userId: user.id,
           tier: 'master',
+          plan: null, // REPAIR 006: plan only has meaning for tier='paid_tier'
+          program: null, // REPAIR 007: master is never a Temporary/Companion program
           status: 'active',
           trialStartedAt: user.created_at ?? new Date().toISOString(),
           trialEndsAt: '2099-12-31T00:00:00Z',
@@ -79,7 +65,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       // ── Regular user: load from DB ────────────────────────────────────────
       const { data, error } = await supabase
         .from('subscriptions')
-        .select('id, user_id, tier, status, trial_started_at, trial_ends_at, current_period_start, current_period_end, stripe_customer_id, stripe_subscription_id, promo_code, promo_expires_at, canceled_at, created_at, updated_at')
+        // REPAIR 006: `plan` — server-authoritative paid-plan identity.
+        // REPAIR 007: `program` — server-authoritative Temporary/Companion
+        // identity (see supabase/migrations/017_.../018_... .sql). Both
+        // read back exactly as stored; never inferred client-side.
+        .select('id, user_id, tier, plan, program, status, trial_started_at, trial_ends_at, current_period_start, current_period_end, stripe_customer_id, stripe_subscription_id, promo_code, promo_expires_at, canceled_at, created_at, updated_at')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -99,12 +89,31 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         if (createErr) {
           console.error('[Subscription] Free-tier provisioning error:', createErr.message);
         } else if (created) {
+          setProgramActive(null); // freshly-provisioned free_tier row is never a program
           setSubscription(mapRow(created));
         }
         return user.id;
       }
 
-      setSubscription(mapRow(data));
+      const mapped = mapRow(data);
+      setSubscription(mapped);
+
+      // REPAIR 007: for a program-classified row, fetch the TRUSTED,
+      // server-`now()`-computed eligibility — never a client Date()
+      // comparison against trialEndsAt (see isSubscriptionActive()'s doc
+      // comment). Non-program rows never call this at all.
+      if (mapped.program) {
+        const { data: active, error: programError } = await supabase.rpc('is_my_program_active');
+        if (programError) {
+          console.error('[Subscription] Program eligibility check error:', programError.message);
+          setProgramActive(false); // fail closed — never optimistic on an error
+        } else {
+          setProgramActive(active === true);
+        }
+      } else {
+        setProgramActive(null);
+      }
+
       return user.id;
     } finally {
       setIsLoading(false);
@@ -184,11 +193,24 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   const tier: TierName = subscription?.tier ?? 'free_tier';
 
-  // For master accounts isActive must be true regardless of subscription state
-  const isActive  = masterFlag ? true : isSubscriptionActive(subscription);
+  // For master accounts isActive must be true regardless of subscription state.
+  // REPAIR 007: programActive (trusted, server-computed) is threaded through
+  // so an expired Temporary/Companion grant loses access via this SAME
+  // single isActive value every gate in the app already reads.
+  const isActive  = masterFlag ? true : isSubscriptionActive(subscription, programActive);
   const trialDays = trialDaysRemaining(subscription);
   const canRefund = isWithinRefundWindow(subscription);
   const isExpired = masterFlag ? false : isTrialExpired(subscription);
+
+  // REPAIR 008 / REPAIR A/C: the ONE trusted signal the Temporary demo
+  // experience is allowed to branch on. Never derived from an email
+  // pattern — only from the server-authoritative `program` column plus
+  // the server-`now()`-computed `programActive` (is_my_program_active()).
+  // `!masterFlag` is defensive (a master row's program is always null per
+  // migration 018's CHECK, but this keeps the two flags mutually
+  // exclusive by construction even if that invariant were ever violated).
+  const isTempUserDemo    = !masterFlag && subscription?.program === 'temp_user' && programActive === true;
+  const isCompanionActive = !masterFlag && subscription?.program === 'companion' && programActive === true;
 
   const can = useCallback(
     (feature: FeatureKey): boolean => {
@@ -197,9 +219,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       if (masterFlag) return true;
       if (subscription?.tier === 'master') return true;
       if (!isActive) return false;
-      return hasFeatureAccess(tier, feature);
+      // REPAIR 006: plan passed through so Daily Care vs Full Support is
+      // distinguished here — the one place every gate in the app reads.
+      return hasFeatureAccess(tier, feature, subscription?.plan ?? null);
     },
-    [tier, isActive, masterFlag, subscription?.tier]
+    [tier, isActive, masterFlag, subscription?.tier, subscription?.plan]
   );
 
   return (
@@ -213,8 +237,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         trialDays,
         canRefund,
         isExpired,
+        programActive,
+        isTempUserDemo,
+        isCompanionActive,
         can,
-        refresh: loadSubscription,
+        refresh: async () => { await loadSubscription(); },
         redeemPromoCode,
       }}
     >
@@ -223,13 +250,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-
-export function useSubscription() {
-  const ctx = useContext(SubscriptionContext);
-  if (!ctx) throw new Error('useSubscription must be used inside SubscriptionProvider');
-  return ctx;
-}
+// RELEASE-BLOCKER-CLOSURE PHASE 2: the SubscriptionContext object and
+// useSubscription() hook live in ./useSubscription.ts, not here — a file
+// exporting both a component (SubscriptionProvider) and a non-component
+// value breaks Vite Fast Refresh (react-refresh/only-export-components).
+// Every import site was updated instead.
 
 // ─── Helper: snake_case DB row → camelCase TS object ────────────────────────
 
@@ -238,6 +263,8 @@ function mapRow(row: Record<string, unknown>): Subscription {
     id:                    row.id as string,
     userId:                row.user_id as string,
     tier:                  row.tier as TierName,
+    plan:                  (row.plan as Subscription['plan']) ?? null,
+    program:               (row.program as Subscription['program']) ?? null,
     status:                row.status as Subscription['status'],
     trialStartedAt:        row.trial_started_at as string,
     trialEndsAt:           row.trial_ends_at as string,

@@ -1,5 +1,8 @@
-import { useApp } from '@/store/AppContext';
+import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import type { Database } from '@/types/supabase';
+import { loadMigratedIdSet, saveMigratedIdSet, filterPending, isFullyMigrated } from '@/lib/legacyMigration';
+import { getErrorMessage } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +14,7 @@ import {
   ClipboardList, Check, Minus, Info, RotateCcw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { format, startOfWeek, addDays, startOfMonth, getDaysInMonth, subDays, addWeeks, subWeeks, addMonths, subMonths, isSameDay, parseISO } from 'date-fns';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -70,8 +73,14 @@ const FORM_COLORS: Record<MedForm, string> = {
   inhaler:   'bg-purple-400',
 };
 
-function mapRow(row: any): LocalMed {
-  const schedule: Array<{ time: string; daysOfWeek?: number[] }> = row.schedule || [];
+// Narrower than the full Row — matches the fields every .select() call site
+// for this table actually requests (some omit patient_id/prescription_date/
+// side_effects/updated_at), and the only fields this function reads.
+type MedicationRowForMapping = Pick<Database['public']['Tables']['medications']['Row'],
+  'id' | 'name' | 'generic_name' | 'dosage' | 'form' | 'instructions' | 'prescribed_by' | 'schedule' | 'is_active' | 'created_at'>;
+
+function mapRow(row: MedicationRowForMapping): LocalMed {
+  const schedule = (row.schedule || []) as Array<{ time: string; daysOfWeek?: number[] }>;
   return {
     id:           row.id,
     name:         row.name,
@@ -89,7 +98,10 @@ function mapRow(row: any): LocalMed {
   };
 }
 
-function mapLogRow(row: any): LocalLog {
+type MedicationLogRowForMapping = Pick<Database['public']['Tables']['medication_logs']['Row'],
+  'id' | 'medication_id' | 'medication_name' | 'date' | 'scheduled_time' | 'taken_time' | 'status'>;
+
+function mapLogRow(row: MedicationLogRowForMapping): LocalLog {
   return {
     id:            row.id,
     medId:         row.medication_id,
@@ -298,23 +310,17 @@ function AddMedForm({ onSave, onClose }: { onSave: (m: LocalMed) => void; onClos
 
 // ─── Dose Row ─────────────────────────────────────────────────────────────────
 function DoseRow({
-  med, time, status, onTake, onSkip, onUndo, compact = false,
+  med, time, status, onTake, onUndo, compact = false,
 }: {
-  med: LocalMed | any;
+  med: LocalMed;
   time: string;
   status: DoseStatus;
   onTake: () => void;
-  onSkip: () => void;
   onUndo: () => void;
   compact?: boolean;
 }) {
   const FormIcon = FORM_CONFIG[med.form as MedForm]?.icon || Pill;
   const tod = getTimeOfDay(time);
-  const isPast = (() => {
-    const now = new Date();
-    const [h, m] = time.split(':').map(Number);
-    return now.getHours() > h || (now.getHours() === h && now.getMinutes() > m);
-  })();
 
   const handleRowClick = () => {
     if (status === 'pending') onTake();
@@ -386,7 +392,7 @@ function DoseRow({
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function PatientMedications() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const patientId = state.currentUser?.id || '';
 
   const [localMeds,   setLocalMeds]   = useState<LocalMed[]>([]);
@@ -397,10 +403,30 @@ export default function PatientMedications() {
   const [confirm,     setConfirm]     = useState<{ medId: string; time: string; date: string; action: 'take'|'skip' } | null>(null);
   const [weekStart,   setWeekStart]   = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [monthDate,   setMonthDate]   = useState(() => new Date());
-  const [detailMed,   setDetailMed]   = useState<LocalMed | null>(null);
   const [dayPopup,    setDayPopup]    = useState<{ date: string; doses: ReturnType<typeof getDosesForDate> } | null>(null);
 
   const todayStr = today();
+
+  // FQA-025: state.medicationLogs (read by PatientHome.tsx's "doses taken
+  // today" indicator) was never written anywhere — this component tracked
+  // every dose action in its own local `localLogs` state only, so Home's
+  // indicator stayed permanently empty regardless of real dose activity.
+  // Mirror local state into the shared store on every change so Home
+  // reflects it without a full page reload.
+  useEffect(() => {
+    dispatch({
+      type: 'SET_MEDICATION_LOGS',
+      payload: localLogs.map(l => ({
+        id: l.id,
+        medicationId: l.medId,
+        patientId,
+        scheduledTime: l.scheduledTime,
+        takenTime: l.takenTime,
+        status: l.status,
+        date: l.date,
+      })),
+    });
+  }, [localLogs, patientId, dispatch]);
 
   // ── Load from Supabase (+ one-time localStorage migration) ──────────────────
   useEffect(() => {
@@ -421,41 +447,115 @@ export default function PatientMedications() {
         return;
       }
 
-      // One-time migration: if Supabase is empty and localStorage has data, migrate it
-      if (medRows !== null && medRows.length === 0) {
-        const oldMeds: LocalMed[] = (() => {
-          try { return JSON.parse(localStorage.getItem('patientLocalMeds') || '[]'); }
-          catch { return []; }
+      // B2/B3: resumable legacy-localStorage migration, reconciled by a
+      // persisted per-record progress map rather than gated on "the
+      // destination table is empty" — that gate is permanently false
+      // after even one successful insert, which would silently strand
+      // every remaining unmigrated record forever. Also migrates dose
+      // HISTORY (patientLocalLogs), which the previous version of this
+      // block deleted unconditionally without ever inserting anywhere.
+      const oldMeds: LocalMed[] = (() => {
+        try { return JSON.parse(localStorage.getItem('patientLocalMeds') || '[]'); }
+        catch { return []; }
+      })();
+
+      if (oldMeds.length > 0) {
+        const migratedMedsKey = `patientLocalMedsMigrated_${patientId}`;
+        const medIdMap: Record<string, string> = (() => {
+          try { return JSON.parse(localStorage.getItem(migratedMedsKey) || '{}'); }
+          catch { return {}; }
         })();
 
-        if (oldMeds.length > 0) {
-          await Promise.all(oldMeds.map(m =>
-            supabase.from('medications').insert({
+        const pendingMeds = oldMeds.filter(m => !medIdMap[m.id]);
+
+        if (pendingMeds.length > 0) {
+          const results = await Promise.all(pendingMeds.map(async m => {
+            const { data, error } = await supabase.from('medications').insert({
               patient_id:   patientId,
               name:         m.name,
               generic_name: m.genericName || null,
               dosage:       m.dosage,
               form:         m.form,
-              instructions: m.instructions || null,
+              instructions: m.instructions, // NOT NULL column; LocalMed.instructions is already a (possibly empty) string
               prescribed_by: m.prescribedBy || null,
               schedule:     m.times.map((time, i) => ({ id: `s${i}`, time, daysOfWeek: m.daysOfWeek })),
               is_active:    m.isActive,
               side_effects: [],
-            })
+            }).select('id').single();
+            return { localId: m.id, newId: data?.id as string | undefined, error };
+          }));
+
+          // Record every success immediately, even if a later item in this
+          // same batch fails — a partial failure must not strand the ones
+          // that DID go through (no duplicate re-insert next retry, and
+          // their dose logs below can map to the real new id this round).
+          for (const r of results) {
+            if (!r.error && r.newId) medIdMap[r.localId] = r.newId;
+          }
+          localStorage.setItem(migratedMedsKey, JSON.stringify(medIdMap));
+
+          const failedCount = results.filter(r => r.error).length;
+          if (failedCount > 0) {
+            toast.error(`Couldn't finish migrating ${failedCount} of ${pendingMeds.length} saved medications. Your data was kept — this will retry next time.`);
+          }
+        }
+
+        // Dose history: only migrate a log once its OWN medication has a
+        // confirmed new id — a log whose medication failed this round is
+        // left pending (not dropped, not mis-attributed to the wrong id).
+        const oldLogs: LocalLog[] = (() => {
+          try { return JSON.parse(localStorage.getItem('patientLocalLogs') || '[]'); }
+          catch { return []; }
+        })();
+
+        const migratedLogsKey = `patientLocalLogsMigrated_${patientId}`;
+        const migratedLogSet = loadMigratedIdSet(migratedLogsKey);
+
+        const pendingLogs = filterPending(oldLogs, migratedLogSet).filter(l => medIdMap[l.medId]);
+
+        if (pendingLogs.length > 0) {
+          const logResults = await Promise.all(pendingLogs.map(l =>
+            supabase.from('medication_logs').upsert({
+              medication_id:   medIdMap[l.medId],
+              patient_id:      patientId,
+              medication_name: l.medName,
+              scheduled_time:  l.scheduledTime,
+              date:            l.date,
+              status:          l.status,
+              taken_time:      l.takenTime || null,
+              recorded_by:     patientId,
+            }, { onConflict: 'medication_id,date,scheduled_time' })
           ));
+          logResults.forEach((r, i) => { if (!r.error) migratedLogSet.add(pendingLogs[i].id); });
+          saveMigratedIdSet(migratedLogsKey, migratedLogSet);
+
+          const failedLogCount = logResults.filter(r => r.error).length;
+          if (failedLogCount > 0) {
+            toast.error(`Couldn't finish migrating ${failedLogCount} dose-history entries. Your data was kept — this will retry next time.`);
+          }
+        }
+
+        // Only clear the local source once every medication AND every dose
+        // log is confirmed migrated — never on partial success.
+        const allMedsMigrated = oldMeds.every(m => medIdMap[m.id]);
+        const allLogsMigrated = isFullyMigrated(oldLogs, migratedLogSet);
+        if (allMedsMigrated && allLogsMigrated) {
           localStorage.removeItem('patientLocalMeds');
           localStorage.removeItem('patientLocalLogs');
-
-          // Re-fetch after migration
-          const { data: migrated } = await supabase
-            .from('medications')
-            .select(medSelect)
-            .eq('patient_id', patientId)
-            .order('created_at', { ascending: false });
-          setLocalMeds((migrated || []).map(mapRow));
-          setMedsLoading(false);
-          return;
+          localStorage.removeItem(migratedMedsKey);
+          localStorage.removeItem(migratedLogsKey);
         }
+
+        // Re-fetch so the UI reflects whatever did succeed this round,
+        // whether the migration finished completely or only partially.
+        const { data: migrated } = await supabase
+          .from('medications')
+          .select(medSelect)
+          .eq('patient_id', patientId)
+          .order('created_at', { ascending: false });
+        setLocalMeds((migrated || []).map(mapRow));
+        setMedsLoading(false);
+        return;
       }
 
       setLocalMeds((medRows || []).map(mapRow));
@@ -490,7 +590,7 @@ export default function PatientMedications() {
     return 'pending';
   }, [localLogs, todayStr]);
 
-  const getDosesForDate = (date: string) => {
+  const getDosesForDate = useCallback((date: string) => {
     const allDoses: { medId: string; med: LocalMed; time: string }[] = [];
     const dateObj = parseISO(date);
     const dow = dateObj.getDay();
@@ -499,9 +599,9 @@ export default function PatientMedications() {
       if (applies) med.times.forEach(t => allDoses.push({ medId: med.id, med, time: t }));
     });
     return allDoses.sort((a, b) => a.time.localeCompare(b.time));
-  };
+  }, [localMeds]);
 
-  const todayDoses = useMemo(() => getDosesForDate(todayStr), [localMeds, todayStr]);
+  const todayDoses = useMemo(() => getDosesForDate(todayStr), [getDosesForDate, todayStr]);
 
   const todayStats = useMemo(() => {
     const taken   = todayDoses.filter(d => getStatus(d.medId, todayStr, d.time) === 'taken').length;
@@ -554,9 +654,9 @@ export default function PatientMedications() {
         // Swap temp entry with the real DB row
         setLocalLogs(prev => prev.map(l => l.id === tempId ? mapLogRow(logRow) : l));
       }
-    } catch (err: any) {
+    } catch (err) {
       setLocalLogs(prev => prev.filter(l => l.id !== tempId));
-      toast.error(`Could not save dose: ${err?.message || 'please try again'}`);
+      toast.error(`Could not save dose: ${getErrorMessage(err, 'please try again')}`);
     }
   };
 
@@ -579,8 +679,8 @@ export default function PatientMedications() {
       if (undoError) throw undoError;
 
       setLocalLogs(prev => prev.filter(l => !(l.medId === medId && l.date === date && l.scheduledTime === time)));
-    } catch (err: any) {
-      toast.error(`Could not undo dose: ${err?.message || 'please try again'}`);
+    } catch (err) {
+      toast.error(`Could not undo dose: ${getErrorMessage(err, 'please try again')}`);
     }
   };
 
@@ -595,7 +695,7 @@ export default function PatientMedications() {
         generic_name: med.genericName || null,
         dosage:       med.dosage,
         form:         med.form,
-        instructions: med.instructions || null,
+        instructions: med.instructions, // NOT NULL column; LocalMed.instructions is already a (possibly empty) string
         prescribed_by: med.prescribedBy || null,
         schedule,
         is_active:    true,
@@ -636,34 +736,12 @@ export default function PatientMedications() {
   // ── Week helpers ─────────────────────────────────────────────────────────────
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
-  const getWeekStats = (date: Date) => {
-    const d = format(date, 'yyyy-MM-dd');
-    const doses = getDosesForDate(d);
-    const taken  = doses.filter(x => getStatus(x.medId, d, x.time) === 'taken').length;
-    const missed = doses.filter(x => getStatus(x.medId, d, x.time) === 'missed').length;
-    const total  = doses.length;
-    return { taken, missed, total, pending: total - taken - missed };
-  };
-
   // ── Month helpers ────────────────────────────────────────────────────────────
   const monthDays = useMemo(() => {
     const start = startOfMonth(monthDate);
     const count = getDaysInMonth(monthDate);
     return Array.from({ length: count }, (_, i) => addDays(start, i));
   }, [monthDate]);
-
-  const getMonthCellColor = (date: Date) => {
-    const d = format(date, 'yyyy-MM-dd');
-    const doses = getDosesForDate(d);
-    if (doses.length === 0) return 'bg-soft-taupe/20 text-medium-gray';
-    const taken  = doses.filter(x => getStatus(x.medId, d, x.time) === 'taken').length;
-    const missed = doses.filter(x => getStatus(x.medId, d, x.time) === 'missed').length;
-    const pct = taken / doses.length;
-    if (pct === 1)   return 'bg-soft-sage text-white';
-    if (pct >= 0.5)  return 'bg-warm-amber/80 text-white';
-    if (missed > 0)  return 'bg-gentle-coral/70 text-white';
-    return 'bg-soft-taupe/30 text-medium-gray';
-  };
 
   // Returns per-dose pip data for richer calendar display
   const getDosePips = (date: Date) => {
@@ -798,7 +876,6 @@ export default function PatientMedications() {
                             med={d.med} time={d.time}
                             status={getStatus(d.medId, todayStr, d.time)}
                             onTake={() => setConfirm({ medId: d.medId, time: d.time, date: todayStr, action: 'take' })}
-                            onSkip={() => logDose(d.medId, todayStr, d.time, 'skipped')}
                             onUndo={() => undoLog(d.medId, todayStr, d.time)}
                           />
                         ))}
@@ -937,7 +1014,6 @@ export default function PatientMedications() {
                 const isFuture = day > new Date();
                 const taken  = doses.filter(x => getStatus(x.medId, d, x.time) === 'taken').length;
                 const missed  = doses.filter(x => getStatus(x.medId, d, x.time) === 'missed').length;
-                const pending = doses.filter(x => getStatus(x.medId, d, x.time) === 'pending').length;
                 const total   = doses.length;
                 const pips    = getDosePips(day);
 
@@ -1238,8 +1314,8 @@ export default function PatientMedications() {
                   </div>
                   <div className="text-center">
                     <p className="text-lg font-bold text-charcoal">{med.name}</p>
-                    <p className="text-medium-gray">{(med as any).dosage} · {confirm.time}</p>
-                    {(med as any).instructions && <p className="text-sm text-medium-gray mt-1 flex items-center gap-1 justify-center"><Info className="w-3.5 h-3.5"/>{(med as any).instructions}</p>}
+                    <p className="text-medium-gray">{med.dosage} · {confirm.time}</p>
+                    {med.instructions && <p className="text-sm text-medium-gray mt-1 flex items-center gap-1 justify-center"><Info className="w-3.5 h-3.5"/>{med.instructions}</p>}
                   </div>
                 </div>
                 <div className="flex gap-3">

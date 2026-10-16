@@ -1,4 +1,5 @@
-import { AppProvider, useApp } from '@/store/AppContext';
+import { AppProvider } from '@/store/AppContext';
+import { useApp } from '@/store/useApp';
 import LandingPage from '@/pages/common/LandingPage';
 import LoginPage from '@/pages/common/LoginPage';
 import ResetPasswordPage from '@/pages/common/ResetPasswordPage';
@@ -8,11 +9,12 @@ import PatientLayout from '@/pages/patient/PatientLayout';
 import AdminLayout from '@/pages/admin/AdminLayout';
 import PrivacyPage from '@/pages/privacy/PrivacyPage';
 import { Toaster } from '@/components/ui/sonner';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import type { User } from '@supabase/supabase-js';
+import type { Database } from '@/types/supabase';
 import { cancelAllReminderNotifications } from '@/lib/reminderScheduler';
 import type { UserRole } from '@/types';
-import { isTempUser } from '@/types/subscription';
 import './App.css';
 
 const PROFILE_COLUMNS =
@@ -24,6 +26,14 @@ function AppContent() {
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [forcedChange, setForcedChange] = useState(false);
   const [currentUserEmail, setCurrentUserEmail] = useState('');
+  // MYMEMORIA-FUNCTIONAL-CLOSURE-MASTER-009 / PHASE 2: the trusted,
+  // server-computed Temporary-program signal for THIS session's routing
+  // decision below — never derived from an email pattern. Populated by
+  // the same subscription read restoreSession() already performs; null
+  // until that resolves, which fails closed (routes like any ordinary
+  // account) rather than optimistically treating an unconfirmed session
+  // as Temporary.
+  const [isTrustedTempUserProgram, setIsTrustedTempUserProgram] = useState(false);
 
   // Supabase can emit SIGNED_OUT while its client is initializing. The first
   // getSession() call is the source of truth during startup; genuine SIGNED_OUT
@@ -45,7 +55,8 @@ function AppContent() {
   const isPublicRoute =
     isPublicPatientIntakeRoute || isPrivacyRoute || isAboutUsRoute;
 
-  const restoreUser = (profile: any) => {
+  const restoreUser = useCallback((profile: Pick<Database['public']['Tables']['profiles']['Row'],
+    'id' | 'email' | 'first_name' | 'last_name' | 'role' | 'phone' | 'created_at' | 'updated_at' | 'mfa_enabled'>) => {
     const safeRole = (profile.role as UserRole) || 'patient';
 
     dispatch({
@@ -69,7 +80,7 @@ function AppContent() {
     });
 
     dispatch({ type: 'SET_AUTHENTICATED', payload: true });
-  };
+  }, [dispatch]);
 
   // Used only when an authenticated user has no readable `profiles` row.
   // `role` is deliberately NEVER sourced from `user_metadata` here: that field
@@ -78,7 +89,7 @@ function AppContent() {
   // by setting their own metadata and then losing/forcing a missing profile
   // row. A missing profile is treated as "most restrictive known role", not
   // as a hint to read from an untrusted source. F01 remediation.
-  const buildAuthFallbackProfile = (user: any) => ({
+  const buildAuthFallbackProfile = (user: User) => ({
     id: user.id,
     email: user.email || '',
     first_name: user.user_metadata?.first_name || '',
@@ -142,23 +153,59 @@ function AppContent() {
           const isPrivileged = ['admin', 'caregiver', 'master', 'superadmin'].includes(profile.role);
 
           if (!isPrivileged) {
+            // MYMEMORIA-FUNCTIONAL-CLOSURE-MASTER-009 / PHASE 1 + PHASE 2:
+            // this check previously (a) treated "no subscription row yet"
+            // as "must pay" — but a fresh signup that used the
+            // "Confirm your email, then sign in" path (PricingPage.tsx:
+            // `if (!data.session) { ...; onGoToLogin?.(); return; }`) never
+            // reaches handleSelectTier()'s provision_free_subscription()
+            // call before its first login, so `sub` is genuinely null on
+            // that first session-restore — this was signing a brand-new,
+            // legitimate free-tier user straight back out with a false
+            // "payment required" message, not a hypothetical edge case.
+            // SubscriptionContext.tsx's own loadSubscription() already
+            // treats a missing row as "provision free_tier," never as
+            // "block" — this now agrees with that, rather than duplicating
+            // a second, divergent definition of "needs payment." (b)
+            // included 'requires_payment'/'incomplete' in its blocked-
+            // status list — neither is one of the six values the
+            // subscriptions_status_check CHECK constraint
+            // (013_subscriptions_atomic_lifecycle.sql) allows; dead
+            // conditions removed, matching the real six-status model
+            // src/types/subscription.ts and ProtectedRoute.tsx already use.
+            // (c) added `program` so a Temporary/Companion account's
+            // trusted eligibility (never a client-visible status/date) is
+            // this session's signal for the routing decision in the render
+            // function below, replacing the email-pattern check that used
+            // to be the only thing available there.
             const { data: sub, error: subError } = await supabase
               .from('subscriptions')
-              .select('status, tier, stripe_subscription_id')
+              .select('status, tier, program, stripe_subscription_id')
               .eq('user_id', profile.id)
               .maybeSingle();
 
             const isMaster = sub?.tier === 'master';
-            const blockedStatuses = [
-              'pending_payment',
-              'requires_payment',
-              'expired',
-              'canceled',
-              'past_due',
-              'incomplete',
-            ];
+            const blockedStatuses = ['pending_payment', 'expired', 'canceled', 'past_due'];
             const isBlockedStatus = Boolean(sub && blockedStatuses.includes(sub.status));
-            const needsPayment = !subError && (!sub || isBlockedStatus);
+
+            if (sub?.program) {
+              const { data: programActive, error: programError } = await supabase.rpc('is_my_program_active');
+              if (programError) {
+                console.error('Program eligibility check failed:', programError.message);
+              }
+              setIsTrustedTempUserProgram(sub.program === 'temp_user' && programActive === true);
+            } else {
+              setIsTrustedTempUserProgram(false);
+            }
+
+            // A program row is always status='active' at the DB level
+            // (migration 018's CHECK) — isBlockedStatus is already false
+            // for it — so a program account never needs the payment
+            // redirect below regardless of its trusted eligibility (losing
+            // eligibility means losing the program, never "needs payment,"
+            // exactly as needsPayment() in src/types/subscription.ts
+            // already defines for every other gate in this app).
+            const needsPayment = !subError && Boolean(sub) && isBlockedStatus;
 
             if (!isMaster && needsPayment) {
               await supabase.auth.signOut();
@@ -232,7 +279,7 @@ function AppContent() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [dispatch]);
+  }, [dispatch, restoreUser]);
 
   useEffect(() => {
     if (isPublicRoute) return;
@@ -398,7 +445,18 @@ function AppContent() {
       return state.currentView === 'login' ? <LoginPage /> : <LandingPage />;
     }
 
-    if (isTempUser(state.currentUser?.email)) {
+    // MYMEMORIA-FUNCTIONAL-CLOSURE-MASTER-009 / PHASE 2: no longer an
+    // email-pattern check. `isTrustedTempUserProgram` is set by
+    // restoreSession() above from the same trusted `subscriptions.program`
+    // + is_my_program_active() signal SubscriptionContext/PatientLayout use
+    // everywhere else — this call site only ever RESTRICTS (forces a
+    // confirmed Temporary account into PatientLayout instead of
+    // AdminLayout if selectedRole were somehow 'admin'; every other role
+    // already falls into the switch's own PatientLayout default below) and
+    // can never grant, renew, or remove the actual entitlement, which
+    // PatientLayout re-derives independently from SubscriptionContext once
+    // mounted regardless of how it was routed here.
+    if (isTrustedTempUserProgram) {
       return <PatientLayout />;
     }
 

@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getErrorMessage } from '@/lib/utils';
 import { Clock, CheckCircle, XCircle, Mail, User, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -20,9 +21,7 @@ export function AdminPendingApprovals({ onCountChange }: AdminPendingApprovalsPr
   const [loading,       setLoading]       = useState(true);
   const [processingId,  setProcessingId]  = useState<string | null>(null);
 
-  useEffect(() => { loadPendingUsers(); }, []);
-
-  const loadPendingUsers = async () => {
+  const loadPendingUsers = useCallback(async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -34,19 +33,28 @@ export function AdminPendingApprovals({ onCountChange }: AdminPendingApprovalsPr
       const users = data || [];
       setPendingUsers(users);
       onCountChange(users.length);
-    } catch (err: any) {
-      toast.error('Error loading pending users: ' + err.message);
+    } catch (err) {
+      toast.error('Error loading pending users: ' + getErrorMessage(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, [onCountChange]);
+
+  useEffect(() => { loadPendingUsers(); }, [loadPendingUsers]);
 
   const handleApprove = async (user: PendingUser) => {
     setProcessingId(user.id);
     try {
-      // Approve as patient — the only role managed through this portal
-      const { error } = await supabase.from('profiles')
-        .update({ role: 'patient' }).eq('id', user.id);
+      // Approve as patient — the only role managed through this portal.
+      // SEC-002 (012_profiles_revoke_client_role_authority.sql) removes
+      // ALL client-side write privilege on profiles.role, including for an
+      // authenticated admin — role changes must go through the trusted
+      // admin_set_role() RPC, which re-verifies the caller is actually an
+      // admin server-side before writing.
+      const { error } = await supabase.rpc('admin_set_role', {
+        p_user_id: user.id,
+        p_role: 'patient',
+      });
       if (error) throw error;
 
       // Send notification email via Supabase Auth
@@ -57,8 +65,8 @@ export function AdminPendingApprovals({ onCountChange }: AdminPendingApprovalsPr
 
       toast.success(`${user.first_name} ${user.last_name} approved as a patient`);
       await loadPendingUsers();
-    } catch (err: any) {
-      toast.error('Error approving user: ' + err.message);
+    } catch (err) {
+      toast.error('Error approving user: ' + getErrorMessage(err));
     } finally {
       setProcessingId(null);
     }
@@ -72,8 +80,8 @@ export function AdminPendingApprovals({ onCountChange }: AdminPendingApprovalsPr
       if (error) throw error;
       toast.success(`Account for ${user.email} rejected and removed`);
       await loadPendingUsers();
-    } catch (err: any) {
-      toast.error('Error rejecting user: ' + err.message);
+    } catch (err) {
+      toast.error('Error rejecting user: ' + getErrorMessage(err));
     } finally {
       setProcessingId(null);
     }

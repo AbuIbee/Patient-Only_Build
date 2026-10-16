@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import type { UserRole } from '@/types';
 import { ArrowLeft, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import PricingPage from './PricingPage';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -219,14 +220,14 @@ function SignInForm({
           email: data.user.email ?? email.trim().toLowerCase(),
           firstName: String(profile?.first_name ?? data.user.user_metadata?.first_name ?? ''),
           lastName: String(profile?.last_name ?? data.user.user_metadata?.last_name ?? ''),
-          role: (profile?.role ?? 'patient') as any,
+          role: (profile?.role ?? 'patient') as UserRole,
           phone: profile?.phone || undefined,
           createdAt: profile?.created_at ?? data.user.created_at ?? now,
           updatedAt: profile?.updated_at ?? now,
         },
       });
 
-      dispatch({ type: 'SET_ROLE', payload: (profile?.role ?? 'patient') as any });
+      dispatch({ type: 'SET_ROLE', payload: (profile?.role ?? 'patient') as UserRole });
       dispatch({ type: 'SET_AUTHENTICATED', payload: true });
 
       toast.success(

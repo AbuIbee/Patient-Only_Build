@@ -2,14 +2,26 @@
 // Uses Supabase's built-in MFA (TOTP) support
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getErrorMessage } from '@/lib/utils';
 import { Shield, ShieldCheck, Smartphone, Copy, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+// PHASE 3 (MYMEMORIA-FUNCTIONAL-CLOSURE-MASTER-009): this is Supabase
+// Auth's own MFA API (`supabase.auth.mfa.listFactors()`), not a table this
+// project defines — the real SDK factor shape uses `factor_type`, not
+// `type`, and also carries `friendly_name?`/`updated_at`/
+// `last_challenged_at?`. This interface previously used the wrong field
+// name, which this fix corrects to match the actual returned objects
+// (confirmed against @supabase/supabase-js's own types), not an invented
+// shape.
 interface MFAFactor {
   id: string;
-  type: string;
+  friendly_name?: string;
+  factor_type: string;
   status: string;
   created_at: string;
+  updated_at: string;
+  last_challenged_at?: string;
 }
 
 export default function MFASettings() {
@@ -31,8 +43,8 @@ export default function MFASettings() {
       const { data, error } = await supabase.auth.mfa.listFactors();
       if (error) throw error;
       setFactors(data?.totp || []);
-    } catch (err: any) {
-      console.error('MFA load error:', err.message);
+    } catch (err) {
+      console.error('MFA load error:', getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -47,8 +59,8 @@ export default function MFASettings() {
       setSecret(data.totp.secret);
       setFactorId(data.id);
       setStep('enroll');
-    } catch (err: any) {
-      toast.error('Failed to start MFA setup: ' + err.message);
+    } catch (err) {
+      toast.error('Failed to start MFA setup: ' + getErrorMessage(err));
     } finally {
       setEnrolling(false);
     }
@@ -80,8 +92,8 @@ export default function MFASettings() {
       setStep('view');
       setVerifyCode('');
       loadFactors();
-    } catch (err: any) {
-      toast.error('Invalid code — please try again: ' + err.message);
+    } catch (err) {
+      toast.error('Invalid code — please try again: ' + getErrorMessage(err));
     } finally {
       setEnrolling(false);
     }
@@ -98,8 +110,8 @@ export default function MFASettings() {
       }
       toast.success('MFA disabled');
       loadFactors();
-    } catch (err: any) {
-      toast.error('Failed: ' + err.message);
+    } catch (err) {
+      toast.error('Failed: ' + getErrorMessage(err));
     }
   };
 

@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import { createPatient } from '@/services/patientService';
 import type { PatientIntake, PatientIntakeFormData } from '@/types/patientIntake';
+import type { Database } from '@/types/supabase';
+import { getErrorMessage } from '@/lib/utils';
 
 /**
  * Complete patient creation/update flow.
@@ -32,9 +34,11 @@ export async function createAndProvisionPatient(
   const isPatientSelf = existingProfile?.role === 'patient';
 
   // ── Step 1: Save intake record ────────────────────────────────────────────
+  // patient_intake.id has no DB default (009: "client-generated receipt id")
   const { data: intakeRow, error: intakeError } = await supabase
     .from('patient_intake')
     .insert({
+      id:                               crypto.randomUUID(),
       patient_profile_id:              isPatientSelf ? realUserId : null,
       caregiver_profile_id:            isPatientSelf ? null : realUserId,
       patient_first_name:              formData.patientFirstName,
@@ -104,11 +108,11 @@ export async function createAndProvisionPatient(
       }).eq('id', realUserId);
 
       return { patientProfileId: realUserId, intakeId, error: null };
-    } catch (err: any) {
+    } catch (err) {
       return {
         patientProfileId: '',
         intakeId,
-        error: new Error('Profile info saved but patient record update failed: ' + (err?.message || 'unknown error')),
+        error: new Error('Profile info saved but patient record update failed: ' + getErrorMessage(err, 'unknown error')),
       };
     }
   }
@@ -123,7 +127,7 @@ export async function createAndProvisionPatient(
         lastName:      formData.patientLastName,
         preferredName: formData.patientPreferredName || undefined,
         email:         formData.patientEmail,
-        tempPassword:  (formData as any).patientTempPassword || undefined,
+        tempPassword:  formData.patientTempPassword || undefined,
         dateOfBirth:   formData.patientDateOfBirth   || undefined,
         dementiaStage: formData.patientDementiaStage as 'early' | 'middle' | 'late' | undefined,
         diagnosisDate: formData.patientDiagnosisDate || undefined,
@@ -148,11 +152,11 @@ export async function createAndProvisionPatient(
       .update({ patient_profile_id: patientProfileId })
       .eq('id', intakeId);
 
-  } catch (err: any) {
+  } catch (err) {
     return {
       patientProfileId: '',
       intakeId,
-      error: new Error('Patient info saved, but account creation failed: ' + (err?.message || 'unknown error')),
+      error: new Error('Patient info saved, but account creation failed: ' + getErrorMessage(err, 'unknown error')),
     };
   }
 
@@ -163,6 +167,7 @@ export async function createPatientIntake(formData: PatientIntakeFormData, careg
   const { data: { user } } = await supabase.auth.getUser();
   const realId = user?.id ?? caregiverId;
   const { data, error } = await supabase.from('patient_intake').insert({
+    id: crypto.randomUUID(), // no DB default (009: "client-generated receipt id")
     patient_profile_id: null, caregiver_profile_id: realId,
     patient_first_name: formData.patientFirstName, patient_last_name: formData.patientLastName,
     patient_preferred_name: formData.patientPreferredName || null, patient_date_of_birth: formData.patientDateOfBirth || null,
@@ -201,7 +206,7 @@ export async function getCaregiverIntakes(caregiverId: string): Promise<PatientI
 }
 
 export async function updatePatientIntake(intakeId: string, updates: Partial<PatientIntakeFormData>): Promise<{ success: boolean; error: Error | null }> {
-  const d: Record<string, any> = {};
+  const d: Database['public']['Tables']['patient_intake']['Update'] = {};
   if (updates.patientFirstName !== undefined) d.patient_first_name = updates.patientFirstName;
   if (updates.patientLastName !== undefined) d.patient_last_name = updates.patientLastName;
   if (updates.patientEmail !== undefined) d.patient_email = updates.patientEmail;
@@ -218,21 +223,23 @@ export async function deletePatientIntake(intakeId: string): Promise<{ success: 
   return { success: true, error: null };
 }
 
-function transformDbToPatientIntake(data: any): PatientIntake {
+function transformDbToPatientIntake(data: Database['public']['Tables']['patient_intake']['Row']): PatientIntake {
   return {
     id: data.id, patientProfileId: data.patient_profile_id, caregiverProfileId: data.caregiver_profile_id,
     patientFirstName: data.patient_first_name, patientLastName: data.patient_last_name,
-    patientPreferredName: data.patient_preferred_name, patientDateOfBirth: data.patient_date_of_birth,
-    patientDiagnosisDate: data.patient_diagnosis_date, patientDementiaStage: data.patient_dementia_stage,
-    patientStreetAddress: data.patient_street_address, patientCity: data.patient_city,
-    patientState: data.patient_state, patientZipCode: data.patient_zip_code,
-    patientPhone: data.patient_phone, patientEmail: data.patient_email,
-    preferredHospital: data.preferred_hospital, doctorTherapistName: data.doctor_therapist_name,
-    doctorTherapistPhone: data.doctor_therapist_phone, caregiverName: data.caregiver_name,
-    caregiverRelationship: data.caregiver_relationship, caregiverPhone: data.caregiver_phone,
-    medicationsAndDosage: data.medications_and_dosage, emergencyContactFullName: data.emergency_contact_full_name,
-    emergencyContactPhone: data.emergency_contact_phone, emergencyContactEmail: data.emergency_contact_email,
-    emergencyContactRelationship: data.emergency_contact_relationship,
-    createdBy: data.created_by, createdAt: data.created_at, updatedAt: data.updated_at,
+    patientPreferredName: data.patient_preferred_name ?? undefined, patientDateOfBirth: data.patient_date_of_birth ?? undefined,
+    patientDiagnosisDate: data.patient_diagnosis_date ?? undefined, patientDementiaStage: (data.patient_dementia_stage as 'early' | 'middle' | 'late' | null) ?? undefined,
+    patientStreetAddress: data.patient_street_address ?? undefined, patientCity: data.patient_city ?? undefined,
+    patientState: data.patient_state ?? undefined, patientZipCode: data.patient_zip_code ?? undefined,
+    patientPhone: data.patient_phone ?? undefined, patientEmail: data.patient_email ?? '',
+    preferredHospital: data.preferred_hospital ?? undefined, doctorTherapistName: data.doctor_therapist_name ?? undefined,
+    doctorTherapistPhone: data.doctor_therapist_phone ?? undefined, caregiverName: data.caregiver_name ?? undefined,
+    caregiverRelationship: data.caregiver_relationship ?? undefined, caregiverPhone: data.caregiver_phone ?? undefined,
+    medicationsAndDosage: data.medications_and_dosage ?? undefined, emergencyContactFullName: data.emergency_contact_full_name ?? undefined,
+    emergencyContactPhone: data.emergency_contact_phone ?? undefined, emergencyContactEmail: data.emergency_contact_email ?? undefined,
+    emergencyContactRelationship: data.emergency_contact_relationship ?? undefined,
+    // patient_intake has no updated_at column at all — createdAt doubles
+    // as updatedAt since there is nothing else to report.
+    createdBy: data.created_by ?? '', createdAt: data.created_at ?? '', updatedAt: data.created_at ?? '',
   };
 }

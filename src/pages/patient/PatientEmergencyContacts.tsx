@@ -1,15 +1,15 @@
-import { useState, useEffect } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useState, useEffect, useCallback } from 'react';
+import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import { getErrorMessage } from '@/lib/utils';
 import {
   Phone, Mail, Heart, User, Briefcase, GraduationCap,
   Save, Plus, Trash2, Loader2, ChevronDown, ChevronUp,
-  AlertCircle, CheckCircle2, Stethoscope,
+  AlertCircle, Stethoscope,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { useTempUser } from '@/components/TempUserGuard';
-import { isTempUser } from '@/types/subscription';
+import { useTempUser } from '@/components/useTempUser';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CarePartnerInfo {
@@ -44,7 +44,7 @@ const EMPTY_EMERGENCY: EmergencyContact = {
 
 // ─── Field Component ──────────────────────────────────────────────────────────
 function Field({ label, icon: Icon, children, hint }: {
-  label: string; icon?: any; children: React.ReactNode; hint?: string;
+  label: string; icon?: React.ElementType; children: React.ReactNode; hint?: string;
 }) {
   return (
     <div className="space-y-1.5">
@@ -80,14 +80,8 @@ export default function PatientEmergencyContacts() {
   const [ecExpanded,   setEcExpanded]   = useState(true);
   const [expandedId,   setExpandedId]   = useState<string | null>(null);
 
-  // ── Load on mount ────────────────────────────────────────────────────────
-  useEffect(() => {
+  const loadCarePartner = useCallback(async () => {
     if (!patientId) return;
-    loadCarePartner();
-    loadEmergencyContacts();
-  }, [patientId]);
-
-  const loadCarePartner = async () => {
     try {
       const { data } = await supabase
         .from('patient_care_partners')
@@ -112,9 +106,10 @@ export default function PatientEmergencyContacts() {
     } finally {
       setCpLoaded(true);
     }
-  };
+  }, [patientId]);
 
-  const loadEmergencyContacts = async () => {
+  const loadEmergencyContacts = useCallback(async () => {
+    if (!patientId) return;
     try {
       const { data } = await supabase
         .from('patient_emergency_contacts')
@@ -122,7 +117,7 @@ export default function PatientEmergencyContacts() {
         .eq('patient_id', patientId)
         .order('created_at', { ascending: true });
       if (data) {
-        setContacts(data.map((d: any) => ({
+        setContacts(data.map((d) => ({
           id:           d.id,
           full_name:    d.full_name    || '',
           email:        d.email        || '',
@@ -137,12 +132,23 @@ export default function PatientEmergencyContacts() {
     } finally {
       setEcLoaded(true);
     }
-  };
+  }, [patientId]);
+
+  // ── Load on mount ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!patientId) return;
+    loadCarePartner();
+    loadEmergencyContacts();
+  }, [patientId, loadCarePartner, loadEmergencyContacts]);
 
   // ── Save Care Partner ─────────────────────────────────────────────────────
   const saveCarePartner = async () => {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (blockIfReadOnly() || isTempUser(authUser?.email)) return;
+    // REPAIR 008 / REPAIR C: the separate email-pattern double-check
+    // previously here is removed — see PatientProfileSetup.tsx's identical
+    // comment for why blockIfReadOnly() alone (now trusted-program-backed)
+    // plus backend RLS is the correct, sufficient check.
+    if (blockIfReadOnly()) return;
+    if (!patientId) { toast.error('You must be signed in to save'); return; }
     if (!cpInfo.full_name.trim()) { toast.error('Care partner name is required'); return; }
     setCpSaving(true);
     try {
@@ -162,8 +168,8 @@ export default function PatientEmergencyContacts() {
         }, { onConflict: 'patient_id' });
       if (error) throw error;
       toast.success('Care partner information saved');
-    } catch (err: any) {
-      toast.error('Failed to save: ' + err.message);
+    } catch (err) {
+      toast.error('Failed to save: ' + getErrorMessage(err));
     } finally {
       setCpSaving(false);
     }
@@ -181,8 +187,9 @@ export default function PatientEmergencyContacts() {
   };
 
   const saveContact = async (contact: EmergencyContact) => {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (blockIfReadOnly() || isTempUser(authUser?.email)) return;
+    // REPAIR 008 / REPAIR C: see saveCarePartner() above.
+    if (blockIfReadOnly()) return;
+    if (!patientId) { toast.error('You must be signed in to save'); return; }
     if (!contact.full_name.trim()) { toast.error('Contact name is required'); return; }
     setEcSaving(contact.id);
     try {
@@ -210,16 +217,16 @@ export default function PatientEmergencyContacts() {
         if (error) throw error;
       }
       toast.success('Emergency contact saved');
-    } catch (err: any) {
-      toast.error('Failed to save: ' + err.message);
+    } catch (err) {
+      toast.error('Failed to save: ' + getErrorMessage(err));
     } finally {
       setEcSaving(null);
     }
   };
 
   const deleteContact = async (id: string) => {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (blockIfReadOnly() || isTempUser(authUser?.email)) return;
+    // REPAIR 008 / REPAIR C: see saveCarePartner() above.
+    if (blockIfReadOnly()) return;
     if (!confirm('Remove this emergency contact?')) return;
     try {
       if (!id.startsWith('new-')) {
@@ -229,8 +236,8 @@ export default function PatientEmergencyContacts() {
       }
       setContacts(prev => prev.filter(c => c.id !== id));
       toast.success('Contact removed');
-    } catch (err: any) {
-      toast.error('Failed to remove: ' + err.message);
+    } catch (err) {
+      toast.error('Failed to remove: ' + getErrorMessage(err));
     }
   };
 

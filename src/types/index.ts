@@ -15,14 +15,14 @@ export interface User {
 
   app_metadata?: {
     provider?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   user_metadata?: {
     firstName?: string;
     lastName?: string;
     role?: UserRole;
     phone?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
@@ -61,6 +61,17 @@ export interface Patient {
   lastName: string;
   preferredName: string;
   photoUrl?: string;
+  // PHASE 3 (MYMEMORIA-FUNCTIONAL-CLOSURE-MASTER-009): the five fields
+  // below are already set by both real `SET_PATIENT` dispatch sites
+  // (src/pages/patient/PatientLayout.tsx's own real-data branch,
+  // src/services/patientService.ts's buildPatient()) without ever being
+  // declared here — confirmed real, existing usage, not new fields
+  // invented for this fix.
+  phone?: string;
+  dateOfBirth?: string;
+  diagnosisDate?: string;
+  dementiaStage?: 'early' | 'middle' | 'late';
+  address?: string;
   location: string;
   affirmation: string;
   emergencyContact: EmergencyContact;
@@ -78,6 +89,17 @@ export interface Task {
   title: string;
   description?: string;
   icon: string;
+  // PHASE 3 (MYMEMORIA-FUNCTIONAL-CLOSURE-MASTER-009): the five fields
+  // below were already being mapped into every dispatched Task
+  // (src/pages/patient/PatientLayout.tsx's own `SET_TASKS` payload) and
+  // read back out (src/pages/patient/PatientRoutine.tsx's `task.timeOfDay`)
+  // without ever being declared here — confirmed real, existing usage,
+  // not new fields invented for this fix.
+  timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'night' | null;
+  daysOfWeek?: number[];
+  completedAt?: string | null;
+  isRecurring?: boolean;
+  difficulty?: 'early' | 'middle' | 'late' | null;
   scheduledTime: string;
   status: 'pending' | 'completed' | 'skipped';
   isActive: boolean;
@@ -132,6 +154,12 @@ export interface MoodEntry {
   mood: MoodType;
   intensity: number;
   note?: string;
+  // RELEASE-BLOCKER-CLOSURE PHASE 1: real, confirmed DB columns
+  // (mood_entries.triggers/time_of_day/recorded_by, src/types/supabase.ts)
+  // read and dispatched by PatientMoodTracker.tsx but never declared here.
+  triggers?: string[];
+  timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'night';
+  recordedBy?: string;
   timestamp: string;
 }
 
@@ -174,6 +202,102 @@ export interface Reminder {
   vibrate?: boolean;
   createdAt: string;
   createdBy?: string;
+}
+
+// ---------------- PATIENT DATA AGGREGATE ----------------
+// PHASE 3 (MYMEMORIA-FUNCTIONAL-CLOSURE-MASTER-009): this type was never
+// exported from this module at all, even though
+// src/services/patientService.ts's getCaregiverPatients()/
+// getTherapistPatients()/getPatientById()/loadPatientData() all declare a
+// return type of `PatientData`/`PatientData[]`. Confirmed via
+// `grep -rn "getCaregiverPatients\|getTherapistPatients\|getPatientById"
+// src/` that none of those three exported functions has any caller
+// anywhere in this codebase — this is leftover multi-patient caregiver/
+// therapist-dashboard scaffolding from this project's earlier, broader
+// "CareCompanion" scope (001_initial_schema.sql's own header) that
+// predates the current patient-only product (CLAUDE.md). It is not wired
+// to any UI and this file does not wire it up — only gives its actual,
+// as-built return shape a name, so the module compiles. Several fields
+// below (`medicationLogs`, `behaviorLogs`, `documents`, `reminders`,
+// `vitalSigns`, `sleepEntries`, `goals`, `alerts`, `safetyAlerts`,
+// `adlAssessments`, `nutritionLogs`) are hardcoded to an empty array by
+// every confirmed construction site with no real element ever added to
+// any of them anywhere in this codebase — `unknown[]` for those is an
+// honest description of "always empty, no confirmed real shape," not a
+// guess at a business meaning this engagement has no evidence for.
+export interface DashboardStats {
+  patientId: string;
+  tasksCompleted: number;
+  tasksTotal: number;
+  tasksCompletionRate: number;
+  medicationsTaken: number;
+  medicationsTotal: number;
+  medicationsAdherenceRate: number;
+  moodToday?: string;
+  moodTrend: string;
+  sleepHours: number;
+  sleepQuality: string;
+  activitiesCompleted: number;
+  behaviorIncidents: number;
+  alerts: unknown[];
+}
+
+export interface PatientAppointment {
+  id: string;
+  patientId: string;
+  title: string;
+  provider: string;
+  location?: string;
+  date: string;
+  time: string;
+  notes?: string;
+  reminderSet?: boolean;
+  createdAt: string;
+}
+
+export interface PatientCareTeamMember {
+  id: string;
+  patientId: string;
+  name: string;
+  role: string;
+  specialty?: string;
+  organization?: string;
+  phone?: string;
+  email?: string;
+  isPrimary?: boolean;
+}
+
+export interface PatientNoteRecord {
+  id: string;
+  patientId: string;
+  caregiverId?: string;
+  caregiverName: string;
+  note: string;
+  noteType: string;
+  createdAt: string;
+}
+
+export interface PatientData {
+  patient: Patient;
+  tasks: Task[];
+  medications: Medication[];
+  medicationLogs: unknown[];
+  moodEntries: MoodEntry[];
+  behaviorLogs: unknown[];
+  memories: Memory[];
+  documents: unknown[];
+  careTeam: PatientCareTeamMember[];
+  reminders: unknown[];
+  vitalSigns: unknown[];
+  sleepEntries: unknown[];
+  appointments: PatientAppointment[];
+  goals: unknown[];
+  dashboardStats: DashboardStats;
+  alerts: unknown[];
+  safetyAlerts: unknown[];
+  adlAssessments: unknown[];
+  nutritionLogs: unknown[];
+  notes: PatientNoteRecord[];
 }
 
 // ---------------- APP STATE ----------------

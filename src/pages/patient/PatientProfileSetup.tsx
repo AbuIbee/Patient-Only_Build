@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import type { DementiaStage } from '@/types/supabase';
+import { getErrorMessage } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,9 +15,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { useTempUser } from '@/components/TempUserGuard';
-import { isTempUser } from '@/types/subscription';
-import type { DementiaStage } from '@/types/patientIntake';
+import { useTempUser } from '@/components/useTempUser';
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
@@ -80,6 +80,7 @@ export default function PatientProfileSetup() {
   const [saving,  setSaving]  = useState(false);
   const { blockIfReadOnly } = useTempUser();
   const [saved,   setSaved]   = useState(false);
+  const [existingIntakeId, setExistingIntakeId] = useState<string | null>(null);
 
   // ── Load existing data ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -90,10 +91,11 @@ export default function PatientProfileSetup() {
         const [{ data: profile }, { data: patient }, { data: intake }] = await Promise.all([
           supabase.from('profiles').select('first_name, last_name, phone').eq('id', userId).maybeSingle(),
           supabase.from('patients').select('preferred_name, date_of_birth, diagnosis_date, dementia_stage, medications_summary, emergency_contact_name, emergency_contact_phone, emergency_contact_relationship').eq('id', userId).maybeSingle(),
-          supabase.from('patient_intake').select('patient_street_address, patient_city, patient_state, patient_zip_code, preferred_hospital, doctor_therapist_name, doctor_therapist_phone, caregiver_name, caregiver_relationship, caregiver_phone, medications_and_dosage, emergency_contact_full_name, emergency_contact_phone, emergency_contact_email, emergency_contact_relationship').eq('patient_profile_id', userId)
+          supabase.from('patient_intake').select('id, patient_street_address, patient_city, patient_state, patient_zip_code, preferred_hospital, doctor_therapist_name, doctor_therapist_phone, caregiver_name, caregiver_relationship, caregiver_phone, medications_and_dosage, emergency_contact_full_name, emergency_contact_phone, emergency_contact_email, emergency_contact_relationship').eq('patient_profile_id', userId)
             .order('created_at', { ascending: false }).limit(1).maybeSingle(),
         ]);
 
+        setExistingIntakeId(intake?.id ?? null);
         setForm({
           firstName:          profile?.first_name          || '',
           lastName:           profile?.last_name           || '',
@@ -132,9 +134,16 @@ export default function PatientProfileSetup() {
 
   // ── Save all steps to Supabase ─────────────────────────────────────────────
   const saveAll = async () => {
-    // Double-check: verify directly from auth in case TempUserProvider hasn't resolved
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (blockIfReadOnly() || isTempUser(authUser?.email)) return;
+    // REPAIR 008 / REPAIR C: the separate `isTempUser(authUser?.email)`
+    // double-check previously here is removed — blockIfReadOnly() (see
+    // TempUserGuard.tsx) is now itself backed by the trusted,
+    // server-authoritative `program` classification, not only an email
+    // pattern, so a second ad hoc email check added no real coverage and
+    // kept an extra email-based authorization path alive. The backend
+    // RLS policies on `patients`/`profiles` (migrations 018/019) remain
+    // the actual enforcement boundary regardless of this client check.
+    if (blockIfReadOnly()) return;
+    if (!userId) { toast.error('You must be signed in to save your profile'); return; }
     if (!form.firstName.trim() || !form.lastName.trim()) {
       toast.error('First and last name are required'); return;
     }
@@ -156,7 +165,7 @@ export default function PatientProfileSetup() {
         preferred_name:                 form.preferredName.trim()      || null,
         date_of_birth:                  form.dateOfBirth               || null,
         diagnosis_date:                 form.diagnosisDate             || null,
-        dementia_stage:                 form.dementiaStage             || null,
+        dementia_stage:                 (form.dementiaStage || null) as DementiaStage | null,
         location:                       form.city.trim()               || null,
         address:                        [form.streetAddress, form.city, form.state, form.zipCode].filter(Boolean).join(', ') || null,
         emergency_contact_name:         form.ecFullName.trim()         || null,
@@ -197,20 +206,26 @@ export default function PatientProfileSetup() {
         updated_at:                      now,
       };
 
+      // patient_intake.id has no DB default (009: "client-generated receipt
+      // id") — reuse the existing row's id on conflict (loaded above) so a
+      // re-save doesn't rewrite its own primary key; only a genuinely new
+      // row gets a freshly generated one.
+      const intakeRow = { id: existingIntakeId ?? crypto.randomUUID(), ...intakePayload };
+
       // Try upsert by patient_profile_id; if constraint not set, insert fresh
       const { error: upsertErr } = await supabase.from('patient_intake')
-        .upsert(intakePayload, { onConflict: 'patient_profile_id' });
+        .upsert(intakeRow, { onConflict: 'patient_profile_id' });
 
       if (upsertErr) {
         // Fallback: just insert
-        await supabase.from('patient_intake').insert(intakePayload);
+        await supabase.from('patient_intake').insert(intakeRow);
       }
 
       setSaved(true);
       toast.success('Your information has been saved!');
       setTimeout(() => setSaved(false), 3000);
-    } catch (err: any) {
-      toast.error('Failed to save: ' + err.message);
+    } catch (err) {
+      toast.error('Failed to save: ' + getErrorMessage(err));
     } finally {
       setSaving(false);
     }

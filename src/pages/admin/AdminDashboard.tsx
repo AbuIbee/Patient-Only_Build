@@ -3,6 +3,15 @@ import { supabase } from '@/lib/supabase';
 import { Users, Clock, ShieldCheck, TrendingUp, Bell } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+interface RecentUserRow {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: string;
+  created_at: string;
+}
+
 interface AdminStats {
   totalPatients: number;
   pendingApprovals: number;
@@ -12,7 +21,7 @@ interface AdminStats {
 
 export function AdminDashboard({ onNavigate }: { onNavigate: (view: string) => void }) {
   const [stats,       setStats]       = useState<AdminStats>({ totalPatients: 0, pendingApprovals: 0, newPatientsThisWeek: 0, totalAuditEvents: 0 });
-  const [recentUsers, setRecentUsers] = useState<any[]>([]);
+  const [recentUsers, setRecentUsers] = useState<RecentUserRow[]>([]);
   const [loading,     setLoading]     = useState(true);
 
   useEffect(() => { loadStats(); }, []);

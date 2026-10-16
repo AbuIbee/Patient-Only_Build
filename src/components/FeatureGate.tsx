@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { Lock } from 'lucide-react';
-import { useSubscription } from '@/store/SubscriptionContext';
+import { useSubscription } from '@/store/useSubscription';
 import type { FeatureKey, TierName } from '@/types/subscription';
 import { TIERS } from '@/types/subscription';
 
@@ -35,7 +35,7 @@ export default function FeatureGate({
   mode = 'overlay',
   onUpgrade,
 }: FeatureGateProps) {
-  const { can, tier } = useSubscription();
+  const { can } = useSubscription();
 
   if (can(feature)) {
     return <>{children}</>;
@@ -79,7 +79,7 @@ export default function FeatureGate({
           Upgrade to{' '}
           <strong className="text-charcoal">{tierConfig.label}</strong> for{' '}
           {tierConfig.description} to unlock this and all other{' '}
-          {requiredTier === 'daily_care' ? 'Daily Care' : 'Full Support'} features.
+          {tierConfig.label} features.
         </p>
 
         <button

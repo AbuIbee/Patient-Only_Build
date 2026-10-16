@@ -44,20 +44,84 @@ ALTER TABLE subscriptions
   ADD COLUMN IF NOT EXISTS canceled_at           TIMESTAMP WITH TIME ZONE,
   ADD COLUMN IF NOT EXISTS promo_code            TEXT;
 
+-- *** CORRECTED (CORRECTIVE-002 / CORRECTION C) ***: defensive coverage for
+-- the one fresh-install path this file's own header already flags as wrong
+-- — 010_subscriptions_and_admin_rpc.sql's `CREATE TABLE IF NOT EXISTS
+-- subscriptions (user_id UUID PRIMARY KEY, ...)` has NO `id` column at all.
+-- If 010 is ever the one that actually creates this table (a genuinely
+-- fresh database, never production — production evidence already confirms
+-- `id` is the real PK there), this file's own `CREATE TABLE IF NOT EXISTS`
+-- immediately above is a no-op (010 already created it) and `id` would
+-- otherwise never get added, breaking every function below that does
+-- `RETURNING * INTO v_row` / declares `v_row subscriptions` and relies on
+-- `id` existing. Added defensively; harmless (no-op) against the real,
+-- already-`id`-keyed production shape.
+ALTER TABLE subscriptions
+  ADD COLUMN IF NOT EXISTS id UUID DEFAULT uuid_generate_v4();
 DO $$ BEGIN
-  ALTER TABLE subscriptions ADD CONSTRAINT subscriptions_user_id_unique UNIQUE (user_id);
-EXCEPTION WHEN duplicate_table THEN NULL;
+  ALTER TABLE subscriptions ALTER COLUMN id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'subscriptions.id could not be made NOT NULL — reconcile manually (likely means it already is, or a row has a null id from an unexpected source).';
+END $$;
+DO $$ BEGIN
+  ALTER TABLE subscriptions ADD CONSTRAINT subscriptions_pkey PRIMARY KEY (id);
+EXCEPTION WHEN duplicate_object OR invalid_table_definition THEN NULL;
 END $$;
 
--- ── status CHECK NOT reconciled here ────────────────────────────────────────
--- FQA-011 (independent audit) states the live status CHECK may exclude
--- 'trialing' — this could not be independently confirmed (only column data,
--- not constraint definitions, were in the available evidence). No CHECK
--- constraint on `status` is added or changed by this file for that reason:
--- adding one now could either duplicate an already-correct live constraint
--- or conflict with it outright. See 02_BILLING_FORWARD_MIGRATION_PLAN.md
--- for the exact compatibility table and the specific open question this
--- leaves for the owner.
+-- *** CORRECTED (CORRECTIVE-002 / CORRECTION C) ***: the original exception
+-- handler here (`WHEN duplicate_table`) was wrong — Postgres raises
+-- `duplicate_object` (SQLSTATE 42710), not `duplicate_table` (42P07), when
+-- `ADD CONSTRAINT` targets a constraint name that already exists. The
+-- original handler would not have caught that error at all: on a database
+-- where `subscriptions_user_id_unique` (or an equivalent unique constraint
+-- under this exact name) already exists, this statement would have raised
+-- an uncaught error and aborted the rest of this migration file.
+DO $$ BEGIN
+  ALTER TABLE subscriptions ADD CONSTRAINT subscriptions_user_id_unique UNIQUE (user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- *** CORRECTED (CORRECTIVE-002 / CORRECTION C) ***: status CHECK, resolved.
+-- The original note here said "not reconciled" pending an owner decision
+-- between six approved statuses (src/types/subscription.ts's
+-- SubscriptionStatus: active/past_due/canceled/expired/pending_payment/
+-- promo) and three additional values live application code also uses
+-- (trialing/requires_payment/incomplete — see App.tsx, ProtectedRoute.tsx,
+-- TrialBanner.tsx, AdminLayout.tsx). MYMEMORIA-CRITICAL-REPAIR-CORRECTIVE-002
+-- resolves this explicitly: "Preserve exactly these six subscription
+-- statuses... Do not extend the database status constraint to nine
+-- values." This is now enforced as an actual CHECK constraint (previously
+-- there was NONE on this column at all in this file — only an imperative
+-- check inside admin_set_subscription(), which a direct service-role/
+-- webhook write would never go through).
+--
+-- *** CONFIRMED, NOT-YET-RESOLVED CONSEQUENCE (explicitly flagged, not
+-- silently absorbed) ***: src/pages/admin/AdminLayout.tsx's own
+-- `ACCOUNT_TYPES` table offers two account-type presets with
+-- `status: 'trialing'` (lines 67 and 83), passed directly as
+-- `admin_set_subscription`'s `p_status` argument by `saveAccountType()`.
+-- Once this CHECK constraint (and the matching validation inside
+-- admin_set_subscription() below) is live, selecting either of those two
+-- account types in the admin panel will fail with 'Invalid status:
+-- trialing' — a real, confirmed regression, not a hypothetical one. This
+-- file does NOT invent a mapping for what those two presets should become
+-- among the six approved values (e.g. 'active' with a trial_ends_at in the
+-- future vs. some other transition) — that is a business-policy decision
+-- this corrective order explicitly says not to invent. The blocker is
+-- preserved here, explicitly, for the owner: either (a) the six-value list
+-- is the actual intended final state and those two AdminLayout.tsx presets
+-- need an owner-approved replacement status before this migration is ever
+-- executed, or (b) 'trialing' (and/or the other two) should be added back
+-- to the approved set, which is also an owner decision, not this file's to
+-- make. This migration enforces the six values exactly as instructed and
+-- surfaces this consequence rather than hiding it.
+DO $$ BEGIN
+  ALTER TABLE subscriptions DROP CONSTRAINT IF EXISTS subscriptions_status_check;
+  ALTER TABLE subscriptions ADD CONSTRAINT subscriptions_status_check
+    CHECK (status IN ('active', 'past_due', 'canceled', 'expired', 'pending_payment', 'promo'));
+EXCEPTION WHEN check_violation THEN
+  RAISE NOTICE 'subscriptions_status_check NOT applied — one or more existing rows already contain a status value outside the six approved values (e.g. trialing/requires_payment/incomplete). Existing rows are preserved untouched (this file never updates or deletes rows); reconcile those specific rows with the owner before re-running this constraint. See the AdminLayout.tsx consequence noted above for where new rows in that state would keep coming from if left unresolved.';
+END $$;
 
 -- ── Atomic admin_set_subscription (supersedes 011's SELECT-then-branch) ─────
 -- 011 used an explicit existence check specifically because this engagement
@@ -75,6 +139,25 @@ END $$;
 -- the established, existing behavior of the free-tier auto-provisioning
 -- path in SubscriptionContext.tsx's loadSubscription(), not a new policy
 -- introduced by this migration.
+--
+-- *** CORRECTED (CORRECTIVE-002 / CORRECTION C) — hard installability bug:
+-- a Postgres function's RETURN TYPE cannot be changed by CREATE OR REPLACE
+-- FUNCTION. 010_subscriptions_and_admin_rpc.sql and
+-- 011_subscriptions_revoke_client_billing_authority.sql both defined
+-- `admin_set_subscription(UUID,TEXT,TEXT,TIMESTAMPTZ,TIMESTAMPTZ,TIMESTAMPTZ)
+-- RETURNS void`. This file redefines the SAME name+argument signature with
+-- RETURNS subscriptions. Run in the documented sequence (010 then 011 then
+-- this file), the CREATE OR REPLACE FUNCTION immediately below would raise
+-- `ERROR: cannot change return type of existing function` and abort —
+-- taking the rest of this migration file down with it, including
+-- provision_free_subscription(), promo_codes, and redeem_promo_code()
+-- further down, none of which had executed yet. The explicit DROP FUNCTION
+-- below (matching the exact signature 010/011 used) makes this
+-- CREATE FUNCTION succeed regardless of which prior version, if any, is
+-- live. ***
+DROP FUNCTION IF EXISTS public.admin_set_subscription(
+  UUID, TEXT, TEXT, TIMESTAMP WITH TIME ZONE, TIMESTAMP WITH TIME ZONE, TIMESTAMP WITH TIME ZONE
+);
 CREATE OR REPLACE FUNCTION public.admin_set_subscription(
   p_user_id UUID,
   p_tier TEXT,
@@ -98,10 +181,13 @@ BEGIN
     RAISE EXCEPTION 'Invalid tier: %', p_tier;
   END IF;
 
-  IF p_status NOT IN (
-    'trialing', 'promo', 'active', 'canceled', 'expired',
-    'pending_payment', 'requires_payment', 'past_due', 'incomplete'
-  ) THEN
+  -- *** CORRECTED (CORRECTIVE-002 / CORRECTION C) ***: narrowed from nine
+  -- values to exactly the six this corrective order names as approved —
+  -- matching the subscriptions_status_check CHECK constraint added above.
+  -- See that constraint's comment for the confirmed AdminLayout.tsx
+  -- 'trialing'-preset consequence this narrowing causes, flagged there as
+  -- an open owner decision rather than resolved here.
+  IF p_status NOT IN ('active', 'past_due', 'canceled', 'expired', 'pending_payment', 'promo') THEN
     RAISE EXCEPTION 'Invalid status: %', p_status;
   END IF;
 
@@ -197,6 +283,39 @@ DO $$ BEGIN
     USING (auth.role() = 'authenticated');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+-- *** CORRECTED (CORRECTIVE-002 / CORRECTION C) — missing dependency ***:
+-- redeem_promo_code() below reads/writes `promo_redemptions`, but no
+-- tracked migration (001-013) ever defines that table — CLAUDE.md lists it
+-- as a known live table (same "tracked != live" situation `subscriptions`
+-- was in before 010), but on a database where it genuinely does not exist
+-- yet (any fresh install), `CREATE FUNCTION` would still succeed (Postgres
+-- does not validate a plpgsql function body's table references until the
+-- function is actually called), masking the gap until redeem_promo_code()
+-- is invoked for the first time and fails with "relation promo_redemptions
+-- does not exist." Defined here, defensively, ahead of that function.
+CREATE TABLE IF NOT EXISTS promo_redemptions (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email       TEXT NOT NULL,
+  user_id     UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  promo_code  TEXT NOT NULL,
+  created_at  TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+DO $$ BEGIN
+  ALTER TABLE promo_redemptions ADD CONSTRAINT promo_redemptions_email_code_unique UNIQUE (email, promo_code);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+ALTER TABLE promo_redemptions ENABLE ROW LEVEL SECURITY;
+-- No client-facing SELECT/INSERT/UPDATE/DELETE policy is added: the only
+-- confirmed-needed write path is redeem_promo_code() (SECURITY DEFINER,
+-- bypasses RLS by function privilege, same pattern as every other
+-- sensitive write in this project) and there is no confirmed read
+-- requirement from any tracked application code (PricingPage.tsx's own
+-- reads of this table are commented-out, dead code). RLS enabled with zero
+-- policies is fail-closed by default — if a real read/write need surfaces
+-- later, add a narrowly-scoped policy then, not a guess now.
 
 -- ── Atomic promo redemption (C02-003) ──────────────────────────────────────
 -- Single function = one implicit transaction covering: lookup the code
@@ -319,3 +438,42 @@ COMMENT ON FUNCTION public.redeem_promo_code IS 'C02-003: validation, redemption
 --   (e.g. a disallowed tier value, if one were ever seeded). Expected: the
 --   whole function rolls back — no redemption row survives, matching
 --   "failure leaves the promo unconsumed."
+--
+-- CORRECTIVE-002 / CORRECTION C additions:
+-- T10 (installability, the actual bug this correction fixes): apply
+--   010_subscriptions_and_admin_rpc.sql, then
+--   011_subscriptions_revoke_client_billing_authority.sql, then this file,
+--   in that exact sequence, against a single fresh database. Expected:
+--   all three apply cleanly; specifically, this file's
+--   `DROP FUNCTION IF EXISTS admin_set_subscription(...)` immediately
+--   before its `CREATE OR REPLACE FUNCTION` must be present, or the
+--   CREATE would raise 'cannot change return type of existing function'
+--   (011 defined RETURNS void; this file defines RETURNS subscriptions)
+--   and abort before provision_free_subscription(), promo_codes, or
+--   redeem_promo_code() are ever created.
+-- T11 (installability): apply this file twice in a row (idempotency check
+--   for the corrected DO blocks). Expected: the second run raises no
+--   uncaught `duplicate_table`/`duplicate_object`/`invalid_table_definition`
+--   errors from the id-column, primary-key, or unique-constraint DO blocks.
+-- T12 (negative, six-status enforcement — the regression this introduces):
+--   call `admin_set_subscription(<user>, 'free_tier', 'trialing', now(),
+--   now(), null)` (the exact call AdminLayout.tsx's 'trialing'-preset
+--   account types make). Expected: `RAISE EXCEPTION 'Invalid status:
+--   trialing'` — confirms the flagged AdminLayout.tsx consequence is real,
+--   not merely theoretical, and that it is enforced consistently at both
+--   the RPC and the table CHECK constraint.
+-- T13 (negative, six-status enforcement at the table level): with the
+--   service_role key (bypasses RLS, not this CHECK), attempt
+--   `insert into subscriptions (user_id, tier, status, trial_started_at,
+--   trial_ends_at) values (<user>, 'free_tier', 'trialing', now(), now())`
+--   directly. Expected: CHECK constraint violation — the six-value
+--   restriction is enforced at the table itself, not only inside
+--   admin_set_subscription(), so it cannot be bypassed by any writer that
+--   skips the RPC (including a genuine service-role connection).
+-- T14 (positive, promo_redemptions dependency — the gap this correction
+--   fixes): on a fresh database that has never had promo_redemptions
+--   defined by any other process, seed one row into promo_codes and call
+--   redeem_promo_code() for a user who has never redeemed it. Expected:
+--   succeeds (previously this would fail at call time with "relation
+--   promo_redemptions does not exist" on such a database, even though
+--   CREATE FUNCTION itself had already silently succeeded earlier).

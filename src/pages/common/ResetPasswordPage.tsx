@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getErrorMessage } from '@/lib/utils';
 import { Heart, Eye, EyeOff, Lock, CheckCircle2, AlertCircle, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -22,7 +23,7 @@ export default function ResetPasswordPage({ onComplete, forced = false, userEmai
     { label: 'Uppercase letter', met: /[A-Z]/.test(password) },
     { label: 'Lowercase letter', met: /[a-z]/.test(password) },
     { label: 'Number',           met: /\d/.test(password) },
-    { label: 'Special char',     met: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password) },
+    { label: 'Special char',     met: /[!@#$%^&*()_+=[\]{};':"\\|,.<>/?-]/.test(password) },
   ];
   const strength      = checks.filter(c => c.met).length;
   const strengthLabel = ['', 'Weak', 'Fair', 'Good', 'Strong', 'Very Strong'][strength];
@@ -53,8 +54,8 @@ export default function ResetPasswordPage({ onComplete, forced = false, userEmai
       setDone(true);
       toast.success('Password set! Taking you to your portal...');
       setTimeout(() => onComplete(), 1500);
-    } catch (err: any) {
-      toast.error('Failed to set password: ' + err.message);
+    } catch (err) {
+      toast.error('Failed to set password: ' + getErrorMessage(err));
     } finally {
       setLoading(false);
     }

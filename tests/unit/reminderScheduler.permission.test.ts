@@ -11,9 +11,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // vitest's configured environment is 'node' (no DOM), so there is no real
 // localStorage global — a minimal in-memory shim avoids pulling in jsdom as
 // a new dependency just for this.
-if (typeof (globalThis as any).localStorage === 'undefined') {
+interface LocalStorageShim {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+  clear(): void;
+}
+const globalWithStorage = globalThis as unknown as { localStorage?: LocalStorageShim };
+if (typeof globalWithStorage.localStorage === 'undefined') {
   const store = new Map<string, string>();
-  (globalThis as any).localStorage = {
+  globalWithStorage.localStorage = {
     getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
     setItem: (k: string, v: string) => { store.set(k, v); },
     removeItem: (k: string) => { store.delete(k); },
@@ -100,7 +107,7 @@ describe('syncReminderNotifications — typed result contract (C02-004)', () => 
     // reflects schedule()'s own call rather than a hardcoded guess.
     getPendingMock.mockImplementation(async () => {
       const lastCall = scheduleMock.mock.calls[scheduleMock.mock.calls.length - 1];
-      return { notifications: lastCall ? lastCall[0].notifications.map((n: any) => ({ id: n.id })) : [] };
+      return { notifications: lastCall ? lastCall[0].notifications.map((n: { id: string }) => ({ id: n.id })) : [] };
     });
 
     const result = await syncReminderNotifications('acct-1', [activeReminder]);
@@ -179,7 +186,7 @@ describe('syncReminderNotifications — serialized generation coordinator (C02-0
     // reconciliation failure.
     getPendingMock.mockImplementation(async () => {
       const lastCall = scheduleMock.mock.calls[scheduleMock.mock.calls.length - 1];
-      return { notifications: lastCall ? lastCall[0].notifications.map((n: any) => ({ id: n.id })) : [] };
+      return { notifications: lastCall ? lastCall[0].notifications.map((n: { id: string }) => ({ id: n.id })) : [] };
     });
 
     const oldPromise = syncReminderNotifications('acct-1', [{ ...activeReminder, id: 'old-reminder' }]);
@@ -209,7 +216,7 @@ describe('syncReminderNotifications — serialized generation coordinator (C02-0
   it('requests superseded before their queued turn starts report RETRY_REQUIRED immediately, never calling the plugin at all', async () => {
     getPendingMock.mockImplementation(async () => {
       const lastCall = scheduleMock.mock.calls[scheduleMock.mock.calls.length - 1];
-      return { notifications: lastCall ? lastCall[0].notifications.map((n: any) => ({ id: n.id })) : [] };
+      return { notifications: lastCall ? lastCall[0].notifications.map((n: { id: string }) => ({ id: n.id })) : [] };
     });
 
     // All three generations (1, 2, 3) are assigned synchronously, back to

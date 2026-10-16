@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { RotateCcw, ChevronLeft, Heart, HeartOff, Sparkles } from "lucide-react";
 
 // EXTENDED COGNITIVE WORD DATABASE (510 Unique, Positive, Accessible Words)

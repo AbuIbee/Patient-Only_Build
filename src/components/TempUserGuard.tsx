@@ -17,42 +17,47 @@
  *   };
  */
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useEffect, useState, type ReactNode, type ButtonHTMLAttributes } from 'react';
+import { useApp } from '@/store/useApp';
+import { useSubscription } from '@/store/useSubscription';
 import { supabase } from '@/lib/supabase';
-import { isTempUser, TEMP_USER_BLOCKED_MSG } from '@/types/subscription';
+import { TEMP_USER_BLOCKED_MSG } from '@/types/subscription';
 import { toast } from 'sonner';
 import { Eye, Lock } from 'lucide-react';
-
-// ─── Context ─────────────────────────────────────────────────────────────────
-
-interface TempUserCtx {
-  isReadOnly: boolean;
-  blockIfReadOnly: () => boolean;   // returns true = blocked, false = allowed
-  email: string;
-}
-
-const TempUserContext = createContext<TempUserCtx>({
-  isReadOnly: false,
-  blockIfReadOnly: () => false,
-  email: '',
-});
+import { TempUserContext, computeIsReadOnly, useTempUser } from './useTempUser';
 
 export function TempUserProvider({ children }: { children: ReactNode }) {
   const { state } = useApp();
+  const { isTempUserDemo } = useSubscription();
   const [authEmail, setAuthEmail] = useState<string>('');
 
   // ── Get email from Supabase Auth directly ─────────────────────────────────
-  // profile.email can be null in the DB but auth.users always has the email.
-  // This is the only reliable source for temp-user detection.
+  // Kept only for the legacy, non-authoritative check below — see
+  // isReadOnly's comment. profile.email can be null in the DB but
+  // auth.users always has the email.
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       const email = user?.email || state.currentUser?.email || '';
       setAuthEmail(email);
     });
-  }, [state.currentUser?.id]);
+  }, [state.currentUser?.id, state.currentUser?.email]);
 
-  const isReadOnly = isTempUser(authEmail);
+  // REPAIR 008 / REPAIR C: `isTempUserDemo` (SubscriptionContext — derived
+  // solely from the trusted `subscriptions.program` column plus the
+  // server-`now()`-computed is_my_program_active() RPC) is now the
+  // AUTHORITATIVE signal. `isTempUser(authEmail)` is OR'd in only as a
+  // legacy, non-authoritative, strictly-additive safety net: it can make
+  // this flag MORE restrictive (for a pre-existing demo account that
+  // still only matches the old email convention and has not yet been
+  // reissued the trusted `program` grant through the admin panel — see
+  // the completion report's migration-dependency note) but, by
+  // construction, can never make it LESS restrictive or grant/renew/
+  // remove anything — this component only ever disables actions, never
+  // authorizes one. Changing an account's email can therefore at most add
+  // this extra, non-authoritative restriction; it can never remove the
+  // real one, which is exactly requirement 3's bar ("do not let changing
+  // an email address grant, renew, or remove a program entitlement").
+  const isReadOnly = computeIsReadOnly(isTempUserDemo, authEmail);
 
   const blockIfReadOnly = (): boolean => {
     if (!isReadOnly) return false;
@@ -65,10 +70,6 @@ export function TempUserProvider({ children }: { children: ReactNode }) {
       {children}
     </TempUserContext.Provider>
   );
-}
-
-export function useTempUser() {
-  return useContext(TempUserContext);
 }
 
 // ─── Read-Only Banner ─────────────────────────────────────────────────────────
@@ -93,12 +94,9 @@ export function ReadOnlyBanner() {
 // ─── Read-Only Button Wrapper ─────────────────────────────────────────────────
 // Wraps any button to disable it + show a lock icon for temp users
 
-interface ReadOnlyButtonProps {
+interface ReadOnlyButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> {
   children: ReactNode;
-  className?: string;
   onClick?: () => void;
-  disabled?: boolean;
-  [key: string]: any;
 }
 
 export function GuardedButton({ children, onClick, disabled, className = '', ...props }: ReadOnlyButtonProps) {

@@ -7,11 +7,11 @@ interface ComplianceRecord {
   id: string;
   record_type: string;
   status: string;
-  signed_at: string;
-  signed_by: string;
-  expires_at: string;
-  notes: string;
-  organization_id: string;
+  signed_at: string | null;
+  signed_by: string | null;
+  expires_at: string | null;
+  notes: string | null;
+  organization_id: string | null;
 }
 
 export default function HIPAACompliancePage() {
@@ -30,7 +30,7 @@ export default function HIPAACompliancePage() {
     finally { setLoading(false); }
   };
 
-  const statusConfig: Record<string, { color: string; icon: any }> = {
+  const statusConfig: Record<string, { color: string; icon: React.ElementType }> = {
     active:  { color: 'bg-green-100 text-green-700',           icon: CheckCircle2 },
     pending: { color: 'bg-amber-100 text-amber-700',           icon: AlertCircle },
     expired: { color: 'bg-gentle-coral/10 text-gentle-coral', icon: AlertCircle },
@@ -54,7 +54,7 @@ export default function HIPAACompliancePage() {
             { label: 'Role-Based Access Control', value: 'JWT + Row Level Security', status: 'active' },
             { label: 'Session Timeout', value: '15 minutes inactivity', status: 'active' },
             { label: 'MFA Support', value: 'TOTP (Google Auth, Authy)', status: 'active' },
-          ].map(({ label, value, status }) => (
+          ].map(({ label, value }) => (
             <div key={label} className="flex items-start gap-3 p-3 bg-soft-taupe/20 rounded-xl">
               <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
               <div>

@@ -1,16 +1,18 @@
-import { useState, useEffect } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useState, useEffect, useCallback } from 'react';
+import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import type { Database } from '@/types/supabase';
+import { getErrorMessage } from '@/lib/utils';
 import {
   ClipboardList, ChevronDown, ChevronUp, CheckCircle2,
   AlertCircle, Save, Loader2, History, Calendar,
-  User, Heart, Activity, Shield, Brain, Droplets,
-  Utensils, Moon, ThumbsUp, ChevronRight,
+  Heart, Activity, Shield, Brain, Droplets,
+  Utensils, ThumbsUp, ChevronRight,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { useTempUser } from '@/components/TempUserGuard';
-import { isTempUser } from '@/types/subscription';
+import { useTempUser } from '@/components/useTempUser';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CheckInData {
@@ -117,7 +119,7 @@ const MultiCheck = ({
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 function Section({
-  id, title, icon: Icon, color, children, open, onToggle, completed,
+  id: _id, title, icon: Icon, color, children, open, onToggle, completed,
 }: {
   id: string; title: string; icon: React.ElementType; color: string;
   children: React.ReactNode; open: boolean; onToggle: () => void; completed: boolean;
@@ -159,7 +161,7 @@ function Section({
 }
 
 // ─── History row ──────────────────────────────────────────────────────────────
-function HistoryRow({ row }: { row: any }) {
+function HistoryRow({ row }: { row: Database['public']['Tables']['care_partner_checkins']['Row'] }) {
   const [open, setOpen] = useState(false);
   const date = new Date(row.check_in_date + 'T12:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -250,7 +252,7 @@ export default function CarePartnerCheckin() {
   const [view, setView]         = useState<'form' | 'history'>('form');
   const [saving, setSaving]     = useState(false);
   const { blockIfReadOnly }       = useTempUser();
-  const [history, setHistory]   = useState<any[]>([]);
+  const [history, setHistory]   = useState<Database['public']['Tables']['care_partner_checkins']['Row'][]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [openSections, setOpenSections]     = useState<Record<string, boolean>>({
     A: true, B: false, C: false, D: false, E: false, F: false, G: false,
@@ -258,11 +260,7 @@ export default function CarePartnerCheckin() {
 
   const patientId = state.currentUser?.id;
 
-  useEffect(() => {
-    if (view === 'history') loadHistory();
-  }, [view]);
-
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     if (!patientId) return;
     setLoadingHistory(true);
     try {
@@ -274,14 +272,18 @@ export default function CarePartnerCheckin() {
         .limit(30);
       if (error) throw error;
       setHistory(rows || []);
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to load history');
     } finally {
       setLoadingHistory(false);
     }
-  };
+  }, [patientId]);
 
-  const set = (field: keyof CheckInData) => (value: any) =>
+  useEffect(() => {
+    if (view === 'history') loadHistory();
+  }, [view, loadHistory]);
+
+  const set = (field: keyof CheckInData) => (value: CheckInData[keyof CheckInData]) =>
     setData(prev => ({ ...prev, [field]: value }));
 
   const toggleSection = (id: string) =>
@@ -301,8 +303,12 @@ export default function CarePartnerCheckin() {
   const completedCount = Object.values(sectionComplete).filter(Boolean).length;
 
   const handleSubmit = async () => {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (blockIfReadOnly() || isTempUser(authUser?.email)) return;
+    // REPAIR 008 / REPAIR C: the separate email-pattern double-check
+    // previously here is removed — blockIfReadOnly() (TempUserGuard.tsx)
+    // is now itself backed by the trusted, server-authoritative `program`
+    // classification; backend RLS remains the real enforcement boundary
+    // regardless of this client check.
+    if (blockIfReadOnly()) return;
     if (!patientId || !state.currentUser) {
       toast.error('You must be logged in to submit a check-in'); return;
     }
@@ -316,7 +322,7 @@ export default function CarePartnerCheckin() {
         patient_id:           patientId,
         submitted_by:         state.currentUser.id,
         submitted_by_name:    `${state.currentUser.firstName} ${state.currentUser.lastName}`,
-        check_in_date:        new Date().toISOString().split('T')[0],
+        check_in_date:        format(new Date(), 'yyyy-MM-dd'), // FQA-026: local day, not UTC
         // A — Daily Function
         fn_dressing:          data.fn_dressing,
         fn_bathing:           data.fn_bathing,
@@ -370,8 +376,8 @@ export default function CarePartnerCheckin() {
       toast.success('Care Partner report submitted! Your caregiver and therapist can now view it.');
       setData({ ...EMPTY });
       setOpenSections({ A: true, B: false, C: false, D: false, E: false, F: false, G: false });
-    } catch (err: any) {
-      toast.error('Failed to submit: ' + err.message);
+    } catch (err) {
+      toast.error('Failed to submit: ' + getErrorMessage(err));
     } finally {
       setSaving(false);
     }

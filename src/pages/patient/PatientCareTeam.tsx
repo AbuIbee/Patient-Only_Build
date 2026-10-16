@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useState, useEffect, useCallback } from 'react';
+import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { User, Phone, Mail, Heart, Stethoscope, UserCheck } from 'lucide-react';
@@ -17,9 +17,7 @@ export default function PatientCareTeam() {
   const [team, setTeam]     = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadTeam(); }, [state.currentUser?.id]);
-
-  const loadTeam = async () => {
+  const loadTeam = useCallback(async () => {
     const patientId = state.currentUser?.id;
     if (!patientId) { setLoading(false); return; }
 
@@ -30,7 +28,7 @@ export default function PatientCareTeam() {
         .select('caregiver_id')
         .eq('patient_id', patientId);
 
-      const caregiverIds = (caregiverLinks || []).map((l: any) => l.caregiver_id);
+      const caregiverIds = (caregiverLinks || []).map((l) => l.caregiver_id);
 
       // Get therapist
       const { data: therapistLinks } = await supabase
@@ -39,7 +37,7 @@ export default function PatientCareTeam() {
         .eq('patient_id', patientId)
         .eq('is_active', true);
 
-      const therapistIds = (therapistLinks || []).map((l: any) => l.therapist_id);
+      const therapistIds = (therapistLinks || []).map((l) => l.therapist_id);
 
       const allIds = [...caregiverIds, ...therapistIds];
       if (allIds.length === 0) { setLoading(false); return; }
@@ -49,11 +47,11 @@ export default function PatientCareTeam() {
         .select('id, first_name, last_name, email, phone, role')
         .in('id', allIds);
 
-      const members: TeamMember[] = (profiles || []).map((p: any) => ({
+      const members: TeamMember[] = (profiles || []).map((p) => ({
         id:    p.id,
         name:  `${p.first_name} ${p.last_name}`,
         email: p.email,
-        phone: p.phone,
+        phone: p.phone ?? undefined,
         role:  caregiverIds.includes(p.id) ? 'caregiver' : 'therapist',
       }));
 
@@ -64,7 +62,9 @@ export default function PatientCareTeam() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [state.currentUser?.id]);
+
+  useEffect(() => { loadTeam(); }, [loadTeam]);
 
   if (loading) return (
     <div className="flex justify-center py-12">

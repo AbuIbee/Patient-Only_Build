@@ -21,9 +21,21 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
         }
 
         // ── 2. Must have a subscription row ──────────────────────────────────
+        // MYMEMORIA-FUNCTIONAL-REPAIR-007: `program` added — distinguishes
+        // Temporary/Companion issued accounts from an ordinary free_tier
+        // signup. This file previously duplicated its own ad-hoc
+        // active/trialing/promo logic instead of using the canonical
+        // isSubscriptionActive() from src/types/subscription.ts — including
+        // a dead `status === 'trialing'` branch that could never be true
+        // (not one of the six approved statuses; the DB CHECK constraint in
+        // 013_subscriptions_atomic_lifecycle.sql rejects it). Both are fixed
+        // here: this now reads `program` and, when set, defers to the SAME
+        // server-trusted expiry RPC the SubscriptionContext uses — never a
+        // client-clock comparison — so an expired Temporary/Companion grant
+        // cannot retain access through this separate code path.
         const { data: sub, error } = await supabase
           .from('subscriptions')
-          .select('status, tier, trial_ends_at')
+          .select('status, tier, program, trial_ends_at, promo_expires_at')
           .eq('user_id', session.user.id)
           .maybeSingle();
 
@@ -50,20 +62,17 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
         // ── 4. Block statuses that mean payment not collected ─────────────────
         const BLOCKED = [
           'pending_payment',
-          'requires_payment',
           'expired',
           'canceled',
           'past_due',
-          'incomplete',
-          'incomplete_expired',
         ];
 
         if (BLOCKED.includes(sub.status)) {
           const msg =
-            sub.status === 'pending_payment' || sub.status === 'requires_payment'
+            sub.status === 'pending_payment'
               ? 'Please complete checkout to access your account.'
               : sub.status === 'expired'
-              ? 'Your trial has ended. Please renew to continue.'
+              ? 'Your access has ended. Please renew to continue.'
               : 'Payment required to access your account.';
           toast.error(msg);
           await supabase.auth.signOut();
@@ -71,21 +80,44 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
           return;
         }
 
-        // ── 5. Allow only active / trialing (within window) / promo ──────────
-        const now = new Date();
-        const trialEnd = sub.trial_ends_at ? new Date(sub.trial_ends_at) : null;
-        const isTrialing = sub.status === 'trialing' && trialEnd !== null && trialEnd > now;
-        const isPromo    = sub.status === 'promo';
-        const isActive   = sub.status === 'active';
+        // ── 5. Temporary/Companion programs: trusted, server-computed
+        // expiry only — never a client Date() comparison against
+        // trial_ends_at, which a manipulated device clock could defeat. ──
+        if (sub.program) {
+          const { data: programActive, error: programError } = await supabase.rpc('is_my_program_active');
+          if (programError) {
+            console.error('Program eligibility check error:', programError);
+            await supabase.auth.signOut();
+            window.location.replace('/');
+            return;
+          }
+          if (!programActive) {
+            toast.error('Your access period has ended. Please contact support.');
+            await supabase.auth.signOut();
+            window.location.replace('/');
+            return;
+          }
+          setHasAccess(true);
+          return;
+        }
 
-        if (!isActive && !isTrialing && !isPromo) {
+        // ── 6. Ordinary (non-program) accounts: active or promo (with a
+        // valid, unexpired window) ─────────────────────────────────────────
+        const now = new Date();
+        const promoEnd = sub.status === 'promo' && sub.promo_expires_at
+          ? new Date(sub.promo_expires_at)
+          : null;
+        const isPromo = sub.status === 'promo' && (promoEnd === null || promoEnd > now);
+        const isActive = sub.status === 'active';
+
+        if (!isActive && !isPromo) {
           toast.error('Your access has ended. Please complete payment to continue.');
           await supabase.auth.signOut();
           window.location.replace('/');
           return;
         }
 
-        // ── 6. Grant access ───────────────────────────────────────────────────
+        // ── 7. Grant access ───────────────────────────────────────────────────
         setHasAccess(true);
 
       } catch (err) {

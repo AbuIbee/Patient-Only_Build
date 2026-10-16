@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ResponsiveContainer,
   LineChart,
@@ -7,9 +7,8 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
 } from 'recharts';
-import { useApp } from '@/store/AppContext';
+import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -164,26 +163,6 @@ function getRangeStart(filterKey: FilterKey): Date {
   }
 }
 
-function formatDateKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function buildCalendarDates(filterKey: FilterKey): string[] {
-  const now = new Date();
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const start = getRangeStart(filterKey);
-
-  const dates: string[] = [];
-  const cursor = new Date(start);
-
-  while (cursor <= end) {
-    dates.push(formatDateKey(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  return dates;
-}
-
 // ── SectionCombinedGraph ──────────────────────────────────────────────────────
 function SectionCombinedGraph({
   title,
@@ -275,12 +254,13 @@ function SectionCombinedGraph({
   };
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  interface TooltipPayloadEntry { dataKey: string | number; color: string; name: string; value: number | null }
+  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: TooltipPayloadEntry[]; label?: string | number }) => {
     if (!active || !payload?.length) return null;
     return (
       <div className="bg-white border border-soft-taupe/40 rounded-xl shadow-md p-3 text-xs">
-        <p className="font-bold text-charcoal mb-1">{fmtDate(label)}</p>
-        {payload.map((p: any) => (
+        <p className="font-bold text-charcoal mb-1">{fmtDate(String(label ?? ''))}</p>
+        {payload.map((p) => (
           <div key={p.dataKey} className="flex items-center gap-1.5 mb-0.5">
             <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
             <span className="text-medium-gray">{p.name}:</span>
@@ -512,7 +492,11 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
 
     const moodPerDay = new Map<string, MoodType>();
     entries.forEach(e => {
-      const ds = e.timestamp.split('T')[0];
+      // FQA-026: group by the entry's LOCAL calendar day, matching how day
+      // cells below are keyed (format(day, 'yyyy-MM-dd'), local getters).
+      // Slicing the stored UTC timestamp string directly put evening
+      // entries (US timezones, after UTC midnight) on the wrong day.
+      const ds = format(new Date(e.timestamp), 'yyyy-MM-dd');
       moodPerDay.set(ds, e.mood);
     });
 
@@ -617,17 +601,25 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
 }
 
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
-export default function PatientMoodTracker() {
+export default function PatientMoodTracker({ onOpenMemories }: { onOpenMemories?: () => void } = {}) {
   const { state, dispatch } = useApp();
 
   const [selectedMood, setSelectedMood] = useState<MoodType | null>(null);
   const [moodNote, setMoodNote] = useState('');
   const [showCalmTools, setShowCalmTools] = useState(false);
+  // FQA-021: these tools previously only showed a success toast with no
+  // real action behind any of them. activeTool drives a genuine breathing
+  // guide / stretch instructions overlay; isMusicPlaying drives a real
+  // (Web Audio-generated) calming tone, not a fake "now playing" claim.
+  const [activeTool, setActiveTool] = useState<'breathing' | 'stretch' | null>(null);
+  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
+  const musicCtxRef = useRef<AudioContext | null>(null);
+  const musicNodesRef = useRef<{ oscillators: OscillatorNode[]; gain: GainNode } | null>(null);
   const [checkInData, setCheckInData] = useState<CheckInData[]>([]);
   const [filterKey, setFilterKey] = useState<FilterKey>('1m');
   const [loading, setLoading] = useState(true);
 
-  const moodEntries = state.moodEntries ?? [];
+  const moodEntries = useMemo(() => state.moodEntries ?? [], [state.moodEntries]);
   const patientId = state.currentUser?.id;
 
 
@@ -683,30 +675,71 @@ useEffect(() => {
   };
 }, [patientId]);
 
+  const stopCalmingMusic = () => {
+    const nodes = musicNodesRef.current;
+    const ctx = musicCtxRef.current;
+    if (nodes && ctx) {
+      const now = ctx.currentTime;
+      nodes.gain.gain.linearRampToValueAtTime(0, now + 0.6);
+      nodes.oscillators.forEach(o => o.stop(now + 0.65));
+    }
+    musicNodesRef.current = null;
+    setIsMusicPlaying(false);
+  };
+
+  const startCalmingMusic = () => {
+    const AudioContextClass = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const ctx = musicCtxRef.current ?? new AudioContextClass!();
+    musicCtxRef.current = ctx;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.05, ctx.currentTime + 1.5);
+    gain.connect(ctx.destination);
+    // A soft, slow-breathing two-note pad — genuinely audible calming tone,
+    // not a claim with nothing behind it.
+    const oscillators = [220, 330].map(freq => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      osc.connect(gain);
+      osc.start();
+      return osc;
+    });
+    musicNodesRef.current = { oscillators, gain };
+    setIsMusicPlaying(true);
+  };
+
+  useEffect(() => {
+    return () => { stopCalmingMusic(); musicCtxRef.current?.close(); };
+  }, []);
+
   const calmTools = [
     {
       icon: Wind,
       title: 'Deep Breathing',
       description: 'Breathe along with the guide',
-      action: () => toast.success('Breathing exercise started'),
+      action: () => setActiveTool('breathing'),
     },
     {
       icon: Music,
-      title: 'Calming Music',
-      description: 'Listen to soothing sounds',
-      action: () => toast.success('Playing calming music'),
+      title: isMusicPlaying ? 'Stop Music' : 'Calming Music',
+      description: isMusicPlaying ? 'Playing — tap to stop' : 'Listen to soothing sounds',
+      action: () => (isMusicPlaying ? stopCalmingMusic() : startCalmingMusic()),
     },
     {
       icon: BookOpen,
       title: 'Memory Book',
       description: 'Look at happy memories',
-      action: () => toast.success('Opening memory book'),
+      action: () => {
+        if (onOpenMemories) onOpenMemories();
+        else toast.error('Memory book is not available right now');
+      },
     },
     {
       icon: Sun,
       title: 'Gentle Stretch',
       description: 'Easy movements to relax',
-      action: () => toast.success('Starting gentle stretches'),
+      action: () => setActiveTool('stretch'),
     },
   ];
 
@@ -751,9 +784,9 @@ useEffect(() => {
         patientId:   data.patient_id,
         mood:        data.mood,
         intensity:   data.intensity,
-        note:        data.note,
+        note:        data.note ?? undefined,
         triggers:    data.triggers ?? [],
-        timeOfDay:   data.time_of_day,
+        timeOfDay:   data.time_of_day ?? undefined,
         timestamp:   data.timestamp,
         recordedBy:  data.recorded_by,
       },
@@ -914,6 +947,40 @@ useEffect(() => {
             </motion.div>
           )}
         </AnimatePresence>
+
+        <AnimatePresence>
+          {activeTool === 'breathing' && (
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-charcoal/80 flex items-center justify-center p-6"
+              onClick={() => setActiveTool(null)}
+            >
+              <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center" onClick={e => e.stopPropagation()}>
+                <BreathingGuide onClose={() => setActiveTool(null)} />
+              </div>
+            </motion.div>
+          )}
+          {activeTool === 'stretch' && (
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-charcoal/80 flex items-center justify-center p-6"
+              onClick={() => setActiveTool(null)}
+            >
+              <div className="bg-white rounded-3xl p-8 max-w-sm w-full" onClick={e => e.stopPropagation()}>
+                <h3 className="text-xl font-semibold text-charcoal text-center mb-4">Gentle Stretches</h3>
+                <ul className="space-y-3 text-left mb-6">
+                  <li className="flex gap-3 items-start"><span className="text-2xl">🙆</span><span className="text-charcoal">Slowly roll your shoulders backward, 5 times.</span></li>
+                  <li className="flex gap-3 items-start"><span className="text-2xl">🙂</span><span className="text-charcoal">Gently tilt your head toward each shoulder, hold 5 seconds.</span></li>
+                  <li className="flex gap-3 items-start"><span className="text-2xl">🙌</span><span className="text-charcoal">Raise both arms slowly overhead, then lower.</span></li>
+                  <li className="flex gap-3 items-start"><span className="text-2xl">🦶</span><span className="text-charcoal">While seated, stretch each leg out and point your toes.</span></li>
+                </ul>
+                <Button onClick={() => setActiveTool(null)} className="w-full bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl">
+                  Done
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* ── SECTION 2: Feeling Timeline ─────────────────────────────────── */}
@@ -1016,6 +1083,43 @@ useEffect(() => {
           filterKey={filterKey}
         />
       </div>
+    </div>
+  );
+}
+
+// ── Deep breathing guide (FQA-021: a real, working exercise, not a toast) ──
+const BREATHING_PHASES: { label: string; seconds: number; scale: number }[] = [
+  { label: 'Breathe in…', seconds: 4, scale: 1.4 },
+  { label: 'Hold…', seconds: 4, scale: 1.4 },
+  { label: 'Breathe out…', seconds: 4, scale: 1 },
+];
+
+function BreathingGuide({ onClose }: { onClose: () => void }) {
+  const [phaseIndex, setPhaseIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setPhaseIndex(i => (i + 1) % BREATHING_PHASES.length), BREATHING_PHASES[phaseIndex].seconds * 1000);
+    return () => clearTimeout(timer);
+  }, [phaseIndex]);
+
+  const phase = BREATHING_PHASES[phaseIndex];
+
+  return (
+    <div>
+      <h3 className="text-xl font-semibold text-charcoal mb-6">Deep Breathing</h3>
+      <div className="flex items-center justify-center h-40 mb-6">
+        <motion.div
+          animate={{ scale: phase.scale }}
+          transition={{ duration: phase.seconds, ease: 'easeInOut' }}
+          className="w-24 h-24 rounded-full bg-calm-blue/40 border-4 border-calm-blue flex items-center justify-center"
+        >
+          <Wind className="w-8 h-8 text-calm-blue" />
+        </motion.div>
+      </div>
+      <p className="text-lg font-medium text-charcoal text-center mb-6">{phase.label}</p>
+      <Button onClick={onClose} className="w-full bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl">
+        Done
+      </Button>
     </div>
   );
 }

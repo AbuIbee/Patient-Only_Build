@@ -595,7 +595,8 @@ function SmoothInkVictoryCanvas() {
     let height = (canvas.height = window.innerHeight);
 
     // Ink drops feature wide, expansive blooming circles with low soft opacity
-    const blooms: any[] = [];
+    interface InkBloom { x: number; y: number; radius: number; maxRadius: number; speed: number; opacity: number; colorBase: string; }
+    const blooms: InkBloom[] = [];
     const colorPalettes = [
       'rgba(16, 185, 129, ',  // Emerald calm
       'rgba(59, 130, 246, ',  // Sky ocean blue
@@ -814,7 +815,7 @@ export default function CrosswordGame({ onBack }: { onBack: () => void }) {
         )}
 
         {/* Master Flex Matrix Dividing Interactive Elements */}
-        <div style={{ display: 'flex', flexDirection: 'column', lgDirection: 'row', gap: '24px', alignItems: 'flex-start' }} className="flex-col lg:flex-row">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', alignItems: 'flex-start' }} className="flex-col lg:flex-row">
           
           {/* Main Grid Card Board System Area Container */}
           <div style={{ width: '100%', flex: '1.2', display: 'flex', justifyContent: 'center', background: '#1e293b', padding: '12px', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', boxSizing: 'border-box' }}>
@@ -963,7 +964,7 @@ export default function CrosswordGame({ onBack }: { onBack: () => void }) {
                           color: isCompleted ? '#a7f3d0' : isActive ? 'white' : '#94a3b8'
                         }}
                       >
-                        <span style={{ color: '#f59e0b', fontWeight: '900', marginRight: '2px', width: '22px', shrink: '0' }}>{pw.number}.</span>
+                        <span style={{ color: '#f59e0b', fontWeight: '900', marginRight: '2px', width: '22px', flexShrink: 0 }}>{pw.number}.</span>
                         <span style={{ flex: 1, lineHeight: 1.3, textDecoration: isCompleted ? 'line-through' : 'none', opacity: isCompleted ? 0.6 : 1 }}>{pw.clue}</span>
                         {isCompleted && <span style={{ color: '#10b981', fontWeight: '800', fontSize: '12px', marginLeft: 'auto' }}>✓</span>}
                         {isActive && <span style={{ color: '#f59e0b', fontSize: '10px', marginLeft: 'auto' }}>{symbol}</span>}

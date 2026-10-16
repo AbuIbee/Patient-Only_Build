@@ -1,46 +1,40 @@
-import { useState, useEffect } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useState, useEffect, useCallback } from 'react';
+import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import type { Medication } from '@/types';
 import { syncReminderNotifications, addReminderResumeListener, type SchedulingStatus } from '@/lib/reminderScheduler';
 import { TempUserProvider, ReadOnlyBanner } from '@/components/TempUserGuard';
 import { SubscriptionProvider } from '@/store/SubscriptionContext';
-import { type TierName } from '@/types/subscription';
+import { useSubscription } from '@/store/useSubscription';
+import {
+  type PatientView,
+  VIEW_FEATURE,
+  PAID_TIER_VIEWS_WITHOUT_A_FEATURE_KEY,
+} from './patientViewFeatures';
 import PatientHome from './PatientHome';
 import PatientRoutine from './PatientRoutine';
 import PatientMemories from './PatientMemories';
 import PatientMedications from './PatientMedications';
 import PatientDocuments from './PatientDocuments';
+import TempDemoMedications from './temp-demo/TempDemoMedications';
+import TempDemoMedia from './temp-demo/TempDemoMedia';
+import TempDemoDocuments from './temp-demo/TempDemoDocuments';
+import { TempDemoUnavailable } from './temp-demo/TempDemoUnavailable';
+import { DEMO_PATIENT_NAME } from '@/lib/tempDemoData';
 import PatientReminders from './PatientReminders';
 import PatientMoodTracker from './PatientMoodTracker';
 import CarePartnerCheckin from './CarePartnerCheckin';
-import PatientProfileSetup from './PatientProfileSetup';
 import PatientEmergencyContacts from './PatientEmergencyContacts';
-import PatientGames from './PatientGames';
+import PatientGames, { type GameId } from './PatientGames';
 import PatientIntakeForm from './PatientIntakeForm';
 import PatientCareTeam from './PatientCareTeam';
 import MediaUploader from '@/components/MediaUploader';
 import PricingPage from '../common/PricingPage';
 import {
-  Heart, LogOut, ChevronRight, Menu, X, ClipboardCheck, Lock, RefreshCw,
+  LogOut, ChevronRight, Menu, X, ClipboardCheck, Lock, RefreshCw,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-
-type PatientView =
-  | 'dashboard'
-  | 'medications'
-  | 'routines'
-  | 'memories'
-  | 'mood'
-  | 'documents'
-  | 'reminders'
-  | 'checkin'
-  | 'intake'
-  | 'emergency_contacts'
-  | 'careteam'
-  | 'media'
-  | 'games';
-
 
 type NavigationItem = {
   id: PatientView;
@@ -48,25 +42,24 @@ type NavigationItem = {
   emoji: string;
 };
 
-const PAID_ONLY_VIEWS: Partial<Record<PatientView, string>> = {
-  mood: 'How I Feel',
-  reminders: 'Reminders',
-  routines: 'My Day',
-  checkin: 'Care Partner',
-  documents: 'Documents',
-  media: 'Videos & Media',
-  games: 'Patient Arcade',
-};
-
-export default function PatientLayout() {
+function PatientLayoutInner() {
   const [currentView, setCurrentView] = useState<PatientView>('dashboard');
-  const [selectedGameId, setSelectedGameId] = useState<string | undefined>(undefined);
+  const [selectedGameId, setSelectedGameId] = useState<GameId | undefined>(undefined);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showManagePlan, setShowManagePlan] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  // Fail closed: until a paid entitlement is confirmed, Paid Tier items remain locked.
-  const [subscriptionTier, setSubscriptionTier] = useState<TierName>('free_tier');
+  // REPAIR B: the separate subscriptionTier state + its own direct
+  // `.from('subscriptions')` fetch (previously here, and previously the
+  // sole input to the hardcoded PAID_ONLY_VIEWS check above) is removed.
+  // useSubscription() below reads the SAME SubscriptionContext every other
+  // entitlement check in this app reads (FeatureGate, SubscriptionContext
+  // itself) — one authoritative source, not two that can drift apart.
+  // isActive/tier both fail closed (free_tier/false) while the context is
+  // still loading, exactly matching the "Fail closed" comment this
+  // replaces.
+  const { can, tier, isActive, isMaster, isTempUserDemo } = useSubscription();
+  const hasPaidOrMasterAccess = isMaster || (tier !== 'free_tier' && isActive);
   const { state, dispatch } = useApp();
   const patient = state.patient;
   const accountId = state.currentUser?.id || state.patient?.id || '';
@@ -117,10 +110,6 @@ export default function PatientLayout() {
   const [intakeCompleted, setIntakeCompleted] = useState<boolean | null>(null);
 
   useEffect(() => {
-    loadPatientData();
-  }, []);
-
-  useEffect(() => {
     if (!state.currentUser?.id) return;
     supabase.from('patient_intake')
       .select('intake_completed')
@@ -131,49 +120,7 @@ export default function PatientLayout() {
       });
   }, [state.currentUser?.id]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadEntitlement = async () => {
-      let userId = state.currentUser?.id;
-
-      if (!userId) {
-        const { data } = await supabase.auth.getUser();
-        userId = data.user?.id;
-      }
-
-      if (!userId) return;
-
-      const { data, error } = await supabase
-        .from('subscriptions')
-        .select('tier, status')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (cancelled) return;
-
-      if (error) {
-        console.error('Unable to load subscription entitlement:', error.message);
-        setSubscriptionTier('free_tier');
-        return;
-      }
-
-      const tier = data?.tier;
-      const status = data?.status;
-      // Recognize current tier names (paid_tier) and legacy DB values (daily_care, full_support)
-      const isPaid = tier === 'paid_tier' || tier === 'daily_care' || tier === 'full_support';
-      const paidAndActive = isPaid && (status === 'active' || status === 'promo');
-
-      setSubscriptionTier(
-        tier === 'master' ? 'master' : paidAndActive ? 'paid_tier' : 'free_tier'
-      );
-    };
-
-    loadEntitlement();
-    return () => { cancelled = true; };
-  }, [state.currentUser?.id]);
-
-  const loadPatientData = async () => {
+  const loadPatientData = useCallback(async () => {
     setIsLoading(true);
     try {
       const {
@@ -186,6 +133,54 @@ export default function PatientLayout() {
       }
 
       if (state.patient) {
+        setIsLoading(false);
+        return;
+      }
+
+      // REPAIR 008 / REPAIR A: a confirmed Temporary session never queries
+      // `patients`/`medications`/`tasks`/`reminders`/`memories`/
+      // `mood_entries` at all — it is dispatched a fixed, obviously-
+      // fictional patient identity instead (requirement 1/4/8). This is
+      // the earliest point in this component that can know the trusted
+      // program state; skipping the real fetch here means the Supabase
+      // calls below for a Temporary session are never even attempted, not
+      // merely blocked after the fact by migration 019's RLS policies —
+      // those remain the backend backstop, not the primary mechanism.
+      if (isTempUserDemo) {
+        // REPAIR D note: deliberately contains only fields the `Patient`
+        // interface (src/types/index.ts) actually declares — the
+        // UNMODIFIED real-data dispatch further below sets several fields
+        // (`dementiaStage`, `phone`, ...) that type does not declare at
+        // all, a pre-existing defect reported, not duplicated, in this
+        // repair's diagnostics summary rather than fixed here (out of
+        // this change's scope — see the completion report).
+        dispatch({
+          type: 'SET_PATIENT',
+          payload: {
+            id: session.user.id,
+            userId: session.user.id,
+            email: session.user.email || '',
+            firstName: 'Sample',
+            lastName: 'Patient',
+            preferredName: DEMO_PATIENT_NAME,
+            location: 'Demo',
+            affirmation: 'This is a demonstration account. You are safe. You are loved.',
+            emergencyContact: { name: '', relationship: '', phone: '' },
+            familiarFaces: [],
+            preferences: {
+              language: 'en', fontSize: 'large', highContrast: false,
+              audioEnabled: true, notificationsEnabled: false, tone: 'gentle',
+              firstSessionDone: true,
+            },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        });
+        dispatch({ type: 'SET_MEDICATIONS', payload: [] });
+        dispatch({ type: 'SET_TASKS', payload: [] });
+        dispatch({ type: 'SET_REMINDERS', payload: [] });
+        dispatch({ type: 'SET_MEMORIES', payload: [] });
+        dispatch({ type: 'SET_MOOD_ENTRIES', payload: [] });
         setIsLoading(false);
         return;
       }
@@ -267,18 +262,18 @@ export default function PatientLayout() {
 
         dispatch({
           type: 'SET_MEDICATIONS',
-          payload: (meds || []).map((m: any) => ({
+          payload: (meds || []).map((m) => ({
             id: m.id,
             patientId: m.patient_id,
             name: m.name,
-            genericName: m.generic_name,
+            genericName: m.generic_name ?? undefined,
             dosage: m.dosage,
-            form: m.form,
+            form: m.form ?? 'pill',
             instructions: m.instructions,
-            prescribedBy: m.prescribed_by,
-            prescriptionDate: m.prescription_date,
+            prescribedBy: m.prescribed_by ?? undefined,
+            prescriptionDate: m.prescription_date ?? undefined,
             sideEffects: m.side_effects || [],
-            schedule: m.schedule || [],
+            schedule: (m.schedule || []) as unknown as Medication['schedule'],
             isActive: m.is_active,
             createdAt: m.created_at,
             updatedAt: m.updated_at,
@@ -287,54 +282,54 @@ export default function PatientLayout() {
 
         dispatch({
           type: 'SET_TASKS',
-          payload: (tasks || []).map((t: any) => ({
+          payload: (tasks || []).map((t) => ({
             id: t.id,
             patientId: t.patient_id,
             title: t.title,
-            description: t.description,
+            description: t.description ?? undefined,
             icon: t.icon,
-            timeOfDay: t.time_of_day,
-            scheduledTime: t.scheduled_time,
-            daysOfWeek: t.days_of_week,
+            timeOfDay: t.time_of_day ?? undefined,
+            scheduledTime: t.scheduled_time ?? '',
+            daysOfWeek: t.days_of_week ?? undefined,
             status: t.status,
-            completedAt: t.completed_at,
-            isRecurring: t.is_recurring,
-            difficulty: t.difficulty,
+            completedAt: t.completed_at ?? undefined,
+            isRecurring: t.is_recurring ?? undefined,
+            difficulty: t.difficulty ?? undefined,
             isActive: t.is_active,
           })),
         });
 
         dispatch({
           type: 'SET_REMINDERS',
-          payload: (reminders || []).map((r: any) => ({
+          payload: (reminders || []).map((r) => ({
             id: r.id,
             patientId: r.patient_id,
-            title: r.title,
-            message: r.message,
-            type: r.type,
-            time: r.time,
-            daysOfWeek: r.days_of_week,
-            isActive: r.is_active,
-            sound: r.sound,
-            vibrate: r.vibrate,
-            createdAt: r.created_at,
-            createdBy: r.created_by,
+            title: r.title ?? '',
+            message: r.message ?? '',
+            type: (r.type as 'medication' | 'appointment' | 'task' | 'custom' | null) ?? 'custom',
+            time: r.time ?? '',
+            daysOfWeek: r.days_of_week ?? undefined,
+            isActive: r.is_active ?? false,
+            sound: r.sound ?? undefined,
+            vibrate: r.vibrate ?? undefined,
+            createdAt: r.created_at ?? new Date().toISOString(),
+            createdBy: r.created_by ?? undefined,
           })),
         });
 
         dispatch({
           type: 'SET_MEMORIES',
-          payload: (memories || []).map((m: any) => ({
+          payload: (memories || []).map((m) => ({
             id: m.id,
             patientId: m.patient_id,
             title: m.title,
-            description: m.description,
-            photoUrl: m.photo_url,
-            audioUrl: m.audio_url,
-            date: m.date,
-            location: m.location,
+            description: m.description ?? undefined,
+            photoUrl: m.photo_url ?? undefined,
+            audioUrl: m.audio_url ?? undefined,
+            date: m.date ?? undefined,
+            location: m.location ?? undefined,
             people: m.people || [],
-            category: m.category,
+            category: m.category ?? undefined,
             tags: m.tags || [],
             isFavorite: m.is_favorite,
             createdAt: m.created_at,
@@ -344,16 +339,16 @@ export default function PatientLayout() {
 
         dispatch({
           type: 'SET_MOOD_ENTRIES',
-          payload: (moods || []).map((m: any) => ({
+          payload: (moods || []).map((m) => ({
             id: m.id,
             patientId: m.patient_id,
             mood: m.mood,
             intensity: m.intensity,
-            note: m.note,
+            note: m.note ?? undefined,
             triggers: m.triggers || [],
-            timeOfDay: m.time_of_day,
+            timeOfDay: m.time_of_day ?? undefined,
             timestamp: m.timestamp,
-            recordedBy: m.recorded_by,
+            recordedBy: m.recorded_by ?? undefined,
           })),
         });
       }
@@ -363,7 +358,20 @@ export default function PatientLayout() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [state.patient, isTempUserDemo, dispatch]);
+
+  useEffect(() => {
+    loadPatientData();
+    // REPAIR 008: `isTempUserDemo` starts false/not-yet-confirmed before
+    // SubscriptionContext finishes its own trusted check (see
+    // SubscriptionContext.tsx) — re-running once it resolves true lets a
+    // Temporary session pick up the synthetic demo patient identity below
+    // even when this effect's first run already completed (and found no
+    // real `patients` row, exactly as expected for a Temporary account —
+    // see migration 019's read-isolation policy). `loadPatientData`'s own
+    // `if (state.patient) return` guard makes this safe to re-run: it is a
+    // no-op once a patient (real or synthetic) is already set.
+  }, [isTempUserDemo, loadPatientData]);
 
   const handleLogout = async () => {
     // Clear all patient PHI from localStorage before signing out (HIPAA)
@@ -406,24 +414,37 @@ export default function PatientLayout() {
     { id: 'games',              label: 'Patient Arcade',   emoji: '🎮' },
   ];
 
-  const hasPaidAccess = subscriptionTier === 'paid_tier' || subscriptionTier === 'master';
-
   const planLabel =
-    subscriptionTier === 'master' ? 'Master Access'
-    : subscriptionTier === 'paid_tier' ? 'Paid Plan'
+    isMaster ? 'Master Access'
+    : tier === 'paid_tier' && isActive ? 'Paid Plan'
     : 'Free Plan';
 
-  const isLockedNavigationItem = (item: NavigationItem) =>
-    Boolean(PAID_ONLY_VIEWS[item.id] && !hasPaidAccess);
+  // REPAIR B: the single authoritative lock check. A view with a
+  // VIEW_FEATURE entry is locked exactly when useSubscription().can() says
+  // no — the SAME check FeatureGate uses, so nav visibility and in-view
+  // authorization can never disagree. The one view with no approved
+  // FeatureKey (routines) falls back to the SAME tier/isActive values, not
+  // a separate source. Everything else (dashboard/mood/intake/
+  // emergency_contacts/careteam) is never locked.
+  const isViewLocked = (view: PatientView): boolean => {
+    const feature = VIEW_FEATURE[view];
+    if (feature) return !can(feature);
+    if (PAID_TIER_VIEWS_WITHOUT_A_FEATURE_KEY.has(view)) return !hasPaidOrMasterAccess;
+    return false;
+  };
+
+  const isLockedNavigationItem = (item: NavigationItem) => isViewLocked(item.id);
+
+  const viewLabel = (view: PatientView): string =>
+    [...navItems, ...moreNavItems].find(i => i.id === view)?.label ?? view;
 
   const showPaidTierMessage = (label: string) => {
     toast.error(`${label} is a Paid Tier feature. Upgrade to unlock it.`);
   };
 
   const requestView = (view: PatientView): boolean => {
-    const paidLabel = PAID_ONLY_VIEWS[view];
-    if (paidLabel && !hasPaidAccess) {
-      showPaidTierMessage(paidLabel);
+    if (isViewLocked(view)) {
+      showPaidTierMessage(viewLabel(view));
       return false;
     }
 
@@ -456,9 +477,13 @@ export default function PatientLayout() {
   );
 
   const renderView = () => {
-    const paidLabel = PAID_ONLY_VIEWS[currentView];
-    if (paidLabel && !hasPaidAccess) {
-      return renderLockedFeature(paidLabel);
+    // REPAIR B requirement 4: re-checked here at RENDER time (not only at
+    // click time via requestView), so setting currentView through any
+    // other path — a deep link, a dev-tools state edit, a future
+    // navigation entry point that forgets to call requestView — still
+    // cannot render gated content without passing the same check.
+    if (isViewLocked(currentView)) {
+      return renderLockedFeature(viewLabel(currentView));
     }
 
     switch (currentView) {
@@ -467,29 +492,35 @@ export default function PatientLayout() {
           if (requestView('games')) setSelectedGameId(id);
         }} />;
       case 'medications':
-        return <PatientMedications />;
+        // REPAIR 008 / REPAIR A: the real component is never mounted at
+        // all for a confirmed Temporary session — see TempDemoMedications.tsx's
+        // own header comment for why that (not a mode flag inside the
+        // real component) is the actual isolation guarantee.
+        return isTempUserDemo ? <TempDemoMedications /> : <PatientMedications />;
       case 'routines':
         return <PatientRoutine />;
       case 'memories':
         return <PatientMemories />;
       case 'mood':
-        return <PatientMoodTracker />;
+        // PHASE 2.1: explicitly restricted for Temporary, not left to show
+        // a broken/empty real view — see TempDemoUnavailable.tsx.
+        return isTempUserDemo ? <TempDemoUnavailable featureLabel="Mood Tracking" /> : <PatientMoodTracker onOpenMemories={() => requestView('memories')} />;
       case 'documents':
-        return <PatientDocuments />;
+        return isTempUserDemo ? <TempDemoDocuments /> : <PatientDocuments />;
       case 'reminders':
         return <PatientReminders reminderStatus={reminderStatus} />;
       case 'checkin':
         return <CarePartnerCheckin />;
       case 'intake':
-        return <PatientIntakeForm onCompleted={() => setIntakeCompleted(true)} />;
+        return isTempUserDemo ? <TempDemoUnavailable featureLabel="Patient Intake" /> : <PatientIntakeForm onCompleted={() => setIntakeCompleted(true)} />;
       case 'emergency_contacts':
-        return <PatientEmergencyContacts />;
+        return isTempUserDemo ? <TempDemoUnavailable featureLabel="Emergency Contact" /> : <PatientEmergencyContacts />;
       case 'careteam':
         return <PatientCareTeam />;
       case 'media':
-        return <MediaUploader readOnly={false} patientId={state.currentUser?.id} />;
+        return isTempUserDemo ? <TempDemoMedia /> : <MediaUploader readOnly={false} patientId={state.currentUser?.id} />;
       case 'games':
-        return <PatientGames initialGame={selectedGameId as any} onNavigateHome={() => setCurrentView('dashboard')} />;
+        return <PatientGames initialGame={selectedGameId} onNavigateHome={() => setCurrentView('dashboard')} />;
       default:
         return <PatientHome onNavigateToGame={(id) => {
           if (requestView('games')) setSelectedGameId(id);
@@ -522,7 +553,6 @@ export default function PatientLayout() {
   }
 
   return (
-    <SubscriptionProvider>
     <TempUserProvider>
     <div className="h-screen bg-warm-ivory flex overflow-hidden">
       <aside
@@ -859,6 +889,18 @@ export default function PatientLayout() {
       )}
     </div>
     </TempUserProvider>
+  );
+}
+
+// REPAIR B: PatientLayoutInner needs useSubscription() — which requires
+// being a DESCENDANT of SubscriptionProvider, not the component that
+// renders it. This thin wrapper is the only reason SubscriptionProvider
+// moved out here; PatientLayout's own external signature/behavior (the
+// default export every other file imports) is unchanged.
+export default function PatientLayout() {
+  return (
+    <SubscriptionProvider>
+      <PatientLayoutInner />
     </SubscriptionProvider>
   );
 }

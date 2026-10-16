@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  RotateCcw, ChevronLeft, Gamepad2, Clock, 
-  CheckCircle2, Zap, Trophy, Award, Flame, Star, Sparkles, Users, User, Heart, CheckCircle, ExternalLink 
+import {
+  ChevronLeft, Gamepad2,
+  Zap, Sparkles, ExternalLink
 } from 'lucide-react';
 
 // ─── IMPORT SEPARATE GAME FILES FROM YOUR NEW FOLDER ─────────────────────────
@@ -15,7 +15,15 @@ import ChessGame from '../PatientGames/Chess';
 import SolitaireGame from '../PatientGames/Solitaire';
 
 // ─── TYPES & CONFIGURATIONS ──────────────────────────────────────────────────
-type GameId = 'menu' | 'matching' | 'crossword' | 'checkers' | 'chess' | 'brainapps' | 'wordsearch' | 'solitaire' | 'hangman';
+export type GameId = 'menu' | 'matching' | 'crossword' | 'checkers' | 'chess' | 'brainapps' | 'wordsearch' | 'solitaire' | 'hangman';
+
+interface PatientGamesProps {
+  // FQA-024: a game id passed in from the Home screen's "play this game"
+  // shortcut — previously accepted and silently dropped (this component
+  // took no props at all), so the shortcut never actually opened a game.
+  initialGame?: GameId;
+  onNavigateHome?: () => void;
+}
 
 const A = {
   pageBg:     'min-h-screen bg-amber-50/60 p-4 md:p-6',
@@ -45,8 +53,9 @@ const BRAIN_APPS = [
 function GameHeader({ title, onBack }: { title: string; onBack: () => void }) {
   return (
     <div className="flex items-center gap-4 mb-6">
-      <button 
+      <button
         onClick={onBack}
+        aria-label="Back"
         className="p-2.5 bg-white border-2 border-stone-300 rounded-xl hover:bg-stone-50 active:scale-95 transition flex items-center justify-center cursor-pointer shadow-sm"
       >
         <ChevronLeft className="text-stone-700" size={20} strokeWidth={2.5} />
@@ -59,10 +68,21 @@ function GameHeader({ title, onBack }: { title: string; onBack: () => void }) {
   );
 }
 
-export default function PatientGames() {
-  const [activeGame, setActiveGame] = useState<GameId>('menu');
+export default function PatientGames({ initialGame, onNavigateHome }: PatientGamesProps) {
+  const launchedDirectly = useRef(Boolean(initialGame && GAMES_LIST.some(g => g.id === initialGame)));
+  const [activeGame, setActiveGame] = useState<GameId>(
+    launchedDirectly.current ? (initialGame as GameId) : 'menu'
+  );
 
-  const handleBackToMenu = () => setActiveGame('menu');
+  const handleBackToMenu = () => {
+    // A game opened directly from Home's shortcut has no menu to return to
+    // within this module — go back to Home instead of the games menu.
+    if (launchedDirectly.current && onNavigateHome) {
+      onNavigateHome();
+    } else {
+      setActiveGame('menu');
+    }
+  };
 
   return (
     <div className={A.pageBg} style={{ fontFamily: 'system-ui, sans-serif' }}>
@@ -104,7 +124,7 @@ export default function PatientGames() {
 
             {/* Core Grid Matrix Selection Layout */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-8">
-              {GAMES_LIST.map((game, idx) => (
+              {GAMES_LIST.map((game) => (
                 <motion.button
                   key={game.id}
                   onClick={() => setActiveGame(game.id as GameId)}

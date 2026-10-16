@@ -1,8 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useApp } from '@/store/AppContext';
+import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import type { Database } from '@/types/supabase';
 import { Activity, Utensils, Droplets, Shield, Brain, Heart, ThumbsUp, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { format } from 'date-fns';
+
+type CheckinRow = Database['public']['Tables']['care_partner_checkins']['Row'];
 
 // ─── Filters ──────────────────────────────────────────────────────────────────
 type FilterKey = '7d' | '1m' | '2m' | '3m';
@@ -36,21 +40,26 @@ const SCORE_MAPS: Record<string, Record<string, number>> = {
   sy_severity:  { '':4, Mild:3, Moderate:2, Severe:1 },
 };
 
-function scoreMetric(row: any, key: string): number | null {
+// Dynamically keyed across many loosely-related string-enum columns
+// (one row can be indexed by any of ~19 different field names via
+// SCORE_MAPS) — a precise per-column union isn't meaningful here, but
+// `Record<string, unknown>` (not `any`) still requires narrowing before use.
+function scoreMetric(row: Record<string, unknown> | undefined, key: string): number | null {
+  if (!row) return null;
   if (key === 'be_behaviors_count') {
-    const b: string[] = row.be_behaviors || [];
+    const b = (row.be_behaviors as string[] | null) || [];
     if (!b.length) return null;
-    return Math.max(1, 4 - b.filter((x: string) => x !== 'None observed').length);
+    return Math.max(1, 4 - b.filter((x) => x !== 'None observed').length);
   }
   if (key === 'sy_symptoms_count') {
-    const s: string[] = row.sy_symptoms || [];
+    const s = (row.sy_symptoms as string[] | null) || [];
     if (!s.length && !row.sy_other) return null;
     return Math.max(1, 4 - s.length);
   }
   const raw = row[key];
   if (!raw) return null;
   const m = SCORE_MAPS[key];
-  return m ? (m[raw] ?? null) : null;
+  return m ? (m[String(raw)] ?? null) : null;
 }
 
 // ─── Section definitions with unique colors per metric ────────────────────────
@@ -142,10 +151,10 @@ function pickLabelIndices(n: number, filterKey: FilterKey): number[] {
 function SectionChart({
   section, rows, allDates, filterKey,
 }: {
-  section: Section; rows: any[]; allDates: string[]; filterKey: FilterKey;
+  section: Section; rows: CheckinRow[]; allDates: string[]; filterKey: FilterKey;
 }) {
   const byDate = useMemo(() => {
-    const m = new Map<string, any>();
+    const m = new Map<string, CheckinRow>();
     rows.forEach(r => m.set(r.check_in_date, r));
     return m;
   }, [rows]);
@@ -342,14 +351,14 @@ function SectionChart({
 
 // ─── Collapsible section panel ────────────────────────────────────────────────
 function SectionPanel({ section, rows, allDates, filterKey, defaultOpen }: {
-  section: Section; rows: any[]; allDates: string[];
+  section: Section; rows: CheckinRow[]; allDates: string[];
   filterKey: FilterKey; defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   const Icon = section.icon;
 
   const byDate = useMemo(() => {
-    const m = new Map<string, any>();
+    const m = new Map<string, CheckinRow>();
     rows.forEach(r => m.set(r.check_in_date, r));
     return m;
   }, [rows]);
@@ -413,14 +422,14 @@ function SectionPanel({ section, rows, allDates, filterKey, defaultOpen }: {
 export default function PatientProgressTimeline() {
   const { state } = useApp();
   const [filter, setFilter] = useState<FilterKey>('1m');
-  const [rows, setRows]     = useState<any[]>([]);
+  const [rows, setRows]     = useState<CheckinRow[]>([]);
   const [loading, setLoading] = useState(true);
   const patientId = state.currentUser?.id;
 
   useEffect(() => {
     if (!patientId) { setLoading(false); return; }
     const days = FILTERS.find(f => f.key === filter)!.days;
-    const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+    const since = format(new Date(Date.now() - days * 86400000), 'yyyy-MM-dd'); // B6: check_in_date is a calendar day
     setLoading(true);
     supabase
       .from('care_partner_checkins')
@@ -439,7 +448,7 @@ export default function PatientProgressTimeline() {
     const days = FILTERS.find(f => f.key === filter)!.days;
     return Array.from({ length: days }, (_, i) => {
       const d = new Date(Date.now() - (days - 1 - i) * 86400000);
-      return d.toISOString().slice(0, 10);
+      return format(d, 'yyyy-MM-dd'); // B6: matches check_in_date's calendar-day grouping
     });
   }, [filter]);
 

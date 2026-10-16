@@ -10,12 +10,13 @@ import {
   Legend,
 } from "recharts";
 import { supabase } from "@/lib/supabase";
+import { format } from "date-fns";
 
 type CarePartnerCheckinRow = {
   id: string;
   patient_id: string;
   check_in_date: string;
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 type MetricConfig = {
@@ -65,14 +66,14 @@ const SCORE_MAPS: Record<string, Record<string, number>> = {
 
 function scoreMetric(row: CarePartnerCheckinRow, key: string): number | null {
   if (key === "be_behaviors") {
-    const arr: string[] = row.be_behaviors || [];
+    const arr = (row.be_behaviors as string[] | undefined) || [];
     const filtered = arr.filter((x) => x !== "None observed");
     if (!filtered.length) return 0;
     return Math.min(5, filtered.length + 1);
   }
 
   if (key === "sy_symptoms") {
-    const arr: string[] = row.sy_symptoms || [];
+    const arr = (row.sy_symptoms as string[] | undefined) || [];
     if (!arr.length) return 0;
     return Math.min(5, arr.length);
   }
@@ -106,7 +107,7 @@ export default function ADLProgressChart({
   const startDate = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - days);
-    return d.toISOString().slice(0, 10);
+    return format(d, 'yyyy-MM-dd'); // B6: check_in_date is a calendar day, not an instant
   }, [days]);
 
   useEffect(() => {
@@ -140,7 +141,12 @@ export default function ADLProgressChart({
         return;
       }
 
-      setRows((data ?? []) as CarePartnerCheckinRow[]);
+      // A dynamically-built column list (`fields.join(",")`) can't be
+      // narrowed by supabase-js's overloads to a precise row shape — this
+      // is a TypeScript limitation of the dynamic `.select()` call, not a
+      // schema mismatch; `check_in_date`/`patient_id` are confirmed real
+      // columns on this table (src/types/supabase.ts).
+      setRows((data ?? []) as unknown as CarePartnerCheckinRow[]);
       setLoading(false);
     }
 

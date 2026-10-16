@@ -13,6 +13,15 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/unit/**/*.test.ts'],
+    // FUNCTIONAL-REPAIR-004 / REPAIR 3: `*.test-d.ts` files are type-level
+    // regression checks (run via `npx vitest typecheck`, not the normal
+    // `npm run test:unit` — the `include` above does not match this
+    // pattern, so they are never executed as runtime tests). Vitest's own
+    // typecheck.include otherwise defaults to being filtered by the plain
+    // `include` above too, so it needs declaring explicitly here.
+    typecheck: {
+      include: ['tests/unit/**/*.test-d.ts'],
+    },
     env: {
       // src/lib/supabase.ts calls createClient() at module load time, which
       // throws if these are empty — dummy values are fine since every test

@@ -40,4 +40,17 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- FQA-010/F16: @capacitor/local-notifications already brings these in
+         via its own AAR manifest, which Gradle's manifest merger folds into
+         the built APK automatically (confirmed in
+         node_modules/@capacitor/local-notifications/android/src/main/AndroidManifest.xml).
+         Declared explicitly here too so this app module's own manifest is
+         self-documenting and doesn't keep re-triggering this exact finding
+         in source-only audits that don't inspect the merged manifest.
+         SCHEDULE_EXACT_ALARM/USE_EXACT_ALARM is deliberately NOT added —
+         recorded decision (reminderScheduler.ts rewrite): not justified for
+         this feature's timing tolerance. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 </manifest>

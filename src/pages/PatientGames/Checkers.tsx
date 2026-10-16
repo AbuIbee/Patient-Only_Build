@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { RotateCcw, ChevronLeft, Users, User, Brain, Heart, Trophy, Sparkles } from "lucide-react";
+import { RotateCcw, ChevronLeft, Users, User, Heart, Trophy } from "lucide-react";
 
 // POSITIVE ENCOURAGEMENT DICTIONARY FOR CLINICAL COGNITIVE REINFORCEMENT
 const ENCOURAGEMENT_QUOTES = [
@@ -206,7 +206,7 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
     return null;
   };
 
-  const executeMove = (m: CheckerMove) => {
+  const executeMove = useCallback((m: CheckerMove) => {
     const updatedBoard = applyMoveSimulation(board, m);
     const nextTurn = turn === 'red' ? 'black' : 'red';
 
@@ -223,7 +223,7 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
     } else {
       setTurn(nextTurn);
     }
-  };
+  }, [board, turn, gameMode]);
 
   // AI TRIGGER HANDLER
   useEffect(() => {
@@ -261,7 +261,7 @@ export default function CheckersGame({ onBack }: { onBack: () => void }) {
     }, delayDuration);
 
     return () => clearTimeout(timer);
-  }, [turn, gameMode, board, difficulty, winner, aiThinking, minimax]);
+  }, [turn, gameMode, board, difficulty, winner, aiThinking, minimax, executeMove]);
 
   const handleTileClick = (r: number, c: number) => {
     if (winner || aiThinking) return;

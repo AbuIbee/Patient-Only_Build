@@ -1,15 +1,14 @@
 import { useState } from 'react';
-import { Heart, Shield, Lock, FileText, Users, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Heart, Shield, Lock, FileText, CheckCircle } from 'lucide-react';
 
 const EFFECTIVE_DATE = 'April 19, 2026';
 const COMPANY = 'Salahuddeen Enterprises LLC';
 const EMAIL = 's.muhammad@salahuddeenenterprises.com';
 const APP_URL = 'mymemoriaally.com';
-const APP_STORE_URL = 'https://mymemoriaally.com';
 
 type DocId = 'privacy' | 'hipaa' | 'baa' | 'consent' | 'security' | 'terms';
 
-const DOCS: { id: DocId; label: string; emoji: string; icon: any }[] = [
+const DOCS: { id: DocId; label: string; emoji: string; icon: React.ElementType }[] = [
   { id: 'privacy',  label: 'Privacy Policy',               emoji: '🔒', icon: Lock },
   { id: 'hipaa',    label: 'HIPAA Compliance',             emoji: '🏥', icon: Shield },
   { id: 'baa',      label: 'Business Associate Agreement', emoji: '📋', icon: FileText },

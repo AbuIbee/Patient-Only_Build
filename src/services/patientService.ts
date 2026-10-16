@@ -1,6 +1,18 @@
 import { supabase } from '@/lib/supabase';
 import type { Patient, PatientData } from '@/types';
+import type { Database, NoteType } from '@/types/supabase';
 import { assertUniqueProfileIdentity, normalizeEmail } from '@/lib/identity';
+import { getErrorMessage } from '@/lib/utils';
+
+type PatientRow = Database['public']['Tables']['patients']['Row'];
+type ProfileRow = Database['public']['Tables']['profiles']['Row'];
+// buildPatient()/loadPatientData() read fields defined on PatientRow/
+// ProfileRow plus a handful of columns neither table type declares
+// (dbRow.email/phone — actually on ProfileRow, kept here only for the
+// `dbRow.x || profile.x` fallback pattern already in use). A partial
+// profile shape covers every call site (full row, `{}`, or a narrow
+// `.select()` subset).
+type PartialProfile = Partial<ProfileRow>;
 
 // ─── Get all patients for the logged-in caregiver ────────────────────────────
 export async function getCaregiverPatients(): Promise<PatientData[]> {
@@ -18,7 +30,7 @@ export async function getCaregiverPatients(): Promise<PatientData[]> {
   if (linksError) { console.error('caregiver_patients error:', linksError); return []; }
   if (!links || links.length === 0) return [];
 
-  const patientIds = links.map((r: any) => r.patient_id);
+  const patientIds = links.map((r) => r.patient_id);
   return fetchPatientsById(patientIds);
 }
 
@@ -39,8 +51,8 @@ export async function getTherapistPatients(): Promise<PatientData[]> {
   if (!links || links.length === 0) return [];
 
   const patientIds = links
-    .map((r: any) => r.patient_id)
-    .filter(Boolean);
+    .map((r) => r.patient_id)
+    .filter((id): id is string => Boolean(id));
 
   if (patientIds.length === 0) return [];
   return fetchPatientsById(patientIds);
@@ -61,11 +73,11 @@ async function fetchPatientsById(patientIds: string[]): Promise<PatientData[]> {
     .select('id, first_name, last_name, email, phone, photo_url')
     .in('id', patientIds);
 
-  const profileMap: Record<string, any> = {};
-  (profiles || []).forEach((p: any) => { profileMap[p.id] = p; });
+  const profileMap: Record<string, PartialProfile> = {};
+  (profiles || []).forEach((p) => { profileMap[p.id] = p; });
 
   return Promise.all(
-    patients.map(async (p: any) => {
+    patients.map(async (p) => {
       const patient = buildPatient(p, profileMap[p.id] || {});
       return loadPatientData(patient);
     })
@@ -97,12 +109,24 @@ export async function getPatientById(patientId: string): Promise<PatientData | n
 // Supabase rejects with "already registered", previously leaving the
 // operator stuck with no way to finish). Requires migration
 // 003_identity_and_provisioning.sql (provisioning_status column).
+// tempPassword is an input-only field for account provisioning — never a
+// persisted Patient record field, so it's declared here rather than on the
+// stored-record `Patient` type itself.
+export interface CreatePatientInput extends Partial<Patient> {
+  tempPassword?: string;
+}
+
 export async function createPatient(
-  patientData: Partial<Patient>,
-  caregiverId: string,
+  patientData: CreatePatientInput,
+  // SEC-003: kept for call-site/signature compatibility, but deliberately
+  // unused — the caregiver link (steps 3+4 below) now always derives the
+  // caregiver from the caller's own session (auth.uid()) inside
+  // create_patient_with_caregiver(), never from a client-supplied id, so a
+  // caller can never link an arbitrary account as someone else's caregiver.
+  _caregiverId: string,
   relationship?: string
 ): Promise<Patient> {
-  const tempPassword = (patientData as any).tempPassword?.trim() || (Math.random().toString(36).slice(-8) + 'Mm1!');
+  const tempPassword = patientData.tempPassword?.trim() || (Math.random().toString(36).slice(-8) + 'Mm1!');
   const email = patientData.email!;
   const normalizedEmail = normalizeEmail(email);
 
@@ -114,7 +138,7 @@ export async function createPatient(
   if (existingProfileError) {
     throw new Error(`Failed to check for an existing account: ${existingProfileError.message}`);
   }
-  if (existingProfile && (existingProfile as any).provisioning_status === 'complete') {
+  if (existingProfile && existingProfile.provisioning_status === 'complete') {
     throw new Error('This email address is already registered. Please sign in or use a different email.');
   }
 
@@ -157,45 +181,33 @@ export async function createPatient(
   });
   if (profileError) throw new Error(`Failed to create profile: ${profileError.message}`);
 
-  // 3. Create/resume patients row
-  const { data: existingPatientRow } = await supabase
-    .from('patients').select('*').eq('id', patientId).maybeSingle();
-
-  const patient = existingPatientRow ?? await (async () => {
-    const { data: p, error: patientError } = await supabase
-      .from('patients')
-      .insert({
-        id:                             patientId,
-        preferred_name:                 patientData.preferredName                  || null,
-        date_of_birth:                  patientData.dateOfBirth                    || null,
-        diagnosis_date:                 patientData.diagnosisDate                  || null,
-        dementia_stage:                 patientData.dementiaStage                  || null,
-        location:                       patientData.location                       || null,
-        address:                        patientData.address                        || null,
-        affirmation:                    patientData.affirmation                    || null,
-        emergency_contact_name:         patientData.emergencyContact?.name         || null,
-        emergency_contact_relationship: patientData.emergencyContact?.relationship || null,
-        emergency_contact_phone:        patientData.emergencyContact?.phone        || null,
-        emergency_contact_email:        patientData.emergencyContact?.email        || null,
-      })
-      .select().single();
-    if (patientError || !p) throw new Error(`Failed to create patient record: ${patientError?.message}`);
-    return p;
-  })();
-
-  await supabase.from('profiles').update({ provisioning_status: 'patient_created' }).eq('id', patientId);
-
-  // 4. Link caregiver to patient — upsert so a retry is idempotent against
-  // the existing UNIQUE(caregiver_id, patient_id) constraint.
-  const { error: relError } = await supabase
-    .from('caregiver_patients')
-    .upsert({
-      caregiver_id:      caregiverId,
-      patient_id:        patientId,
-      relationship_type: relationship || 'primary',
-      is_primary:        true,
-    }, { onConflict: 'caregiver_id,patient_id' });
-  if (relError) throw new Error(`Failed to link caregiver: ${relError.message}`);
+  // 3+4. Create the patients row AND link the caregiver in one atomic,
+  // trusted server-side call. SEC-003 (CORRECTIVE-002:
+  // 014_caregiver_relationship_authorization_and_view_hardening.sql)
+  // replaces the previous two-step "insert patients row, then separately
+  // claim it" design — that design let an existing, unlinked patient be
+  // claimed by id alone. create_patient_with_caregiver() creates both rows
+  // in a single transaction (never claims a pre-existing patients row,
+  // regardless of whether it already has a caregiver) and re-derives the
+  // caregiver from the caller's own session (auth.uid()), never from the
+  // `_caregiverId` parameter. Idempotent for a retry of the caller's own
+  // prior attempt.
+  const { data: patient, error: patientError } = await supabase.rpc('create_patient_with_caregiver', {
+    p_patient_id: patientId,
+    p_preferred_name: patientData.preferredName || null,
+    p_date_of_birth: patientData.dateOfBirth || null,
+    p_diagnosis_date: patientData.diagnosisDate || null,
+    p_dementia_stage: patientData.dementiaStage || null,
+    p_location: patientData.location || null,
+    p_address: patientData.address || null,
+    p_affirmation: patientData.affirmation || null,
+    p_emergency_contact_name: patientData.emergencyContact?.name || null,
+    p_emergency_contact_relationship: patientData.emergencyContact?.relationship || null,
+    p_emergency_contact_phone: patientData.emergencyContact?.phone || null,
+    p_emergency_contact_email: patientData.emergencyContact?.email || null,
+    p_relationship_type: relationship || 'primary',
+  });
+  if (patientError || !patient) throw new Error(`Failed to create patient record: ${patientError?.message}`);
 
   await supabase.from('profiles').update({ provisioning_status: 'complete' }).eq('id', patientId);
 
@@ -209,10 +221,10 @@ export async function createPatient(
       redirectTo: siteUrl,
     });
     if (inviteError) throw inviteError;
-  } catch (inviteErr: any) {
+  } catch (inviteErr) {
     throw new Error(
       `Patient account was created, but the password-setup email failed to send: ${
-        inviteErr?.message || 'unknown error'
+        getErrorMessage(inviteErr, 'unknown error')
       }. Use "Resend setup email" from the admin panel before the patient can log in.`
     );
   }
@@ -271,8 +283,15 @@ export async function removeTherapistFromPatient(
   if (error) throw new Error(`Failed to remove therapist: ${error.message}`);
 }
 
+export interface TherapistSummary {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+}
+
 // ─── Get therapists assigned to a patient ────────────────────────────────────
-export async function getPatientTherapists(patientId: string): Promise<any[]> {
+export async function getPatientTherapists(patientId: string): Promise<TherapistSummary[]> {
   const { data, error } = await supabase
     .from('therapist_relationships')
     .select('therapist_id, relationship_type, is_active')
@@ -281,7 +300,7 @@ export async function getPatientTherapists(patientId: string): Promise<any[]> {
 
   if (error || !data) return [];
 
-  const therapistIds = data.map((r: any) => r.therapist_id);
+  const therapistIds = data.map((r) => r.therapist_id);
   if (therapistIds.length === 0) return [];
 
   const { data: profiles } = await supabase
@@ -289,7 +308,7 @@ export async function getPatientTherapists(patientId: string): Promise<any[]> {
     .select('id, first_name, last_name, email, phone')
     .in('id', therapistIds);
 
-  return (profiles || []).map((p: any) => ({
+  return (profiles || []).map((p) => ({
     id: p.id,
     name: `${p.first_name} ${p.last_name}`,
     email: p.email,
@@ -298,7 +317,7 @@ export async function getPatientTherapists(patientId: string): Promise<any[]> {
 }
 
 // ─── Get all therapists in the system ────────────────────────────────────────
-export async function getAllTherapists(): Promise<any[]> {
+export async function getAllTherapists(): Promise<TherapistSummary[]> {
   const { data, error } = await supabase
     .from('profiles')
     .select('id, first_name, last_name, email, phone')
@@ -306,7 +325,7 @@ export async function getAllTherapists(): Promise<any[]> {
     .order('last_name');
 
   if (error || !data) return [];
-  return data.map((p: any) => ({
+  return data.map((p) => ({
     id: p.id,
     name: `${p.first_name} ${p.last_name}`,
     email: p.email,
@@ -360,17 +379,20 @@ export async function deletePatient(patientId: string): Promise<void> {
 }
 
 // ─── Build Patient object ─────────────────────────────────────────────────────
-function buildPatient(dbRow: any, profile: any = {}): Patient {
+function buildPatient(dbRow: PatientRow, profile: PartialProfile = {}): Patient {
   return {
     id:            dbRow.id,
     userId:        dbRow.id,
-    firstName:     profile.first_name  || dbRow.first_name  || '',
-    lastName:      profile.last_name   || dbRow.last_name   || '',
-    email:         profile.email       || dbRow.email       || '',
-    phone:         profile.phone       || dbRow.phone       || undefined,
+    // `patients` has no first_name/last_name/email/photo_url columns at
+    // all (those live on `profiles`) — the `|| dbRow.x` fallbacks removed
+    // here were always a no-op dead branch, previously hidden by `any`.
+    firstName:     profile.first_name  || '',
+    lastName:      profile.last_name   || '',
+    email:         profile.email       || '',
+    phone:         profile.phone       || undefined,
     preferredName: dbRow.preferred_name || profile.first_name || '',
     dateOfBirth:   dbRow.date_of_birth  || undefined,
-    photoUrl:      profile.photo_url    || dbRow.photo_url  || undefined,
+    photoUrl:      profile.photo_url    || undefined,
     location:      dbRow.location       || 'Unknown',
     address:       dbRow.address        || undefined,
     affirmation:   dbRow.affirmation    || 'You are safe. You are loved. You are at home.',
@@ -407,48 +429,48 @@ async function loadPatientData(patient: Patient): Promise<PatientData> {
     supabase.from('patient_notes').select('*').eq('patient_id', patient.id).order('created_at', { ascending: false }).limit(5),
   ]);
 
-  const tasksCompleted = (tasks || []).filter((t: any) => t.status === 'completed').length;
+  const tasksCompleted = (tasks || []).filter((t) => t.status === 'completed').length;
   const tasksTotal     = (tasks || []).length;
-  const latestMood     = (moodEntries || []).length > 0 ? (moodEntries as any[])[0] : null;
+  const latestMood     = (moodEntries && moodEntries.length > 0) ? moodEntries[0] : null;
 
   return {
     patient,
-    tasks: (tasks || []).map((t: any) => ({
-      id: t.id, patientId: t.patient_id, title: t.title, description: t.description,
-      icon: t.icon, timeOfDay: t.time_of_day, scheduledTime: t.scheduled_time,
-      daysOfWeek: t.days_of_week, status: t.status, completedAt: t.completed_at,
-      isRecurring: t.is_recurring, difficulty: t.difficulty, isActive: t.is_active,
+    tasks: (tasks || []).map((t) => ({
+      id: t.id, patientId: t.patient_id, title: t.title, description: t.description ?? undefined,
+      icon: t.icon, timeOfDay: t.time_of_day ?? undefined, scheduledTime: t.scheduled_time ?? '',
+      daysOfWeek: t.days_of_week, status: t.status, completedAt: t.completed_at ?? undefined,
+      isRecurring: t.is_recurring, difficulty: t.difficulty ?? undefined, isActive: t.is_active,
     })),
-    medications: (medications || []).map((m: any) => ({
-      id: m.id, patientId: m.patient_id, name: m.name, genericName: m.generic_name,
-      dosage: m.dosage, form: m.form, instructions: m.instructions,
-      prescribedBy: m.prescribed_by, prescriptionDate: m.prescription_date,
+    medications: (medications || []).map((m) => ({
+      id: m.id, patientId: m.patient_id, name: m.name, genericName: m.generic_name ?? undefined,
+      dosage: m.dosage, form: m.form ?? 'pill', instructions: m.instructions,
+      prescribedBy: m.prescribed_by ?? undefined, prescriptionDate: m.prescription_date ?? undefined,
       sideEffects: m.side_effects || [], schedule: [], isActive: m.is_active,
       createdAt: m.created_at, updatedAt: m.updated_at,
     })),
     medicationLogs: [],
-    moodEntries: (moodEntries || []).map((m: any) => ({
+    moodEntries: (moodEntries || []).map((m) => ({
       id: m.id, patientId: m.patient_id, mood: m.mood, intensity: m.intensity,
-      note: m.note, triggers: m.triggers || [], timeOfDay: m.time_of_day,
+      note: m.note ?? undefined, triggers: m.triggers || [], timeOfDay: m.time_of_day ?? undefined,
       timestamp: m.timestamp, recordedBy: m.recorded_by,
     })),
     behaviorLogs: [],
-    memories: (memories || []).map((m: any) => ({
-      id: m.id, patientId: m.patient_id, title: m.title, description: m.description,
-      photoUrl: m.photo_url, audioUrl: m.audio_url, date: m.date, location: m.location,
-      people: m.people || [], category: m.category, tags: m.tags || [],
+    memories: (memories || []).map((m) => ({
+      id: m.id, patientId: m.patient_id, title: m.title, description: m.description ?? undefined,
+      photoUrl: m.photo_url ?? undefined, audioUrl: m.audio_url ?? undefined, date: m.date ?? undefined, location: m.location ?? undefined,
+      people: m.people || [], category: m.category ?? undefined, tags: m.tags || [],
       isFavorite: m.is_favorite, createdAt: m.created_at, createdBy: m.created_by,
     })),
     documents: [],
-    careTeam: (careTeam || []).map((c: any) => ({
+    careTeam: (careTeam || []).map((c) => ({
       id: c.id, patientId: c.patient_id, name: c.name, role: c.role,
-      specialty: c.specialty, organization: c.organization,
-      phone: c.phone, email: c.email, isPrimary: c.is_primary,
+      specialty: c.specialty ?? undefined, organization: c.organization ?? undefined,
+      phone: c.phone, email: c.email ?? undefined, isPrimary: c.is_primary,
     })),
     reminders: [], vitalSigns: [], sleepEntries: [],
-    appointments: (appointments || []).map((a: any) => ({
+    appointments: (appointments || []).map((a) => ({
       id: a.id, patientId: a.patient_id, title: a.title, provider: a.provider,
-      location: a.location, date: a.date, time: a.time, notes: a.notes,
+      location: a.location ?? undefined, date: a.date, time: a.time, notes: a.notes ?? undefined,
       reminderSet: a.reminder_set, createdAt: a.created_at,
     })),
     goals: [],
@@ -460,15 +482,27 @@ async function loadPatientData(patient: Patient): Promise<PatientData> {
       sleepHours: 7, sleepQuality: 'good', activitiesCompleted: 0, behaviorIncidents: 0, alerts: [],
     },
     alerts: [], safetyAlerts: [], adlAssessments: [], nutritionLogs: [],
-    notes: (notes || []).map((n: any) => ({
+    notes: (notes || []).map((n) => ({
       id: n.id, patientId: n.patient_id, caregiverId: n.author_id,
       caregiverName: 'Unknown', note: n.note, noteType: n.note_type, createdAt: n.created_at,
     })),
   };
 }
 
+export interface PatientNoteSummary {
+  id: string;
+  patientId: string;
+  caregiverId: string;
+  // patient_notes has no author_name column (confirmed: src/types/supabase.ts) —
+  // the caller name was never actually derivable from this table alone.
+  caregiverName: string;
+  note: string;
+  noteType: NoteType;
+  createdAt: string;
+}
+
 // ─── Patient Notes ────────────────────────────────────────────────────────────
-export async function getPatientNotes(patientId: string): Promise<any[]> {
+export async function getPatientNotes(patientId: string): Promise<PatientNoteSummary[]> {
   const { data, error } = await supabase
     .from('patient_notes')
     .select('*')
@@ -476,11 +510,11 @@ export async function getPatientNotes(patientId: string): Promise<any[]> {
     .order('created_at', { ascending: false });
 
   if (error) { console.error('Error fetching notes:', error); return []; }
-  return (data || []).map((n: any) => ({
+  return (data || []).map((n) => ({
     id:            n.id,
     patientId:     n.patient_id,
     caregiverId:   n.author_id,
-    caregiverName: n.author_name || 'Unknown',
+    caregiverName: 'Unknown',
     note:          n.note,
     noteType:      n.note_type,
     createdAt:     n.created_at,
@@ -491,8 +525,8 @@ export async function addPatientNote(
   patientId:  string,
   authorId:   string,
   note:       string,
-  noteType:   string = 'general'
-): Promise<any> {
+  noteType:   NoteType = 'general'
+): Promise<Omit<PatientNoteSummary, 'caregiverName'>> {
   const { data, error } = await supabase
     .from('patient_notes')
     .insert({
