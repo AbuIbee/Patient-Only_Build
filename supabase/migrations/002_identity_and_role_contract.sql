@@ -72,13 +72,27 @@ UPDATE profiles SET phone = phone WHERE phone IS NOT NULL AND phone_normalized I
 -- App.tsx's isPrivileged/allowedRoles lists, and CLAUDE.md all assume these
 -- roles exist and are assignable. Broaden rather than narrow, so this is
 -- additive for whatever role values are already live.
+--
+-- *** MYMEMORIA-GITHUB-SUPABASE-COMPAT-001 CORRECTION ***: this list
+-- originally omitted 'pending'. 022_pending_role_support.sql later re-adds
+-- the SAME constraint name with 'pending' included — but between THIS file
+-- running and 022 running, if the target database already has any row with
+-- role='pending' (confirmed live on production, since
+-- AdminPendingApprovals.tsx filters on exactly that value today), the
+-- DROP CONSTRAINT above succeeds, the subsequent ADD CONSTRAINT fails
+-- (check_violation), the EXCEPTION handler only logs a notice, and
+-- profiles.role is left with NO CHECK constraint at all until 022 runs —
+-- "never leave profiles.role without its CHECK." Including 'pending' here
+-- from the start (matching 022's own eventual six-value set exactly, so
+-- 022's later DROP+ADD of the identical definition is a harmless no-op)
+-- closes that gap without waiting for 022.
 DO $$ BEGIN
   ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
   ALTER TABLE profiles
     ADD CONSTRAINT profiles_role_check
-    CHECK (role IN ('patient', 'admin', 'superadmin', 'caregiver', 'therapist'));
+    CHECK (role IN ('patient', 'admin', 'superadmin', 'caregiver', 'therapist', 'pending'));
 EXCEPTION WHEN OTHERS THEN
-  RAISE NOTICE 'profiles_role_check not reapplied — existing rows may contain a role value outside this set; reconcile manually before executing.';
+  RAISE NOTICE 'profiles_role_check not reapplied — existing rows may contain a role value outside this (six-value) set; reconcile manually before executing. profiles.role currently has NO CHECK constraint as a result — do not proceed to later migrations until this is resolved.';
 END $$;
 
 COMMENT ON COLUMN profiles.must_change_password IS 'F01: gates forced password reset at login; enforced client-side in App.tsx restoreSession + handlePasswordSet, re-verified (not just locally cleared) after ResetPasswordPage.';

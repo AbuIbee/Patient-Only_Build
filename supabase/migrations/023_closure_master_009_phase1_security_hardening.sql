@@ -101,9 +101,50 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- *** MYMEMORIA-GITHUB-SUPABASE-COMPAT-001 CORRECTION (staging-verified,
+-- 2026-10-16) ***: the policy above blocked a verified caregiver from
+-- their own patient's Calm-Me videos — only the patient themselves or an
+-- admin could pass it, contradicting the owner's explicitly preserved
+-- caregiver media-access authority. `ALTER POLICY` (not a new
+-- `CREATE POLICY`) updates the SAME named policy's definition in place,
+-- whether the CREATE above just made it (fresh database) or it already
+-- existed from an earlier apply (staging's/production's case) — either
+-- way, the final USING/WITH CHECK below is what's actually in effect.
+-- Keeps every original constraint (non-video paths unaffected, the video's
+-- own owner, backend support admins); adds ONLY the patient's existing,
+-- already-authorized caregiver relationship as an alternative permitted
+-- path. Retested after this change: PASS.
+ALTER POLICY "Calm-Me videos are patient-owned only (FQA-017/SEC-006)"
+  ON storage.objects
+  USING (
+    bucket_id != 'music-files'
+    OR (storage.foldername(name))[1] IS NULL
+    OR (storage.foldername(name))[1] != 'videos'
+    OR (storage.foldername(name))[2] = auth.uid()::text
+    OR EXISTS (
+      SELECT 1 FROM caregiver_patients cp
+      WHERE cp.patient_id::text = (storage.foldername(name))[2]
+        AND cp.caregiver_id = auth.uid()
+    )
+    OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role IN ('admin', 'superadmin'))
+  )
+  WITH CHECK (
+    bucket_id != 'music-files'
+    OR (storage.foldername(name))[1] IS NULL
+    OR (storage.foldername(name))[1] != 'videos'
+    OR (storage.foldername(name))[2] = auth.uid()::text
+    OR EXISTS (
+      SELECT 1 FROM caregiver_patients cp
+      WHERE cp.patient_id::text = (storage.foldername(name))[2]
+        AND cp.caregiver_id = auth.uid()
+    )
+    OR EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role IN ('admin', 'superadmin'))
+  );
+
 -- ============================================================
 -- 3. care_partner_checkins + media_uploads: the caller must actually BE
---    the patient_id on the row they're inserting (FQA-019/SEC-008)
+--    the patient_id on the row they're inserting, OR be that patient's
+--    authorized linked caregiver (FQA-019/SEC-008)
 -- ============================================================
 -- EVIDENCE: CLAUDE.md: "built for patients only" — there is no caregiver
 -- login in this deployed app. src/pages/patient/CarePartnerCheckin.tsx's
@@ -117,6 +158,23 @@ END $$;
 -- WHICHEVER patient_id is given has paid entitlement, never that the
 -- caller IS that patient. This adds the missing ownership check, matching
 -- what the application code already always does.
+--
+-- *** MYMEMORIA-GITHUB-SUPABASE-COMPAT-001 CORRECTION (staging-verified,
+-- 2026-10-16) ***: the original version here (`patient_id = auth.uid()`
+-- only) was tested with an authenticated caregiver session and FAILED —
+-- it denied every caregiver-submitted check-in/media record outright,
+-- directly contradicting the owner's explicitly preserved caregiver
+-- authority ("Coordinate permitted patient-related activities... Access
+-- the appropriate patient records and media"). Widened to also permit the
+-- patient's own authorized linked caregiver (via `caregiver_patients`,
+-- the SAME relationship table every other caregiver-accessible table in
+-- this schema already keys off). This still refuses an UNRELATED caller —
+-- `submitted_by`/`uploader_id = auth.uid()` (enforced by 027's own
+-- PERMISSIVE INSERT policy) prevents forgery by merely knowing a UUID; this
+-- RESTRICTIVE check additionally requires the caller be the patient or
+-- that patient's OWN linked caregiver, never an arbitrary third party.
+-- Retested after this change: PASS.
+--
 -- *** CORRECTED under RELEASE-BLOCKER-CLOSURE, PHASE A4 *** — both blocks
 -- below only caught "table doesn't exist" (undefined_table). If the live
 -- table exists but its column really isn't named `patient_id`, `CREATE
@@ -128,10 +186,31 @@ END $$;
 -- with this table. Added an undefined_column guard so a column-name
 -- surprise on either table degrades to "this one policy skipped," never
 -- "the whole file silently did nothing."
+-- Drop the old, stricter-named policy first: if this file was already
+-- applied once under its original (patient-only) name, leaving that
+-- policy in place alongside the new one would AND them together and the
+-- old one would still block every caregiver submission regardless of the
+-- new, wider policy below.
 DO $$ BEGIN
-  CREATE POLICY "Caller must be the check-in's own patient (FQA-019/SEC-008)"
+  DROP POLICY IF EXISTS "Caller must be the check-in's own patient (FQA-019/SEC-008)" ON care_partner_checkins;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "Caller must be the media's own patient (FQA-019/SEC-008)" ON media_uploads;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Caller must be the check-in's own patient or linked caregiver (FQA-019/SEC-008)"
     ON care_partner_checkins AS RESTRICTIVE FOR INSERT
-    WITH CHECK (patient_id = auth.uid());
+    WITH CHECK (
+      patient_id = auth.uid()
+      OR EXISTS (
+        SELECT 1 FROM caregiver_patients cp
+        WHERE cp.patient_id = care_partner_checkins.patient_id
+          AND cp.caregiver_id = auth.uid()
+      )
+    );
 EXCEPTION
   WHEN duplicate_object THEN NULL;
   WHEN undefined_table THEN
@@ -141,9 +220,16 @@ EXCEPTION
 END $$;
 
 DO $$ BEGIN
-  CREATE POLICY "Caller must be the media's own patient (FQA-019/SEC-008)"
+  CREATE POLICY "Caller must be the media's own patient or linked caregiver (FQA-019/SEC-008)"
     ON media_uploads AS RESTRICTIVE FOR INSERT
-    WITH CHECK (patient_id = auth.uid());
+    WITH CHECK (
+      patient_id = auth.uid()
+      OR EXISTS (
+        SELECT 1 FROM caregiver_patients cp
+        WHERE cp.patient_id = media_uploads.patient_id
+          AND cp.caregiver_id = auth.uid()
+      )
+    );
 EXCEPTION
   WHEN duplicate_object THEN NULL;
   WHEN undefined_table THEN
@@ -175,8 +261,14 @@ END $$;
 --   `videos/`.
 -- T5 (positive): a direct API call attempts
 --   `.from('care_partner_checkins').insert({ patient_id: '<someone else's
---   id>', submitted_by: auth.uid(), ... })`. Expected: denied.
+--   id, NOT linked to the caller as caregiver>', submitted_by: auth.uid(),
+--   ... })`. Expected: denied.
 -- T6 (negative, regression): the real application flow (patient_id ===
 --   auth.uid(), exactly what CarePartnerCheckin.tsx always sends) still
 --   succeeds, subject to 016's own entitlement check.
--- T7/T8: identical T5/T6 pair for `media_uploads`.
+-- T6b (positive, staging-verified 2026-10-16): caregiver C, linked to
+--   patient A via caregiver_patients, submits a check-in/media record with
+--   patient_id = A (submitted_by/uploader_id = C's own auth.uid()).
+--   Expected: succeeds. CONFIRMED PASS in staging after this correction
+--   (the original patient-only version FAILED this exact case).
+-- T7/T8: identical T5/T6/T6b set for `media_uploads`.

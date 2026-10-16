@@ -189,6 +189,54 @@ RETURNS boolean AS $$
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 
 -- ============================================================
+-- *** MYMEMORIA-GITHUB-SUPABASE-COMPAT-001 CORRECTION — reconciliation
+-- with production's existing temp-user enforcement ***
+-- ============================================================
+-- FINDING: production already has `profiles.temp_user_expires_at` plus
+-- live RESTRICTIVE policies using `NOT is_temp_user()` and
+-- `NOT is_temp_user_expired()` across profiles, patients, subscriptions,
+-- medications, medication_logs, memories, mood_entries, tasks,
+-- patient_intake, and the care_partner tables — a comprehensive,
+-- already-working mechanism this file's own original design did not know
+-- about when it was written. Neither function's internal body/signature
+-- has been read by this correction (no live database access was available
+-- to confirm it) — this file does NOT guess their logic and does NOT
+-- modify, rename, or depend on them.
+--
+-- WHY THIS FILE'S OWN RESTRICTIVE POLICIES (section 4 below) ARE SAFE TO
+-- APPLY ANYWAY, without replacing or weakening that existing enforcement:
+-- Postgres combines multiple RESTRICTIVE policies for the same command
+-- with AND — every one of them must pass for the row to be
+-- allowed. `caller_is_temp_user_program()` below checks a DIFFERENT
+-- condition (`subscriptions.program = 'temp_user'`, a brand-new column
+-- this file adds) than whatever `is_temp_user()` checks. Adding this
+-- file's RESTRICTIVE policies alongside the existing ones can only ever
+-- narrow access further (AND semantics), never widen it and never bypass
+-- the existing, already-live `is_temp_user()`/`is_temp_user_expired()`
+-- enforcement. This is "forward-compatible" in the sense the owner
+-- requires: it adds a second, independent check without touching the
+-- first.
+--
+-- WHAT THIS FILE DOES NOT RESOLVE (explicitly, not silently): no row in
+-- production today has `subscriptions.program` set (the column is new),
+-- so an EXISTING real temp-user account (already correctly restricted at
+-- the RLS layer by `is_temp_user()`) will NOT be recognized by
+-- `is_my_program_active()` / `caller_is_temp_user_program()` until a
+-- backfill sets `subscriptions.program='temp_user'` (and a `trial_ends_at`
+-- derived from that account's existing `profiles.temp_user_expires_at`)
+-- for it. Until that backfill runs, such an account is STILL correctly
+-- blocked from writes by the pre-existing `is_temp_user()`-based policies
+-- (no security regression), but the FRONTEND's own UI signal
+-- (`isTempUserDemo`/`isCompanionActive`, which reads `is_my_program_active()`
+-- exclusively) will show it as an ordinary account (a UX/display gap, not
+-- a security gap). This backfill is a production-specific data migration
+-- step, out of scope for today's staging-only work (staging has zero
+-- registered users — nothing to backfill) and NOT authorized to run
+-- against production under the current work order. It must be written and
+-- reviewed separately, informed by the exact `is_temp_user()`/
+-- `is_temp_user_expired()` definitions, before production release.
+--
+-- ============================================================
 -- 4. Temporary program: no persistent patient-health-data writes
 -- ============================================================
 -- Requirement: "No persistent patient-health-data writes... disable all

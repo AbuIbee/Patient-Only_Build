@@ -14,11 +14,19 @@ CREATE TABLE IF NOT EXISTS patient_document_uploads (
   patient_id    UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   section       TEXT NOT NULL CHECK (section IN ('medical_docs', 'medical_bills')),
   file_name     TEXT NOT NULL,
-  file_type     TEXT,
+  file_type     TEXT NOT NULL,
   storage_path  TEXT NOT NULL UNIQUE,
   note_text     TEXT DEFAULT '',
   uploaded_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- *** MYMEMORIA-GITHUB-SUPABASE-COMPAT-001 CORRECTION (staging-verified,
+-- 2026-10-16) ***: production's real `file_type` column is NOT NULL.
+-- PatientDocuments.tsx's own upload path always sets `file_type: file.type`
+-- (confirmed call site) — tightening matches both production and the only
+-- confirmed write path. Defensive re-apply in case the table already
+-- exists from an earlier partial run of this file.
+ALTER TABLE patient_document_uploads ALTER COLUMN file_type SET NOT NULL;
 
 ALTER TABLE patient_document_uploads ENABLE ROW LEVEL SECURITY;
 
@@ -85,22 +93,28 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
--- F13 (Tell Me a Story playback): TellMeAStoryDialog.tsx already uses
--- createSignedUrl correctly (not getPublicUrl) — the component code itself
--- needs no change. The work order's claim is that `storage.objects` on the
--- `audio-files` bucket lacks a SELECT policy letting an authenticated
--- caller mint a signed URL at all. This repo has no storage policy SQL for
--- that bucket to compare against (cross-cutting finding in
--- _audit_group_B.md), so this proposes the narrowest policy that would make
--- createSignedUrl work for a licensed/shared story catalog: any
--- authenticated user may read (sign URLs for) objects in this bucket. This
--- assumes `audio-files` holds only licensed/shareable story audio, not
--- private per-user uploads — confirm that assumption against the actual
--- bucket contents before applying; if any private uploads share this
--- bucket, scope this policy to a subfolder instead of the whole bucket.
-DO $$ BEGIN
-  CREATE POLICY "Authenticated users can read shared story audio"
-    ON storage.objects FOR SELECT
-    USING (bucket_id = 'audio-files' AND auth.role() = 'authenticated');
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+-- *** HELD — DO NOT EXECUTE until the audio-files bucket's actual contents
+-- are confirmed. MYMEMORIA-GITHUB-SUPABASE-COMPAT-001 correction: this
+-- block was previously active SQL granting bucket-wide authenticated
+-- SELECT. The production audit (MyMemoria_Production_Audit/
+-- 04_SUPABASE_SECURITY_AND_SCHEMA.md) confirms `audio-files` is a PRIVATE
+-- bucket (100 MiB limit, audio/mpeg|ogg|wav|mp4|webm only) but does NOT
+-- confirm whether it holds only licensed/shareable story audio or also
+-- private per-user uploads — the exact assumption this block's own
+-- original comment already flagged as unconfirmed. Broadening bucket-wide
+-- SELECT on that unverified assumption is exactly the kind of guess this
+-- engagement's own standing rule prohibits ("do not invent... unsafe
+-- assertions without verified evidence"). Held, matching 005/008's
+-- pending-clearance pattern, until the bucket's actual contents are
+-- confirmed (or the policy is rescoped to a specific shared-content
+-- subfolder instead of the whole bucket). F13 (Tell Me a Story playback)
+-- remains BLOCKED, not IMPLEMENTED, specifically because of this hold —
+-- TellMeAStoryDialog.tsx's own createSignedUrl call is already correct
+-- (not getPublicUrl) and needs no code change once this clears.
+--
+-- DO $$ BEGIN
+--   CREATE POLICY "Authenticated users can read shared story audio"
+--     ON storage.objects FOR SELECT
+--     USING (bucket_id = 'audio-files' AND auth.role() = 'authenticated');
+-- EXCEPTION WHEN duplicate_object THEN NULL;
+-- END $$;

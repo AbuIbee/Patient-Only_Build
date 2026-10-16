@@ -294,13 +294,32 @@ END $$;
 -- function is actually called), masking the gap until redeem_promo_code()
 -- is invoked for the first time and fails with "relation promo_redemptions
 -- does not exist." Defined here, defensively, ahead of that function.
+--
+-- *** MYMEMORIA-GITHUB-SUPABASE-COMPAT-001 CORRECTION (staging-verified,
+-- 2026-10-16) ***: `user_id` was `NOT NULL` here; staging's read-only
+-- comparison against real production metadata confirmed production's
+-- actual column is NULLABLE (a redemption can be recorded against an
+-- email before any account exists for it). Changed to match. Also added
+-- `redeemed_at` — the column the production audit's own catalog names
+-- (`04_SUPABASE_SECURITY_AND_SCHEMA.md`: "promo_redemptions... redeemed_at
+-- [NOT NULL]"); this file's original `created_at` is kept alongside it
+-- (no app code or RPC reads either column name, so dropping `created_at`
+-- risks nothing but adds no value either — both default to `now()` on
+-- insert, so no RPC INSERT statement needs its column list changed).
 CREATE TABLE IF NOT EXISTS promo_redemptions (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   email       TEXT NOT NULL,
-  user_id     UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  user_id     UUID REFERENCES profiles(id) ON DELETE CASCADE,
   promo_code  TEXT NOT NULL,
-  created_at  TIMESTAMP WITH TIME ZONE DEFAULT now()
+  created_at  TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  redeemed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
+
+-- Defensive, in case this runs against a table 013 did not create fresh
+-- (e.g. a prior partial apply) — matches the real production shape either
+-- way.
+ALTER TABLE promo_redemptions ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE promo_redemptions ADD COLUMN IF NOT EXISTS redeemed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now();
 
 DO $$ BEGIN
   ALTER TABLE promo_redemptions ADD CONSTRAINT promo_redemptions_email_code_unique UNIQUE (email, promo_code);

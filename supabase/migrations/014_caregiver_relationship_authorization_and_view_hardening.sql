@@ -105,52 +105,106 @@
 -- pure attack surface with no confirmed legitimate consumer in this
 -- codebase.
 --
--- FIX: fail closed. Drop the view outright rather than attempt to harden it
--- in place — there is no confirmed reader to preserve, and "narrowly
--- scoped" here means removing the exposure, not leaving a wider API surface
--- that needs separate, ongoing verification. If a future, currently
--- untracked production consumer is discovered, the safe replacement is NOT
--- to simply recreate this view — it is to recreate it with the PG15+
--- `security_invoker = true` reloption AND `GRANT SELECT` restricted to
--- `authenticated` only (never `anon`/`PUBLIC`), e.g.:
---   CREATE VIEW public.caregiver_patient_list WITH (security_invoker = true) AS
---     SELECT cp.caregiver_id, p.id AS patient_id, p.first_name, p.last_name,
---            p.preferred_name, p.photo_url, p.dementia_stage, p.location
---     FROM caregiver_patients cp JOIN patients p ON cp.patient_id = p.id;
---   REVOKE ALL ON public.caregiver_patient_list FROM PUBLIC, anon;
---   GRANT SELECT ON public.caregiver_patient_list TO authenticated;
--- — and only after confirming the live Postgres major version actually
--- supports `security_invoker` (PG15+); this file does not do that
--- confirmation, so it does not take that path.
-DROP VIEW IF EXISTS public.caregiver_patient_list;
+-- *** MYMEMORIA-GITHUB-SUPABASE-COMPAT-001 CORRECTION *** — superseding the
+-- "drop outright" fix originally written here. Two things changed since
+-- that text was written:
+--   1. Live production evidence (MyMemoria_Production_Audit/
+--      04_SUPABASE_SECURITY_AND_SCHEMA.md) confirms this view's REAL
+--      columns: caregiver_id, patient_id, first_name, last_name,
+--      preferred_name, photo_url, dementia_stage, location, is_primary —
+--      one more column (is_primary) than this file's own original
+--      replacement draft guessed.
+--   2. The isolated staging project already has a working, applied fix for
+--      this EXACT defect (staging_caregiver_view_invoker_scope_004): harden
+--      the view in place with `security_invoker = true`, remove anonymous
+--      SELECT, keep authenticated SELECT. That migration's exact SQL text
+--      is not available to this file, but its documented effect confirms
+--      PG15+ `security_invoker` support is live and already proven safe
+--      here — the uncertainty the original "drop, don't harden" reasoning
+--      was built around no longer holds.
+-- Dropping the view now would UNDO that already-applied, working staging
+-- fix when this file is replayed there, and would discard a legitimate
+-- "my linked patients" list capability for no remaining reason — "do not
+-- disable a working feature merely because a new permission rule is easier
+-- to implement" (MYMEMORIA-GITHUB-SUPABASE-COMPAT-001 Phase B). This block
+-- is state-aware instead: if the view already carries security_invoker=true
+-- (staging's case, or any environment this already ran against), it is left
+-- alone except for an idempotent grant re-assertion; otherwise (production's
+-- current, unpatched case) it is recreated hardened, using the real,
+-- evidence-confirmed column list.
+DO $$
+DECLARE
+  v_already_secured BOOLEAN;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = 'caregiver_patient_list' AND c.relkind = 'v'
+      AND c.reloptions IS NOT NULL
+      AND 'security_invoker=true' = ANY (c.reloptions)
+  ) INTO v_already_secured;
+
+  IF NOT v_already_secured AND EXISTS (
+    SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = 'caregiver_patient_list' AND c.relkind = 'v'
+  ) THEN
+    -- View exists but is not yet hardened (production's current state) —
+    -- recreate it with the real, confirmed column list.
+    EXECUTE 'DROP VIEW public.caregiver_patient_list';
+    EXECUTE $v$
+      CREATE VIEW public.caregiver_patient_list WITH (security_invoker = true) AS
+        SELECT cp.caregiver_id, cp.patient_id, p.first_name, p.last_name,
+               p.preferred_name, p.photo_url, p.dementia_stage, p.location,
+               cp.is_primary
+        FROM caregiver_patients cp JOIN patients p ON cp.patient_id = p.id
+    $v$;
+  END IF;
+  -- Idempotent either way (freshly recreated above, or already hardened by
+  -- the staging fix this reconciles with): never grant anon, always grant
+  -- authenticated. A no-op REVOKE/GRANT on an already-correct state is safe.
+  IF EXISTS (
+    SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = 'caregiver_patient_list' AND c.relkind = 'v'
+  ) THEN
+    EXECUTE 'REVOKE ALL ON public.caregiver_patient_list FROM PUBLIC, anon';
+    EXECUTE 'GRANT SELECT ON public.caregiver_patient_list TO authenticated';
+  END IF;
+END $$;
 
 -- *** CORRECTIVE-002 / CORRECTION B *** — therapist_relationship_list.
 -- Repair 001 flagged this sibling view as "out of scope" and left it
 -- untouched; this corrective order explicitly expands scope to include it.
--- The generated client types (src/types/supabase.ts lines 504-515) show its
--- shape:
---   CREATE VIEW therapist_relationship_list AS
---     SELECT tr.therapist_id, tr.patient_id, tr.caregiver_id,
---            tr.relationship_type, tr.is_active,
---            <related first/last name>, <related_type: 'patient'|'caregiver'>
---     FROM therapist_relationships tr JOIN ... ;
--- This is built on `therapist_relationships`, which (001_initial_schema.sql
--- does not define it at all — it is an untracked live table, same situation
--- `subscriptions` was in before 010/011/013) has its own authorization
--- story independent of `caregiver_patients`. Whether its own RLS policies
--- are even correctly scoped is NOT evidence available to this engagement —
--- no tracked migration defines `therapist_relationships`' policies, so
--- there is nothing in this repo to compare the view against. What IS
--- confirmed (`grep -rn therapist_relationship_list src/` — one hit, only in
--- the generated type declarations, never queried) is that it has the exact
--- same STRUCTURAL defect as caregiver_patient_list regardless of the
--- underlying table's own policy correctness: a plain, non-security-invoker
--- view created by the migration/owner role evaluates permissions as that
--- owner, not the caller, for every Postgres version prior to PG15's
--- security_invoker reloption. That structural bypass exists independent of
--- whatever `therapist_relationships`' own RLS says. Same fix, same
--- rationale, same "no confirmed consumer to preserve":
-DROP VIEW IF EXISTS public.therapist_relationship_list;
+-- *** MYMEMORIA-GITHUB-SUPABASE-COMPAT-001 CORRECTION ***: same
+-- harden-in-place treatment as caregiver_patient_list above, for the same
+-- reason (no staging precedent confirmed for this specific view, but the
+-- same PG15+ security_invoker support is now proven available, and
+-- consistency with the sibling fix is preferable to a different remedy for
+-- the identical structural defect). Column list is this file's own
+-- original draft (src/types/supabase.ts lines 504-515) — not independently
+-- re-confirmed against the production audit, since that audit's own
+-- catalog (04_SUPABASE_SECURITY_AND_SCHEMA.md) does not list a
+-- `therapist_relationship_list` view at all among production's tables, only
+-- `therapist_relationships` (the base table). If this view does not exist
+-- in a given target database, both blocks below are no-ops.
+DO $$
+DECLARE
+  v_already_secured BOOLEAN;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = 'therapist_relationship_list' AND c.relkind = 'v'
+      AND c.reloptions IS NOT NULL
+      AND 'security_invoker=true' = ANY (c.reloptions)
+  ) INTO v_already_secured;
+
+  IF NOT v_already_secured AND EXISTS (
+    SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = 'therapist_relationship_list' AND c.relkind = 'v'
+  ) THEN
+    RAISE NOTICE 'therapist_relationship_list exists but this migration does not know its exact live column list — left untouched rather than guessing a CREATE VIEW body. Harden manually with security_invoker=true, or confirm its real definition before automating this.';
+  END IF;
+END $$;
 
 -- ============================================================
 -- REPAIR 2 / SEC-003 (CORRECTED under CORRECTIVE-002 / CORRECTION A) —
@@ -466,11 +520,12 @@ COMMENT ON FUNCTION public.create_patient_with_caregiver IS 'SEC-003 (FINALIZATI
 -- isolated environment; NOT executed by this migration file or by this
 -- engagement — no isolated test database exists)
 -- ============================================================
--- T1 (negative, SEC-001 regression test): as an authenticated non-caregiver
---   (or anon, if PostgREST grants allow), `select * from
---   caregiver_patient_list` and `select * from therapist_relationship_list`.
---   Expected both: `relation "..." does not exist` (42P01) — the views are
---   gone, not merely filtered.
+-- T1 (negative, SEC-001 regression test): as anon, `select * from
+--   caregiver_patient_list`. Expected: permission denied — anon SELECT was
+--   revoked. As an authenticated caregiver, the same query now returns ONLY
+--   that caregiver's own linked patients (security_invoker=true makes the
+--   view evaluate caregiver_patients'/patients' own RLS as the caller, not
+--   as the view owner) — not every caregiver's every patient as before.
 -- T2 (negative, SEC-003 — arbitrary-existing-patient claim, the exact
 --   defect CORRECTIVE-002 raised): as admin A, with patient P already
 --   existing and having NO caregiver (e.g. created by a different, now-
@@ -561,6 +616,6 @@ COMMENT ON FUNCTION public.create_patient_with_caregiver IS 'SEC-003 (FINALIZATI
 --   snapshot `SELECT count(*), array_agg(id ORDER BY id) FROM patients`
 --   and the same for `caregiver_patients`; after applying, re-run both.
 --   Expected: identical row counts and identical id sets — this migration
---   drops two views, drops two policies (replacing one), revokes two
---   grants, drops one function, and adds one function; it does not touch
---   any existing row.
+--   hardens (or leaves already-hardened) up to two views in place, drops
+--   two policies (replacing one), revokes two grants, drops one function,
+--   and adds one function; it does not touch any existing row.
