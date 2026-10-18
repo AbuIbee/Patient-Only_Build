@@ -14,8 +14,9 @@ import {
 import {
   getMyOrganizations, getOrgMembers, getOrgLicense, getOrgCoveredPatients,
   orgConfigureLicense, inviteOrgMember, removeOrgMember, createOrganization,
-  type OrgLicense, type OrgRole, type OrgMembershipRow,
+  type OrgLicense, type OrgRole, type OrgMembershipRow, type OrgPackageType,
 } from '@/services/organizationService';
+import OrganizationBillingPage from './OrganizationBillingPage';
 
 const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze border-soft-taupe bg-white';
 
@@ -281,9 +282,11 @@ function CoveredPatientsCard({ orgId }: { orgId: string }) {
 
 export default function OrganizationDirectorDashboard({ organizationId }: { organizationId: string }) {
   const { dispatch } = useApp();
+  const [tab, setTab] = useState<'overview' | 'billing'>('overview');
   const [license, setLicense] = useState<OrgLicense | null>(null);
   const [members, setMembers] = useState<(OrgMembershipRow & { firstName: string; lastName: string; email: string })[]>([]);
   const [orgName, setOrgName] = useState('');
+  const [packageType, setPackageType] = useState<OrgPackageType>('integrated_care');
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -294,9 +297,11 @@ export default function OrganizationDirectorDashboard({ organizationId }: { orga
         getOrgMembers(organizationId),
         getMyOrganizations(),
       ]);
+      const org = orgs.find((o) => o.organizationId === organizationId);
       setLicense(lic);
       setMembers(mem);
-      setOrgName(orgs.find((o) => o.organizationId === organizationId)?.organizationName ?? '');
+      setOrgName(org?.organizationName ?? '');
+      setPackageType(org?.packageType ?? 'integrated_care');
     } finally {
       setLoading(false);
     }
@@ -329,12 +334,28 @@ export default function OrganizationDirectorDashboard({ organizationId }: { orga
             <LogOut className="w-4 h-4" /> Logout
           </button>
         </div>
+        <div className="max-w-3xl mx-auto flex gap-1 mt-3">
+          {([['overview', 'Overview'], ['billing', 'Billing & Add-Ons']] as const).map(([id, label]) => (
+            <button
+              key={id} type="button" onClick={() => setTab(id)}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${tab === id ? 'bg-warm-bronze text-white' : 'text-medium-gray hover:bg-soft-taupe/30'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </header>
 
       <main className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
-        <LicenseCard orgId={organizationId} license={license} onUpdated={() => { void refresh(); }} />
-        <StaffCard orgId={organizationId} members={members} onChanged={() => { void refresh(); }} />
-        <CoveredPatientsCard orgId={organizationId} />
+        {tab === 'overview' ? (
+          <>
+            <LicenseCard orgId={organizationId} license={license} onUpdated={() => { void refresh(); }} />
+            <StaffCard orgId={organizationId} members={members} onChanged={() => { void refresh(); }} />
+            <CoveredPatientsCard orgId={organizationId} />
+          </>
+        ) : (
+          <OrganizationBillingPage organizationId={organizationId} orgName={orgName || 'Organization'} packageType={packageType} />
+        )}
       </main>
     </div>
   );
