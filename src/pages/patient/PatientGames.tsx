@@ -78,8 +78,10 @@ function GameHeader({ title, onBack }: { title: string; onBack: () => void }) {
 }
 
 export default function PatientGames({ initialGame, onNavigateHome }: PatientGamesProps) {
-  const { tier, subscription, isMaster, isActive } = useSubscription();
-  const plan = subscription?.plan ?? null;
+  const { tier, plan, isMaster, isActive } = useSubscription();
+  // ENTERPRISE CONSOLIDATED DELIVERY: `plan` comes directly from context —
+  // already 'full_support' while enterprise-covered, regardless of any
+  // stored personal subscription plan.
   // Mirrors useSubscription().can()'s own rule: an inactive (expired/
   // canceled/past-due) paid subscription grants no paid entitlement,
   // regardless of the tier value still stored on the row — same inactive

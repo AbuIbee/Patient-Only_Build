@@ -32,6 +32,17 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B: same fail-closed
   // pattern for the 14-day residential trial.
   const [trialActive, setTrialActive] = useState<boolean | null>(null);
+  // ENTERPRISE CONSOLIDATED DELIVERY: "every patient actively covered by
+  // an authorized Enterprise organization receives Full Support
+  // automatically." Independent of — and never written into —
+  // `subscription`/the `subscriptions` table at all, so a patient's
+  // preexisting personal subscription row is never touched by coverage
+  // starting, ending, or an organization being removed. Starts false
+  // (not null) because, unlike program/trial, coverage is checked for
+  // EVERY signed-in user regardless of their subscription's own status —
+  // false is the correct default for someone who was never covered, not
+  // an "unconfirmed, fails closed" state.
+  const [isEnterpriseCovered, setIsEnterpriseCovered] = useState(false);
 
   const loadSubscription = useCallback(async (): Promise<string | null> => {
     try {
@@ -39,6 +50,20 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       if (!user) { setSubscription(null); return null; }
 
       setUserEmail(user.email ?? null);
+
+      // ENTERPRISE CONSOLIDATED DELIVERY: checked for EVERY signed-in
+      // user, independent of tier/plan/status and of whichever branch
+      // below runs — coverage is a separate, parallel entitlement source,
+      // never conflated with (or written into) the personal subscription
+      // row. Master is checked too (harmless — masterFlag already
+      // overrides everything downstream regardless of this value).
+      const { data: covered, error: coverageError } = await supabase.rpc('is_my_enterprise_coverage_active');
+      if (coverageError) {
+        console.error('[Subscription] Enterprise coverage check error:', coverageError.message);
+        setIsEnterpriseCovered(false); // fail closed
+      } else {
+        setIsEnterpriseCovered(covered === true);
+      }
 
       // ── Master account: skip DB entirely, synthesise a master subscription ──
       if (isMasterEmail(user.email)) {
@@ -215,14 +240,29 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   // subscription object already reflects the master tier from a previous load.
   const masterFlag = isMasterEmail(userEmail) || subscription?.tier === 'master';
 
-  const tier: TierName = subscription?.tier ?? 'free_tier';
+  // ENTERPRISE CONSOLIDATED DELIVERY — item 2/3: a covered patient's
+  // EFFECTIVE tier/plan is paid_tier/full_support regardless of their
+  // personal subscription row's own tier/plan/status, and regardless of
+  // master (master already implies everything coverage would, so no
+  // precedence conflict either way). The underlying `subscription` object
+  // itself — and its tier/plan/status — is NEVER mutated by this; a
+  // covered patient's preexisting personal subscription (if any) is
+  // preserved exactly as stored, ready to resume the moment coverage
+  // ends (item: "handle organization removal, license expiration and
+  // coverage transitions without deleting data or silently billing the
+  // patient").
+  const tier: TierName = masterFlag ? 'master' : isEnterpriseCovered ? 'paid_tier' : (subscription?.tier ?? 'free_tier');
+  const effectivePlan = masterFlag ? null : isEnterpriseCovered ? 'full_support' : (subscription?.plan ?? null);
 
   // For master accounts isActive must be true regardless of subscription state.
   // REPAIR 007 / Phase B: programActive and trialActive (both trusted,
   // server-computed) are threaded through so an expired Temporary/
   // Companion grant OR an expired residential trial loses access via this
   // SAME single isActive value every gate in the app already reads.
-  const isActive  = masterFlag ? true : isSubscriptionActive(subscription, programActive, trialActive);
+  // Enterprise coverage is its own trusted, server-computed signal
+  // (is_my_enterprise_coverage_active(), checked above) — true here
+  // bypasses the personal-subscription check entirely while covered.
+  const isActive  = masterFlag ? true : isEnterpriseCovered ? true : isSubscriptionActive(subscription, programActive, trialActive);
   const trialDays = trialDaysRemaining(subscription);
   const canRefund = isWithinRefundWindow(subscription);
   const isExpired = masterFlag ? false : isTrialExpired(subscription);
@@ -244,11 +284,12 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       if (masterFlag) return true;
       if (subscription?.tier === 'master') return true;
       if (!isActive) return false;
-      // REPAIR 006: plan passed through so Daily Care vs Full Support is
-      // distinguished here — the one place every gate in the app reads.
-      return hasFeatureAccess(tier, feature, subscription?.plan ?? null);
+      // REPAIR 006 / ENTERPRISE CONSOLIDATED DELIVERY: effectivePlan is
+      // 'full_support' while covered (regardless of the stored personal
+      // plan), otherwise the stored plan exactly as before.
+      return hasFeatureAccess(tier, feature, effectivePlan);
     },
-    [tier, isActive, masterFlag, subscription?.tier, subscription?.plan]
+    [tier, isActive, masterFlag, subscription?.tier, effectivePlan]
   );
 
   return (
@@ -256,6 +297,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       value={{
         subscription,
         tier,
+        plan: effectivePlan,
+        isEnterpriseCovered,
         isLoading,
         isActive,
         isMaster: masterFlag,

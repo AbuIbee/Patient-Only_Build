@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { Subscription, TierName, FeatureKey, PromoCode } from '@/types/subscription';
+import type { Subscription, TierName, PlanName, FeatureKey, PromoCode } from '@/types/subscription';
 
 // RELEASE-BLOCKER-CLOSURE PHASE 2: the context object and this hook live
 // here (not in SubscriptionContext.tsx), because that file also exports the
@@ -12,6 +12,17 @@ export interface SubscriptionContextType {
   isLoading: boolean;
   isActive: boolean;
   isMaster: boolean;
+  // ENTERPRISE CONSOLIDATED DELIVERY: the EFFECTIVE plan every gate
+  // should read — 'full_support' while isEnterpriseCovered is true
+  // (regardless of the stored subscription.plan), otherwise exactly
+  // subscription.plan. canPlayGame()/hasFeatureAccess() callers outside
+  // this context (PatientHome.tsx, PatientGames.tsx) must read THIS, not
+  // subscription.plan directly, or a covered patient would not see their
+  // automatic Full Support entitlement in those two places.
+  plan: PlanName | null;
+  // true only when is_my_enterprise_coverage_active() (migration 035)
+  // confirmed it server-side for the signed-in patient — never inferred.
+  isEnterpriseCovered: boolean;
   trialDays: number;
   canRefund: boolean;
   isExpired: boolean;

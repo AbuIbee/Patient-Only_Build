@@ -356,6 +356,228 @@ export interface Database {
         // Functions section below for the same caution applied elsewhere.
         Relationships: []
       }
+      // ENTERPRISE CONSOLIDATED DELIVERY / migration 035. See that file's
+      // own header comment for the full design rationale.
+      organizations: {
+        Row: {
+          id: string
+          name: string
+          package_type: "therapist" | "integrated_care"
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          package_type: "therapist" | "integrated_care"
+          created_by: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          package_type?: "therapist" | "integrated_care"
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organizations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organization_memberships: {
+        Row: {
+          id: string
+          organization_id: string
+          user_id: string
+          org_role: "director" | "caregiver" | "therapist" | "medical_professional" | "billing_admin"
+          status: "invited" | "active" | "revoked" | "declined"
+          invited_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          user_id: string
+          org_role: "director" | "caregiver" | "therapist" | "medical_professional" | "billing_admin"
+          status?: "invited" | "active" | "revoked" | "declined"
+          invited_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          user_id?: string
+          org_role?: "director" | "caregiver" | "therapist" | "medical_professional" | "billing_admin"
+          status?: "invited" | "active" | "revoked" | "declined"
+          invited_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_memberships_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_memberships_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organization_licenses: {
+        Row: {
+          id: string
+          organization_id: string
+          licensed_seats: number | null
+          covered_patient_capacity: number | null
+          annual_license_fee: number | null
+          status: "proposed" | "active" | "expired"
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          licensed_seats?: number | null
+          covered_patient_capacity?: number | null
+          annual_license_fee?: number | null
+          status?: "proposed" | "active" | "expired"
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          licensed_seats?: number | null
+          covered_patient_capacity?: number | null
+          annual_license_fee?: number | null
+          status?: "proposed" | "active" | "expired"
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_licenses_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_patient_assignments: {
+        Row: {
+          id: string
+          organization_id: string
+          user_id: string
+          patient_id: string
+          org_role: "caregiver" | "therapist" | "medical_professional"
+          is_active: boolean
+          assigned_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          user_id: string
+          patient_id: string
+          org_role: "caregiver" | "therapist" | "medical_professional"
+          is_active?: boolean
+          assigned_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          user_id?: string
+          patient_id?: string
+          org_role?: "caregiver" | "therapist" | "medical_professional"
+          is_active?: boolean
+          assigned_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_patient_assignments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_patient_assignments_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      covered_patient_memberships: {
+        Row: {
+          id: string
+          organization_id: string
+          patient_id: string
+          status: "active" | "ended"
+          started_at: string
+          ended_at: string | null
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          patient_id: string
+          status?: "active" | "ended"
+          started_at?: string
+          ended_at?: string | null
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          patient_id?: string
+          status?: "active" | "ended"
+          started_at?: string
+          ended_at?: string | null
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "covered_patient_memberships_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "covered_patient_memberships_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       patient_notes: {
         Row: {
           id: string
@@ -2140,6 +2362,96 @@ export interface Database {
       // caller's own unconsumed row.
       cancel_my_pending_registration: {
         Args: { p_registration_id: string }
+        Returns: boolean
+      }
+      // ENTERPRISE CONSOLIDATED DELIVERY / migration 035 — see that
+      // file's own header comment for the full design rationale.
+      is_active_org_director: {
+        Args: { p_org_id: string }
+        Returns: boolean
+      }
+      is_active_org_member: {
+        Args: { p_org_id: string }
+        Returns: boolean
+      }
+      create_organization: {
+        Args: { p_name: string; p_package_type: string }
+        Returns: Database['public']['Tables']['organizations']['Row']
+      }
+      org_configure_license: {
+        Args: {
+          p_org_id: string
+          p_licensed_seats: number | null
+          p_covered_patient_capacity: number | null
+          p_annual_license_fee: number | null
+        }
+        Returns: Database['public']['Tables']['organization_licenses']['Row']
+      }
+      invite_org_member: {
+        Args: { p_org_id: string; p_email: string; p_org_role: string }
+        Returns: Database['public']['Tables']['organization_memberships']['Row']
+      }
+      respond_to_org_invite: {
+        Args: { p_membership_id: string; p_accept: boolean }
+        Returns: Database['public']['Tables']['organization_memberships']['Row']
+      }
+      remove_org_member: {
+        Args: { p_org_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      cover_patient: {
+        Args: { p_org_id: string; p_patient_id: string }
+        Returns: Database['public']['Tables']['covered_patient_memberships']['Row']
+      }
+      cover_patient_via_staff_registration: {
+        Args: { p_org_id: string; p_patient_id: string }
+        Returns: Database['public']['Tables']['covered_patient_memberships']['Row']
+      }
+      end_patient_coverage: {
+        Args: { p_org_id: string; p_patient_id: string }
+        Returns: boolean
+      }
+      assign_staff_to_patient: {
+        Args: { p_org_id: string; p_user_id: string; p_patient_id: string; p_org_role: string }
+        Returns: Database['public']['Tables']['staff_patient_assignments']['Row']
+      }
+      unassign_staff_from_patient: {
+        Args: { p_org_id: string; p_user_id: string; p_patient_id: string }
+        Returns: boolean
+      }
+      get_my_organizations: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          organization_id: string
+          organization_name: string
+          package_type: string
+          org_role: string
+        }[]
+      }
+      get_my_pending_org_invites: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          membership_id: string
+          organization_id: string
+          organization_name: string
+          org_role: string
+          created_at: string
+        }[]
+      }
+      get_my_staff_patients: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          organization_id: string
+          organization_name: string
+          patient_id: string
+          first_name: string
+          last_name: string
+          preferred_name: string | null
+          org_role: string
+        }[]
+      }
+      is_my_enterprise_coverage_active: {
+        Args: Record<PropertyKey, never>
         Returns: boolean
       }
       // REPAIR 007: trusted, server-`now()`-computed Temporary/Companion

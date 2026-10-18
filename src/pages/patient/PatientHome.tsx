@@ -166,8 +166,11 @@ export default function PatientHome({ onNavigateToGame, onNavigateToView }: Pati
   // recorded message, and manually stepping through a slideshow, are
   // unaffected — only the CREATE/AUTO actions are gated, so no previously
   // stored content or existing manual-use behavior is removed.
-  const { can, tier, subscription, isMaster, isActive } = useSubscription();
-  const plan = subscription?.plan ?? null;
+  const { can, tier, plan, isMaster, isActive } = useSubscription();
+  // ENTERPRISE CONSOLIDATED DELIVERY: `plan` now comes directly from
+  // context — it is already 'full_support' while enterprise-covered,
+  // regardless of any stored personal subscription plan (reading
+  // subscription?.plan directly here would have missed that).
   // Same inactive → free-tier-equivalent rule as PatientGames.tsx — an
   // expired/canceled paid subscription grants no paid game entitlement
   // merely because the stored tier value hasn't changed yet.
