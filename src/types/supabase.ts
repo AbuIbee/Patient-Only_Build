@@ -140,6 +140,14 @@ export interface Database {
       patients: {
         Row: {
           id: string
+          // Confirmed NOT NULL, no default, by independent production
+          // catalog read (MYMEMORIA FINAL MIGRATION CLOSURE review,
+          // 2026-10-17) — previously missing from this hand-maintained
+          // type file even though real call sites (PricingPage.tsx's own
+          // `.from('patients').upsert({id, first_name, last_name, ...})`)
+          // already depend on them.
+          first_name: string
+          last_name: string
           date_of_birth: string | null
           diagnosis: string | null
           dementia_stage: DementiaStage | null
@@ -180,6 +188,14 @@ export interface Database {
         }
         Insert: {
           id: string
+          // Optional here (unlike Row, where both are always non-null):
+          // every existing call site that omits them does so on an
+          // UPSERT against an ALREADY-EXISTING row (the value persists
+          // from the original INSERT) — never a bare fresh INSERT
+          // without them. A genuinely fresh INSERT (this round's new
+          // caregiver_claim_new_patient RPC) always supplies both.
+          first_name?: string
+          last_name?: string
           date_of_birth?: string | null
           diagnosis?: string | null
           dementia_stage?: DementiaStage | null
@@ -208,6 +224,8 @@ export interface Database {
         }
         Update: {
           id?: string
+          first_name?: string
+          last_name?: string
           date_of_birth?: string | null
           diagnosis?: string | null
           dementia_stage?: DementiaStage | null
@@ -1792,6 +1810,96 @@ export interface Database {
           },
         ]
       }
+      // MYMEMORIA ALLY caregiver self-service patient registration —
+      // migration 030. Zero client-facing RLS policy (RLS enabled, no
+      // policy = fail closed); every access goes through the two
+      // SECURITY DEFINER RPCs below. Never selected directly by any
+      // tracked application code — present here only so `supabase.rpc()`
+      // return types (which reference this table's Row shape) type-check.
+      pending_caregiver_registrations: {
+        Row: {
+          id: string
+          caregiver_id: string
+          claim_token: string
+          patient_first_name: string
+          patient_last_name: string
+          patient_email: string
+          patient_preferred_name: string | null
+          patient_date_of_birth: string | null
+          patient_diagnosis_date: string | null
+          patient_dementia_stage: string | null
+          patient_location: string | null
+          patient_address: string | null
+          emergency_contact_name: string | null
+          emergency_contact_relationship: string | null
+          emergency_contact_phone: string | null
+          emergency_contact_email: string | null
+          relationship_type: string
+          created_at: string
+          consumed_at: string | null
+          patient_id: string | null
+        }
+        Insert: {
+          id?: string
+          caregiver_id: string
+          claim_token?: string
+          patient_first_name: string
+          patient_last_name: string
+          patient_email: string
+          patient_preferred_name?: string | null
+          patient_date_of_birth?: string | null
+          patient_diagnosis_date?: string | null
+          patient_dementia_stage?: string | null
+          patient_location?: string | null
+          patient_address?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_relationship?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_email?: string | null
+          relationship_type?: string
+          created_at?: string
+          consumed_at?: string | null
+          patient_id?: string | null
+        }
+        Update: {
+          id?: string
+          caregiver_id?: string
+          claim_token?: string
+          patient_first_name?: string
+          patient_last_name?: string
+          patient_email?: string
+          patient_preferred_name?: string | null
+          patient_date_of_birth?: string | null
+          patient_diagnosis_date?: string | null
+          patient_dementia_stage?: string | null
+          patient_location?: string | null
+          patient_address?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_relationship?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_email?: string | null
+          relationship_type?: string
+          created_at?: string
+          consumed_at?: string | null
+          patient_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_caregiver_registrations_caregiver_id_fkey"
+            columns: ["caregiver_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_caregiver_registrations_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     // NOTE: both views below are proposed for removal by
     // 014_caregiver_relationship_authorization_and_view_hardening.sql
@@ -1921,6 +2029,40 @@ export interface Database {
           p_emergency_contact_phone?: string | null
           p_emergency_contact_email?: string | null
           p_relationship_type?: string
+        }
+        Returns: Database['public']['Tables']['patients']['Row']
+      }
+      // MYMEMORIA ALLY caregiver self-service patient registration
+      // (migration 030) — step 1, server-generates the claim token.
+      // Caller must already be an authenticated role='caregiver' account.
+      caregiver_initiate_patient_registration: {
+        Args: {
+          p_first_name: string
+          p_last_name: string
+          p_email: string
+          p_preferred_name?: string | null
+          p_date_of_birth?: string | null
+          p_diagnosis_date?: string | null
+          p_dementia_stage?: string | null
+          p_location?: string | null
+          p_address?: string | null
+          p_emergency_contact_name?: string | null
+          p_emergency_contact_relationship?: string | null
+          p_emergency_contact_phone?: string | null
+          p_emergency_contact_email?: string | null
+          p_relationship_type?: string
+        }
+        Returns: Database['public']['Tables']['pending_caregiver_registrations']['Row']
+      }
+      // Step 2 — consumes the token, creates patients + caregiver_patients
+      // atomically, idempotent on retry. See migration 030's own comment
+      // block for the full security rationale (server-generated token,
+      // never routed through Auth user_metadata).
+      caregiver_claim_new_patient: {
+        Args: {
+          p_registration_id: string
+          p_claim_token: string
+          p_patient_id: string
         }
         Returns: Database['public']['Tables']['patients']['Row']
       }

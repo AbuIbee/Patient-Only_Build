@@ -1,0 +1,83 @@
+=== P07: caregiver_patient_list hardened in place, same columns, not dropped/recreated ===
+       reloptions        
+-------------------------
+ {security_invoker=true}
+(1 row)
+
+  column_name   
+----------------
+ caregiver_id
+ patient_id
+ first_name
+ last_name
+ preferred_name
+ is_primary
+(6 rows)
+
+=== P09: effective grants on profiles.role/email ===
+    grantee    | privilege_type | column_name 
+---------------+----------------+-------------
+ authenticated | INSERT         | email
+ authenticated | REFERENCES     | email
+ authenticated | SELECT         | email
+ authenticated | REFERENCES     | role
+ authenticated | SELECT         | role
+ postgres      | INSERT         | email
+ postgres      | REFERENCES     | email
+ postgres      | SELECT         | email
+ postgres      | UPDATE         | email
+ postgres      | INSERT         | role
+ postgres      | REFERENCES     | role
+ postgres      | SELECT         | role
+ postgres      | UPDATE         | role
+(13 rows)
+
+ anon_select | anon_insert | anon_update 
+-------------+-------------+-------------
+ f           | f           | f
+(1 row)
+
+=== P06: a bad role value forces the WHOLE migration to abort (none of its other effects land) ===
+       conname       |                                                          pg_get_constraintdef                                                           
+---------------------+-----------------------------------------------------------------------------------------------------------------------------------------
+ profiles_role_check | CHECK ((role = ANY (ARRAY['patient'::text, 'admin'::text, 'superadmin'::text, 'caregiver'::text, 'therapist'::text, 'pending'::text])))
+(1 row)
+
+DO
+=== P10: admin_set_subscription exists exactly once, 8-arg signature ===
+psql:/tmp/04_remaining.sql:29: NOTICE:  EXPECTED: check_violation, the CHECK constraint is live and enforced: new row for relation "profiles" violates check constraint "profiles_role_check"
+                                                             oid                                                             
+-----------------------------------------------------------------------------------------------------------------------------
+ admin_set_subscription(uuid,text,text,text,text,timestamp with time zone,timestamp with time zone,timestamp with time zone)
+(1 row)
+
+=== P12: promo redemption expiry is based on REDEMPTION time, not an old trial_started_at ===
+INSERT 0 1
+UPDATE 1
+SET
+SET
+       promo_expires_at       | still_in_the_future 
+------------------------------+---------------------
+ 2026-12-06 16:05:58.73925+00 | t
+(1 row)
+
+RESET
+RESET
+=== P12(b): concurrent redemption of a max_uses=1 code — exactly one winner ===
+INSERT 0 1
+SET
+SET
+ promo_code 
+------------
+ ONLYONE
+(1 row)
+
+RESET
+RESET
+SET
+SET
+psql:/tmp/04_remaining.sql:67: NOTICE:  EXPECTED exception: Invalid or expired promotional code.
+DO
+RESET
+RESET
+=== DONE ===

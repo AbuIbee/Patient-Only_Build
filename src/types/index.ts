@@ -1,6 +1,6 @@
-// My Memoria Ally - Patient + Admin Only Types
+// My Memoria Ally - Patient + Admin + Caregiver Types
 
-export type UserRole = 'patient' | 'admin';
+export type UserRole = 'patient' | 'admin' | 'caregiver';
 
 export interface User {
   id: string;

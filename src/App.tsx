@@ -7,6 +7,7 @@ import PublicPatientIntakePage from '@/pages/common/PublicPatientIntakePage';
 import AboutUsPage from '@/pages/common/AboutUsPage';
 import PatientLayout from '@/pages/patient/PatientLayout';
 import AdminLayout from '@/pages/admin/AdminLayout';
+import CaregiverPortal from '@/pages/caregiver/CaregiverPortal';
 import PrivacyPage from '@/pages/privacy/PrivacyPage';
 import { Toaster } from '@/components/ui/sonner';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -285,7 +286,7 @@ function AppContent() {
     if (isPublicRoute) return;
 
     if (state.isAuthenticated && state.selectedRole) {
-      const allowedRoles = ['patient', 'admin', 'superadmin'];
+      const allowedRoles = ['patient', 'admin', 'superadmin', 'caregiver'];
       const roleForRoute = allowedRoles.includes(state.selectedRole)
         ? state.selectedRole
         : 'patient';
@@ -309,7 +310,7 @@ function AppContent() {
       // stale pre-login history entry while the user is still authenticated,
       // normalize the URL back to the authenticated route.
       if (!window.history.state?.role && state.isAuthenticated && state.selectedRole) {
-        const allowedRoles = ['patient', 'admin', 'superadmin'];
+        const allowedRoles = ['patient', 'admin', 'superadmin', 'caregiver'];
         const roleForRoute = allowedRoles.includes(state.selectedRole)
           ? state.selectedRole
           : 'patient';
@@ -465,6 +466,8 @@ function AppContent() {
         return <PatientLayout />;
       case 'admin':
         return <AdminLayout />;
+      case 'caregiver':
+        return <CaregiverPortal />;
       default:
         return <PatientLayout />;
     }

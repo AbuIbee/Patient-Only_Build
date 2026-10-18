@@ -1,0 +1,74 @@
+=== ITEM 2: discrepant free-tier row DATA UNCHANGED by migration ===
+               user_id                |         trial_ends_at         
+--------------------------------------+-------------------------------
+ aaaaaaaa-0000-0000-0000-000000000001 | 2025-10-12 16:36:40.085986+00
+(1 row)
+
+=== ITEM 2: has_active_subscription() now TRUE for the discrepant row, without its data changing ===
+ discrepant_row_now_active 
+---------------------------
+ t
+(1 row)
+
+=== ITEM 2 (negative): an EXPIRED Temporary User program is NOT exempted ===
+UPDATE 1
+ expired_temp_user_still_inactive 
+----------------------------------
+ f
+(1 row)
+
+=== ITEM 2: provision_free_subscription() for a brand-new signup no longer writes now()-valued trial_ends_at ===
+SET
+SET
+   tier    | status | trial_ends_at 
+-----------+--------+---------------
+ free_tier | active | 
+(1 row)
+
+RESET
+RESET
+ fresh_signup_active 
+---------------------
+ t
+(1 row)
+
+=== ITEM 3: paid patient creates a memory (baseline positive) ===
+SET
+SET
+   tier    | status | trial_ends_at 
+-----------+--------+---------------
+ paid_tier | active | 
+(1 row)
+
+RESET
+RESET
+SET
+SET
+INSERT 0 1
+RESET
+RESET
+=== ITEM 3: downgrade to free_tier (via the B1-fixed NULL-trial_ends_at path) ===
+SET
+SET
+   tier    | status | trial_ends_at 
+-----------+--------+---------------
+ free_tier | active | 
+(1 row)
+
+RESET
+RESET
+=== ITEM 3: the SAME patient, now free_tier, can still READ their pre-existing memory ===
+SET
+SET
+ can_still_read_old_memory 
+---------------------------
+                         1
+(1 row)
+
+=== ITEM 3 (negative): the SAME now-free-tier patient CANNOT create a NEW memory ===
+psql:/tmp/07_postcheck.sql:60: NOTICE:  EXPECTED exception: new row violates row-level security policy "Free-tier accounts cannot create new memories (REPAIR C)" for table "memories"
+DO
+RESET
+RESET
+=== ITEM 3: an UNRELATED paid caregiver cannot bypass via a direct insert for this patient either (regression, unaffected by §14) ===
+=== DONE ===

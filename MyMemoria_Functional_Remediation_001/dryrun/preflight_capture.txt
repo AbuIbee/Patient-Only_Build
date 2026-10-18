@@ -1,0 +1,11 @@
+INSERT 0 5
+UPDATE 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+=== ITEM 2 preflight: discrepant row trial_ends_at BEFORE migration ===
+               user_id                |         trial_ends_at         
+--------------------------------------+-------------------------------
+ aaaaaaaa-0000-0000-0000-000000000001 | 2025-10-12 16:36:40.085986+00
+(1 row)
+

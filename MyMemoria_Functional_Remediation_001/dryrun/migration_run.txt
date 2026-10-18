@@ -1,0 +1,117 @@
+BEGIN
+ALTER TABLE
+ALTER TABLE
+DO
+CREATE FUNCTION
+DROP TRIGGER
+psql:/tmp/14_migration.sql:102: NOTICE:  trigger "trg_sync_phone_normalized" for relation "profiles" does not exist, skipping
+CREATE TRIGGER
+UPDATE 0
+DO
+CREATE FUNCTION
+DO
+psql:/tmp/14_migration.sql:187: NOTICE:  public.is_admin() already exists — left untouched by this migration. Confirm via 14a preflight (which fetches its real definition) that its existing behavior matches the admin-role-check semantics the policies in this file depend on.
+DO
+DO
+DO
+REVOKE
+GRANT
+REVOKE
+GRANT
+DO
+REVOKE
+CREATE FUNCTION
+REVOKE
+GRANT
+ALTER TABLE
+DO
+DO
+ALTER TABLE
+DO
+DO
+CREATE TABLE
+ALTER TABLE
+DO
+DO
+DO
+ALTER TABLE
+DO
+psql:/tmp/14_migration.sql:359: NOTICE:  relation "promo_redemptions" already exists, skipping
+CREATE TABLE
+ALTER TABLE
+psql:/tmp/14_migration.sql:361: NOTICE:  column "redeemed_at" of relation "promo_redemptions" already exists, skipping
+ALTER TABLE
+DO
+ALTER TABLE
+CREATE TABLE
+ALTER TABLE
+DO
+DO
+DO
+DO
+CREATE TABLE
+ALTER TABLE
+DO
+DO
+DO
+DO
+INSERT 0 1
+DO
+DO
+INSERT 0 2
+REVOKE
+psql:/tmp/14_migration.sql:485: NOTICE:  policy "Caregivers can create relationships" for relation "caregiver_patients" does not exist, skipping
+DROP POLICY
+psql:/tmp/14_migration.sql:486: NOTICE:  function public.claim_unclaimed_patient(uuid,text) does not exist, skipping
+DROP FUNCTION
+REVOKE
+DROP POLICY
+psql:/tmp/14_migration.sql:489: NOTICE:  policy "Caregivers can create patients" for relation "patients" does not exist, skipping
+DO
+GRANT
+psql:/tmp/14_migration.sql:510: NOTICE:  column "relationship_type" of relation "caregiver_patients" already exists, skipping
+psql:/tmp/14_migration.sql:510: NOTICE:  column "updated_at" of relation "caregiver_patients" already exists, skipping
+ALTER TABLE
+CREATE FUNCTION
+REVOKE
+GRANT
+DO
+DO
+ALTER TABLE
+psql:/tmp/14_migration.sql:719: NOTICE:  function public.admin_set_subscription(uuid,text,text,pg_catalog.timestamptz,pg_catalog.timestamptz,pg_catalog.timestamptz) does not exist, skipping
+psql:/tmp/14_migration.sql:720: NOTICE:  function public.admin_set_subscription(uuid,text,text,text,pg_catalog.timestamptz,pg_catalog.timestamptz,pg_catalog.timestamptz) does not exist, skipping
+DROP FUNCTION
+DROP FUNCTION
+CREATE FUNCTION
+REVOKE
+GRANT
+CREATE FUNCTION
+REVOKE
+GRANT
+DO
+DO
+ALTER POLICY
+psql:/tmp/14_migration.sql:970: NOTICE:  policy "Caller must be the check-in's own patient (FQA-019/SEC-008)" for relation "care_partner_checkins" does not exist, skipping
+DROP POLICY
+DROP POLICY
+psql:/tmp/14_migration.sql:971: NOTICE:  policy "Caller must be the media's own patient (FQA-019/SEC-008)" for relation "media_uploads" does not exist, skipping
+DO
+DO
+DO
+DO
+DO
+DO
+DO
+REVOKE
+CREATE FUNCTION
+REVOKE
+GRANT
+DO
+CREATE FUNCTION
+COMMENT
+CREATE FUNCTION
+REVOKE
+GRANT
+DO
+DO
+COMMIT

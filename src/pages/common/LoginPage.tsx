@@ -6,10 +6,11 @@ import { ArrowLeft, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import PricingPage from './PricingPage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { signUpCaregiver } from '@/services/caregiverRegistrationService';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-type Mode = 'landing' | 'signin' | 'plans';
+type Mode = 'landing' | 'signin' | 'plans' | 'caregiverSignUp';
 
 function Field({
   label,
@@ -336,9 +337,11 @@ function SignInForm({
 function LandingButtons({
   onSignIn,
   onSignUp,
+  onCaregiverSignUp,
 }: {
   onSignIn: () => void;
   onSignUp: () => void;
+  onCaregiverSignUp: () => void;
 }) {
   return (
     <div className="space-y-6">
@@ -367,6 +370,122 @@ function LandingButtons({
 
       <p className="text-center text-xs text-medium-gray">
         Create an account first, then choose the Free Tier or Paid Tier.
+      </p>
+
+      <p className="text-center text-sm text-medium-gray border-t border-soft-taupe pt-4">
+        Registering a patient on someone else&apos;s behalf?{' '}
+        <button
+          type="button"
+          onClick={onCaregiverSignUp}
+          className="text-warm-bronze font-semibold hover:text-deep-bronze"
+        >
+          Create a caregiver account →
+        </button>
+      </p>
+    </div>
+  );
+}
+
+function CaregiverSignUpForm({ onBack, onDone }: { onBack: () => void; onDone: () => void }) {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const nextErrors: Record<string, string> = {};
+    if (!firstName.trim()) nextErrors.firstName = 'First name is required';
+    if (!lastName.trim()) nextErrors.lastName = 'Last name is required';
+    if (!email.trim() || !EMAIL_RE.test(email.trim())) nextErrors.email = 'Enter a valid email address';
+    if (password.length < 11) nextErrors.password = 'Password must be at least 11 characters';
+    else if (!/[A-Z]/.test(password)) nextErrors.password = 'Password must include an uppercase letter';
+    else if (!/[0-9]/.test(password)) nextErrors.password = 'Password must include a number';
+    else if (!/[^A-Za-z0-9]/.test(password)) nextErrors.password = 'Password must include a special character';
+
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
+    setLoading(true);
+    try {
+      const { confirmationRequired, error } = await signUpCaregiver({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      if (confirmationRequired) {
+        toast.success('Your caregiver account was created. Confirm your email, then sign in.', { duration: 8000 });
+      } else {
+        toast.success('Your caregiver account is ready. Please sign in.');
+      }
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="text-center space-y-1">
+        <h2 className="text-2xl font-bold text-charcoal">Create a Caregiver Account</h2>
+        <p className="text-medium-gray text-sm">Register and manage patients on their behalf.</p>
+      </div>
+
+      <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-5">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="First Name" error={errors.firstName} required>
+            <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Jane" className={inp(errors.firstName)} autoComplete="given-name" />
+          </Field>
+          <Field label="Last Name" error={errors.lastName} required>
+            <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Smith" className={inp(errors.lastName)} autoComplete="family-name" />
+          </Field>
+        </div>
+
+        <Field label="Email Address" error={errors.email} required>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" className={inp(errors.email)} autoComplete="email" />
+        </Field>
+
+        <Field label="Password" error={errors.password} required>
+          <div className="relative">
+            <input
+              type={showPw ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 11 characters"
+              className={inp(errors.password) + ' pr-10'}
+              autoComplete="new-password"
+            />
+            <button type="button" onClick={() => setShowPw((p) => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-medium-gray hover:text-charcoal">
+              {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </Field>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-3 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl font-semibold disabled:opacity-60 transition-colors"
+        >
+          {loading ? 'Creating account...' : 'Create Caregiver Account'}
+        </button>
+      </form>
+
+      <p className="text-center text-sm text-medium-gray">
+        <button type="button" onClick={onBack} className="text-warm-bronze font-semibold hover:text-deep-bronze">
+          ← Back
+        </button>
       </p>
     </div>
   );
@@ -442,6 +561,7 @@ export default function LoginPage() {
                   <LandingButtons
                     onSignIn={() => setMode('signin')}
                     onSignUp={() => setMode('plans')}
+                    onCaregiverSignUp={() => setMode('caregiverSignUp')}
                   />
                 )}
 
@@ -449,6 +569,13 @@ export default function LoginPage() {
                   <SignInForm
                     onBack={() => setMode('plans')}
                     onSuccess={handleSignedIn}
+                  />
+                )}
+
+                {mode === 'caregiverSignUp' && (
+                  <CaregiverSignUpForm
+                    onBack={() => setMode('landing')}
+                    onDone={() => setMode('signin')}
                   />
                 )}
               </motion.div>

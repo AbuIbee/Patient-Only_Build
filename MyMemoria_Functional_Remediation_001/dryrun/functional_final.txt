@@ -1,0 +1,160 @@
+=== P02: a FRESH patient self-inserts their own patients row ===
+INSERT 0 1
+SET
+SET
+INSERT 0 1
+RESET
+RESET
+=== P02 negative (unchanged): a caregiver cannot insert a patients row for someone else ===
+SET
+SET
+DO
+psql:/tmp/03_functest.sql:24: NOTICE:  EXPECTED: denied (insufficient_privilege / RLS)
+RESET
+RESET
+=== P03: admin SELECT * FROM profiles — no infinite recursion, returns multiple rows ===
+SET
+SET
+ admin_sees_n_profiles 
+-----------------------
+                     8
+(1 row)
+
+RESET
+RESET
+=== P03 regression: non-admin sees only their own profile row ===
+SET
+SET
+ patient1_sees_n_profiles 
+--------------------------
+                        1
+(1 row)
+
+RESET
+RESET
+=== P04 positive: admin links the genuinely-pending patient3, with first/last name ===
+SET
+SET
+                  id                  |  first_name  | last_name | preferred_name | date_of_birth | diagnosis_date | dementia_stage | location | address |                  affirmation                  | emergency_contact_name | emergency_contact_relationship | emergency_contact_phone | emergency_contact_email |          created_at           
+--------------------------------------+--------------+-----------+----------------+---------------+----------------+----------------+----------+---------+-----------------------------------------------+------------------------+--------------------------------+-------------------------+-------------------------+-------------------------------
+ 44444444-4444-4444-4444-444444444444 | PatientThree | Pending   |                |               |                |                |          |         | You are safe. You are loved. You are at home. |                        |                                |                         |                         | 2026-10-17 16:05:58.317034+00
+(1 row)
+
+RESET
+RESET
+             caregiver_id             |              patient_id              
+--------------------------------------+--------------------------------------
+ 11111111-1111-1111-1111-111111111111 | 44444444-4444-4444-4444-444444444444
+(1 row)
+
+=== P04 negative: an ordinary (unlinked) caregiver cannot call the RPC at all ===
+SET
+SET
+psql:/tmp/03_functest.sql:61: NOTICE:  EXPECTED exception: Only an administrator may create a new patient record on behalf of another account. Caregiver self-service enrollment has no verifiable trusted-authorization mechanism yet and is not permitted through this path.
+DO
+RESET
+RESET
+=== P04 negative: admin cannot silently claim an already-complete existing patient ===
+SET
+SET
+DO
+psql:/tmp/03_functest.sql:72: NOTICE:  EXPECTED exception: No patient profile pending provisioning exists for id 33333333-3333-3333-3333-333333333333. This id must belong to an account currently mid-signup (provisioning_status = 'profile_created'), never an arbitrary or already-complete existing patient.
+RESET
+RESET
+=== P05 (current behavior, REVIEW B1): NULL trial_ends_at for a non-program grant now SUCCEEDS, matching the real admin UI ===
+psql:/tmp/03_functest.sql:82: ERROR:  Only admins can change subscription/account type
+CONTEXT:  PL/pgSQL function admin_set_subscription(uuid,text,text,text,text,timestamp with time zone,timestamp with time zone,timestamp with time zone) line 8 at RAISE
+ patient2_now_active 
+---------------------
+ f
+(1 row)
+
+RESET
+RESET
+=== P08 positive: linked caregiver can READ a checkin/media they did NOT submit ===
+SET
+SET
+ caregiver_sees_patient1_checkins 
+----------------------------------
+                                1
+(1 row)
+
+ caregiver_sees_patient1_media 
+-------------------------------
+                             1
+(1 row)
+
+=== P08 positive: linked caregiver CAN insert a checkin/media for their own linked patient ===
+INSERT 0 1
+INSERT 0 1
+=== P08 negative: the SAME linked caregiver is still blocked for an UNRELATED patient ===
+ caregiver_sees_patient2_checkins 
+----------------------------------
+                                0
+(1 row)
+
+DO
+psql:/tmp/03_functest.sql:105: NOTICE:  EXPECTED exception: new row violates row-level security policy "Checkin patient or linked caregiver (FQA-019/SEC-008)" for table "care_partner_checkins"
+RESET
+RESET
+=== P08 negative: a completely UNLINKED caregiver sees nothing for patient1 either ===
+SET
+SET
+ unlinked_caregiver_sees_patient1_checkins 
+-------------------------------------------
+                                         0
+(1 row)
+
+RESET
+RESET
+=== P08 storage.objects: linked caregiver can read/write/delete patient-media under their linked patient folder; unlinked caregiver cannot ===
+SET
+SET
+INSERT 0 1
+ caregiver_sees_patient1_storage 
+---------------------------------
+                               1
+(1 row)
+
+DELETE 1
+RESET
+RESET
+SET
+SET
+DO
+RESET
+psql:/tmp/03_functest.sql:131: NOTICE:  EXPECTED exception: new row violates row-level security policy for table "objects"
+RESET
+=== P08 preserved: the EXISTING patient_media_* policies still work for the patient themselves, unduplicated ===
+SET
+SET
+INSERT 0 1
+RESET
+RESET
+                           policyname                           
+----------------------------------------------------------------
+ Calm-Me videos are patient-owned only (FQA-017/SEC-006)
+ Caregivers can read their patients' document storage objects
+ Linked caregivers can delete patient-media objects (P08)
+ Linked caregivers can read patient-media storage objects (P08)
+ Linked caregivers can upload patient-media objects (P08)
+ Patients can manage their own document storage objects
+ patient_media_delete
+ patient_media_insert
+ patient_media_select
+(9 rows)
+
+=== P08 admin bypass preserved on media_uploads (is_admin_check(), not narrowed by the new RESTRICTIVE policy) ===
+SET
+SET
+INSERT 0 1
+RESET
+RESET
+=== Temporary User restriction still in force, unaffected by any new PERMISSIVE policy ===
+SET
+SET
+DO
+RESET
+psql:/tmp/03_functest.sql:160: NOTICE:  EXPECTED exception (Temp User RESTRICTIVE policy still enforced): new row violates row-level security policy "Temporary users cannot submit checkins (stub)" for table "care_partner_checkins"
+RESET
+=== ALL FUNCTIONAL VERIFICATION STATEMENTS EXECUTED ===
