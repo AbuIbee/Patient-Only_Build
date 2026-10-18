@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
   AlertCircle, ArrowLeft, Check, Copy, LogOut, UserPlus, Users,
-  Search, Pencil, X, ChevronRight, Clock,
+  Search, Pencil, X, ChevronRight, Clock, Building2,
 } from 'lucide-react';
 import type { PatientIntakeFormData, DementiaStage } from '@/types/patientIntake';
 import {
@@ -18,6 +18,8 @@ import {
   type PendingRegistrationSummary,
 } from '@/services/caregiverRegistrationService';
 import CaregiverPatientView from './CaregiverPatientView';
+import EnterpriseStaffPatientView from '@/pages/enterprise/EnterpriseStaffPatientView';
+import { getMyStaffPatients, type StaffPatient } from '@/services/organizationService';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -619,28 +621,75 @@ function PatientsSection({
   );
 }
 
-type DashboardView = 'dashboard' | 'register' | 'patient';
+/** ENTERPRISE CONSOLIDATED DELIVERY: org-assigned patients (from
+ * staff_patient_assignments, org_role='caregiver') shown as a separate,
+ * clearly-labeled section — kept distinct from personally-registered
+ * patients (caregiver_patients) since they have a different
+ * authorization source and are opened via EnterpriseStaffPatientView, not
+ * CaregiverPatientView. Read-only cards (no custom label — display_label
+ * is scoped to caregiver_patients specifically). */
+function OrgPatientsSection({ patients, onOpen }: { patients: StaffPatient[]; onOpen: (orgId: string, patientId: string) => void }) {
+  if (patients.length === 0) return null;
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <Building2 className="w-5 h-5 text-warm-bronze" />
+        <h2 className="text-lg font-bold text-charcoal">Organization-Assigned Patients</h2>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {patients.map((p) => (
+          <button
+            key={`${p.organizationId}-${p.patientId}`}
+            type="button"
+            onClick={() => onOpen(p.organizationId, p.patientId)}
+            className="flex items-center justify-between gap-2 p-4 bg-white rounded-2xl border border-soft-taupe hover:shadow-md transition-all text-left"
+          >
+            <div className="min-w-0">
+              <p className="font-bold text-charcoal truncate">{p.preferredName || `${p.firstName} ${p.lastName}`}</p>
+              <p className="text-xs text-medium-gray truncate">{p.organizationName}</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-warm-bronze flex-shrink-0" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-export default function CaregiverPortal() {
+type DashboardView = 'dashboard' | 'register' | 'patient' | 'org-patient';
+
+interface CaregiverPortalProps {
+  /** ENTERPRISE CONSOLIDATED DELIVERY: an ordinary caregiver with no
+   * existing director/therapist/medical-professional organization role
+   * can start one from here. Omitted entirely (no button renders) when
+   * not provided — residential-only deployments/tests are unaffected. */
+  onStartOrganization?: () => void;
+}
+
+export default function CaregiverPortal({ onStartOrganization }: CaregiverPortalProps = {}) {
   const { state, dispatch } = useApp();
   // item 1: every authenticated caregiver lands here — 'dashboard' is the
   // initial state and the ONLY state reachable on mount; the registration
   // form is never shown automatically.
   const [view, setView] = useState<DashboardView>('dashboard');
   const [openPatientId, setOpenPatientId] = useState<string | null>(null);
+  const [openOrgPatient, setOpenOrgPatient] = useState<{ orgId: string; patientId: string } | null>(null);
   const [patients, setPatients] = useState<LinkedPatientSummary[]>([]);
+  const [orgPatients, setOrgPatients] = useState<StaffPatient[]>([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
   const [pending, setPending] = useState<PendingRegistrationSummary[]>([]);
 
   const refreshPatients = async () => {
     setPatientsLoading(true);
     try {
-      const [linked, pendingRegs] = await Promise.all([
+      const [linked, pendingRegs, staffPatients] = await Promise.all([
         getMyLinkedPatients(),
         getMyPendingRegistrations(),
+        getMyStaffPatients(),
       ]);
       setPatients(linked);
       setPending(pendingRegs);
+      setOrgPatients(staffPatients.filter((p) => p.orgRole === 'caregiver'));
     } finally {
       setPatientsLoading(false);
     }
@@ -665,6 +714,11 @@ export default function CaregiverPortal() {
     setView('patient');
   };
 
+  const openOrgPatientAccount = (orgId: string, patientId: string) => {
+    setOpenOrgPatient({ orgId, patientId });
+    setView('org-patient');
+  };
+
   const greetingName = state.currentUser?.firstName || 'there';
 
   return (
@@ -680,14 +734,26 @@ export default function CaregiverPortal() {
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => { void handleLogout(); }}
-            className="flex items-center gap-1.5 text-sm text-medium-gray hover:text-charcoal px-3 py-2 rounded-lg hover:bg-soft-taupe/30 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            Logout
-          </button>
+          <div className="flex items-center gap-2">
+            {onStartOrganization && (
+              <button
+                type="button"
+                onClick={onStartOrganization}
+                className="hidden sm:flex items-center gap-1.5 text-sm text-medium-gray hover:text-charcoal px-3 py-2 rounded-lg hover:bg-soft-taupe/30 transition-colors"
+              >
+                <Building2 className="w-4 h-4" />
+                Start an Organization
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => { void handleLogout(); }}
+              className="flex items-center gap-1.5 text-sm text-medium-gray hover:text-charcoal px-3 py-2 rounded-lg hover:bg-soft-taupe/30 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              Logout
+            </button>
+          </div>
         </div>
       </header>
 
@@ -706,6 +772,14 @@ export default function CaregiverPortal() {
           />
         )}
 
+        {view === 'org-patient' && openOrgPatient && (
+          <EnterpriseStaffPatientView
+            organizationId={openOrgPatient.orgId}
+            patientId={openOrgPatient.patientId}
+            onBack={() => { setView('dashboard'); setOpenOrgPatient(null); }}
+          />
+        )}
+
         {view === 'dashboard' && (
           <>
             <div>
@@ -716,12 +790,15 @@ export default function CaregiverPortal() {
             <IncompleteRegistrations pending={pending} onResumed={() => { void refreshPatients(); }} />
 
             {!patientsLoading && (
-              <PatientsSection
-                patients={patients}
-                onRegisterNew={() => setView('register')}
-                onOpenPatient={openPatient}
-                onLabelSaved={handleLabelSaved}
-              />
+              <>
+                <OrgPatientsSection patients={orgPatients} onOpen={openOrgPatientAccount} />
+                <PatientsSection
+                  patients={patients}
+                  onRegisterNew={() => setView('register')}
+                  onOpenPatient={openPatient}
+                  onLabelSaved={handleLabelSaved}
+                />
+              </>
             )}
           </>
         )}

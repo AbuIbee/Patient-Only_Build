@@ -8,7 +8,7 @@ import AboutUsPage from '@/pages/common/AboutUsPage';
 import BusinessLandingPage from '@/pages/common/BusinessLandingPage';
 import PatientLayout from '@/pages/patient/PatientLayout';
 import AdminLayout from '@/pages/admin/AdminLayout';
-import CaregiverPortal from '@/pages/caregiver/CaregiverPortal';
+import EnterpriseDashboardRouter from '@/pages/enterprise/EnterpriseDashboardRouter';
 import PrivacyPage from '@/pages/privacy/PrivacyPage';
 import { Toaster } from '@/components/ui/sonner';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -456,7 +456,7 @@ function AppContent() {
     // "Caregiver Sign In" button would have nowhere to actually route to.
     if (isBusinessRoute) {
       if (state.isAuthenticated && state.selectedRole === 'caregiver') {
-        return <CaregiverPortal />;
+        return <EnterpriseDashboardRouter />;
       }
       if (!state.isAuthenticated && state.currentView === 'login') {
         return <LoginPage />;
@@ -491,7 +491,7 @@ function AppContent() {
       case 'admin':
         return <AdminLayout />;
       case 'caregiver':
-        return <CaregiverPortal />;
+        return <EnterpriseDashboardRouter />;
       default:
         return <PatientLayout />;
     }
