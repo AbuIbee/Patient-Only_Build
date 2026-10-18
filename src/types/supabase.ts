@@ -264,6 +264,13 @@ export interface Database {
           patient_id: string
           relationship_type: RelationshipType
           is_primary: boolean
+          // CAREGIVER DASHBOARD-FIRST NAVIGATION item 4 / migration 033:
+          // caregiver-chosen display name for this ONE relationship —
+          // never the patient's actual identity. Only this column (plus
+          // updated_at) is writable by `authenticated`; caregiver_id/
+          // patient_id/relationship_type/is_primary are column-privilege
+          // protected (REVOKE UPDATE ... then a scoped re-GRANT).
+          display_label: string | null
           created_at: string
           updated_at: string
         }
@@ -273,6 +280,7 @@ export interface Database {
           patient_id: string
           relationship_type?: RelationshipType
           is_primary?: boolean
+          display_label?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -282,6 +290,7 @@ export interface Database {
           patient_id?: string
           relationship_type?: RelationshipType
           is_primary?: boolean
+          display_label?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -2107,6 +2116,24 @@ export interface Database {
           p_patient_id: string
         }
         Returns: Database['public']['Tables']['patients']['Row']
+      }
+      // CAREGIVER DASHBOARD-FIRST NAVIGATION item 5 / migration 033: the
+      // caller's own unconsumed pending_caregiver_registrations rows,
+      // scoped by auth.uid() server-side — never a caller-supplied
+      // caregiver id. resumable_patient_id is non-null only when the
+      // patient's Auth account was actually created and is still
+      // provisioning_status='profile_created'.
+      get_my_pending_registrations: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          registration_id: string
+          claim_token: string
+          patient_first_name: string
+          patient_last_name: string
+          patient_email: string
+          created_at: string
+          resumable_patient_id: string | null
+        }[]
       }
       // REPAIR 007: trusted, server-`now()`-computed Temporary/Companion
       // program eligibility check (migration 018). Takes no arguments —

@@ -163,13 +163,29 @@ export async function finishCaregiverPatientClaim(
   return { success: true, patientId: patient.id };
 }
 
-// ─── My Patients (read-only) ─────────────────────────────────────────────────
+// ─── My Patients ──────────────────────────────────────────────────────────
 export interface LinkedPatientSummary {
   id: string;
   firstName: string;
   lastName: string;
   preferredName: string | null;
   isPrimary: boolean;
+  /** CAREGIVER DASHBOARD-FIRST NAVIGATION item 4: caregiver-chosen label
+   * for THIS relationship only — never the patient's real identity. */
+  displayLabel: string | null;
+  /** item 2: "a stable patient reference" — the short, non-sensitive tail
+   * of the immutable database UUID (never the full id, never guessable as
+   * a sequential/incrementing value). Display only; every actual access
+   * check uses the full `id`. */
+  shortReference: string;
+}
+
+/** Last 8 characters of the patient's immutable UUID, uppercased — a
+ * short, stable, human-referenceable id that is NOT a new identifier (no
+ * schema change) and never substitutes for the real id in any access
+ * check. */
+function shortReferenceFor(patientId: string): string {
+  return patientId.replace(/-/g, '').slice(-8).toUpperCase();
 }
 
 export async function getMyLinkedPatients(): Promise<LinkedPatientSummary[]> {
@@ -180,7 +196,7 @@ export async function getMyLinkedPatients(): Promise<LinkedPatientSummary[]> {
   // (migration 001: caregiver_id = auth.uid()) — no new policy needed.
   const { data: links, error: linksError } = await supabase
     .from('caregiver_patients')
-    .select('patient_id, is_primary')
+    .select('patient_id, is_primary, display_label')
     .eq('caregiver_id', user.id);
 
   if (linksError || !links || links.length === 0) return [];
@@ -193,12 +209,82 @@ export async function getMyLinkedPatients(): Promise<LinkedPatientSummary[]> {
 
   if (patientsError || !patients) return [];
 
-  const primaryById = new Map(links.map((l) => [l.patient_id, l.is_primary]));
-  return patients.map((p) => ({
-    id: p.id,
-    firstName: p.first_name,
-    lastName: p.last_name,
-    preferredName: p.preferred_name,
-    isPrimary: !!primaryById.get(p.id),
+  const linkByPatientId = new Map(links.map((l) => [l.patient_id, l]));
+  return patients.map((p) => {
+    const link = linkByPatientId.get(p.id);
+    return {
+      id: p.id,
+      firstName: p.first_name,
+      lastName: p.last_name,
+      preferredName: p.preferred_name,
+      isPrimary: !!link?.is_primary,
+      displayLabel: link?.display_label ?? null,
+      shortReference: shortReferenceFor(p.id),
+    };
+  });
+}
+
+/**
+ * CAREGIVER DASHBOARD-FIRST NAVIGATION item 4: sets (or clears, with an
+ * empty string) the caregiver's own display label for one patient
+ * relationship. Scoped entirely server-side by migration 033's RLS policy
+ * (caregiver_id = auth.uid()) and column grant (display_label/updated_at
+ * ONLY) — a caregiver can never rename or touch any other relationship,
+ * their own or another caregiver's, through this call. Never writes to
+ * patients.first_name/last_name/preferred_name/id.
+ */
+export async function setPatientDisplayLabel(patientId: string, label: string): Promise<{ error: string | null }> {
+  const trimmed = label.trim();
+  const { error } = await supabase
+    .from('caregiver_patients')
+    .update({ display_label: trimmed || null, updated_at: new Date().toISOString() })
+    .eq('patient_id', patientId);
+  return { error: error?.message ?? null };
+}
+
+/**
+ * CAREGIVER DASHBOARD-FIRST NAVIGATION item 3: the ONE server-verified
+ * check every "Open Patient Account" action (and every re-navigation /
+ * session refresh into that view) must pass before rendering any
+ * patient-scoped data. Reuses the SAME caregiver_patients SELECT RLS
+ * policy as getMyLinkedPatients() — a caregiver can never get `true` back
+ * for a patient_id their own caregiver_patients row doesn't reference,
+ * regardless of what id a URL or component prop claims.
+ */
+export async function verifyCaregiverPatientLink(patientId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('caregiver_patients')
+    .select('patient_id')
+    .eq('patient_id', patientId)
+    .maybeSingle();
+  return !error && !!data;
+}
+
+// ─── Incomplete / resumable registrations (dashboard visibility) ──────────
+export interface PendingRegistrationSummary {
+  registrationId: string;
+  claimToken: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  createdAt: string;
+  /** Present only when the patient's Auth account was actually created and
+   * is still awaiting claim — the dashboard offers "Finish Registration"
+   * ONLY in that case; otherwise it shows the incomplete state with no
+   * false recovery action (item 5). */
+  resumablePatientId: string | null;
+}
+
+export async function getMyPendingRegistrations(): Promise<PendingRegistrationSummary[]> {
+  const { data, error } = await supabase.rpc('get_my_pending_registrations');
+  if (error || !data) return [];
+  return data.map((r) => ({
+    registrationId: r.registration_id,
+    claimToken: r.claim_token,
+    firstName: r.patient_first_name,
+    lastName: r.patient_last_name,
+    email: r.patient_email,
+    createdAt: r.created_at,
+    resumablePatientId: r.resumable_patient_id,
   }));
 }

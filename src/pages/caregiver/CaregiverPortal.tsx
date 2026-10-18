@@ -2,14 +2,21 @@ import { useEffect, useState } from 'react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { AlertCircle, ArrowLeft, Check, Copy, LogOut, UserPlus, Users } from 'lucide-react';
+import {
+  AlertCircle, ArrowLeft, Check, Copy, LogOut, UserPlus, Users,
+  Search, Pencil, X, ChevronRight, Clock,
+} from 'lucide-react';
 import type { PatientIntakeFormData, DementiaStage } from '@/types/patientIntake';
 import {
   registerPatientAsCaregiver,
   finishCaregiverPatientClaim,
   getMyLinkedPatients,
+  setPatientDisplayLabel,
+  getMyPendingRegistrations,
   type LinkedPatientSummary,
+  type PendingRegistrationSummary,
 } from '@/services/caregiverRegistrationService';
+import CaregiverPatientView from './CaregiverPatientView';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -338,10 +345,182 @@ function RegisterPatientForm({ onRegistered, onBack }: { onRegistered: () => voi
   );
 }
 
-function MyPatientsList({ patients, onRegisterNew }: { patients: LinkedPatientSummary[]; onRegisterNew: () => void }) {
+/** CAREGIVER DASHBOARD-FIRST NAVIGATION item 2/4: a selectable patient
+ * card — preferred name, optional caregiver label, a stable short
+ * reference, and an explicit "Open Patient Account" action. Label editing
+ * is inline, scoped to this one card's relationship only. */
+function PatientCard({
+  patient, onOpen, onLabelSaved,
+}: {
+  patient: LinkedPatientSummary;
+  onOpen: () => void;
+  onLabelSaved: (patientId: string, label: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(patient.displayLabel ?? '');
+  const [saving, setSaving] = useState(false);
+
+  const saveLabel = async () => {
+    setSaving(true);
+    try {
+      const { error } = await setPatientDisplayLabel(patient.id, draft);
+      if (error) {
+        toast.error('Could not save label: ' + error);
+        return;
+      }
+      onLabelSaved(patient.id, draft.trim() || null);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const primaryDisplay = patient.displayLabel || patient.preferredName || `${patient.firstName} ${patient.lastName}`;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-4 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          {editing ? (
+            <div className="flex items-center gap-1.5">
+              <input
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                maxLength={60}
+                placeholder="Friendly name for this card"
+                className="min-w-0 flex-1 px-2 py-1 border border-soft-taupe rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze"
+              />
+              <button type="button" onClick={() => { void saveLabel(); }} disabled={saving} className="text-soft-sage hover:text-soft-sage/80 flex-shrink-0" aria-label="Save label">
+                <Check className="w-4 h-4" />
+              </button>
+              <button type="button" onClick={() => { setEditing(false); setDraft(patient.displayLabel ?? ''); }} className="text-medium-gray hover:text-charcoal flex-shrink-0" aria-label="Cancel">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h3 className="font-bold text-charcoal truncate">{primaryDisplay}</h3>
+              <button type="button" onClick={() => setEditing(true)} className="text-medium-gray hover:text-warm-bronze flex-shrink-0" aria-label="Rename this patient card">
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          <p className="text-xs text-medium-gray truncate">{patient.firstName} {patient.lastName}</p>
+          <p className="text-[11px] text-soft-taupe font-mono mt-0.5">Ref: {patient.shortReference}</p>
+        </div>
+        {patient.isPrimary && (
+          <span className="flex-shrink-0 text-[10px] font-semibold text-warm-bronze bg-warm-bronze/10 px-2 py-0.5 rounded-full">
+            Primary
+          </span>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold transition-colors"
+      >
+        Open Patient Account <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
+/** item 5: incomplete registrations stay visible on the dashboard — never
+ * shown as a (fully registered) PatientCard, since no caregiver_patients
+ * link exists for them yet. */
+function IncompleteRegistrations({
+  pending, onResumed,
+}: {
+  pending: PendingRegistrationSummary[];
+  onResumed: () => void;
+}) {
+  const [resumingId, setResumingId] = useState<string | null>(null);
+
+  if (pending.length === 0) return null;
+
+  const resume = async (reg: PendingRegistrationSummary) => {
+    if (!reg.resumablePatientId) return;
+    setResumingId(reg.registrationId);
+    try {
+      const result = await finishCaregiverPatientClaim(reg.registrationId, reg.claimToken, reg.resumablePatientId);
+      if (!result.success) {
+        toast.error(result.error || 'Could not finish this registration.');
+        return;
+      }
+      toast.success(`${reg.firstName} has been registered and linked to your account.`);
+      onResumed();
+    } finally {
+      setResumingId(null);
+    }
+  };
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 sm:p-5 space-y-3">
+      <div className="flex items-center gap-2 text-amber-800">
+        <Clock className="w-4 h-4" />
+        <h3 className="font-bold text-sm">Incomplete Registrations</h3>
+      </div>
+      <ul className="space-y-2">
+        {pending.map((reg) => (
+          <li key={reg.registrationId} className="flex items-center justify-between gap-3 bg-white rounded-xl border border-amber-200 p-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-charcoal truncate">{reg.firstName} {reg.lastName}</p>
+              <p className="text-xs text-medium-gray truncate">{reg.email}</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                {reg.resumablePatientId ? 'Account created — registration did not finish.' : 'The account could not be created.'}
+              </p>
+            </div>
+            {reg.resumablePatientId ? (
+              <button
+                type="button"
+                onClick={() => { void resume(reg); }}
+                disabled={resumingId === reg.registrationId}
+                className="flex-shrink-0 px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-60 transition-colors"
+              >
+                {resumingId === reg.registrationId ? 'Finishing…' : 'Finish Registration'}
+              </button>
+            ) : (
+              <span className="flex-shrink-0 text-xs text-medium-gray italic">Try registering again</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PatientsSection({
+  patients, onRegisterNew, onOpenPatient, onLabelSaved,
+}: {
+  patients: LinkedPatientSummary[];
+  onRegisterNew: () => void;
+  onOpenPatient: (id: string) => void;
+  onLabelSaved: (patientId: string, label: string | null) => void;
+}) {
+  const [query, setQuery] = useState('');
+  // item 6: simple windowed pagination once the list is long enough that
+  // a search box alone isn't sufficient — an arbitrary number of cards is
+  // supported either way (this only limits how many render at once).
+  const PAGE_SIZE = 12;
+  const [page, setPage] = useState(1);
+
+  const filtered = patients.filter((p) => {
+    if (!query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    return (
+      p.firstName.toLowerCase().includes(q) ||
+      p.lastName.toLowerCase().includes(q) ||
+      (p.preferredName ?? '').toLowerCase().includes(q) ||
+      (p.displayLabel ?? '').toLowerCase().includes(q) ||
+      p.shortReference.toLowerCase().includes(q)
+    );
+  });
+  const visible = filtered.slice(0, page * PAGE_SIZE);
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Users className="w-5 h-5 text-warm-bronze" />
           <h2 className="text-lg font-bold text-charcoal">My Patients</h2>
@@ -355,38 +534,78 @@ function MyPatientsList({ patients, onRegisterNew }: { patients: LinkedPatientSu
           Register a New Patient
         </button>
       </div>
+
+      {patients.length > 1 && (
+        <div className="relative">
+          <Search className="w-4 h-4 text-medium-gray absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+            placeholder="Search your patients by name or reference…"
+            className="w-full pl-9 pr-3 py-2.5 border border-soft-taupe rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze bg-white"
+          />
+        </div>
+      )}
+
       {patients.length === 0 ? (
-        <p className="text-sm text-medium-gray">You have not registered any patients yet.</p>
+        <div className="text-center py-10 space-y-3">
+          <Users className="w-10 h-10 text-soft-taupe mx-auto" />
+          <p className="text-sm font-medium text-charcoal">You haven&apos;t registered any patients yet.</p>
+          <p className="text-xs text-medium-gray">Get started by registering the first person you care for.</p>
+          <button
+            type="button"
+            onClick={onRegisterNew}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold transition-colors"
+          >
+            <UserPlus className="w-4 h-4" /> Register a New Patient
+          </button>
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-medium-gray text-center py-6">No patients match &quot;{query}&quot;.</p>
       ) : (
-        <ul className="space-y-2">
-          {patients.map((p) => (
-            <li key={p.id} className="flex items-center justify-between p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
-              <span className="font-medium text-charcoal">
-                {p.preferredName || `${p.firstName} ${p.lastName}`}
-              </span>
-              {p.isPrimary && (
-                <span className="text-xs font-semibold text-warm-bronze bg-warm-bronze/10 px-2 py-0.5 rounded-full">
-                  Primary
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {visible.map((p) => (
+              <PatientCard key={p.id} patient={p} onOpen={() => onOpenPatient(p.id)} onLabelSaved={onLabelSaved} />
+            ))}
+          </div>
+          {visible.length < filtered.length && (
+            <button
+              type="button"
+              onClick={() => setPage((p) => p + 1)}
+              className="w-full py-2.5 rounded-xl border border-soft-taupe text-charcoal text-sm font-semibold hover:bg-soft-taupe/20 transition-colors"
+            >
+              Show more ({filtered.length - visible.length} remaining)
+            </button>
+          )}
+        </>
       )}
     </div>
   );
 }
 
+type DashboardView = 'dashboard' | 'register' | 'patient';
+
 export default function CaregiverPortal() {
   const { state, dispatch } = useApp();
-  const [view, setView] = useState<'dashboard' | 'register'>('dashboard');
+  // item 1: every authenticated caregiver lands here — 'dashboard' is the
+  // initial state and the ONLY state reachable on mount; the registration
+  // form is never shown automatically.
+  const [view, setView] = useState<DashboardView>('dashboard');
+  const [openPatientId, setOpenPatientId] = useState<string | null>(null);
   const [patients, setPatients] = useState<LinkedPatientSummary[]>([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
+  const [pending, setPending] = useState<PendingRegistrationSummary[]>([]);
 
   const refreshPatients = async () => {
     setPatientsLoading(true);
     try {
-      setPatients(await getMyLinkedPatients());
+      const [linked, pendingRegs] = await Promise.all([
+        getMyLinkedPatients(),
+        getMyPendingRegistrations(),
+      ]);
+      setPatients(linked);
+      setPending(pendingRegs);
     } finally {
       setPatientsLoading(false);
     }
@@ -402,10 +621,21 @@ export default function CaregiverPortal() {
     toast('You have been logged out');
   };
 
+  const handleLabelSaved = (patientId: string, label: string | null) => {
+    setPatients((prev) => prev.map((p) => (p.id === patientId ? { ...p, displayLabel: label } : p)));
+  };
+
+  const openPatient = (patientId: string) => {
+    setOpenPatientId(patientId);
+    setView('patient');
+  };
+
+  const greetingName = state.currentUser?.firstName || 'there';
+
   return (
     <div className="min-h-screen bg-warm-ivory">
       <header className="bg-white border-b border-soft-taupe px-4 py-3">
-        <div className="max-w-2xl mx-auto flex items-center justify-between">
+        <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-8 h-8 rounded-lg object-cover" />
             <div>
@@ -426,16 +656,39 @@ export default function CaregiverPortal() {
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6">
-        {view === 'register' ? (
+      <main className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
+        {view === 'register' && (
           <RegisterPatientForm
             onRegistered={() => { void refreshPatients(); }}
             onBack={() => setView('dashboard')}
           />
-        ) : (
-          !patientsLoading && (
-            <MyPatientsList patients={patients} onRegisterNew={() => setView('register')} />
-          )
+        )}
+
+        {view === 'patient' && openPatientId && (
+          <CaregiverPatientView
+            patientId={openPatientId}
+            onBack={() => { setView('dashboard'); setOpenPatientId(null); }}
+          />
+        )}
+
+        {view === 'dashboard' && (
+          <>
+            <div>
+              <h1 className="text-2xl font-bold text-charcoal">Welcome back, {greetingName}</h1>
+              <p className="text-sm text-medium-gray mt-1">Here&apos;s an overview of the patients linked to your account.</p>
+            </div>
+
+            <IncompleteRegistrations pending={pending} onResumed={() => { void refreshPatients(); }} />
+
+            {!patientsLoading && (
+              <PatientsSection
+                patients={patients}
+                onRegisterNew={() => setView('register')}
+                onOpenPatient={openPatient}
+                onLabelSaved={handleLabelSaved}
+              />
+            )}
+          </>
         )}
       </main>
     </div>
