@@ -6,6 +6,7 @@
 // assignment. Same "never PatientLayout" reasoning applies identically.
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import CareConversations from '@/components/communications/CareConversations';
 import { ArrowLeft, Loader2, ShieldAlert, Pill, Heart, ClipboardList, Calendar, MapPin } from 'lucide-react';
 
 interface PatientHeader {
@@ -144,6 +145,8 @@ export default function EnterpriseStaffPatientView({
           </ul>
         )}
       </div>
+
+      <CareConversations patientId={patientId} patientName={displayName} />
     </div>
   );
 }

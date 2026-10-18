@@ -3,6 +3,7 @@ import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { User, Phone, Mail, Heart, Stethoscope, UserCheck } from 'lucide-react';
+import CareConversations from '@/components/communications/CareConversations';
 
 interface TeamMember {
   id: string;
@@ -135,6 +136,13 @@ export default function PatientCareTeam() {
         <p className="text-sm text-charcoal font-medium">You are not alone</p>
         <p className="text-xs text-medium-gray mt-1">Your care team is here to support you every day</p>
       </div>
+
+      {state.currentUser?.id && (
+        <CareConversations
+          patientId={state.currentUser.id}
+          patientName={state.patient?.preferredName || state.patient?.firstName || 'you'}
+        />
+      )}
     </div>
   );
 }

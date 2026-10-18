@@ -1,0 +1,205 @@
+// ENTERPRISE CONSOLIDATED DELIVERY — client wrappers for migration 036's
+// Care Communications RPCs. Every function here is a thin pass-through to a
+// SECURITY DEFINER RPC that re-verifies conversation membership and patient
+// authorization server-side; nothing in this file performs or should be
+// trusted to perform an authorization decision on its own. Access to a
+// conversation always comes from conversation_participants, never from
+// caregiver_patients/staff_patient_assignments directly (those are only
+// consulted server-side, at the moment someone is added as a participant).
+import { supabase } from '@/lib/supabase';
+
+export type ParticipantRole = 'patient' | 'caregiver' | 'therapist' | 'medical_professional';
+
+export interface ConversationSummary {
+  conversationId: string;
+  patientId: string;
+  patientName: string;
+  subject: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  lastMessageBody: string | null;
+  lastMessageAt: string | null;
+  lastMessageUrgent: boolean;
+  unreadCount: number;
+}
+
+export interface ConversationParticipant {
+  id: string;
+  userId: string;
+  participantRole: ParticipantRole;
+  firstName: string;
+  lastName: string;
+}
+
+export interface MessageAckEntry {
+  userId: string;
+  readAt: string | null;
+  acknowledgedAt: string | null;
+  followUpRequested: boolean;
+  followUpNote: string | null;
+  followUpResolved: boolean;
+}
+
+export interface ConversationMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderRole: ParticipantRole;
+  senderFirstName: string;
+  senderLastName: string;
+  body: string;
+  isUrgent: boolean;
+  replyToMessageId: string | null;
+  createdAt: string;
+  // Every participant's own read/acknowledgment/follow-up state for this
+  // message — never a single collapsed "delivered" flag. An urgent flag
+  // is display-only; this array is the only honest signal for whether
+  // anyone has actually seen or acknowledged the message.
+  acknowledgments: MessageAckEntry[];
+}
+
+function errMsg(error: { message: string } | null, fallback: string): string {
+  return error?.message || fallback;
+}
+
+export interface CareCircleMember {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  participantRole: ParticipantRole;
+}
+
+// get_patient_care_circle(): everyone actually authorized for this patient
+// right now — the pool the caller picks explicit recipients from. Never a
+// signal to auto-include anyone; selection stays a deliberate UI action.
+export async function getPatientCareCircle(patientId: string): Promise<CareCircleMember[]> {
+  const { data, error } = await supabase.rpc('get_patient_care_circle', { p_patient_id: patientId });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    userId: r.user_id,
+    firstName: r.first_name,
+    lastName: r.last_name,
+    participantRole: r.participant_role as ParticipantRole,
+  }));
+}
+
+export async function getMyConversations(patientId?: string): Promise<ConversationSummary[]> {
+  const { data, error } = await supabase.rpc('get_my_conversations', { p_patient_id: patientId ?? null });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    conversationId: r.conversation_id,
+    patientId: r.patient_id,
+    patientName: r.patient_name,
+    subject: r.subject,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    lastMessageBody: r.last_message_body,
+    lastMessageAt: r.last_message_at,
+    lastMessageUrgent: !!r.last_message_urgent,
+    unreadCount: Number(r.unread_count ?? 0),
+  }));
+}
+
+// create_conversation(): recipientUserIds must be people the caller has
+// deliberately, explicitly selected — never a blanket "everyone linked to
+// this patient" expansion. The RPC independently re-verifies every
+// recipient is actually authorized for this patient and rejects the whole
+// call if any one of them is not.
+export async function createConversation(
+  patientId: string, recipientUserIds: string[], subject: string | null,
+): Promise<{ conversationId: string | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('create_conversation', {
+    p_patient_id: patientId, p_recipient_user_ids: recipientUserIds, p_subject: subject,
+  });
+  if (error || !data) return { conversationId: null, error: errMsg(error, 'Could not start this conversation.') };
+  return { conversationId: data.id, error: null };
+}
+
+export async function getConversationParticipants(conversationId: string): Promise<ConversationParticipant[]> {
+  const { data, error } = await supabase
+    .from('conversation_participants')
+    .select('id, user_id, participant_role, profiles:user_id(first_name, last_name)')
+    .eq('conversation_id', conversationId);
+  if (error || !data) return [];
+  return data.map((r) => {
+    const profile = r.profiles as unknown as { first_name: string; last_name: string } | null;
+    return {
+      id: r.id,
+      userId: r.user_id,
+      participantRole: r.participant_role as ParticipantRole,
+      firstName: profile?.first_name ?? '',
+      lastName: profile?.last_name ?? '',
+    };
+  });
+}
+
+export async function addConversationParticipant(conversationId: string, userId: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('add_conversation_participant', { p_conversation_id: conversationId, p_user_id: userId });
+  return { error: error ? errMsg(error, 'Could not add this person to the conversation.') : null };
+}
+
+export async function removeConversationParticipant(conversationId: string, userId: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('remove_conversation_participant', { p_conversation_id: conversationId, p_user_id: userId });
+  return { error: error ? errMsg(error, 'Could not remove this person from the conversation.') : null };
+}
+
+export async function getConversationMessages(conversationId: string): Promise<ConversationMessage[]> {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('id, conversation_id, sender_id, sender_role, body, is_urgent, reply_to_message_id, created_at, profiles:sender_id(first_name, last_name), message_acknowledgments(user_id, read_at, acknowledged_at, follow_up_requested, follow_up_note, follow_up_resolved)')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true });
+  if (error || !data) return [];
+
+  return data.map((r) => {
+    const sender = r.profiles as unknown as { first_name: string; last_name: string } | null;
+    const acks = (r.message_acknowledgments as unknown as {
+      user_id: string; read_at: string | null; acknowledged_at: string | null;
+      follow_up_requested: boolean; follow_up_note: string | null; follow_up_resolved: boolean;
+    }[]) || [];
+    return {
+      id: r.id,
+      conversationId: r.conversation_id,
+      senderId: r.sender_id,
+      senderRole: r.sender_role as ParticipantRole,
+      senderFirstName: sender?.first_name ?? '',
+      senderLastName: sender?.last_name ?? '',
+      body: r.body,
+      isUrgent: r.is_urgent,
+      replyToMessageId: r.reply_to_message_id,
+      createdAt: r.created_at,
+      acknowledgments: acks.map((a) => ({
+        userId: a.user_id, readAt: a.read_at, acknowledgedAt: a.acknowledged_at,
+        followUpRequested: a.follow_up_requested, followUpNote: a.follow_up_note, followUpResolved: a.follow_up_resolved,
+      })),
+    };
+  });
+}
+
+export async function sendMessage(
+  conversationId: string, body: string, isUrgent: boolean, replyToMessageId: string | null = null,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('send_message', {
+    p_conversation_id: conversationId, p_body: body.trim(), p_is_urgent: isUrgent, p_reply_to_message_id: replyToMessageId,
+  });
+  return { error: error ? errMsg(error, 'Could not send this message.') : null };
+}
+
+export async function markMessageRead(messageId: string): Promise<void> {
+  await supabase.rpc('mark_message_read', { p_message_id: messageId });
+}
+
+export async function acknowledgeMessage(
+  messageId: string, followUpRequested = false, followUpNote: string | null = null,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('acknowledge_message', {
+    p_message_id: messageId, p_follow_up_requested: followUpRequested, p_follow_up_note: followUpNote,
+  });
+  return { error: error ? errMsg(error, 'Could not acknowledge this message.') : null };
+}
+
+export async function resolveFollowUp(messageId: string): Promise<void> {
+  await supabase.rpc('resolve_follow_up', { p_message_id: messageId });
+}

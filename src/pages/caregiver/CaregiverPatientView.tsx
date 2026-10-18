@@ -24,6 +24,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { verifyCaregiverPatientLink } from '@/services/caregiverRegistrationService';
+import CareConversations from '@/components/communications/CareConversations';
 import {
   ArrowLeft, Loader2, ShieldAlert, Pill, Heart, Image as ImageIcon,
   ClipboardList, Phone, Calendar, MapPin, Save,
@@ -344,6 +345,8 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
           })}
         </div>
       </div>
+
+      <CareConversations patientId={patientId} patientName={displayName} />
     </div>
   );
 }

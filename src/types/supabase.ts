@@ -58,6 +58,10 @@ export type TherapistRelationshipType = 'primary' | 'consulting' | 'supervising'
 // module (TS resolves the type space independent of declaration order),
 // so this is safe to place before the `Database` interface it reads from.
 export type SubscriptionRow = Database['public']['Tables']['subscriptions']['Row']
+export type ConversationRow = Database['public']['Tables']['conversations']['Row']
+export type ConversationParticipantRow = Database['public']['Tables']['conversation_participants']['Row']
+export type MessageRow = Database['public']['Tables']['messages']['Row']
+export type MessageAcknowledgmentRow = Database['public']['Tables']['message_acknowledgments']['Row']
 
 export interface Database {
   public: {
@@ -574,6 +578,186 @@ export interface Database {
             columns: ["patient_id"]
             isOneToOne: false
             referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // ENTERPRISE CONSOLIDATED DELIVERY / migration 036. See that file's
+      // own header comment for the full design rationale — access is
+      // controlled entirely by conversation_participants, never by any
+      // other relationship table.
+      conversations: {
+        Row: {
+          id: string
+          patient_id: string
+          subject: string | null
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          subject?: string | null
+          created_by: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          subject?: string | null
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_participants: {
+        Row: {
+          id: string
+          conversation_id: string
+          user_id: string
+          participant_role: "patient" | "caregiver" | "therapist" | "medical_professional"
+          added_by: string
+          added_at: string
+        }
+        Insert: {
+          id?: string
+          conversation_id: string
+          user_id: string
+          participant_role: "patient" | "caregiver" | "therapist" | "medical_professional"
+          added_by: string
+          added_at?: string
+        }
+        Update: {
+          id?: string
+          conversation_id?: string
+          user_id?: string
+          participant_role?: "patient" | "caregiver" | "therapist" | "medical_professional"
+          added_by?: string
+          added_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_participants_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_participants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
+        Row: {
+          id: string
+          conversation_id: string
+          sender_id: string
+          sender_role: "patient" | "caregiver" | "therapist" | "medical_professional"
+          body: string
+          is_urgent: boolean
+          reply_to_message_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          conversation_id: string
+          sender_id: string
+          sender_role: "patient" | "caregiver" | "therapist" | "medical_professional"
+          body: string
+          is_urgent?: boolean
+          reply_to_message_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          conversation_id?: string
+          sender_id?: string
+          sender_role?: "patient" | "caregiver" | "therapist" | "medical_professional"
+          body?: string
+          is_urgent?: boolean
+          reply_to_message_id?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_reply_to_message_id_fkey"
+            columns: ["reply_to_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_acknowledgments: {
+        Row: {
+          id: string
+          message_id: string
+          user_id: string
+          read_at: string | null
+          acknowledged_at: string | null
+          follow_up_requested: boolean
+          follow_up_note: string | null
+          follow_up_resolved: boolean
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          message_id: string
+          user_id: string
+          read_at?: string | null
+          acknowledged_at?: string | null
+          follow_up_requested?: boolean
+          follow_up_note?: string | null
+          follow_up_resolved?: boolean
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          message_id?: string
+          user_id?: string
+          read_at?: string | null
+          acknowledged_at?: string | null
+          follow_up_requested?: boolean
+          follow_up_note?: string | null
+          follow_up_resolved?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_acknowledgments_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
         ]
@@ -2453,6 +2637,71 @@ export interface Database {
       is_my_enterprise_coverage_active: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      // ENTERPRISE CONSOLIDATED DELIVERY / migration 036 — Care
+      // Communications. See that file's own header comment for the full
+      // design rationale.
+      is_authorized_for_patient: {
+        Args: { p_user_id: string; p_patient_id: string }
+        Returns: boolean
+      }
+      is_conversation_participant: {
+        Args: { p_conversation_id: string }
+        Returns: boolean
+      }
+      create_conversation: {
+        Args: { p_patient_id: string; p_recipient_user_ids: string[]; p_subject: string | null }
+        Returns: ConversationRow
+      }
+      add_conversation_participant: {
+        Args: { p_conversation_id: string; p_user_id: string }
+        Returns: ConversationParticipantRow
+      }
+      remove_conversation_participant: {
+        Args: { p_conversation_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      send_message: {
+        Args: { p_conversation_id: string; p_body: string; p_is_urgent: boolean; p_reply_to_message_id: string | null }
+        Returns: MessageRow
+      }
+      mark_message_read: {
+        Args: { p_message_id: string }
+        Returns: boolean
+      }
+      acknowledge_message: {
+        Args: { p_message_id: string; p_follow_up_requested: boolean | null; p_follow_up_note: string | null }
+        Returns: MessageAcknowledgmentRow
+      }
+      resolve_follow_up: {
+        Args: { p_message_id: string }
+        Returns: boolean
+      }
+      get_my_conversations: {
+        Args: { p_patient_id: string | null }
+        Returns: {
+          conversation_id: string
+          patient_id: string
+          patient_name: string
+          subject: string | null
+          created_by: string
+          created_at: string
+          updated_at: string
+          last_message_body: string | null
+          last_message_at: string | null
+          last_message_urgent: boolean | null
+          unread_count: number
+        }[]
+      }
+      // migration 037
+      get_patient_care_circle: {
+        Args: { p_patient_id: string }
+        Returns: {
+          user_id: string
+          first_name: string
+          last_name: string
+          participant_role: string
+        }[]
       }
       // REPAIR 007: trusted, server-`now()`-computed Temporary/Companion
       // program eligibility check (migration 018). Takes no arguments —

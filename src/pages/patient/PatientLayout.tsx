@@ -412,6 +412,7 @@ function PatientLayoutInner() {
     { id: 'emergency_contacts', label: 'Emergency Contact', emoji: '🚨' },
     { id: 'media',              label: 'Videos & Media',   emoji: '🎬' },
     { id: 'games',              label: 'Patient Arcade',   emoji: '🎮' },
+    { id: 'careteam',           label: 'Care Team & Messages', emoji: '💬' },
   ];
 
   const planLabel =
