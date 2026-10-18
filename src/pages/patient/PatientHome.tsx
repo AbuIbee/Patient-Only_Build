@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useApp } from '@/store/useApp';
 import { useSubscription } from '@/store/useSubscription';
 import { supabase, getSignedMediaUrl } from '@/lib/supabase';
@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Phone, Sun, Cloud, Moon, CheckCircle2, Volume2, Play, ChevronRight, ChevronLeft, X, Wind, Heart, Camera, Pause, ImageIcon, Mic, Leaf, Gamepad2 } from 'lucide-react';
+import { Phone, Sun, Cloud, Moon, CheckCircle2, Volume2, Play, ChevronRight, ChevronLeft, X, Wind, Heart, Camera, Pause, ImageIcon, Mic, Leaf, Gamepad2, Lock, VolumeX } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 
@@ -17,12 +17,14 @@ import ShowMeHomeDialog from '@/components/ShowMeHomeDialog';
 import TellMeAStoryDialog from '@/components/TellMeAStoryDialog';
 import VoiceRecorderDialog from '@/components/VoiceRecorderDialog';
 import type { GameId } from './PatientGames';
+import { canPlayGame, requiredPlanLabelForGame, type ArcadeGameId } from '@/types/subscription';
+import {
+  getWeatherMessage,
+  WEATHER_UNAVAILABLE_MESSAGE,
+  type WeatherCondition,
+} from '@/lib/weatherMessage';
 
 // Weather types and functions
-type WeatherCondition =
-  | 'sunny' | 'partly-cloudy' | 'cloudy' | 'rainy' | 'stormy'
-  | 'snowy' | 'foggy' | 'clear-night' | 'autumn' | 'windy';
-
 interface WeatherData {
   temp: number;
   condition: WeatherCondition;
@@ -45,21 +47,6 @@ function wmoToCondition(code: number, isDay: boolean, month: number): WeatherCon
   return 'stormy';
 }
 
-function conditionToMessage(condition: WeatherCondition, temp: number): string {
-  switch (condition) {
-    case 'sunny':        return temp > 80 ? 'Hot and sunny — stay cool!' : 'Beautiful sunny day! Perfect for a walk.';
-    case 'partly-cloudy': return 'Some clouds but still nice out.';
-    case 'cloudy':       return 'A grey day — cosy inside.';
-    case 'rainy':        return 'Rainy day — perfect to stay cosy.';
-    case 'stormy':       return 'Stay safe and warm inside today.';
-    case 'snowy':        return 'It\'s snowing! Wrap up warm.';
-    case 'foggy':        return 'A misty morning. Take it easy.';
-    case 'clear-night':  return 'Clear night — a good time to rest.';
-    case 'autumn':       return 'Beautiful autumn day. Leaves are turning.';
-    case 'windy':        return 'A breezy day outside.';
-  }
-}
-
 async function fetchWeather(lat: number, lon: number): Promise<WeatherData> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,is_day,weather_code&temperature_unit=fahrenheit&timezone=auto`;
   const res  = await fetch(url);
@@ -67,11 +54,12 @@ async function fetchWeather(lat: number, lon: number): Promise<WeatherData> {
   const cur  = json.current;
   const month = new Date().getMonth() + 1;
   const condition = wmoToCondition(cur.weather_code, cur.is_day === 1, month);
+  const temp = Math.round(cur.temperature_2m);
   return {
-    temp:      Math.round(cur.temperature_2m),
+    temp,
     condition,
     isDay:     cur.is_day === 1,
-    message:   conditionToMessage(condition, Math.round(cur.temperature_2m)),
+    message:   getWeatherMessage(condition, temp),
   };
 }
 
@@ -82,18 +70,6 @@ async function fetchWeatherByIP(): Promise<WeatherData> {
   const geo = await geoRes.json();
   if (geo.status !== 'success') throw new Error('IP geo failed');
   return fetchWeather(geo.lat, geo.lon);
-}
-
-function getFallbackWeather(): WeatherData {
-  const hour  = new Date().getHours();
-  const month = new Date().getMonth() + 1;
-  const isAutumn = month >= 9 && month <= 11;
-  const isWinter = month === 12 || month <= 2;
-  let condition: WeatherCondition = 'sunny';
-  if (!( hour >= 6 && hour <= 20)) condition = 'clear-night';
-  else if (isWinter) condition = 'cloudy';
-  else if (isAutumn) condition = 'autumn';
-  return { temp: 68, condition, isDay: hour >= 6 && hour <= 20, message: conditionToMessage(condition, 68) };
 }
 
 function WeatherIcon({ condition, className }: { condition: WeatherCondition; className?: string }) {
@@ -120,36 +96,49 @@ interface FamiliarFace {
   phone?: string;
 }
 
-// Game definitions — image paths map to /public/game_cards/ folder
-const GAMES = [
-  { id: 'matching',   title: 'Matching Pairs',  img: '/game_cards/matching_pairs.png'       },
+// Game definitions — image paths map to /public/game_cards/ folder.
+// OWNER-MANUAL-TEST-CORRECTIONS item 2: exact required order — top row
+// then second row. Must match PatientGames.tsx's ARCADE_GAMES order
+// exactly (same canonical ids from src/types/subscription.ts) — "apply the
+// same restrictions in PatientHome.tsx and PatientGames.tsx... keep one
+// authoritative subscription policy rather than conflicting duplicate
+// checks."
+const GAMES: { id: ArcadeGameId; title: string; img: string }[] = [
+  { id: 'matching',   title: 'Matching Pairs',   img: '/game_cards/matching_pairs.png'       },
+  { id: 'solitaire',  title: 'Solitaire',        img: '/game_cards/solitaire.png'            },
+  { id: 'wordsearch', title: 'Word Search',      img: '/game_cards/word_search.png'          },
   { id: 'crossword',  title: 'Crossword Puzzle', img: '/game_cards/crossword_puzzle.png'     },
+  { id: 'hangman',    title: 'Hangman',          img: '/game_cards/hangman.png'              },
   { id: 'checkers',   title: 'Checkers',         img: '/game_cards/checkers.png'             },
   { id: 'chess',      title: 'Chess',            img: '/game_cards/chess.png'                },
-  { id: 'wordsearch', title: 'Word Search',      img: '/game_cards/word_search.png'          },
-  { id: 'solitaire',  title: 'Solitaire',        img: '/game_cards/solitaire.png'            },
-  { id: 'hangman',    title: 'Hangman',          img: '/game_cards/hangman.png'              },
   { id: 'brainapps',  title: 'Brain Training',   img: '/game_cards/brain_training_apps.png'  },
-] as const;
+];
 
 // GameCard — uses generated PNG image, 30% smaller (w-14 aspect ratio 2/3), no whitespace
-function GameCard({ game, onPlay }: { game: (typeof GAMES)[number]; onPlay: () => void }) {
+function GameCard({ game, unlocked, onPlay }: { game: (typeof GAMES)[number]; unlocked: boolean; onPlay: () => void }) {
   return (
     <motion.button
-      whileHover={{ scale: 1.05, y: -3 }}
-      whileTap={{ scale: 0.97 }}
+      whileHover={unlocked ? { scale: 1.05, y: -3 } : undefined}
+      whileTap={unlocked ? { scale: 0.97 } : undefined}
       onClick={onPlay}
-      className="group flex flex-col items-center gap-1 focus:outline-none"
+      aria-label={unlocked ? game.title : `${game.title} — locked, requires ${requiredPlanLabelForGame(game.id)}`}
+      aria-disabled={!unlocked}
+      className="group relative flex flex-col items-center gap-1 focus:outline-none"
     >
       {/* Card image — 600×900 source, displayed at ~56×84px (3/4 aspect, 30% smaller than w-20) */}
-      <div className="w-14 overflow-hidden rounded-lg shadow-md group-hover:shadow-xl transition-shadow duration-200"
+      <div className={`relative w-14 overflow-hidden rounded-lg shadow-md transition-shadow duration-200 ${unlocked ? 'group-hover:shadow-xl' : 'opacity-50 grayscale'}`}
         style={{ aspectRatio: '2/3' }}>
         <img
           src={game.img}
           alt={game.title}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+          className={`w-full h-full object-cover transition-transform duration-200 ${unlocked ? 'group-hover:scale-105' : ''}`}
           draggable={false}
         />
+        {!unlocked && (
+          <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+            <Lock className="w-4 h-4 text-white drop-shadow" />
+          </span>
+        )}
       </div>
       {/* Title below the card */}
       <p className="text-[9px] font-semibold text-charcoal text-center leading-tight w-14">
@@ -160,7 +149,16 @@ function GameCard({ game, onPlay }: { game: (typeof GAMES)[number]; onPlay: () =
 }
 
 
-export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (id: GameId) => void } = {}) {
+interface PatientHomeProps {
+  onNavigateToGame?: (id: GameId) => void;
+  // OWNER-MANUAL-TEST-CORRECTIONS item 6: lets the three welcome setup
+  // items navigate using PatientLayout's EXISTING requestView()/entitlement
+  // infrastructure (the same gate every nav item already uses), rather than
+  // inventing a second navigation path.
+  onNavigateToView?: (view: 'routines' | 'medications') => void;
+}
+
+export default function PatientHome({ onNavigateToGame, onNavigateToView }: PatientHomeProps = {}) {
   const { state, dispatch } = useApp();
   // MYMEMORIA-FUNCTIONAL-REPAIR-006: recording a NEW voice message
   // ('voice_messages') and automatic slideshow playback
@@ -168,10 +166,26 @@ export default function PatientHome({ onNavigateToGame }: { onNavigateToGame?: (
   // recorded message, and manually stepping through a slideshow, are
   // unaffected — only the CREATE/AUTO actions are gated, so no previously
   // stored content or existing manual-use behavior is removed.
-  const { can } = useSubscription();
+  const { can, tier, subscription, isMaster, isActive } = useSubscription();
+  const plan = subscription?.plan ?? null;
+  // Same inactive → free-tier-equivalent rule as PatientGames.tsx — an
+  // expired/canceled paid subscription grants no paid game entitlement
+  // merely because the stored tier value hasn't changed yet.
+  const effectiveTier = isMaster ? 'master' : isActive ? tier : 'free_tier';
+  const isGameUnlocked = (id: ArcadeGameId) => canPlayGame(effectiveTier, id, plan);
   const patient = state.patient;
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isPlaying, setIsPlaying] = useState(false);
+  // OWNER-MANUAL-TEST-CORRECTIONS item 3 — spoken "Listen to affirmation",
+  // independent of any custom voice recording.
+  const [isSpeakingAffirmation, setIsSpeakingAffirmation] = useState(false);
+  // item 6 — lets "Add a family photo" scroll/focus the existing Add Photo
+  // control instead of only showing instructions.
+  const addPhotoRef = useRef<HTMLLabelElement>(null);
+  const focusAddPhoto = () => {
+    addPhotoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    addPhotoRef.current?.focus();
+  };
   const [showSlideshow, setShowSlideshow] = useState(false);
   const [selectedFace, setSelectedFace] = useState<FamiliarFace | null>(null);
   const [showComfortMenu, setShowComfortMenu] = useState(false);
@@ -302,10 +316,32 @@ const hasReminder =
   (localMeds?.length ?? 0) > 0 ||
   (state.medications?.length ?? 0) > 0;
 
+// OWNER-MANUAL-TEST-CORRECTIONS item 6: a single source for these three
+// steps (previously duplicated — this array for the completion check, a
+// second near-identical inline array for the actual render), each now
+// carrying a real onClick that uses the existing navigation/entitlement
+// infrastructure rather than only displaying instructions.
 const firstSessionSteps = [
-  { done: hasLovedOne, emoji: '👤', label: 'Add a family photo', nav: 'Tap "People Who Love You" below' },
-  { done: hasRoutine, emoji: '🔁', label: 'Set up a daily routine', nav: 'Go to My Day in the menu' },
-  { done: hasReminder, emoji: '💊', label: 'Add a medication', nav: 'Go to Medications in the menu' },
+  {
+    done: hasLovedOne, emoji: '👤', label: 'Add a family photo',
+    nav: 'Tap "People Who Love You" below',
+    onClick: focusAddPhoto,
+  },
+  {
+    done: hasRoutine, emoji: '🔁', label: 'Set up a daily routine',
+    nav: 'Go to My Day in the menu',
+    // requestView('routines') in PatientLayout.tsx shows the SAME locked-
+    // feature explanation (toast + the full renderLockedFeature() card at
+    // render time) used everywhere else in the app for a tier that doesn't
+    // include My Day — never bypasses that gate.
+    onClick: () => onNavigateToView?.('routines'),
+  },
+  {
+    done: hasReminder, emoji: '💊', label: 'Add a medication',
+    nav: 'Go to Medications in the menu',
+    // Medications is a Free Tier feature — always reachable.
+    onClick: () => onNavigateToView?.('medications'),
+  },
 ];
 
 const allFirstSessionDone = firstSessionSteps.every((s) => s.done);
@@ -341,7 +377,13 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
   const todaysMedsTaken = localTotal > 0 ? localTaken : appTodaysTaken;
   const totalMedsToday = localTotal > 0 ? localTotal : medications.length;
 
-  const [weather, setWeather] = useState<WeatherData>(getFallbackWeather());
+  // OWNER-MANUAL-TEST-CORRECTIONS item 4: null means "no confirmed reading
+  // yet" (either still loading, or both lookup strategies failed) — the UI
+  // renders WEATHER_UNAVAILABLE_MESSAGE in that state. The previous
+  // getFallbackWeather() fabricated a sunny 68°F reading by time-of-day
+  // whenever BOTH real lookups failed; that invented data is removed
+  // outright rather than kept as a silent fallback.
+  const [weather, setWeather] = useState<WeatherData | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -368,7 +410,10 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
         const w = await fetchWeatherByIP();
         if (!cancelled) setWeather(w);
       } catch {
-        // IP lookup failed too — keep the time-based fallback already in state
+        // Both GPS and IP lookup failed — leave weather as null (not a
+        // fabricated reading) so the UI shows "Weather temporarily
+        // unavailable" instead of inventing conditions.
+        if (!cancelled) setWeather(null);
       }
     };
 
@@ -451,9 +496,43 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
     setShowEmergencyDialog(true);
   };
 
-    const openGame = (game: (typeof GAMES)[number]) => {
+  const openGame = (game: (typeof GAMES)[number]) => {
+    if (!isGameUnlocked(game.id)) {
+      toast.error(`${game.title} is a ${requiredPlanLabelForGame(game.id)} feature. Upgrade to unlock it.`);
+      return;
+    }
     if (onNavigateToGame) onNavigateToGame(game.id);
   };
+
+  // OWNER-MANUAL-TEST-CORRECTIONS item 3: a universal, accessible "Listen to
+  // affirmation" action using the browser's own speech synthesis — no
+  // purchased plan, custom recording, microphone permission, or AI voice
+  // subscription required. Distinct from playSafetyMessage() above, which
+  // only plays an ALREADY-RECORDED custom family voice (Full Support can
+  // still create one via the mic button; this never requires that it exist).
+  const speakAffirmation = () => {
+    if (isSpeakingAffirmation) {
+      window.speechSynthesis?.cancel();
+      setIsSpeakingAffirmation(false);
+      return;
+    }
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      toast.error('Spoken affirmation is not supported on this device.');
+      return;
+    }
+    const text = patient?.affirmation || 'You are safe. You are loved. You are at home.';
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.92;
+    utterance.onend = () => setIsSpeakingAffirmation(false);
+    utterance.onerror = () => {
+      setIsSpeakingAffirmation(false);
+      toast.error('Could not play the affirmation. Please try again.');
+    };
+    window.speechSynthesis.cancel(); // clear any stuck/queued utterances first
+    window.speechSynthesis.speak(utterance);
+    setIsSpeakingAffirmation(true);
+  };
+
 
   return (
     <div className={`min-h-screen transition-all duration-1000 ${getBackgroundClass()}`}>
@@ -465,7 +544,7 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
           transition={{ duration: 0.6 }}
         >
           <Card className={`border-0 shadow-elevated overflow-hidden relative ${isSundowningTime ? 'ring-4 ring-warm-amber/50' : ''}`}>
-            <WeatherBackground condition={weather.condition} isDay={weather.isDay} />
+            <WeatherBackground condition={weather?.condition ?? 'cloudy'} isDay={weather?.isDay ?? true} />
 
             {/* Emergency Help Button — pinned inside the welcome card so it stays visible */}
             <motion.button
@@ -546,6 +625,22 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                 <p className="text-xl md:text-xl font-medium text-charcoal/70 leading-snug text-center">
                   {patient?.affirmation?.split('.').slice(1).join('. ') || 'You are loved. You are at home.'}
                 </p>
+
+                {/* OWNER-MANUAL-TEST-CORRECTIONS item 3: available to every
+                    tier, no recording/plan/microphone required. */}
+                <button
+                  onClick={speakAffirmation}
+                  aria-label={isSpeakingAffirmation ? 'Stop affirmation playback' : 'Listen to affirmation'}
+                  className={`mt-3 inline-flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold shadow-sm transition-all ${
+                    isSpeakingAffirmation
+                      ? 'bg-warm-bronze text-white'
+                      : 'bg-white/80 hover:bg-white text-charcoal'
+                  }`}
+                >
+                  {isSpeakingAffirmation
+                    ? <><VolumeX className="w-4 h-4" />Stop</>
+                    : <><Volume2 className="w-4 h-4 text-warm-bronze" />Listen to affirmation</>}
+                </button>
               </div>
             </div>
 
@@ -563,15 +658,27 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                 </div>
                 <div className="text-right">
                   <div className="flex items-center gap-3 text-charcoal">
-                    <WeatherIcon condition={weather.condition} className="w-6 h-6" />
-                    <div className="text-right">
-                      <div className="text-4xl font-bold text-charcoal leading-none">
-                        {weather.temp}°
+                    {weather ? (
+                      <>
+                        <WeatherIcon condition={weather.condition} className="w-6 h-6" />
+                        <div className="text-right">
+                          <div className="text-4xl font-bold text-charcoal leading-none">
+                            {weather.temp}°F
+                          </div>
+                          <div className="mt-1 text-medium font-medium text-charcoal/85 leading-snug">
+                            {weather.message}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      // OWNER-MANUAL-TEST-CORRECTIONS item 4: never invent a
+                      // reading — say plainly that it's unavailable.
+                      <div className="text-right">
+                        <div className="mt-1 text-medium font-medium text-charcoal/70 leading-snug">
+                          {WEATHER_UNAVAILABLE_MESSAGE}
+                        </div>
                       </div>
-                      <div className="mt-1 text-medium font-medium text-charcoal/85 leading-snug">
-                        {weather.message}
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -659,12 +766,17 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
               </button>
             </div>
             <div className="space-y-2.5">
-              {[
-                { done: hasLovedOne,  emoji: '👤', label: 'Add a family photo',    nav: 'Tap "People Who Love You" below' },
-                { done: hasRoutine,   emoji: '🔁', label: 'Set up a daily routine', nav: 'Go to My Day in the menu'        },
-                { done: hasReminder,  emoji: '💊', label: 'Add a medication',       nav: 'Go to Medications in the menu'   },
-              ].map((step, i) => (
-                <div key={i} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all ${step.done ? 'bg-soft-sage/15' : 'bg-white/70'}`}>
+              {/* OWNER-MANUAL-TEST-CORRECTIONS item 6: each step is now a
+                  real, keyboard-accessible button that opens/navigates to
+                  the actual workflow (firstSessionSteps, defined once above
+                  — no longer a second, duplicated copy of this data). */}
+              {firstSessionSteps.map((step, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={step.onClick}
+                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all focus:outline-none focus:ring-2 focus:ring-warm-bronze ${step.done ? 'bg-soft-sage/15' : 'bg-white/70 hover:bg-white'}`}
+                >
                   <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm ${step.done ? 'bg-soft-sage text-white' : 'bg-warm-bronze/15 text-warm-bronze'}`}>
                     {step.done ? '✓' : step.emoji}
                   </div>
@@ -673,7 +785,7 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                     {!step.done && <p className="text-xs text-medium-gray">{step.nav}</p>}
                   </div>
                   {step.done && <CheckCircle2 className="w-4 h-4 text-soft-sage flex-shrink-0" />}
-                </div>
+                </button>
               ))}
             </div>
           </motion.div>
@@ -758,10 +870,12 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
             ))}
 
             <motion.label
+              ref={addPhotoRef}
+              tabIndex={0}
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.5 }}
-              className="flex-shrink-0 text-center cursor-pointer group"
+              className="flex-shrink-0 text-center cursor-pointer group rounded-2xl focus:outline-none focus:ring-2 focus:ring-warm-bronze"
             >
               <input type="file" accept="image/*" className="hidden"
                 onChange={async e => {
@@ -872,7 +986,7 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
           {/* 4x2 Grid - 4 across, 2 down */}
           <div className="grid grid-cols-4 gap-4">
             {GAMES.map((game) => (
-              <GameCard key={game.id} game={game} onPlay={() => openGame(game)} />
+              <GameCard key={game.id} game={game} unlocked={isGameUnlocked(game.id)} onPlay={() => openGame(game)} />
             ))}
           </div>
         </motion.div>

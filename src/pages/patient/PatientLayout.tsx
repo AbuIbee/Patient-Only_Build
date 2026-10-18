@@ -488,9 +488,17 @@ function PatientLayoutInner() {
 
     switch (currentView) {
       case 'dashboard':
-        return <PatientHome onNavigateToGame={(id) => {
-          if (requestView('games')) setSelectedGameId(id);
-        }} />;
+        return <PatientHome
+          onNavigateToGame={(id) => {
+            if (requestView('games')) setSelectedGameId(id);
+          }}
+          // OWNER-MANUAL-TEST-CORRECTIONS item 6: reuses the SAME
+          // requestView() every nav item already uses — shows the same
+          // upgrade toast, and renderView()'s own isViewLocked check still
+          // renders the full locked-feature explanation card at render
+          // time regardless of entry path.
+          onNavigateToView={(view) => { requestView(view); }}
+        />;
       case 'medications':
         // REPAIR 008 / REPAIR A: the real component is never mounted at
         // all for a confirmed Temporary session — see TempDemoMedications.tsx's
@@ -522,9 +530,12 @@ function PatientLayoutInner() {
       case 'games':
         return <PatientGames initialGame={selectedGameId} onNavigateHome={() => setCurrentView('dashboard')} />;
       default:
-        return <PatientHome onNavigateToGame={(id) => {
-          if (requestView('games')) setSelectedGameId(id);
-        }} />;
+        return <PatientHome
+          onNavigateToGame={(id) => {
+            if (requestView('games')) setSelectedGameId(id);
+          }}
+          onNavigateToView={(view) => { requestView(view); }}
+        />;
     }
   };
 

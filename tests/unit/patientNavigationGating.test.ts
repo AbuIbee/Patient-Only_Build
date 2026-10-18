@@ -38,8 +38,12 @@ describe('VIEW_FEATURE — single authoritative policy (REPAIR B requirement 3)'
     }
   });
 
-  it('every OTHER mapped view (paid-only features) is locked for free_tier — matches the corrected 5-feature restriction', () => {
-    const paidOnlyViews: PatientView[] = ['checkin', 'reminders', 'memories', 'games'];
+  it('every OTHER mapped view (paid-only features) is locked for free_tier', () => {
+    // OWNER-MANUAL-TEST-CORRECTIONS: 'checkin' and 'games' are no longer in
+    // VIEW_FEATURE at all — both views are now reachable by every tier, with
+    // entitlement enforced INSIDE them (per-game / per-control), not at the
+    // nav/view level. See the 'views with no FeatureKey' test below.
+    const paidOnlyViews: PatientView[] = ['reminders', 'memories'];
     for (const view of paidOnlyViews) {
       const feature = VIEW_FEATURE[view]!;
       expect(hasFeatureAccess('free_tier', feature)).toBe(false);
@@ -60,7 +64,10 @@ describe('VIEW_FEATURE — single authoritative policy (REPAIR B requirement 3)'
   });
 
   it('views with no FeatureKey (core/ungated) are not in VIEW_FEATURE at all', () => {
-    const ungated: PatientView[] = ['dashboard', 'mood', 'intake', 'emergency_contacts', 'careteam'];
+    // 'checkin' and 'games' joined this ungated list under
+    // OWNER-MANUAL-TEST-CORRECTIONS — every tier, including Free, must be
+    // able to open both views (free-text A–G notes; Matching Pairs).
+    const ungated: PatientView[] = ['dashboard', 'mood', 'intake', 'emergency_contacts', 'careteam', 'checkin', 'games'];
     for (const view of ungated) {
       expect(VIEW_FEATURE[view]).toBeUndefined();
     }

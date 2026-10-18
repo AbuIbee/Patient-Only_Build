@@ -1546,6 +1546,48 @@ export interface Database {
           },
         ]
       }
+      // OWNER-MANUAL-TEST-CORRECTIONS item 5 / supabase/migrations/031_....sql
+      // — free-text notes for all 7 Care Partner categories (A–G),
+      // accessible to every tier. One current row per (patient_id,
+      // category) — see carePartnerNotesService.ts.
+      care_partner_notes: {
+        Row: {
+          id: string
+          patient_id: string
+          category: string
+          note: string
+          updated_by: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          category: string
+          note?: string
+          updated_by?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          category?: string
+          note?: string
+          updated_by?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "care_partner_notes_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       // PHASE 3: NOT in any tracked migration — shape confirmed via
       // src/pages/patient/PatientDocuments.tsx's own `LogRow` type and
       // select column list (a THIRD, distinct care-partner-related table

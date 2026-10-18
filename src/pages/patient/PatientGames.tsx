@@ -2,8 +2,11 @@ import { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft, Gamepad2,
-  Zap, Sparkles, ExternalLink
+  Zap, Sparkles, ExternalLink, Lock
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { useSubscription } from '@/store/useSubscription';
+import { canPlayGame, requiredPlanLabelForGame, type ArcadeGameId } from '@/types/subscription';
 
 // ─── IMPORT SEPARATE GAME FILES FROM YOUR NEW FOLDER ─────────────────────────
 import CardMatchingGame from '../PatientGames/MemoryMatch';
@@ -15,7 +18,7 @@ import ChessGame from '../PatientGames/Chess';
 import SolitaireGame from '../PatientGames/Solitaire';
 
 // ─── TYPES & CONFIGURATIONS ──────────────────────────────────────────────────
-export type GameId = 'menu' | 'matching' | 'crossword' | 'checkers' | 'chess' | 'brainapps' | 'wordsearch' | 'solitaire' | 'hangman';
+export type GameId = 'menu' | ArcadeGameId;
 
 interface PatientGamesProps {
   // FQA-024: a game id passed in from the Home screen's "play this game"
@@ -33,14 +36,20 @@ const A = {
   muted:      'text-stone-500 font-semibold text-xs',
 };
 
-const GAMES_LIST = [
-  { id: 'matching', title: 'Memory Match', desc: 'Find matching pairs to activate memory networks.', icon: '🧩', tag: 'Memory', tagBg: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  { id: 'wordsearch', title: 'Word Search', desc: 'Scan grids to engage spatial visual attention.', icon: '🔍', tag: 'Attention', tagBg: 'bg-blue-50 text-blue-700 border-blue-200' },
-  { id: 'crossword', title: 'Crossword', desc: 'Solve daily clues to stimulate linguistic recall.', icon: '✍️', tag: 'Language', tagBg: 'bg-purple-50 text-purple-700 border-purple-200' },
-  { id: 'hangman', title: 'Word Flower (Hangman)', desc: 'Guess phrases to protect growing blossoms.', icon: '🌸', tag: 'Recall', tagBg: 'bg-pink-50 text-pink-700 border-pink-200' },
-  { id: 'checkers', title: 'Checkers', desc: 'Jump opponent pieces to map spatial mechanics.', icon: '🔴', tag: 'Planning', tagBg: 'bg-rose-50 text-rose-700 border-rose-200' },
-  { id: 'chess', title: 'Cognitive Chess', desc: 'Deep-tree strategy with automated processing limits.', icon: '👑', tag: 'Strategy', tagBg: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-  { id: 'solitaire', title: 'Solitaire', desc: 'Sort suits into foundations to train task sequencing.', icon: '🃏', tag: 'Sequencing', tagBg: 'bg-amber-50 text-amber-700 border-amber-200' },
+// OWNER-MANUAL-TEST-CORRECTIONS item 2: exact required order — top row then
+// second row, 4 per row on desktop. "Brain Training" is now the 8th grid
+// tile (previously a separate button off to the side) rather than an
+// external-apps menu reached outside the grid — tier locking applies to it
+// exactly like every other game via canPlayGame().
+const GAMES_LIST: { id: ArcadeGameId; title: string; desc: string; icon: string; tag: string; tagBg: string }[] = [
+  { id: 'matching',   title: 'Matching Pairs',  desc: 'Find matching pairs to activate memory networks.', icon: '🧩', tag: 'Memory',     tagBg: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { id: 'solitaire',  title: 'Solitaire',       desc: 'Sort suits into foundations to train task sequencing.', icon: '🃏', tag: 'Sequencing', tagBg: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { id: 'wordsearch', title: 'Word Search',     desc: 'Scan grids to engage spatial visual attention.', icon: '🔍', tag: 'Attention',  tagBg: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { id: 'crossword',  title: 'Crossword Puzzle', desc: 'Solve daily clues to stimulate linguistic recall.', icon: '✍️', tag: 'Language',   tagBg: 'bg-purple-50 text-purple-700 border-purple-200' },
+  { id: 'hangman',    title: 'Hangman',         desc: 'Guess phrases to protect growing blossoms.', icon: '🌸', tag: 'Recall',     tagBg: 'bg-pink-50 text-pink-700 border-pink-200' },
+  { id: 'checkers',   title: 'Checkers',        desc: 'Jump opponent pieces to map spatial mechanics.', icon: '🔴', tag: 'Planning',   tagBg: 'bg-rose-50 text-rose-700 border-rose-200' },
+  { id: 'chess',      title: 'Chess',           desc: 'Deep-tree strategy with automated processing limits.', icon: '👑', tag: 'Strategy',   tagBg: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  { id: 'brainapps',  title: 'Brain Training',  desc: 'Guided external programs for daily mental checkups.', icon: '🧠', tag: 'Training',   tagBg: 'bg-teal-50 text-teal-700 border-teal-200' },
 ];
 
 const BRAIN_APPS = [
@@ -69,7 +78,22 @@ function GameHeader({ title, onBack }: { title: string; onBack: () => void }) {
 }
 
 export default function PatientGames({ initialGame, onNavigateHome }: PatientGamesProps) {
-  const launchedDirectly = useRef(Boolean(initialGame && GAMES_LIST.some(g => g.id === initialGame)));
+  const { tier, subscription, isMaster, isActive } = useSubscription();
+  const plan = subscription?.plan ?? null;
+  // Mirrors useSubscription().can()'s own rule: an inactive (expired/
+  // canceled/past-due) paid subscription grants no paid entitlement,
+  // regardless of the tier value still stored on the row — same inactive
+  // → free-tier-equivalent treatment every other gate in this app applies.
+  const effectiveTier = isMaster ? 'master' : isActive ? tier : 'free_tier';
+  const isUnlocked = (id: ArcadeGameId) => canPlayGame(effectiveTier, id, plan);
+
+  // A direct-launch shortcut (Home's "play this game" cards) must not
+  // bypass entitlement — only auto-open the requested game if it is both a
+  // real game id AND actually unlocked for this tier; otherwise land on the
+  // menu, where the locked tile explains why.
+  const launchedDirectly = useRef(
+    Boolean(initialGame && initialGame !== 'menu' && GAMES_LIST.some(g => g.id === initialGame) && isUnlocked(initialGame as ArcadeGameId))
+  );
   const [activeGame, setActiveGame] = useState<GameId>(
     launchedDirectly.current ? (initialGame as GameId) : 'menu'
   );
@@ -82,6 +106,14 @@ export default function PatientGames({ initialGame, onNavigateHome }: PatientGam
     } else {
       setActiveGame('menu');
     }
+  };
+
+  const handleSelectGame = (game: ArcadeGameId, title: string) => {
+    if (!isUnlocked(game)) {
+      toast.error(`${title} is a ${requiredPlanLabelForGame(game)} feature. Upgrade to unlock it.`);
+      return;
+    }
+    setActiveGame(game);
   };
 
   return (
@@ -109,37 +141,51 @@ export default function PatientGames({ initialGame, onNavigateHome }: PatientGam
               <div className="absolute right-6 bottom-0 text-9xl opacity-15 select-none pointer-events-none translate-y-4">🎮</div>
             </div>
 
-            {/* Quick Link to External External Tools */}
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black text-stone-900 tracking-tight flex items-center gap-2">
                 <Gamepad2 className="text-amber-600" /> Choose a Puzzle Module
               </h2>
-              <button 
-                onClick={() => setActiveGame('brainapps')}
-                className="px-4 py-2 text-xs font-black bg-white border-2 border-stone-300 rounded-xl hover:bg-stone-50 transition cursor-pointer text-stone-700 shadow-sm"
-              >
-                🧠 External Brain Apps
-              </button>
             </div>
 
-            {/* Core Grid Matrix Selection Layout */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-8">
-              {GAMES_LIST.map((game) => (
-                <motion.button
-                  key={game.id}
-                  onClick={() => setActiveGame(game.id as GameId)}
-                  whileHover={{ scale: 1.02, y: -2 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="flex flex-col text-left p-5 bg-white border-2 border-stone-200 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer min-h-[160px]"
-                >
-                  <div className="text-3xl mb-3">{game.icon}</div>
-                  <h3 className="font-black text-stone-900 text-lg mb-1 leading-tight">{game.title}</h3>
-                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border uppercase tracking-wide mb-2 self-start ${game.tagBg}`}>
-                    {game.tag}
-                  </span>
-                  <p className={`${A.muted} text-xs leading-relaxed mt-auto`}>{game.desc}</p>
-                </motion.button>
-              ))}
+            {/* Core Grid Matrix Selection Layout — 4 per row on desktop,
+                exact owner-specified order (top row then second row). A
+                locked tile stays visible (so the full 8-game set is always
+                seen — requirement: "display the other six game choices but
+                dim and lock them") but cannot start the game; it shows a
+                lock badge and the plan needed instead. */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+              {GAMES_LIST.map((game) => {
+                const unlocked = isUnlocked(game.id);
+                return (
+                  <motion.button
+                    key={game.id}
+                    onClick={() => handleSelectGame(game.id, game.title)}
+                    whileHover={unlocked ? { scale: 1.02, y: -2 } : undefined}
+                    whileTap={unlocked ? { scale: 0.98 } : undefined}
+                    aria-label={unlocked ? game.title : `${game.title} — locked, requires ${requiredPlanLabelForGame(game.id)}`}
+                    aria-disabled={!unlocked}
+                    className={`relative flex flex-col text-left p-5 bg-white border-2 rounded-2xl shadow-sm transition-all min-h-[160px] ${
+                      unlocked
+                        ? 'border-stone-200 hover:shadow-md cursor-pointer'
+                        : 'border-stone-200 opacity-50 grayscale cursor-pointer'
+                    }`}
+                  >
+                    {!unlocked && (
+                      <span className="absolute top-3 right-3 flex items-center gap-1 text-[9px] font-black uppercase tracking-wide bg-stone-800 text-white px-2 py-1 rounded-full">
+                        <Lock size={10} /> {requiredPlanLabelForGame(game.id)}
+                      </span>
+                    )}
+                    <div className="text-3xl mb-3">{game.icon}</div>
+                    <h3 className="font-black text-stone-900 text-lg mb-1 leading-tight">{game.title}</h3>
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border uppercase tracking-wide mb-2 self-start ${game.tagBg}`}>
+                      {game.tag}
+                    </span>
+                    <p className={`${A.muted} text-xs leading-relaxed mt-auto`}>
+                      {unlocked ? game.desc : `Upgrade to ${requiredPlanLabelForGame(game.id)} to unlock this game.`}
+                    </p>
+                  </motion.button>
+                );
+              })}
             </div>
 
             {/* Bottom Insight Card */}

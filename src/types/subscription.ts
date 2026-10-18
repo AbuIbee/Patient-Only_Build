@@ -205,16 +205,18 @@ export const TIERS: Record<TierName, TierConfig> = {
       { label: 'Daily time & orientation', included: true },
       { label: 'Unlimited reminders', included: false },
       { label: 'Medication tracker + logs', included: true, highlight: true },
-      { label: 'Care Partner check-in (A–G)', included: false },
+      { label: 'Care Partner notes — text notes for all 7 categories (A–G)', included: true },
+      { label: 'Care Partner check-in — full assessment & metrics (A–G)', included: false },
       { label: 'Family memory vault (unlimited)', included: false },
       { label: 'Family & memory categories', included: true },
-      { label: '"You are safe" affirmation', included: true },
+      { label: '"You are safe" affirmation — spoken aloud', included: true, highlight: true },
       { label: 'Videos & media upload', included: true, highlight: true },
       { label: 'Voice messages from family', included: false },
       { label: 'AI comfort voices', included: false },
       { label: 'Document vault', included: true, highlight: true },
       { label: 'Mood history & trends', included: false },
-      { label: 'Games & brain training', included: false },
+      { label: 'Patient Arcade — Matching Pairs', included: true },
+      { label: 'Patient Arcade — all 8 games', included: false },
       { label: 'Medication missed-dose SMS alerts', included: false },
       { label: 'Weekly mood summary email', included: false },
     ],
@@ -299,10 +301,11 @@ export const PLANS: Record<PlanName, PlanConfig> = {
       { label: 'Videos & media upload', included: true, highlight: true },
       { label: 'Document vault', included: true, highlight: true },
       { label: 'Unlimited reminders', included: true, highlight: true },
-      { label: 'Care Partner check-in (A–G)', included: true, highlight: true },
+      { label: 'Care Partner check-in — full assessment & metrics (A–G)', included: true, highlight: true },
       { label: 'Family memory vault (unlimited)', included: true, highlight: true },
       { label: 'Mood history & trends', included: true },
-      { label: 'Games & brain training', included: true },
+      { label: 'Patient Arcade — Matching Pairs, Solitaire, Word Search', included: true },
+      { label: 'Patient Arcade — remaining 5 games (Full Support only)', included: false },
       { label: 'Voice messages from family', included: false },
       { label: 'AI comfort voices', included: false },
       { label: 'Automatic slideshow playback', included: false },
@@ -328,15 +331,22 @@ export const PLANS: Record<PlanName, PlanConfig> = {
       { label: 'Videos & media upload', included: true, highlight: true },
       { label: 'Document vault', included: true, highlight: true },
       { label: 'Unlimited reminders', included: true, highlight: true },
-      { label: 'Care Partner check-in (A–G)', included: true, highlight: true },
+      { label: 'Care Partner check-in — full assessment & metrics (A–G)', included: true, highlight: true },
       { label: 'Family memory vault (unlimited)', included: true, highlight: true },
       { label: 'Mood history & trends', included: true },
-      { label: 'Games & brain training', included: true },
+      { label: 'Patient Arcade — all 8 games', included: true, highlight: true },
       { label: 'Voice messages from family', included: true, highlight: true },
       { label: 'AI comfort voices', included: true, highlight: true },
       { label: 'Automatic slideshow playback', included: true },
-      { label: 'Medication missed-dose SMS alerts', included: true },
-      { label: 'Weekly mood summary email', included: true },
+      // OWNER-MANUAL-TEST-CORRECTIONS item 1: "Do not describe SMS/email
+      // delivery functionality as operational unless it actually works and
+      // has been verified." No SMS-sending or email-sending backend exists
+      // anywhere in this codebase (see hasFeatureAccess()'s doc comment
+      // above) — these were previously marked included:true here, which
+      // falsely claimed working delivery. Corrected to false; not removed
+      // outright so the gap stays visible rather than silently disappearing.
+      { label: 'Medication missed-dose SMS alerts', included: false },
+      { label: 'Weekly mood summary email', included: false },
     ],
   },
 };
@@ -348,9 +358,14 @@ export type FeatureKey =
   | 'reminders_unlimited'
   | 'medications'
   | 'care_partner_checkin'
+  // OWNER-MANUAL-TEST-CORRECTIONS item 5: free-text notes for all seven
+  // Care Partner categories (A–G) are a distinct, lighter-weight capability
+  // from the full structured assessment ('care_partner_checkin' above,
+  // still Daily Care/Full Support only). Granted to every tier — see
+  // FREE_TIER_FEATURES below — so it is never gated by plan at all.
+  | 'care_partner_notes'
   | 'memories_unlimited'
   | 'mood_history'
-  | 'games'
   | 'media'
   | 'voice_messages'
   | 'ai_voices'
@@ -363,6 +378,55 @@ export type FeatureKey =
   // key and remains available regardless of plan — only the newly-named
   // "Automatic slideshow playback" perk is.
   | 'slideshow_autoplay';
+
+// ─── Patient Arcade — per-game entitlement (OWNER-MANUAL-TEST-CORRECTIONS item 2) ──
+// Replaces the old flat 'games' FeatureKey (which gated the ENTIRE Arcade
+// view as paid-only — removed from patientViewFeatures.ts's VIEW_FEATURE
+// map, since Free Tier must now be able to open the Arcade to play
+// Matching Pairs). This is the ONE authoritative policy for which games are
+// playable at which tier — PatientHome.tsx and PatientGames.tsx both read
+// canPlayGame()/ARCADE_GAMES from here rather than keeping their own,
+// possibly-conflicting copies.
+export type ArcadeGameId =
+  | 'matching' | 'solitaire' | 'wordsearch' | 'crossword'
+  | 'hangman' | 'checkers' | 'chess' | 'brainapps';
+
+// Exact owner-specified layout/order — top row then second row, 4 per row
+// on desktop.
+export const ARCADE_GAMES: { id: ArcadeGameId; label: string }[] = [
+  { id: 'matching',   label: 'Matching Pairs' },
+  { id: 'solitaire',  label: 'Solitaire' },
+  { id: 'wordsearch', label: 'Word Search' },
+  { id: 'crossword',  label: 'Crossword Puzzle' },
+  { id: 'hangman',    label: 'Hangman' },
+  { id: 'checkers',   label: 'Checkers' },
+  { id: 'chess',      label: 'Chess' },
+  { id: 'brainapps',  label: 'Brain Training' },
+];
+
+const FREE_TIER_GAMES: ArcadeGameId[] = ['matching'];
+const DAILY_CARE_GAMES: ArcadeGameId[] = ['matching', 'solitaire', 'wordsearch'];
+
+/**
+ * Returns true if the given (tier, game, plan) combination may PLAY the
+ * named game. Free Tier: Matching Pairs only. Daily Care: Matching Pairs,
+ * Solitaire, Word Search — the other five are visible but locked. Full
+ * Support and Master: all eight. A legacy paid_tier row with no recorded
+ * `plan` keeps full historical access, exactly mirroring
+ * hasFeatureAccess()'s own legacy-compatibility rule above.
+ */
+export function canPlayGame(tier: TierName, gameId: ArcadeGameId, plan?: PlanName | null): boolean {
+  if (tier === 'master') return true;
+  if (tier !== 'paid_tier') return FREE_TIER_GAMES.includes(gameId);
+  if (plan == null) return true; // legacy/unclassified paid_tier — full historical access
+  if (plan === 'full_support') return true;
+  return DAILY_CARE_GAMES.includes(gameId); // daily_care
+}
+
+/** The cheapest plan label that unlocks a given game — for upgrade copy. */
+export function requiredPlanLabelForGame(gameId: ArcadeGameId): 'Daily Care' | 'Full Support' {
+  return DAILY_CARE_GAMES.includes(gameId) ? 'Daily Care' : 'Full Support';
+}
 
 /*
  * MYMEMORIA-FUNCTIONAL-REPAIR-006 — CORRECTED, PLAN-AWARE ENTITLEMENT MAP.
@@ -386,11 +450,19 @@ export type FeatureKey =
  * FeatureKeys are classification-only (used for pricing-page display and
  * `can()` would correctly gate them IF a feature existed to check), not
  * backed by any real gated action today.
+ *
+ * OWNER-MANUAL-TEST-CORRECTIONS: the flat 'games' FeatureKey (previously
+ * here, gating the whole Arcade view as paid-only) is removed — replaced by
+ * canPlayGame() above, which grants Free Tier exactly one game (Matching
+ * Pairs) rather than none. 'care_partner_notes' (free-text notes for A–G)
+ * is added to FREE_TIER_FEATURES below — distinct from
+ * 'care_partner_checkin' (the full structured assessment), which stays
+ * Daily Care/Full Support only.
  */
-const FREE_TIER_FEATURES: FeatureKey[] = ['medications', 'media', 'documents'];
+const FREE_TIER_FEATURES: FeatureKey[] = ['medications', 'media', 'documents', 'care_partner_notes'];
 
 const DAILY_CARE_FEATURES: FeatureKey[] = [
-  'reminders_unlimited', 'care_partner_checkin', 'memories_unlimited', 'mood_history', 'games',
+  'reminders_unlimited', 'care_partner_checkin', 'memories_unlimited', 'mood_history',
 ];
 
 const FULL_SUPPORT_ONLY_FEATURES: FeatureKey[] = [

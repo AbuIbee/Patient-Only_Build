@@ -36,15 +36,28 @@ export type PatientView =
 // solely so REPAIR E's regression tests can assert nav-gating data
 // directly against the canonical FEATURE_ACCESS matrix — no behavior
 // change.
+// 'checkin' (Care Partner) is likewise never gated at the view level —
+// OWNER-MANUAL-TEST-CORRECTIONS item 5 requires every tier, including Free,
+// to reach it and save free-text notes for all 7 categories (A–G).
+// CarePartnerCheckin.tsx itself gates only the DETAILED structured
+// assessment (dropdowns/metrics + care_partner_checkins submission) behind
+// can('care_partner_checkin'), exactly like the Arcade's per-game gating.
 export const VIEW_FEATURE: Partial<Record<PatientView, FeatureKey>> = {
-  checkin:     'care_partner_checkin',
   reminders:   'reminders_unlimited',
   memories:    'memories_unlimited',
   documents:   'documents',
   media:       'media',
-  games:       'games',
   medications: 'medications',
 };
+
+// OWNER-MANUAL-TEST-CORRECTIONS item 2: the Patient Arcade VIEW itself is
+// never gated — Free Tier must be able to open it to play Matching Pairs,
+// and Daily Care must be able to see (dimmed/locked) the five games it
+// doesn't yet unlock. `games` previously appeared above, mapped to the
+// flat paid-only 'games' FeatureKey, which locked the entire view for Free
+// Tier. Per-GAME playability is now enforced inside PatientGames.tsx and
+// PatientHome.tsx via canPlayGame() (src/types/subscription.ts) — the one
+// authoritative policy both read, so there is no second, conflicting check.
 
 // 'routines' ("My Day") has no FeatureKey anywhere in the approved
 // entitlement matrix — it is neither one of the three approved free-tier

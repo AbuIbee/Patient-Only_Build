@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '@/store/useApp';
+import { useSubscription } from '@/store/useSubscription';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/types/supabase';
 import { getErrorMessage } from '@/lib/utils';
@@ -7,12 +8,150 @@ import {
   ClipboardList, ChevronDown, ChevronUp, CheckCircle2,
   AlertCircle, Save, Loader2, History, Calendar,
   Heart, Activity, Shield, Brain, Droplets,
-  Utensils, ThumbsUp, ChevronRight,
+  Utensils, ThumbsUp, ChevronRight, Lock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useTempUser } from '@/components/useTempUser';
+
+// ─── OWNER-MANUAL-TEST-CORRECTIONS item 5: free-text Care Partner notes ───
+// Available to every tier, including Free — distinct from the detailed,
+// dropdown-based structured assessment below (Daily Care/Full Support
+// only). Backed by the new care_partner_notes table (migration 031), never
+// care_partner_checkins — that table's Free-Tier INSERT restriction
+// (migration 016) is untouched.
+const NOTE_CATEGORIES: { id: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'; title: string; icon: React.ElementType; color: string }[] = [
+  { id: 'A', title: 'A — Daily Function',            icon: Activity,    color: 'bg-warm-bronze/10 text-warm-bronze' },
+  { id: 'B', title: 'B — Nutrition & Hydration',      icon: Utensils,    color: 'bg-soft-sage/20 text-green-700' },
+  { id: 'C', title: 'C — Continence',                 icon: Droplets,    color: 'bg-calm-blue/10 text-blue-700' },
+  { id: 'D', title: 'D — Safety Events',               icon: Shield,      color: 'bg-gentle-coral/10 text-gentle-coral' },
+  { id: 'E', title: 'E — Behavior & Responsiveness',   icon: Brain,       color: 'bg-deep-bronze/10 text-deep-bronze' },
+  { id: 'F', title: 'F — Mood & Social Engagement',    icon: Heart,       color: 'bg-warm-amber/10 text-warm-amber' },
+  { id: 'G', title: 'G — Symptoms & Comfort',          icon: ThumbsUp,    color: 'bg-soft-sage/20 text-green-700' },
+];
+
+function CarePartnerNotesForm() {
+  const { state } = useApp();
+  const { blockIfReadOnly } = useTempUser();
+  const patientId = state.currentUser?.id;
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+  const [openCategory, setOpenCategory] = useState<string>('A');
+
+  useEffect(() => {
+    if (!patientId) { setLoading(false); return; }
+    let cancelled = false;
+    supabase
+      .from('care_partner_notes')
+      .select('category, note')
+      .eq('patient_id', patientId)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) { toast.error('Failed to load your notes'); setLoading(false); return; }
+        const byCategory: Record<string, string> = {};
+        (data || []).forEach(row => { byCategory[row.category] = row.note; });
+        setNotes(byCategory);
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [patientId]);
+
+  const saveNote = async (category: string) => {
+    if (blockIfReadOnly()) return;
+    if (!patientId) { toast.error('You must be logged in to save a note'); return; }
+    setSaving(prev => ({ ...prev, [category]: true }));
+    try {
+      const { error } = await supabase
+        .from('care_partner_notes')
+        .upsert(
+          { patient_id: patientId, category, note: notes[category] ?? '', updated_by: patientId, updated_at: new Date().toISOString() },
+          { onConflict: 'patient_id,category' },
+        );
+      if (error) throw error;
+      toast.success('Note saved');
+    } catch (err) {
+      toast.error('Failed to save note: ' + getErrorMessage(err));
+    } finally {
+      setSaving(prev => ({ ...prev, [category]: false }));
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-10">
+        <Loader2 className="w-8 h-8 animate-spin text-warm-bronze" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="p-4 bg-calm-blue/10 border border-calm-blue/30 rounded-xl text-sm text-charcoal flex items-start gap-2">
+        <Lock className="w-4 h-4 text-calm-blue flex-shrink-0 mt-0.5" />
+        <span>
+          You can write and save a note for each category below. The full structured
+          assessment — dropdown ratings, flags, and trend metrics for the care team — is a
+          Daily Care / Full Support feature.
+        </span>
+      </div>
+      {NOTE_CATEGORIES.map(cat => {
+        const Icon = cat.icon;
+        const open = openCategory === cat.id;
+        return (
+          <div key={cat.id} className="bg-white rounded-2xl border border-soft-taupe overflow-hidden shadow-sm">
+            <button
+              onClick={() => setOpenCategory(open ? '' : cat.id)}
+              className="w-full flex items-center justify-between px-5 py-4 hover:bg-soft-taupe/10 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 ${cat.color} rounded-xl flex items-center justify-center flex-shrink-0`}>
+                  <Icon className="w-5 h-5" />
+                </div>
+                <span className="font-semibold text-charcoal">{cat.title}</span>
+                {notes[cat.id]?.trim() && (
+                  <span className="flex items-center gap-1 text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                    <CheckCircle2 className="w-3 h-3" /> Noted
+                  </span>
+                )}
+              </div>
+              {open ? <ChevronUp className="w-5 h-5 text-medium-gray" /> : <ChevronDown className="w-5 h-5 text-medium-gray" />}
+            </button>
+            <AnimatePresence initial={false}>
+              {open && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-5 pb-5 pt-1 space-y-3 border-t border-soft-taupe">
+                    <textarea
+                      value={notes[cat.id] ?? ''}
+                      onChange={e => setNotes(prev => ({ ...prev, [cat.id]: e.target.value }))}
+                      rows={3}
+                      placeholder={`Write a note for ${cat.title}...`}
+                      className="w-full px-3 py-2 border border-soft-taupe rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-warm-bronze resize-none"
+                    />
+                    <button
+                      onClick={() => saveNote(cat.id)}
+                      disabled={saving[cat.id]}
+                      className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm bg-warm-bronze hover:bg-deep-bronze text-white shadow-sm disabled:opacity-60 transition-all"
+                    >
+                      {saving[cat.id] ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : <><Save className="w-4 h-4" />Save Note</>}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CheckInData {
@@ -248,6 +387,14 @@ function HistoryRow({ row }: { row: Database['public']['Tables']['care_partner_c
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function CarePartnerCheckin() {
   const { state } = useApp();
+  const { can } = useSubscription();
+  // OWNER-MANUAL-TEST-CORRECTIONS item 5: the full structured assessment
+  // below (dropdowns/metrics, care_partner_checkins) stays Daily Care/Full
+  // Support only — a Free Tier caller instead gets CarePartnerNotesForm
+  // (free-text notes, care_partner_notes). The VIEW itself is no longer
+  // gated (see patientViewFeatures.ts) — this is the one, in-component
+  // check, matching the Arcade's per-game gating pattern exactly.
+  const hasFullCheckin = can('care_partner_checkin');
   const [data, setData]         = useState<CheckInData>({ ...EMPTY });
   const [view, setView]         = useState<'form' | 'history'>('form');
   const [saving, setSaving]     = useState(false);
@@ -397,20 +544,24 @@ export default function CarePartnerCheckin() {
               Your observations help the care team provide better support
             </p>
           </div>
-          <div className="text-right flex-shrink-0">
-            <p className="text-3xl font-bold">{completedCount}/7</p>
-            <p className="text-white/90 text-xs font-medium">sections filled</p>
+          {hasFullCheckin && (
+            <div className="text-right flex-shrink-0">
+              <p className="text-3xl font-bold">{completedCount}/7</p>
+              <p className="text-white/90 text-xs font-medium">sections filled</p>
+            </div>
+          )}
+        </div>
+        {/* Progress bar — only meaningful for the structured assessment */}
+        {hasFullCheckin && (
+          <div className="mt-4 h-2 bg-white/20 rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-white rounded-full"
+              initial={{ width: 0 }}
+              animate={{ width: `${(completedCount / 7) * 100}%` }}
+              transition={{ duration: 0.4 }}
+            />
           </div>
-        </div>
-        {/* Progress bar */}
-        <div className="mt-4 h-2 bg-white/20 rounded-full overflow-hidden">
-          <motion.div
-            className="h-full bg-white rounded-full"
-            initial={{ width: 0 }}
-            animate={{ width: `${(completedCount / 7) * 100}%` }}
-            transition={{ duration: 0.4 }}
-          />
-        </div>
+        )}
       </div>
 
       {/* Tab switcher */}
@@ -445,6 +596,8 @@ export default function CarePartnerCheckin() {
             history.map(row => <HistoryRow key={row.id} row={row} />)
           )}
         </div>
+      ) : !hasFullCheckin ? (
+        <CarePartnerNotesForm />
       ) : (
         <div className="space-y-3">
           {/* A — Daily Function */}

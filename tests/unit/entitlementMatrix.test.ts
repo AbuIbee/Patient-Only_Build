@@ -8,6 +8,9 @@ import {
   hasFeatureAccess,
   isSubscriptionActive,
   needsPayment,
+  canPlayGame,
+  requiredPlanLabelForGame,
+  ARCADE_GAMES,
   TIERS,
   PLANS,
   type FeatureKey,
@@ -16,13 +19,17 @@ import {
 } from '@/types/subscription';
 
 const ALL_FEATURE_KEYS: FeatureKey[] = [
-  'reminders_unlimited', 'medications', 'care_partner_checkin', 'memories_unlimited',
-  'mood_history', 'games', 'media', 'voice_messages', 'ai_voices', 'documents',
+  'reminders_unlimited', 'medications', 'care_partner_checkin', 'care_partner_notes', 'memories_unlimited',
+  'mood_history', 'media', 'voice_messages', 'ai_voices', 'documents',
   'sms_alerts', 'mood_email', 'slideshow_autoplay',
 ];
 
-const APPROVED_FREE_FEATURES: FeatureKey[] = ['medications', 'media', 'documents'];
-const DAILY_CARE_ADDS: FeatureKey[] = ['reminders_unlimited', 'care_partner_checkin', 'memories_unlimited', 'mood_history', 'games'];
+// OWNER-MANUAL-TEST-CORRECTIONS: 'games' (flat, paid-only) is gone —
+// replaced by canPlayGame()'s per-game policy, tested separately below.
+// 'care_partner_notes' (free-text notes for A–G) is now a fourth approved
+// free-tier feature, distinct from the still-paid-only 'care_partner_checkin'.
+const APPROVED_FREE_FEATURES: FeatureKey[] = ['medications', 'media', 'documents', 'care_partner_notes'];
+const DAILY_CARE_ADDS: FeatureKey[] = ['reminders_unlimited', 'care_partner_checkin', 'memories_unlimited', 'mood_history'];
 const FULL_SUPPORT_ONLY_ADDS: FeatureKey[] = ['voice_messages', 'ai_voices', 'slideshow_autoplay', 'sms_alerts', 'mood_email'];
 
 function baseSub(overrides: Partial<Subscription>): Subscription {
@@ -163,12 +170,12 @@ describe('REPAIR B requirement 2 — pricing display never claims a paid-only fe
     media: 'Videos & media upload',
     documents: 'Document vault',
     reminders_unlimited: 'Unlimited reminders',
-    care_partner_checkin: 'Care Partner check-in (A–G)',
+    care_partner_checkin: 'Care Partner check-in — full assessment & metrics (A–G)',
+    care_partner_notes: 'Care Partner notes — text notes for all 7 categories (A–G)',
     memories_unlimited: 'Family memory vault (unlimited)',
     voice_messages: 'Voice messages from family',
     ai_voices: 'AI comfort voices',
     mood_history: 'Mood history & trends',
-    games: 'Games & brain training',
     sms_alerts: 'Medication missed-dose SMS alerts',
     mood_email: 'Weekly mood summary email',
     slideshow_autoplay: 'Automatic slideshow playback',
@@ -182,11 +189,18 @@ describe('REPAIR B requirement 2 — pricing display never claims a paid-only fe
     }
   });
 
-  it('the three approved features are shown as included in the free tier pricing display', () => {
+  it('the four approved features are shown as included in the free tier pricing display', () => {
     const includedLabels = TIERS.free_tier.features.filter(f => f.included).map(f => f.label);
     expect(includedLabels).toContain(freeFeatureLabels.medications);
     expect(includedLabels).toContain(freeFeatureLabels.media);
     expect(includedLabels).toContain(freeFeatureLabels.documents);
+    expect(includedLabels).toContain(freeFeatureLabels.care_partner_notes);
+  });
+
+  it('free tier does NOT claim the full Care Partner assessment, advanced metrics, or all 8 Arcade games as included', () => {
+    const included = TIERS.free_tier.features.filter(f => f.included).map(f => f.label);
+    expect(included).not.toContain(freeFeatureLabels.care_partner_checkin);
+    expect(included).not.toContain('Patient Arcade — all 8 games');
   });
 
   it('PLANS.daily_care correctly marks its own additions included and Full-Support-only features not included', () => {
@@ -195,15 +209,78 @@ describe('REPAIR B requirement 2 — pricing display never claims a paid-only fe
     for (const key of FULL_SUPPORT_ONLY_ADDS) expect(included).not.toContain(freeFeatureLabels[key]);
   });
 
-  it('PLANS.full_support marks every feature included', () => {
-    expect(PLANS.full_support.features.every(f => f.included)).toBe(true);
+  it('OWNER-MANUAL-TEST-CORRECTIONS item 1 — Full Support no longer claims SMS/email delivery as operational (no such backend exists)', () => {
+    const fullSupportFeatures = PLANS.full_support.features;
+    const sms = fullSupportFeatures.find(f => f.label === freeFeatureLabels.sms_alerts);
+    const email = fullSupportFeatures.find(f => f.label === freeFeatureLabels.mood_email);
+    expect(sms?.included).toBe(false);
+    expect(email?.included).toBe(false);
   });
 
-  it('PLANS prices match the owner-confirmed amounts exactly', () => {
+  it('Full Support marks every REAL (implemented) feature included', () => {
+    const notOperational = [freeFeatureLabels.sms_alerts, freeFeatureLabels.mood_email];
+    for (const f of PLANS.full_support.features) {
+      if (notOperational.includes(f.label)) continue;
+      expect(f.included).toBe(true);
+    }
+  });
+
+  it('PLANS prices match the owner-confirmed amounts exactly — this correction does not touch pricing', () => {
     expect(PLANS.daily_care.monthlyPrice).toBe(4.99);
     expect(PLANS.daily_care.annualLicensePrice).toBe(49.99);
     expect(PLANS.full_support.monthlyPrice).toBe(9.99);
     expect(PLANS.full_support.annualLicensePrice).toBe(99.99);
+  });
+});
+
+describe('OWNER-MANUAL-TEST-CORRECTIONS item 2 — Patient Arcade per-game entitlement (canPlayGame)', () => {
+  it('ARCADE_GAMES is exactly the 8 required games in the exact required order (top row then second row)', () => {
+    expect(ARCADE_GAMES.map(g => g.id)).toEqual([
+      'matching', 'solitaire', 'wordsearch', 'crossword',
+      'hangman', 'checkers', 'chess', 'brainapps',
+    ]);
+    expect(ARCADE_GAMES.map(g => g.label)).toEqual([
+      'Matching Pairs', 'Solitaire', 'Word Search', 'Crossword Puzzle',
+      'Hangman', 'Checkers', 'Chess', 'Brain Training',
+    ]);
+  });
+
+  it('Free Tier can play ONLY Matching Pairs', () => {
+    const playable = ARCADE_GAMES.filter(g => canPlayGame('free_tier', g.id)).map(g => g.id);
+    expect(playable).toEqual(['matching']);
+  });
+
+  it('Daily Care can play exactly Matching Pairs, Solitaire, and Word Search', () => {
+    const playable = ARCADE_GAMES.filter(g => canPlayGame('paid_tier', g.id, 'daily_care')).map(g => g.id);
+    expect(playable.sort()).toEqual(['matching', 'solitaire', 'wordsearch'].sort());
+  });
+
+  it('Daily Care is denied the other five games (Crossword, Hangman, Checkers, Chess, Brain Training)', () => {
+    const locked: typeof ARCADE_GAMES[number]['id'][] = ['crossword', 'hangman', 'checkers', 'chess', 'brainapps'];
+    for (const id of locked) expect(canPlayGame('paid_tier', id, 'daily_care')).toBe(false);
+  });
+
+  it('Full Support can play all 8 games', () => {
+    for (const g of ARCADE_GAMES) expect(canPlayGame('paid_tier', g.id, 'full_support')).toBe(true);
+  });
+
+  it('Master can play all 8 games', () => {
+    for (const g of ARCADE_GAMES) expect(canPlayGame('master', g.id)).toBe(true);
+  });
+
+  it('a legacy paid_tier row with plan=null keeps full historical access to all 8 games (same legacy-compatibility rule as hasFeatureAccess)', () => {
+    for (const g of ARCADE_GAMES) expect(canPlayGame('paid_tier', g.id, null)).toBe(true);
+  });
+
+  it('requiredPlanLabelForGame names Daily Care for the 3 free-at-Daily-Care games, Full Support for the other 5', () => {
+    expect(requiredPlanLabelForGame('matching')).toBe('Daily Care');
+    expect(requiredPlanLabelForGame('solitaire')).toBe('Daily Care');
+    expect(requiredPlanLabelForGame('wordsearch')).toBe('Daily Care');
+    expect(requiredPlanLabelForGame('crossword')).toBe('Full Support');
+    expect(requiredPlanLabelForGame('hangman')).toBe('Full Support');
+    expect(requiredPlanLabelForGame('checkers')).toBe('Full Support');
+    expect(requiredPlanLabelForGame('chess')).toBe('Full Support');
+    expect(requiredPlanLabelForGame('brainapps')).toBe('Full Support');
   });
 });
 
