@@ -2135,6 +2135,13 @@ export interface Database {
           resumable_patient_id: string | null
         }[]
       }
+      // ENTERPRISE CONSOLIDATED DELIVERY / migration 034: the "Delete"
+      // action for an incomplete registration — only ever deletes the
+      // caller's own unconsumed row.
+      cancel_my_pending_registration: {
+        Args: { p_registration_id: string }
+        Returns: boolean
+      }
       // REPAIR 007: trusted, server-`now()`-computed Temporary/Companion
       // program eligibility check (migration 018). Takes no arguments —
       // reads the caller's OWN subscriptions row via auth.uid() only.

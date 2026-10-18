@@ -3,6 +3,45 @@ import { normalizeEmail, assertUniqueProfileIdentity, isUniqueConstraintError, u
 import { getErrorMessage } from '@/lib/utils';
 import type { PatientIntakeFormData } from '@/types/patientIntake';
 
+/**
+ * ENTERPRISE CONSOLIDATED DELIVERY — fixes the reported "Edge Function
+ * non-2xx / HTTP 400 registration failure."
+ *
+ * Root cause, confirmed by reading @supabase/functions-js directly
+ * (FunctionsClient.js): on ANY non-2xx response, `invoke()` throws a
+ * `FunctionsHttpError` BEFORE ever reading the response body — `data` is
+ * always `null` in that case, and `error.message` is hardcoded to the
+ * generic string "Edge Function returned a non-2xx status code". Every
+ * intentional error this app's Edge Functions return as JSON (duplicate
+ * email, capacity reached, a bad field, etc.) was therefore NEVER actually
+ * shown to the caregiver — only that one generic, unhelpful string,
+ * regardless of which specific validation failed server-side. This is the
+ * exact, confirmed explanation for the reported symptom.
+ *
+ * The real body is still readable from `error.context` (the raw,
+ * not-yet-consumed Response object) — this helper reads it.
+ */
+async function extractEdgeFunctionError(error: unknown, fallback: string): Promise<{
+  message: string;
+  body: Record<string, unknown> | null;
+}> {
+  const context = (error as { name?: string; context?: unknown } | null)?.context;
+  if (
+    error && typeof error === 'object' && (error as { name?: string }).name === 'FunctionsHttpError' &&
+    context && typeof (context as Response).json === 'function'
+  ) {
+    try {
+      const body = await (context as Response).clone().json() as Record<string, unknown>;
+      const message = typeof body?.error === 'string' ? body.error : fallback;
+      return { message, body };
+    } catch {
+      // Body wasn't JSON (or was already consumed) — fall through to the
+      // generic message rather than throwing a second error.
+    }
+  }
+  return { message: getErrorMessage(error, fallback), body: null };
+}
+
 // ─── Caregiver account self-service signup ──────────────────────────────────
 export interface CaregiverSignUpInput {
   firstName: string;
@@ -113,14 +152,19 @@ export async function registerPatientAsCaregiver(
   });
 
   if (error || !data?.success) {
-    const message = data?.error || getErrorMessage(error, 'Could not complete patient registration.');
+    // On success, `data` is the parsed JSON body as usual. On failure,
+    // invoke() never populates `data` at all (see the helper's own
+    // comment) — the real message/fields live in `error.context`'s body.
+    const { message, body } = error
+      ? await extractEdgeFunctionError(error, 'Could not complete patient registration.')
+      : { message: data?.error || 'Could not complete patient registration.', body: data as Record<string, unknown> | null };
     return {
       success: false,
       error: isUniqueConstraintError({ message } as { message: string }) ? uniqueIdentityMessage({ message } as { message: string }) : message,
-      resumable: data?.resumable,
-      resumeRegistrationId: data?.resumeRegistrationId,
-      resumeClaimToken: data?.resumeClaimToken,
-      resumePatientId: data?.resumePatientId,
+      resumable: Boolean(body?.resumable),
+      resumeRegistrationId: body?.resumeRegistrationId as string | undefined,
+      resumeClaimToken: body?.resumeClaimToken as string | undefined,
+      resumePatientId: body?.resumePatientId as string | undefined,
     };
   }
 
@@ -287,4 +331,13 @@ export async function getMyPendingRegistrations(): Promise<PendingRegistrationSu
     createdAt: r.created_at,
     resumablePatientId: r.resumable_patient_id,
   }));
+}
+
+/** ENTERPRISE CONSOLIDATED DELIVERY: the "Delete" control for an
+ * incomplete registration — the dashboard's "Continue/Edit/Delete"
+ * requirement. Only the owning caregiver's own unconsumed registration
+ * can ever be deleted (migration 034). */
+export async function cancelMyPendingRegistration(registrationId: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('cancel_my_pending_registration', { p_registration_id: registrationId });
+  return { error: error?.message ?? null };
 }

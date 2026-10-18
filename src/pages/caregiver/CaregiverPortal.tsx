@@ -13,6 +13,7 @@ import {
   getMyLinkedPatients,
   setPatientDisplayLabel,
   getMyPendingRegistrations,
+  cancelMyPendingRegistration,
   type LinkedPatientSummary,
   type PendingRegistrationSummary,
 } from '@/services/caregiverRegistrationService';
@@ -436,6 +437,7 @@ function IncompleteRegistrations({
   onResumed: () => void;
 }) {
   const [resumingId, setResumingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   if (pending.length === 0) return null;
 
@@ -455,6 +457,24 @@ function IncompleteRegistrations({
     }
   };
 
+  // ENTERPRISE CONSOLIDATED DELIVERY: the "Delete" control — only ever
+  // removes the caller's own unconsumed registration (migration 034).
+  const deleteRegistration = async (reg: PendingRegistrationSummary) => {
+    if (!window.confirm(`Delete the incomplete registration for ${reg.firstName} ${reg.lastName}? This cannot be undone.`)) return;
+    setDeletingId(reg.registrationId);
+    try {
+      const { error } = await cancelMyPendingRegistration(reg.registrationId);
+      if (error) {
+        toast.error('Could not delete this registration: ' + error);
+        return;
+      }
+      toast.success('Incomplete registration deleted.');
+      onResumed();
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 sm:p-5 space-y-3">
       <div className="flex items-center gap-2 text-amber-800">
@@ -471,18 +491,26 @@ function IncompleteRegistrations({
                 {reg.resumablePatientId ? 'Account created — registration did not finish.' : 'The account could not be created.'}
               </p>
             </div>
-            {reg.resumablePatientId ? (
+            <div className="flex-shrink-0 flex items-center gap-2">
+              {reg.resumablePatientId && (
+                <button
+                  type="button"
+                  onClick={() => { void resume(reg); }}
+                  disabled={resumingId === reg.registrationId || deletingId === reg.registrationId}
+                  className="px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-60 transition-colors"
+                >
+                  {resumingId === reg.registrationId ? 'Finishing…' : 'Finish Registration'}
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => { void resume(reg); }}
-                disabled={resumingId === reg.registrationId}
-                className="flex-shrink-0 px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-60 transition-colors"
+                onClick={() => { void deleteRegistration(reg); }}
+                disabled={resumingId === reg.registrationId || deletingId === reg.registrationId}
+                className="px-3 py-2 rounded-lg border border-gentle-coral/40 text-gentle-coral hover:bg-gentle-coral/10 text-xs font-semibold disabled:opacity-60 transition-colors"
               >
-                {resumingId === reg.registrationId ? 'Finishing…' : 'Finish Registration'}
+                {deletingId === reg.registrationId ? 'Deleting…' : 'Delete'}
               </button>
-            ) : (
-              <span className="flex-shrink-0 text-xs text-medium-gray italic">Try registering again</span>
-            )}
+            </div>
           </li>
         ))}
       </ul>
@@ -525,14 +553,21 @@ function PatientsSection({
           <Users className="w-5 h-5 text-warm-bronze" />
           <h2 className="text-lg font-bold text-charcoal">My Patients</h2>
         </div>
-        <button
-          type="button"
-          onClick={onRegisterNew}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold transition-colors"
-        >
-          <UserPlus className="w-4 h-4" />
-          Register a New Patient
-        </button>
+        {/* ENTERPRISE CONSOLIDATED DELIVERY: fixes the reported "duplicate
+            Register New Patient buttons" — this header action and the
+            empty-state's own CTA below rendered SIMULTANEOUSLY whenever
+            patients.length === 0, since nothing previously suppressed
+            either one. Only one is ever shown now. */}
+        {patients.length > 0 && (
+          <button
+            type="button"
+            onClick={onRegisterNew}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold transition-colors"
+          >
+            <UserPlus className="w-4 h-4" />
+            Register a New Patient
+          </button>
+        )}
       </div>
 
       {patients.length > 1 && (
