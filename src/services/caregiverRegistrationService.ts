@@ -1,4 +1,4 @@
-import { supabase, createIsolatedAuthClient } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { normalizeEmail, assertUniqueProfileIdentity, isUniqueConstraintError, uniqueIdentityMessage } from '@/lib/identity';
 import { getErrorMessage } from '@/lib/utils';
 import type { PatientIntakeFormData } from '@/types/patientIntake';
@@ -49,112 +49,95 @@ export interface CaregiverPatientRegistrationResult {
   success: boolean;
   patientId?: string;
   error?: string;
-  /** True when the Auth account was created but the final claim step
-   * failed — a resumable state. `resumeToken`/`resumeRegistrationId`/
-   * `resumePatientId` let the caller retry ONLY the claim step without
-   * re-running signUp(). */
+  /** One-time activation link (Supabase recovery-link flow) — replaces the
+   * old plaintext temporary password. Never a password string. The
+   * caregiver relays this to the patient however is appropriate; it also
+   * supports a caregiver-managed patient with no independent email access,
+   * since generating this link never sends an email itself. */
+  activationLink?: string | null;
+  /** True when the server-side call failed after the registration was
+   * already initiated — a resumable state used by the Edge Function's own
+   * error response. */
   resumable?: boolean;
   resumeRegistrationId?: string;
   resumeClaimToken?: string;
   resumePatientId?: string;
 }
 
-function mapIntakeToRegistrationArgs(formData: PatientIntakeFormData) {
-  return {
-    p_first_name: formData.patientFirstName.trim(),
-    p_last_name: formData.patientLastName.trim(),
-    p_email: normalizeEmail(formData.patientEmail),
-    p_preferred_name: formData.patientPreferredName || null,
-    p_date_of_birth: formData.patientDateOfBirth || null,
-    p_diagnosis_date: formData.patientDiagnosisDate || null,
-    p_dementia_stage: formData.patientDementiaStage || null,
-    p_location: formData.patientCity || null,
-    p_address: [formData.patientStreetAddress, formData.patientCity, formData.patientState, formData.patientZipCode]
-      .filter(Boolean).join(', ') || null,
-    p_emergency_contact_name: formData.emergencyContactFullName || null,
-    p_emergency_contact_relationship: formData.emergencyContactRelationship || null,
-    p_emergency_contact_phone: formData.emergencyContactPhone || null,
-    p_emergency_contact_email: formData.emergencyContactEmail || null,
-    p_relationship_type: formData.caregiverRelationship || 'primary',
-  };
-}
-
 /**
- * Full self-service registration: initiate (server-generates the claim
- * token) → create the new patient's Auth account on an isolated client
- * (never the caller's own session) → finish the profile row → claim/link.
- * Each step after the first is safely resumable on failure — see
- * `resumeCaregiverPatientRegistration` below.
+ * OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase A item 1: the entire
+ * registration (initiate → create the patient's Auth account → correct
+ * provisioning_status → claim/link → generate an activation link) now runs
+ * as ONE atomic call inside the provision-caregiver-patient Edge Function,
+ * using the service-role key that exists ONLY inside that function's own
+ * deployed runtime — never in this file, never in any frontend bundle.
+ * This replaces the old 3-step browser sequence (isolated-client signUp() +
+ * a caregiver-session profiles UPDATE that RLS silently rejected, which is
+ * exactly why the Edge Function instead uses an admin client server-side).
  */
 export async function registerPatientAsCaregiver(
   formData: PatientIntakeFormData,
-  tempPassword: string,
 ): Promise<CaregiverPatientRegistrationResult> {
-  // Step 1 — server-side token generation. Never touches Auth at all yet.
-  const { data: registration, error: initError } = await supabase.rpc(
-    'caregiver_initiate_patient_registration',
-    mapIntakeToRegistrationArgs(formData),
-  );
-  if (initError || !registration) {
-    return { success: false, error: initError?.message || 'Could not start registration.' };
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    return { success: false, error: 'You must be signed in as a caregiver to register a patient.' };
   }
 
-  // Step 2 — create the new patient's Auth account on an ISOLATED client.
-  const isolatedClient = createIsolatedAuthClient();
-  const { data: authData, error: authError } = await isolatedClient.auth.signUp({
-    email: registration.patient_email,
-    password: tempPassword,
-    options: {
-      data: {
-        first_name: registration.patient_first_name,
-        last_name: registration.patient_last_name,
-        role: 'patient',
-      },
+  const { data, error } = await supabase.functions.invoke<{
+    success?: boolean;
+    patientId?: string;
+    activationLink?: string | null;
+    error?: string;
+    resumable?: boolean;
+    resumeRegistrationId?: string;
+    resumeClaimToken?: string;
+    resumePatientId?: string;
+  }>('provision-caregiver-patient', {
+    body: {
+      firstName: formData.patientFirstName.trim(),
+      lastName: formData.patientLastName.trim(),
+      email: normalizeEmail(formData.patientEmail),
+      preferredName: formData.patientPreferredName || null,
+      dateOfBirth: formData.patientDateOfBirth || null,
+      diagnosisDate: formData.patientDiagnosisDate || null,
+      dementiaStage: formData.patientDementiaStage || null,
+      location: formData.patientCity || null,
+      address: [formData.patientStreetAddress, formData.patientCity, formData.patientState, formData.patientZipCode]
+        .filter(Boolean).join(', ') || null,
+      emergencyContactName: formData.emergencyContactFullName || null,
+      emergencyContactRelationship: formData.emergencyContactRelationship || null,
+      emergencyContactPhone: formData.emergencyContactPhone || null,
+      emergencyContactEmail: formData.emergencyContactEmail || null,
+      relationshipType: formData.caregiverRelationship || 'primary',
     },
   });
 
-  if (authError || !authData.user) {
+  if (error || !data?.success) {
+    const message = data?.error || getErrorMessage(error, 'Could not complete patient registration.');
     return {
       success: false,
-      error: isUniqueConstraintError(authError) ? uniqueIdentityMessage(authError) : (authError?.message || 'Failed to create the patient account.'),
+      error: isUniqueConstraintError({ message } as { message: string }) ? uniqueIdentityMessage({ message } as { message: string }) : message,
+      resumable: data?.resumable,
+      resumeRegistrationId: data?.resumeRegistrationId,
+      resumeClaimToken: data?.resumeClaimToken,
+      resumePatientId: data?.resumePatientId,
     };
   }
 
-  const patientId = authData.user.id;
-
-  // Step 3 — finish the profile row. The trigger already created a basic
-  // row (role='patient'); this upsert only touches columns confirmed
-  // writable by `authenticated` (migration 012's column grant) —
-  // deliberately NOT including `email` (already correct from the trigger)
-  // to avoid any ON CONFLICT DO UPDATE SET on a locked-down column.
-  const { error: profileError } = await supabase.from('profiles').update({
-    first_name: registration.patient_first_name,
-    last_name: registration.patient_last_name,
-    must_change_password: true,
-    provisioning_status: 'profile_created',
-    updated_at: new Date().toISOString(),
-  }).eq('id', patientId);
-
-  if (profileError) {
-    // Resumable: the Auth account exists; the caller can retry the claim
-    // step directly once this is resolved (claim itself re-verifies
-    // provisioning_status, so a retry after fixing this is safe).
-    return {
-      success: false,
-      error: 'Patient account created, but the profile could not be finished: ' + profileError.message,
-      resumable: true,
-      resumeRegistrationId: registration.id,
-      resumeClaimToken: registration.claim_token,
-      resumePatientId: patientId,
-    };
-  }
-
-  // Step 4 — claim and link.
-  return finishCaregiverPatientClaim(registration.id, registration.claim_token, patientId);
+  return { success: true, patientId: data.patientId, activationLink: data.activationLink ?? null };
 }
 
-/** Retry ONLY the claim step — used after a step-3/4 failure, with the
- * token/ids the original caller already held in memory. No re-signup. */
+/**
+ * Resumes ONLY the final claim/link step — used when the Edge Function
+ * reported a resumable failure after the patient's Auth account and
+ * provisioning_status were already correctly set (step 4 of the function
+ * failing after steps 1–3 succeeded, e.g. a transient network error). Calls
+ * the same caregiver_claim_new_patient() RPC directly as the caregiver's
+ * own session — it is SECURITY DEFINER and does not need service-role
+ * privilege, unlike the provisioning_status correction the Edge Function
+ * already performed. Does NOT re-create the Auth account or re-run
+ * initiate — no duplicate registration is possible.
+ */
 export async function finishCaregiverPatientClaim(
   registrationId: string,
   claimToken: string,
@@ -169,7 +152,7 @@ export async function finishCaregiverPatientClaim(
   if (claimError || !patient) {
     return {
       success: false,
-      error: claimError?.message || 'Could not complete patient registration.',
+      error: claimError?.message || 'Could not complete patient registration. This may require support if the account could not be finished.',
       resumable: true,
       resumeRegistrationId: registrationId,
       resumeClaimToken: claimToken,

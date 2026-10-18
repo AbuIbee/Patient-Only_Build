@@ -18,7 +18,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { assertUniqueProfileIdentity, isUniqueConstraintError, normalizeEmail, uniqueIdentityMessage } from '@/lib/identity';
-import { TIERS, PLANS, type TierName, type PlanName /*, validatePromoCode */ } from '@/types/subscription';
+import { TIERS, PLANS, RESIDENTIAL_TRIAL_DAYS, type TierName, type PlanName /*, validatePromoCode */ } from '@/types/subscription';
 import { useApp } from '@/store/useApp';
 
 interface PricingPageProps {
@@ -84,27 +84,27 @@ export default function PricingPage({
     plan: PlanName | null;
     label: string;
     monthlyPrice: number;
-    annualLicensePrice: number | null; // separate charge — never substitutes the monthly price
+    isTrial?: boolean; // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B: the entry card is a 14-day Daily-Care trial, not a permanent free plan
     tagline: string;
     features: typeof TIERS.free_tier.features;
   }
   const visiblePlanCards: PlanCard[] = [
     {
-      key: 'free_tier', tierName: 'free_tier', plan: null,
-      label: TIERS.free_tier.label, monthlyPrice: TIERS.free_tier.price,
-      annualLicensePrice: null, tagline: TIERS.free_tier.tagline,
-      features: TIERS.free_tier.features,
+      key: 'trial', tierName: 'free_tier', plan: null,
+      label: `${RESIDENTIAL_TRIAL_DAYS}-Day Free Trial`, monthlyPrice: 0,
+      isTrial: true, tagline: 'Full Daily Care access, free for two weeks',
+      features: PLANS.daily_care.features,
     },
     {
       key: 'daily_care', tierName: 'paid_tier', plan: 'daily_care',
       label: PLANS.daily_care.label, monthlyPrice: PLANS.daily_care.monthlyPrice,
-      annualLicensePrice: PLANS.daily_care.annualLicensePrice, tagline: PLANS.daily_care.tagline,
+      tagline: PLANS.daily_care.tagline,
       features: PLANS.daily_care.features,
     },
     {
       key: 'full_support', tierName: 'paid_tier', plan: 'full_support',
       label: PLANS.full_support.label, monthlyPrice: PLANS.full_support.monthlyPrice,
-      annualLicensePrice: PLANS.full_support.annualLicensePrice, tagline: PLANS.full_support.tagline,
+      tagline: PLANS.full_support.tagline,
       features: PLANS.full_support.features,
     },
   ];
@@ -175,19 +175,28 @@ export default function PricingPage({
           return;
         }
 
-        // C02-003: server-owned, idempotent free-tier provisioning — a
-        // direct client upsert here is unreachable once 011/013 remove
-        // client INSERT/UPDATE on subscriptions, and would have let any
-        // caller claim an arbitrary tier/status via the same call shape.
+        // C02-003 / OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B:
+        // server-owned, idempotent provisioning — a direct client upsert
+        // here is unreachable once 011/013 remove client INSERT/UPDATE on
+        // subscriptions, and would have let any caller claim an arbitrary
+        // tier/status via the same call shape. This RPC now grants a
+        // 14-day Daily Care trial to a genuinely new caller (migration
+        // 032), falling back to the original free_tier shape only for a
+        // caller whose email already used a trial before — the toast
+        // below reflects whichever one actually happened.
         const { data: freeRow, error: freePlanError } = await supabase.rpc('provision_free_subscription');
 
         if (freePlanError || !freeRow) {
-          console.error('Free Tier activation error:', freePlanError);
-          toast.error('Could not activate the Free Tier. Please try again.');
+          console.error('Trial activation error:', freePlanError);
+          toast.error('Could not start your trial. Please try again.');
           return;
         }
 
-        toast.success('Your Free Tier is active.');
+        toast.success(
+          freeRow.status === 'trial'
+            ? `Your ${RESIDENTIAL_TRIAL_DAYS}-day Daily Care trial has started.`
+            : 'Your account is active.',
+        );
 
         dispatch({
           type: 'SET_USER',
@@ -668,7 +677,7 @@ export default function PricingPage({
         return;
       }
 
-      toast.success('Account created. Choose your Free Tier or Paid Tier.');
+      toast.success(`Account created. Start your ${RESIDENTIAL_TRIAL_DAYS}-day trial or choose a paid plan.`);
       setStep('plans');
     } catch (error) {
       console.error('Account-creation error:', error);
@@ -706,17 +715,16 @@ export default function PricingPage({
               <h1 className="text-3xl font-bold text-charcoal mb-3">Choose Your Plan</h1>
 
               <p className="text-medium-gray max-w-2xl mx-auto">
-                Choose the level of support that fits your needs. The Free Tier includes
-                three essential caregiving tools. Daily Care and Full Support are two
-                separate paid plans — each with its own monthly price and its own
-                additional annual organization account license.
+                Start with a {RESIDENTIAL_TRIAL_DAYS}-day free trial with full Daily Care access.
+                Daily Care and Full Support are two separate paid plans, each with a single
+                monthly price — no separate annual license for residential accounts.
               </p>
             </div>
 
             {/* Cards — equal height via joined border design */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-0 mb-10 rounded-2xl overflow-hidden border-2 border-warm-bronze shadow-lg">
               {visiblePlanCards.map((card, i) => {
-                const isPopular = card.key === 'free_tier';
+                const isPopular = card.key === 'trial';
 
                 return (
                   <motion.div
@@ -736,19 +744,21 @@ export default function PricingPage({
                     </div>
                     <p className="text-xs text-medium-gray mb-1">{card.tagline}</p>
 
-                    {/* Price — monthly subscription and, where applicable, the
-                        SEPARATE additional annual organization license. Never
-                        combined into one number — the license is not a
-                        substitute for the monthly charge. */}
+                    {/* Price — a single monthly charge for residential plans
+                        (OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B
+                        item 4: no residential annual license). The trial
+                        card shows $0 for its 14-day window instead. */}
                     <div className="mt-3 mb-6 pb-6 border-b border-soft-taupe">
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-4xl font-bold text-charcoal">${card.monthlyPrice.toFixed(2)}</span>
-                        <span className="text-medium-gray text-sm font-medium">/month</span>
-                      </div>
-                      {card.annualLicensePrice !== null && (
-                        <p className="text-xs text-medium-gray mt-1">
-                          + ${card.annualLicensePrice.toFixed(2)}/year organization account license (billed separately)
-                        </p>
+                      {card.isTrial ? (
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-4xl font-bold text-charcoal">Free</span>
+                          <span className="text-medium-gray text-sm font-medium">for {RESIDENTIAL_TRIAL_DAYS} days</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-4xl font-bold text-charcoal">${card.monthlyPrice.toFixed(2)}</span>
+                          <span className="text-medium-gray text-sm font-medium">/month</span>
+                        </div>
                       )}
                     </div>
 
@@ -788,7 +798,7 @@ export default function PricingPage({
                           : 'bg-charcoal hover:bg-charcoal/85 text-white'
                       }`}
                     >
-                      {isPopular ? 'Start Free' : `Choose ${card.label}`}
+                      {isPopular ? 'Start Free Trial' : `Choose ${card.label}`}
                     </button>
                   </motion.div>
                 );
@@ -837,7 +847,7 @@ export default function PricingPage({
                 onClick={() => setStep('plans')}
                 className="flex items-center gap-1.5 text-medium-gray hover:text-charcoal text-sm mb-6 transition-colors"
               >
-                <ArrowLeft className="w-4 h-4" /> Choose Free or Paid plans
+                <ArrowLeft className="w-4 h-4" /> Choose Trial or Paid plans
               </button>
 
               <h1 className="text-center text-2xl font-bold text-charcoal mb-1">Create Your Caregiver Account</h1>
@@ -1153,7 +1163,7 @@ export default function PricingPage({
                   </p>
                 */}
                 <p className="text-xs text-center text-medium-gray">
-                  After you create your account, choose the Free Tier or Paid Tier.
+                  After you create your account, start your {RESIDENTIAL_TRIAL_DAYS}-day free trial or choose a paid plan.
                 </p>
               </form>
 

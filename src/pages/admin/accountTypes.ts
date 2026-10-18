@@ -40,9 +40,13 @@ export interface AccountTypeDef {
   // timestamp and 72h/30d expiry are computed server-side inside
   // admin_set_subscription(), never accepted from this client.
   program: 'temp_user' | 'companion' | null;
-  status: string;        // subscriptions.status — must be one of the six approved values
-                          // (active/past_due/canceled/expired/pending_payment/promo); 'trialing'
-                          // is no longer a valid value anywhere in this project.
+  status: string;        // subscriptions.status — must be one of the seven approved values
+                          // (active/past_due/canceled/expired/pending_payment/promo/trial);
+                          // 'trialing' is not and has never been a valid value. 'trial' (added
+                          // by migration 032, OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B)
+                          // is the real, server-enforced residential trial — see the 'trial'
+                          // preset below, which is what the 'trialing' blocker this file
+                          // previously flagged (REPAIR B) was waiting on.
   trialDays: number | null;  // days from now for trial_ends_at (null = never)
   promoDays: number | null;  // days from now for promo_expires_at (null = not promo)
   isTempUser: boolean;   // marks as read-only demo account
@@ -155,12 +159,29 @@ export const ACCOUNT_TYPES: AccountTypeDef[] = [
     available: true,
   },
   {
+    key: 'trial',
+    label: '14-Day Trial (Daily Care)',
+    // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B: the real
+    // residential trial — migration 032's DB CHECK requires exactly
+    // tier=paid_tier/plan=daily_care whenever status='trial'; trial_ends_at
+    // is computed server-side by admin_set_subscription() itself
+    // (now() + 14 days by default), never accepted from this client, and
+    // is_my_trial_active() is the trusted expiry check every access gate
+    // in this app reads — same enforcement guarantee REPAIR B required
+    // before any trial-like preset could be marked available.
+    tier: 'paid_tier', plan: 'daily_care', program: null, status: 'trial',
+    trialDays: 14, promoDays: null, isTempUser: false,
+    color: 'bg-amber-100 text-amber-800',
+    description: '14-day trial granting Daily Care entitlements only — server-enforced expiration (is_my_trial_active()), same trusted-clock guarantee as Temp User/Companion.',
+    available: true,
+  },
+  {
     key: 'daily_care',
     label: 'Daily Care (Paid)',
     tier: 'paid_tier', plan: 'daily_care', program: null, status: 'active',
     trialDays: null, promoDays: null, isTempUser: false,
     color: 'bg-blue-100 text-blue-800',
-    description: 'Active paid tier — Daily Care plan ($4.99/mo + a separate $49.99/yr organization license, billed outside this admin action)',
+    description: 'Active paid tier — Daily Care plan ($9.99/mo, no separate residential annual license)',
     available: true,
   },
   {
@@ -169,7 +190,7 @@ export const ACCOUNT_TYPES: AccountTypeDef[] = [
     tier: 'paid_tier', plan: 'full_support', program: null, status: 'active',
     trialDays: null, promoDays: null, isTempUser: false,
     color: 'bg-green-100 text-green-800',
-    description: 'Active paid tier — Full Support plan ($9.99/mo + a separate $99.99/yr organization license, billed outside this admin action)',
+    description: 'Active paid tier — Full Support plan ($14.99/mo, no separate residential annual license)',
     available: true,
   },
   {

@@ -5,6 +5,7 @@ import LoginPage from '@/pages/common/LoginPage';
 import ResetPasswordPage from '@/pages/common/ResetPasswordPage';
 import PublicPatientIntakePage from '@/pages/common/PublicPatientIntakePage';
 import AboutUsPage from '@/pages/common/AboutUsPage';
+import BusinessLandingPage from '@/pages/common/BusinessLandingPage';
 import PatientLayout from '@/pages/patient/PatientLayout';
 import AdminLayout from '@/pages/admin/AdminLayout';
 import CaregiverPortal from '@/pages/caregiver/CaregiverPortal';
@@ -53,8 +54,12 @@ function AppContent() {
   const isPublicPatientIntakeRoute = currentPath === '/patient-intake';
   const isPrivacyRoute = currentPath === '/privacy';
   const isAboutUsRoute = currentPath === '/about-us';
+  // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase C item 1: a separate
+  // commercial landing route — same public-route pattern as the other
+  // unauthenticated marketing pages above.
+  const isBusinessRoute = currentPath === '/business';
   const isPublicRoute =
-    isPublicPatientIntakeRoute || isPrivacyRoute || isAboutUsRoute;
+    isPublicPatientIntakeRoute || isPrivacyRoute || isAboutUsRoute || isBusinessRoute;
 
   const restoreUser = useCallback((profile: Pick<Database['public']['Tables']['profiles']['Row'],
     'id' | 'email' | 'first_name' | 'last_name' | 'role' | 'phone' | 'created_at' | 'updated_at' | 'mfa_enabled'>) => {
@@ -440,6 +445,25 @@ function AppContent() {
 
     if (isPublicPatientIntakeRoute) {
       return <PublicPatientIntakePage />;
+    }
+
+    // Phase C item 5: an already-signed-in caregiver landing on /business
+    // routes straight to /caregiver — every other visitor (unauthenticated,
+    // or signed in as a different role) sees the marketing page itself,
+    // UNLESS they've clicked into the sign-in/sign-up flow from it (same
+    // state.currentView === 'login' signal the ordinary unauthenticated
+    // branch below already uses) — otherwise BusinessLandingPage's own
+    // "Caregiver Sign In" button would have nowhere to actually route to.
+    if (isBusinessRoute) {
+      if (state.isAuthenticated && state.selectedRole === 'caregiver') {
+        return <CaregiverPortal />;
+      }
+      if (!state.isAuthenticated && state.currentView === 'login') {
+        return <LoginPage />;
+      }
+      if (!state.isAuthenticated) {
+        return <BusinessLandingPage />;
+      }
     }
 
     if (!state.isAuthenticated) {

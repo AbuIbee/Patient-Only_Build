@@ -1,0 +1,239 @@
+// provision-caregiver-patient — OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR
+// Phase A item 1: trusted server-side patient provisioning, replacing the
+// fragile browser-based sequence (isolated-client auth.signUp() + a
+// caregiver-session profiles UPDATE that RLS silently rejected, since no
+// policy ever let a caregiver write an unrelated, not-yet-linked patient's
+// profiles row — confirmed on staging: both of the owner's own test
+// registrations got stuck at provisioning_status='complete' with
+// must_change_password still false, exactly because that UPDATE was a
+// silent no-op).
+//
+// This function runs the WHOLE registration as one atomic server-side
+// operation, using the service-role key Supabase auto-injects into every
+// deployed Edge Function's runtime (SUPABASE_SERVICE_ROLE_KEY) — that key
+// is NEVER present in any frontend bundle or committed file; it only ever
+// exists inside this deployed function's own execution environment.
+//
+// Flow:
+//   1. Verify the caller via their OWN bearer token (anon-key-scoped
+//      client) — the authenticated caregiver remains the verified
+//      originating caregiver throughout; auth.uid() inside every RPC call
+//      below resolves to THEM, never to this function's service identity.
+//   2. Call caregiver_initiate_patient_registration() AS THE CALLER —
+//      unchanged from migration 030/032 (capacity check, token
+//      generation, caregiver-role check all still enforced exactly as
+//      before).
+//   3. Create the patient's Auth account via the ADMIN client
+//      (auth.admin.createUser, email_confirm: true — the caregiver has
+//      already vouched for this registration; no separate email
+//      confirmation loop is needed for the PATIENT's own account) with NO
+//      caller-chosen or returned password — Supabase generates one
+//      internally that this function never reads back or exposes.
+//   4. Correct profiles.provisioning_status/must_change_password via the
+//      ADMIN client — bypasses RLS entirely (this is the exact fix for
+//      the mismatch above; no client-side cross-row UPDATE is attempted
+//      ever again).
+//   5. Call caregiver_claim_new_patient() AS THE CALLER — unchanged from
+//      migration 030, preserving every existing single-use-token,
+//      refuse-not-adopt, and idempotent-retry guarantee.
+//   6. Generate a one-time activation link via the ADMIN client
+//      (auth.admin.generateLink, type: 'recovery') — this reuses the
+//      EXISTING, already-working ResetPasswordPage / PASSWORD_RECOVERY
+//      flow (App.tsx) rather than inventing a new one, and crucially
+//      never sends an email itself (generateLink only returns a URL) — so
+//      this activation path works even with NO custom SMTP configured,
+//      and supports a caregiver-managed patient who cannot independently
+//      operate an email account: the caregiver relays the link however
+//      is appropriate (read aloud, write down, share a screen) rather
+//      than this function fabricating an email identity for them.
+//      Replaces the OLD plaintext temporary password shown in the UI.
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+function jsonResponse(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+interface RegisterPatientBody {
+  firstName: string;
+  lastName: string;
+  email: string;
+  preferredName?: string | null;
+  dateOfBirth?: string | null;
+  diagnosisDate?: string | null;
+  dementiaStage?: string | null;
+  location?: string | null;
+  address?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactRelationship?: string | null;
+  emergencyContactPhone?: string | null;
+  emergencyContactEmail?: string | null;
+  relationshipType?: string | null;
+}
+
+serve(async (request) => {
+  if (request.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+  if (request.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed.' }, 405);
+  }
+
+  try {
+    const authorization = request.headers.get('Authorization') ?? '';
+    if (!authorization.startsWith('Bearer ')) {
+      return jsonResponse({ error: 'You must be signed in as a caregiver to register a patient.' }, 401);
+    }
+    const accessToken = authorization.slice('Bearer '.length).trim();
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+      throw new Error('Supabase URL/keys are not available to this function.');
+    }
+
+    // Scoped to the CALLER's own token — every RPC call through this
+    // client resolves auth.uid() to the real, verified caregiver.
+    const callerClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const { data: { user: caller }, error: callerError } = await callerClient.auth.getUser(accessToken);
+    if (callerError || !caller) {
+      return jsonResponse({ error: 'Your sign-in session could not be verified.' }, 401);
+    }
+
+    // Admin client — service-role key, server-side only, never returned
+    // to or reachable from the browser.
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const body = (await request.json()) as RegisterPatientBody;
+    if (!body?.firstName?.trim() || !body?.lastName?.trim() || !body?.email?.trim()) {
+      return jsonResponse({ error: 'Patient first name, last name, and email are required.' }, 400);
+    }
+
+    // Step 1 — server-generated single-use claim token (unchanged RPC,
+    // called as the verified caregiver).
+    const { data: registration, error: initError } = await callerClient.rpc(
+      'caregiver_initiate_patient_registration',
+      {
+        p_first_name: body.firstName.trim(),
+        p_last_name: body.lastName.trim(),
+        p_email: body.email.trim().toLowerCase(),
+        p_preferred_name: body.preferredName || null,
+        p_date_of_birth: body.dateOfBirth || null,
+        p_diagnosis_date: body.diagnosisDate || null,
+        p_dementia_stage: body.dementiaStage || null,
+        p_location: body.location || null,
+        p_address: body.address || null,
+        p_emergency_contact_name: body.emergencyContactName || null,
+        p_emergency_contact_relationship: body.emergencyContactRelationship || null,
+        p_emergency_contact_phone: body.emergencyContactPhone || null,
+        p_emergency_contact_email: body.emergencyContactEmail || null,
+        p_relationship_type: body.relationshipType || 'primary',
+      },
+    );
+    if (initError || !registration) {
+      return jsonResponse({ error: initError?.message || 'Could not start registration.' }, 400);
+    }
+
+    // Step 2 — create the patient's Auth account server-side. No password
+    // is chosen or returned by this function at all.
+    const { data: created, error: createError } = await adminClient.auth.admin.createUser({
+      email: registration.patient_email,
+      email_confirm: true,
+      user_metadata: {
+        first_name: registration.patient_first_name,
+        last_name: registration.patient_last_name,
+        role: 'patient',
+      },
+    });
+    if (createError || !created?.user) {
+      const message = createError?.message?.includes('already been registered')
+        ? 'This email address is already registered to an account.'
+        : (createError?.message || 'Failed to create the patient account.');
+      return jsonResponse({ error: message }, 400);
+    }
+    const patientId = created.user.id;
+
+    // Step 3 — correct provisioning_status via the ADMIN client (bypasses
+    // RLS entirely — the exact fix for the confirmed mismatch). UPSERT, not
+    // UPDATE: staging evidence found several real auth.users rows with NO
+    // corresponding profiles row at all (handle_new_user() not having run
+    // for them, for reasons not yet root-caused — flagged separately for
+    // the owner). A plain UPDATE against a missing row silently affects 0
+    // rows and would reproduce the exact same stuck state this function
+    // exists to fix; UPSERT guarantees the row exists with correct values
+    // regardless of whether the trigger already created it.
+    const { error: profileError } = await adminClient.from('profiles').upsert({
+      id: patientId,
+      email: registration.patient_email,
+      first_name: registration.patient_first_name,
+      last_name: registration.patient_last_name,
+      role: 'patient',
+      must_change_password: true,
+      provisioning_status: 'profile_created',
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+    if (profileError) {
+      return jsonResponse({
+        error: 'Patient account created, but the profile could not be finished: ' + profileError.message,
+        resumable: true,
+        resumeRegistrationId: registration.id,
+        resumeClaimToken: registration.claim_token,
+        resumePatientId: patientId,
+      }, 500);
+    }
+
+    // Step 4 — claim and link, as the verified caregiver (unchanged RPC).
+    const { data: patient, error: claimError } = await callerClient.rpc('caregiver_claim_new_patient', {
+      p_registration_id: registration.id,
+      p_claim_token: registration.claim_token,
+      p_patient_id: patientId,
+    });
+    if (claimError || !patient) {
+      return jsonResponse({
+        error: claimError?.message || 'Could not complete patient registration.',
+        resumable: true,
+        resumeRegistrationId: registration.id,
+        resumeClaimToken: registration.claim_token,
+        resumePatientId: patientId,
+      }, 500);
+    }
+
+    // Step 5 — one-time activation link (never a plaintext password).
+    // Reuses the existing PASSWORD_RECOVERY / ResetPasswordPage flow.
+    let activationLink: string | null = null;
+    const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+      type: 'recovery',
+      email: registration.patient_email,
+    });
+    if (linkError) {
+      console.error('generateLink error (patient account still created and claimed):', linkError.message);
+    } else {
+      activationLink = linkData?.properties?.action_link ?? null;
+    }
+
+    return jsonResponse({
+      success: true,
+      patientId: patient.id,
+      activationLink,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('FATAL provision-caregiver-patient error:', message);
+    return jsonResponse({ error: message }, 500);
+  }
+});

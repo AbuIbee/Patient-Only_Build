@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { AlertCircle, LogOut, UserPlus, Users } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, Copy, LogOut, UserPlus, Users } from 'lucide-react';
 import type { PatientIntakeFormData, DementiaStage } from '@/types/patientIntake';
 import {
   registerPatientAsCaregiver,
@@ -53,12 +53,62 @@ const emptyForm = (): PatientIntakeFormData => ({
   caregiverRelationship: 'primary',
 });
 
-function RegisterPatientForm({ onRegistered }: { onRegistered: () => void }) {
+const isFormBlank = (form: PatientIntakeFormData): boolean =>
+  Object.values(form).every((v) => !v || v === 'primary');
+
+/** OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR item 9: the activation link
+ * is shown in place of a plaintext temporary password — a one-time
+ * recovery link the caregiver can copy and relay to the patient however is
+ * appropriate (read aloud, text it, write it down). Never logged. */
+function ActivationLinkCard({ link, patientName, onDone }: { link: string; patientName: string; onDone: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      toast.error('Could not copy automatically — select and copy the link manually.');
+    }
+  };
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-4">
+      <div className="flex items-center gap-2 text-soft-sage">
+        <Check className="w-5 h-5" />
+        <h2 className="text-lg font-bold text-charcoal">{patientName} has been registered</h2>
+      </div>
+      <p className="text-sm text-medium-gray">
+        Share this one-time activation link with {patientName} (or set it up on their behalf) so
+        they can choose their own password and sign in. It is only valid once.
+      </p>
+      <div className="flex items-stretch gap-2">
+        <input readOnly value={link} className={`${inputCls} font-mono text-xs`} onFocus={(e) => e.currentTarget.select()} />
+        <button
+          type="button"
+          onClick={() => { void copy(); }}
+          className="px-4 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white font-semibold text-sm flex items-center gap-1.5 flex-shrink-0 transition-colors"
+        >
+          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={onDone}
+        className="w-full py-3 rounded-xl bg-soft-sage hover:bg-soft-sage/90 text-white font-semibold transition-colors"
+      >
+        Back to Caregiver Dashboard
+      </button>
+    </div>
+  );
+}
+
+function RegisterPatientForm({ onRegistered, onBack }: { onRegistered: () => void; onBack: () => void }) {
   const [form, setForm] = useState<PatientIntakeFormData>(emptyForm());
-  const [tempPassword, setTempPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [resume, setResume] = useState<ResumeState | null>(null);
   const [error, setError] = useState('');
+  const [activation, setActivation] = useState<{ link: string; name: string } | null>(null);
 
   const set = <K extends keyof PatientIntakeFormData>(key: K, value: PatientIntakeFormData[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -66,8 +116,17 @@ function RegisterPatientForm({ onRegistered }: { onRegistered: () => void }) {
   const validate = (): string | null => {
     if (!form.patientFirstName.trim() || !form.patientLastName.trim()) return 'Patient first and last name are required.';
     if (!form.patientEmail.trim() || !EMAIL_RE.test(form.patientEmail.trim())) return 'A valid patient email is required.';
-    if (tempPassword.length < 11) return 'Temporary password must be at least 11 characters.';
     return null;
+  };
+
+  // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR item 8: confirm before
+  // discarding unsaved form data, exactly like PatientLayout's other
+  // destructive-navigation guards already do elsewhere in this app.
+  const handleBack = () => {
+    if (!isFormBlank(form) && !activation) {
+      if (!window.confirm('Discard this registration form? Anything entered will be lost.')) return;
+    }
+    onBack();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -80,7 +139,7 @@ function RegisterPatientForm({ onRegistered }: { onRegistered: () => void }) {
     setError('');
     setLoading(true);
     try {
-      const result = await registerPatientAsCaregiver(form, tempPassword);
+      const result = await registerPatientAsCaregiver(form);
       if (!result.success) {
         if (result.resumable && result.resumeRegistrationId && result.resumeClaimToken && result.resumePatientId) {
           setResume({
@@ -93,8 +152,12 @@ function RegisterPatientForm({ onRegistered }: { onRegistered: () => void }) {
         return;
       }
       toast.success(`${form.patientFirstName} has been registered and linked to your account.`);
+      if (result.activationLink) {
+        setActivation({ link: result.activationLink, name: form.patientFirstName });
+      } else {
+        toast('Patient registered, but no activation link was generated. Contact support to help them sign in.', { duration: 8000 });
+      }
       setForm(emptyForm());
-      setTempPassword('');
       setResume(null);
       onRegistered();
     } catch (err) {
@@ -116,7 +179,6 @@ function RegisterPatientForm({ onRegistered }: { onRegistered: () => void }) {
       }
       toast.success('Registration completed successfully.');
       setForm(emptyForm());
-      setTempPassword('');
       setResume(null);
       onRegistered();
     } catch (err) {
@@ -126,11 +188,31 @@ function RegisterPatientForm({ onRegistered }: { onRegistered: () => void }) {
     }
   };
 
+  if (activation) {
+    return (
+      <ActivationLinkCard
+        link={activation.link}
+        patientName={activation.name}
+        onDone={() => { setActivation(null); onBack(); }}
+      />
+    );
+  }
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-5">
-      <div className="flex items-center gap-2">
-        <UserPlus className="w-5 h-5 text-warm-bronze" />
-        <h2 className="text-lg font-bold text-charcoal">Register a New Patient</h2>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <UserPlus className="w-5 h-5 text-warm-bronze" />
+          <h2 className="text-lg font-bold text-charcoal">Register a New Patient</h2>
+        </div>
+        <button
+          type="button"
+          onClick={handleBack}
+          className="flex items-center gap-1.5 text-sm font-semibold text-medium-gray hover:text-charcoal px-3 py-1.5 rounded-lg hover:bg-soft-taupe/30 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Dashboard
+        </button>
       </div>
       <p className="text-sm text-medium-gray">
         No administrator approval is required — the patient is created and linked to your
@@ -174,10 +256,10 @@ function RegisterPatientForm({ onRegistered }: { onRegistered: () => void }) {
         <Field label="Patient Email" required>
           <input type="email" className={inputCls} value={form.patientEmail} onChange={(e) => set('patientEmail', e.target.value)} placeholder="patient@example.com" />
         </Field>
-
-        <Field label="Temporary Password (for the patient's first login)" required>
-          <input type="text" className={inputCls} value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} placeholder="At least 11 characters" />
-        </Field>
+        <p className="text-xs text-medium-gray -mt-2">
+          The patient signs in with their own password, set from a one-time activation link
+          you&apos;ll receive after registering — no temporary password is shown here.
+        </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Preferred Name">
@@ -235,24 +317,43 @@ function RegisterPatientForm({ onRegistered }: { onRegistered: () => void }) {
           </Field>
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-3 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl font-semibold disabled:opacity-60 transition-colors"
-        >
-          {loading ? 'Registering...' : 'Register Patient'}
-        </button>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="flex-1 py-3 rounded-xl border border-soft-taupe text-charcoal font-semibold hover:bg-soft-taupe/20 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex-[2] py-3 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl font-semibold disabled:opacity-60 transition-colors"
+          >
+            {loading ? 'Registering...' : 'Register Patient'}
+          </button>
+        </div>
       </form>
     </div>
   );
 }
 
-function MyPatientsList({ patients }: { patients: LinkedPatientSummary[] }) {
+function MyPatientsList({ patients, onRegisterNew }: { patients: LinkedPatientSummary[]; onRegisterNew: () => void }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-4">
-      <div className="flex items-center gap-2">
-        <Users className="w-5 h-5 text-warm-bronze" />
-        <h2 className="text-lg font-bold text-charcoal">My Patients</h2>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Users className="w-5 h-5 text-warm-bronze" />
+          <h2 className="text-lg font-bold text-charcoal">My Patients</h2>
+        </div>
+        <button
+          type="button"
+          onClick={onRegisterNew}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold transition-colors"
+        >
+          <UserPlus className="w-4 h-4" />
+          Register a New Patient
+        </button>
       </div>
       {patients.length === 0 ? (
         <p className="text-sm text-medium-gray">You have not registered any patients yet.</p>
@@ -278,6 +379,7 @@ function MyPatientsList({ patients }: { patients: LinkedPatientSummary[] }) {
 
 export default function CaregiverPortal() {
   const { state, dispatch } = useApp();
+  const [view, setView] = useState<'dashboard' | 'register'>('dashboard');
   const [patients, setPatients] = useState<LinkedPatientSummary[]>([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
 
@@ -325,8 +427,16 @@ export default function CaregiverPortal() {
       </header>
 
       <main className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6">
-        <RegisterPatientForm onRegistered={() => { void refreshPatients(); }} />
-        {!patientsLoading && <MyPatientsList patients={patients} />}
+        {view === 'register' ? (
+          <RegisterPatientForm
+            onRegistered={() => { void refreshPatients(); }}
+            onBack={() => setView('dashboard')}
+          />
+        ) : (
+          !patientsLoading && (
+            <MyPatientsList patients={patients} onRegisterNew={() => setView('register')} />
+          )
+        )}
       </main>
     </div>
   );

@@ -20,6 +20,10 @@ export interface SubscriptionContextType {
   // eligibility of a Temporary/Companion program. Never derived from a
   // client Date() comparison.
   programActive: boolean | null;
+  // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B: same null/true/
+  // false contract as programActive, but for the 14-day residential
+  // trial — trusted is_my_trial_active()-sourced, never a client Date().
+  trialActive: boolean | null;
   // REPAIR 008: the trusted, non-email-derived signal for the Temporary
   // demo experience and for Companion's active (non-expired) state — see
   // the derivation comment above `isTempUserDemo` in the Provider below.

@@ -14,7 +14,12 @@ vi.mock('@/lib/supabase', () => ({
 
 import { ACCOUNT_TYPES, getAccountTypeDef, getAccountTypeKey, saveAccountType, UNASSIGNED_KEY } from '@/pages/admin/accountTypes';
 
-const APPROVED_STATUSES = ['active', 'past_due', 'canceled', 'expired', 'pending_payment', 'promo'];
+// OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B: 'trial' joins the
+// six pre-existing approved statuses (migration 032) — the exact
+// 'trialing' blocker this file's own describe block below once flagged as
+// deferred is now resolved by a real, server-enforced status, not the
+// rejected ad hoc 'trialing' value.
+const APPROVED_STATUSES = ['active', 'past_due', 'canceled', 'expired', 'pending_payment', 'promo', 'trial'];
 
 // A base SubRow fixture carrying every field the current interface
 // requires (REPAIR 007 added `program` and `trial_started_at`) so each test
@@ -32,8 +37,8 @@ beforeEach(() => {
   rpcMock.mockResolvedValue({ data: { tier: 'free_tier', plan: null, program: null, status: 'active' }, error: null });
 });
 
-describe('ACCOUNT_TYPES — six-status compliance', () => {
-  it('never declares a status outside the six approved values for any REAL (available) preset', () => {
+describe('ACCOUNT_TYPES — seven-status compliance', () => {
+  it('never declares a status outside the seven approved values for any REAL (available) preset', () => {
     // The UNASSIGNED_KEY placeholder (FUNCTIONAL-REPAIR-004 / REPAIR 1) is
     // deliberately excluded: it has no status at all (never written —
     // `available: false` blocks it the same as temp_user) and exists only

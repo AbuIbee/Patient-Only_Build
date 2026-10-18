@@ -2115,6 +2115,14 @@ export interface Database {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B: trusted,
+      // server-`now()`-computed 14-day residential trial eligibility check
+      // (migration 032). Same no-argument, caller's-own-row shape as
+      // is_my_program_active above.
+      is_my_trial_active: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       // PHASE 3: F05 (003_medication_integrity.sql); REPAIR 008 / migration
       // 019 adds an internal temp_user/expired-Companion guard with no
       // signature change — confirmed real call site:

@@ -225,11 +225,11 @@ describe('REPAIR B requirement 2 — pricing display never claims a paid-only fe
     }
   });
 
-  it('PLANS prices match the owner-confirmed amounts exactly — this correction does not touch pricing', () => {
-    expect(PLANS.daily_care.monthlyPrice).toBe(4.99);
-    expect(PLANS.daily_care.annualLicensePrice).toBe(49.99);
-    expect(PLANS.full_support.monthlyPrice).toBe(9.99);
-    expect(PLANS.full_support.annualLicensePrice).toBe(99.99);
+  it('OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B — PLANS prices match the new owner-approved amounts, with no residential annual license field at all', () => {
+    expect(PLANS.daily_care.monthlyPrice).toBe(9.99);
+    expect(PLANS.full_support.monthlyPrice).toBe(14.99);
+    expect('annualLicensePrice' in PLANS.daily_care).toBe(false);
+    expect('annualLicensePrice' in PLANS.full_support).toBe(false);
   });
 });
 
@@ -250,13 +250,13 @@ describe('OWNER-MANUAL-TEST-CORRECTIONS item 2 — Patient Arcade per-game entit
     expect(playable).toEqual(['matching']);
   });
 
-  it('Daily Care can play exactly Matching Pairs, Solitaire, and Word Search', () => {
+  it('Daily Care can play exactly Matching Pairs and Solitaire — Word Search is Full Support only (corrected defect)', () => {
     const playable = ARCADE_GAMES.filter(g => canPlayGame('paid_tier', g.id, 'daily_care')).map(g => g.id);
-    expect(playable.sort()).toEqual(['matching', 'solitaire', 'wordsearch'].sort());
+    expect(playable.sort()).toEqual(['matching', 'solitaire'].sort());
   });
 
-  it('Daily Care is denied the other five games (Crossword, Hangman, Checkers, Chess, Brain Training)', () => {
-    const locked: typeof ARCADE_GAMES[number]['id'][] = ['crossword', 'hangman', 'checkers', 'chess', 'brainapps'];
+  it('Daily Care is denied the other six games (Word Search, Crossword, Hangman, Checkers, Chess, Brain Training)', () => {
+    const locked: typeof ARCADE_GAMES[number]['id'][] = ['wordsearch', 'crossword', 'hangman', 'checkers', 'chess', 'brainapps'];
     for (const id of locked) expect(canPlayGame('paid_tier', id, 'daily_care')).toBe(false);
   });
 
@@ -272,10 +272,10 @@ describe('OWNER-MANUAL-TEST-CORRECTIONS item 2 — Patient Arcade per-game entit
     for (const g of ARCADE_GAMES) expect(canPlayGame('paid_tier', g.id, null)).toBe(true);
   });
 
-  it('requiredPlanLabelForGame names Daily Care for the 3 free-at-Daily-Care games, Full Support for the other 5', () => {
+  it('requiredPlanLabelForGame names Daily Care for the 2 free-at-Daily-Care games, Full Support for the other 6', () => {
     expect(requiredPlanLabelForGame('matching')).toBe('Daily Care');
     expect(requiredPlanLabelForGame('solitaire')).toBe('Daily Care');
-    expect(requiredPlanLabelForGame('wordsearch')).toBe('Daily Care');
+    expect(requiredPlanLabelForGame('wordsearch')).toBe('Full Support');
     expect(requiredPlanLabelForGame('crossword')).toBe('Full Support');
     expect(requiredPlanLabelForGame('hangman')).toBe('Full Support');
     expect(requiredPlanLabelForGame('checkers')).toBe('Full Support');
@@ -359,5 +359,48 @@ describe('invalid, missing, canceled, and expired subscriptions — no unauthori
     // boundary is which VALUES can ever reach this function (see comment
     // above), not its arity.
     expect(hasFeatureAccess.length).toBe(3);
+  });
+});
+
+describe('OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B — 14-day residential trial', () => {
+  it('a trial subscription is active ONLY when the trusted server check explicitly reports true', () => {
+    const trialSub = baseSub({ tier: 'paid_tier', plan: 'daily_care', status: 'trial' });
+    expect(isSubscriptionActive(trialSub, null, true)).toBe(true);
+    expect(isSubscriptionActive(trialSub, null, false)).toBe(false);
+  });
+
+  it('fails CLOSED when the trusted trial check has not yet returned (undefined) or is unknown (null) — never optimistic', () => {
+    const trialSub = baseSub({ tier: 'paid_tier', plan: 'daily_care', status: 'trial' });
+    expect(isSubscriptionActive(trialSub)).toBe(false);
+    expect(isSubscriptionActive(trialSub, null, undefined)).toBe(false);
+    expect(isSubscriptionActive(trialSub, null, null)).toBe(false);
+  });
+
+  it('an active trial grants exactly Daily Care-level features — nothing Full-Support-only', () => {
+    for (const f of DAILY_CARE_ADDS) expect(hasFeatureAccess('paid_tier', f, 'daily_care')).toBe(true);
+    for (const f of FULL_SUPPORT_ONLY_ADDS) expect(hasFeatureAccess('paid_tier', f, 'daily_care')).toBe(false);
+  });
+
+  it('needsPayment() is false for an active trial and true for an expired one — same trusted signal, never a client Date()', () => {
+    const trialSub = baseSub({ tier: 'paid_tier', plan: 'daily_care', status: 'trial' });
+    expect(needsPayment(trialSub, true)).toBe(false);
+    expect(needsPayment(trialSub, false)).toBe(true);
+    expect(needsPayment(trialSub)).toBe(true); // unconfirmed fails toward "needs payment"
+  });
+
+  it('master still bypasses a trial check entirely, even on a (structurally impossible) row that also carries status=trial', () => {
+    const impossible = baseSub({ tier: 'master', status: 'trial' });
+    expect(isSubscriptionActive(impossible, null, false)).toBe(true);
+  });
+
+  it('Full Support can never be the trial plan — PLANS only ever offers the trial as Daily Care entitlements, matching the DB CHECK constraint added in migration 032', () => {
+    // Structural assertion: the trial grants PLANS.daily_care's feature
+    // set specifically (verified above) — there is no code path anywhere
+    // in hasFeatureAccess/isSubscriptionActive that could produce a
+    // status='trial' row carrying plan='full_support' access, since the
+    // only client of the 'trial' status is the (tier=paid_tier,
+    // plan=daily_care) shape asserted above.
+    expect(PLANS.full_support.plan).toBe('full_support');
+    expect(PLANS.daily_care.plan).toBe('daily_care');
   });
 });

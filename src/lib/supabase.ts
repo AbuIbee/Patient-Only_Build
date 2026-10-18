@@ -22,29 +22,6 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
   },
 });
 
-// ─── Isolated client for creating ANOTHER person's Auth account ─────────────
-// Used by caregiver self-service patient registration: calling
-// `auth.signUp()` on the SHARED `supabase` client above, while the caller
-// (a caregiver) has their own active session, risks that call silently
-// replacing the caller's session with the newly created account's session
-// (a well-known supabase-js behavior when email confirmation is off, and a
-// fragile non-guarantee to rely on even when it's on). `persistSession:
-// false` means this throwaway client never writes to the sessionStorage key
-// the main client's session lives in, and its own in-memory state is
-// discarded once the caller is done with it — the caller's real session,
-// held by the `supabase` export above, is a separate object that is never
-// touched. Create one, use it for exactly one signUp() call, then let it be
-// garbage collected — never store a reference to it beyond that call.
-export function createIsolatedAuthClient() {
-  return createClient<Database>(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  });
-}
-
 // ─── Signed URL helper (private bucket) ──────────────────────────────────────
 // Always use this for patient-media files. Never use getPublicUrl().
 // Results are cached in sessionStorage for 50 minutes (URL valid for 1 hour).

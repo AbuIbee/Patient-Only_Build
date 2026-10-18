@@ -27,7 +27,15 @@ export type SubscriptionStatus =
   | 'canceled'     // explicitly canceled
   | 'expired'      // never paid / payment lapsed
   | 'pending_payment' // account created, awaiting Stripe confirmation
-  | 'promo';       // active via promotional code
+  | 'promo'        // active via promotional code
+  // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B: the 14-day
+  // residential trial (tier=paid_tier, plan=daily_care only — enforced by
+  // a DB CHECK constraint, migration 032). Expiry is ALWAYS the trusted,
+  // server-`now()`-computed is_my_trial_active() RPC — see
+  // isSubscriptionActive() below — never a client Date() comparison
+  // against trialEndsAt, exactly mirroring how Temporary/Companion
+  // programs are already checked.
+  | 'trial';
 
 export interface Subscription {
   id: string;
@@ -185,11 +193,29 @@ export interface TierFeature {
 
 // Declared ahead of TIERS/PLANS so both can reference the same numbers —
 // the owner-confirmed prices, defined exactly once.
-const DAILY_CARE_MONTHLY_PRICE = 4.99;
-const DAILY_CARE_ANNUAL_LICENSE_PRICE = 49.99;
-const FULL_SUPPORT_MONTHLY_PRICE = 9.99;
-const FULL_SUPPORT_ANNUAL_LICENSE_PRICE = 99.99;
+// OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B: new owner-approved
+// residential prices, replacing the prior $4.99/$9.99 figures. Residential
+// annual license charges are removed entirely (item 4) — these are now
+// the ONLY charge for each plan.
+const DAILY_CARE_MONTHLY_PRICE = 9.99;
+const FULL_SUPPORT_MONTHLY_PRICE = 14.99;
 
+// 14-day residential trial (Phase B item 1) — grants Daily Care
+// entitlements only. The actual grant/expiry logic lives server-side
+// (provision_free_subscription() / is_my_trial_active(), migration 032);
+// this constant is display-copy-only, kept in sync with that migration's
+// `INTERVAL '14 days'`.
+export const RESIDENTIAL_TRIAL_DAYS = 14;
+
+// OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B item 1/11: this
+// 'free_tier' entry is PRESERVED for existing accounts' billing/settings
+// display and type-compatibility only ("Keep existing Free Tier records
+// and data intact"). It is NO LONGER offered as a choice to new
+// customers — provision_free_subscription() (migration 032) now grants a
+// 14-day Daily Care trial to a genuinely new caller instead, falling back
+// to this exact free_tier shape only for a caller who already used a
+// trial under their email before. PricingPage.tsx's entry card reflects
+// this: it is labeled and described as the trial, not "Free Tier".
 export const TIERS: Record<TierName, TierConfig> = {
 
   free_tier: {
@@ -259,23 +285,23 @@ export const TIERS: Record<TierName, TierConfig> = {
   },
 };
 
-// ─── Paid plan metadata (REPAIR 006) ─────────────────────────────────────────
-// The owner-approved, confirmed pricing. Two SEPARATE charges per plan: a
-// monthly subscription, and an additional annual organization/account
-// license — the license is never a substitute for the monthly charge, and
-// this shape (two distinct price fields) keeps the app from ever
-// conflating them into one number.
+// ─── Paid plan metadata ───────────────────────────────────────────────────
+// OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B item 4/5: residential
+// plans now carry exactly ONE charge — the monthly price. The previous
+// "separate annual organization/account license" charge is REMOVED from
+// these residential plans entirely. A distinct annual organization license
+// still exists, but ONLY for approved COMMERCIAL offerings — see
+// ORGANIZATION_LICENSE below, deliberately NOT part of PlanConfig/PLANS so
+// a residential plan can never accidentally carry it again.
 
 export interface PlanConfig {
   plan: PlanName;
   label: string;
-  monthlyPrice: number;          // USD — confirmed by owner
-  annualLicensePrice: number;    // USD — confirmed by owner; a SEPARATE charge
+  monthlyPrice: number;          // USD — confirmed by owner; the ONLY charge
   description: string;
   tagline: string;
   features: TierFeature[];
   stripePriceIdMonthly: string;
-  stripeAnnualLicensePriceId: string;
 }
 
 export const PLANS: Record<PlanName, PlanConfig> = {
@@ -283,8 +309,7 @@ export const PLANS: Record<PlanName, PlanConfig> = {
     plan: 'daily_care',
     label: 'Daily Care',
     monthlyPrice: DAILY_CARE_MONTHLY_PRICE,
-    annualLicensePrice: DAILY_CARE_ANNUAL_LICENSE_PRICE,
-    description: `$${DAILY_CARE_MONTHLY_PRICE.toFixed(2)}/month, plus a separate $${DAILY_CARE_ANNUAL_LICENSE_PRICE.toFixed(2)}/year organization account license`,
+    description: `$${DAILY_CARE_MONTHLY_PRICE.toFixed(2)}/month`,
     tagline: 'Everyday caregiving support',
     // BLOCKER (reported, not guessed): no Stripe price id for Daily Care is
     // confirmed anywhere in this project's documented environment
@@ -292,9 +317,9 @@ export const PLANS: Record<PlanName, PlanConfig> = {
     // Read defensively — defaults to '' exactly like free_tier/master
     // already do — rather than inventing an id. Live checkout for this
     // plan cannot function until the owner/infra confirms real Stripe
-    // product/price identifiers for it.
+    // product/price identifiers for it AND Phase B item 10's two-price
+    // verification is complete.
     stripePriceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_DAILY_CARE_MONTHLY || '',
-    stripeAnnualLicensePriceId: import.meta.env.VITE_STRIPE_PRICE_DAILY_CARE_ANNUAL_LICENSE || '',
     features: [
       { label: 'Daily time & orientation', included: true },
       { label: 'Medication tracker + logs', included: true, highlight: true },
@@ -304,8 +329,8 @@ export const PLANS: Record<PlanName, PlanConfig> = {
       { label: 'Care Partner check-in — full assessment & metrics (A–G)', included: true, highlight: true },
       { label: 'Family memory vault (unlimited)', included: true, highlight: true },
       { label: 'Mood history & trends', included: true },
-      { label: 'Patient Arcade — Matching Pairs, Solitaire, Word Search', included: true },
-      { label: 'Patient Arcade — remaining 5 games (Full Support only)', included: false },
+      { label: 'Patient Arcade — Matching Pairs, Solitaire', included: true },
+      { label: 'Patient Arcade — remaining 6 games (Full Support only)', included: false },
       { label: 'Voice messages from family', included: false },
       { label: 'AI comfort voices', included: false },
       { label: 'Automatic slideshow playback', included: false },
@@ -317,14 +342,14 @@ export const PLANS: Record<PlanName, PlanConfig> = {
     plan: 'full_support',
     label: 'Full Support',
     monthlyPrice: FULL_SUPPORT_MONTHLY_PRICE,
-    annualLicensePrice: FULL_SUPPORT_ANNUAL_LICENSE_PRICE,
-    description: `$${FULL_SUPPORT_MONTHLY_PRICE.toFixed(2)}/month, plus a separate $${FULL_SUPPORT_ANNUAL_LICENSE_PRICE.toFixed(2)}/year organization account license`,
+    description: `$${FULL_SUPPORT_MONTHLY_PRICE.toFixed(2)}/month`,
     tagline: 'Complete application access',
-    // CLAUDE.md's documented required env vars DO name this one —
-    // VITE_STRIPE_PRICE_FULL_SUPPORT_MONTHLY — but the annual-license price
-    // id is NOT documented anywhere; read defensively, same as above.
+    // CLAUDE.md's documented required env var names this one —
+    // VITE_STRIPE_PRICE_FULL_SUPPORT_MONTHLY — but it was confirmed for
+    // the PRIOR $9.99 price; read defensively, same as above. Phase B item
+    // 10 requires this re-verified against the new $14.99 price before any
+    // live checkout.
     stripePriceIdMonthly: import.meta.env.VITE_STRIPE_PRICE_FULL_SUPPORT_MONTHLY || '',
-    stripeAnnualLicensePriceId: import.meta.env.VITE_STRIPE_PRICE_FULL_SUPPORT_ANNUAL_LICENSE || '',
     features: [
       { label: 'Daily time & orientation', included: true },
       { label: 'Medication tracker + logs', included: true, highlight: true },
@@ -349,6 +374,22 @@ export const PLANS: Record<PlanName, PlanConfig> = {
       { label: 'Weekly mood summary email', included: false },
     ],
   },
+};
+
+// ─── Commercial organization license (Phase C — /business only) ───────────
+// OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B item 5 / Phase C item
+// 3: a distinct annual organization license for APPROVED COMMERCIAL
+// offerings only — never part of a residential PlanConfig (see PLANS
+// above). The dollar amount here is NOT a new, owner-confirmed commercial
+// figure — it is the prior residential annual-license number, carried
+// over only as a placeholder pending explicit commercial approval. Per
+// Phase C item 3/4, the business landing page must show this as
+// "pricing available after a conversation" rather than a public number
+// until the owner confirms it — see src/pages/common/BusinessLandingPage.tsx.
+export const ORGANIZATION_LICENSE_PLACEHOLDER = {
+  annualPrice: 99.99,
+  label: 'Organization Account License',
+  description: 'Annual, per-organization — confirmed with your account team, not yet a published commercial price.',
 };
 
 // ─── Feature access checks ─────────────────────────────────────────────────
@@ -405,15 +446,19 @@ export const ARCADE_GAMES: { id: ArcadeGameId; label: string }[] = [
 ];
 
 const FREE_TIER_GAMES: ArcadeGameId[] = ['matching'];
-const DAILY_CARE_GAMES: ArcadeGameId[] = ['matching', 'solitaire', 'wordsearch'];
+// OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR entitlement correction:
+// Daily Care is Matching Pairs and Solitaire ONLY — Word Search was
+// incorrectly also permitted (confirmed defect). Full Support/Master still
+// get all eight.
+const DAILY_CARE_GAMES: ArcadeGameId[] = ['matching', 'solitaire'];
 
 /**
  * Returns true if the given (tier, game, plan) combination may PLAY the
- * named game. Free Tier: Matching Pairs only. Daily Care: Matching Pairs,
- * Solitaire, Word Search — the other five are visible but locked. Full
- * Support and Master: all eight. A legacy paid_tier row with no recorded
- * `plan` keeps full historical access, exactly mirroring
- * hasFeatureAccess()'s own legacy-compatibility rule above.
+ * named game. Free Tier: Matching Pairs only. Daily Care: Matching Pairs
+ * and Solitaire ONLY — the other six are visible but locked. Full Support
+ * and Master: all eight. A legacy paid_tier row with no recorded `plan`
+ * keeps full historical access, exactly mirroring hasFeatureAccess()'s own
+ * legacy-compatibility rule above.
  */
 export function canPlayGame(tier: TierName, gameId: ArcadeGameId, plan?: PlanName | null): boolean {
   if (tier === 'master') return true;
@@ -519,11 +564,24 @@ export function hasFeatureAccess(tier: TierName, feature: FeatureKey, plan?: Pla
  * CLOSED (not active) rather than optimistically granting access while the
  * trusted check is still in flight or wasn't requested.
  */
-export function isSubscriptionActive(sub: Subscription | null, trustedProgramActive?: boolean | null): boolean {
+export function isSubscriptionActive(
+  sub: Subscription | null,
+  trustedProgramActive?: boolean | null,
+  // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B: MUST come from the
+  // server-computed is_my_trial_active() RPC (now() evaluated inside
+  // Postgres) — same trusted-clock requirement and same fail-closed
+  // default (undefined/null = not yet confirmed = not active) as
+  // trustedProgramActive above. Never derived from comparing
+  // sub.trialEndsAt to the client's own Date().
+  trustedTrialActive?: boolean | null,
+): boolean {
   if (!sub) return false;
   if (sub.tier === 'master') return true;
   if (sub.program) {
     return trustedProgramActive === true;
+  }
+  if (sub.status === 'trial') {
+    return trustedTrialActive === true;
   }
   if (sub.status === 'promo') {
     if (!sub.promoExpiresAt) return true;
@@ -533,7 +591,7 @@ export function isSubscriptionActive(sub: Subscription | null, trustedProgramAct
 }
 
 /** Returns true if the subscription requires payment to proceed. */
-export function needsPayment(sub: Subscription | null): boolean {
+export function needsPayment(sub: Subscription | null, trustedTrialActive?: boolean | null): boolean {
   if (!sub) return true;
   if (sub.tier === 'master') return false;
   // REPAIR 007: Temporary/Companion are free_tier programs — expiry means
@@ -541,6 +599,14 @@ export function needsPayment(sub: Subscription | null): boolean {
   // for). isSubscriptionActive() is the correct check for whether the
   // program is still usable; this function stays about billing only.
   if (sub.program) return false;
+  // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B: an ACTIVE trial
+  // needs no payment yet; an EXPIRED trial does (same trusted,
+  // server-computed signal as isSubscriptionActive() — never a client
+  // Date() comparison). Undefined/null (not yet confirmed) fails toward
+  // "needs payment" here, the safe default for a billing gate.
+  if (sub.status === 'trial') {
+    return trustedTrialActive !== true;
+  }
   if (sub.status === 'promo') {
     if (!sub.promoExpiresAt) return false;
     return new Date(sub.promoExpiresAt) <= new Date();

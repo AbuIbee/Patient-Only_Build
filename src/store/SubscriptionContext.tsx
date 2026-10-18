@@ -29,6 +29,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   // isSubscriptionActive()'s own doc comment for why an unconfirmed program
   // must never be treated as active.
   const [programActive, setProgramActive] = useState<boolean | null>(null);
+  // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B: same fail-closed
+  // pattern for the 14-day residential trial.
+  const [trialActive, setTrialActive] = useState<boolean | null>(null);
 
   const loadSubscription = useCallback(async (): Promise<string | null> => {
     try {
@@ -40,6 +43,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       // ── Master account: skip DB entirely, synthesise a master subscription ──
       if (isMasterEmail(user.email)) {
         setProgramActive(null);
+        setTrialActive(null);
         setSubscription({
           id: `master-${user.id}`,
           userId: user.id,
@@ -89,7 +93,12 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         if (createErr) {
           console.error('[Subscription] Free-tier provisioning error:', createErr.message);
         } else if (created) {
-          setProgramActive(null); // freshly-provisioned free_tier row is never a program
+          setProgramActive(null); // freshly-provisioned row is never a program
+          // A freshly-issued trial is trivially active (now() is always <=
+          // a trial_ends_at that was just set 14 days out) — no extra RPC
+          // round-trip needed to know that for THIS SAME provisioning
+          // call's own result.
+          setTrialActive(created.status === 'trial' ? true : null);
           setSubscription(mapRow(created));
         }
         return user.id;
@@ -112,6 +121,21 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         }
       } else {
         setProgramActive(null);
+      }
+
+      // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase B: same pattern,
+      // for the 14-day residential trial — is_my_trial_active() is the
+      // ONLY trusted signal; never a client Date() comparison.
+      if (mapped.status === 'trial') {
+        const { data: trialActive, error: trialError } = await supabase.rpc('is_my_trial_active');
+        if (trialError) {
+          console.error('[Subscription] Trial eligibility check error:', trialError.message);
+          setTrialActive(false); // fail closed
+        } else {
+          setTrialActive(trialActive === true);
+        }
+      } else {
+        setTrialActive(null);
       }
 
       return user.id;
@@ -194,10 +218,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const tier: TierName = subscription?.tier ?? 'free_tier';
 
   // For master accounts isActive must be true regardless of subscription state.
-  // REPAIR 007: programActive (trusted, server-computed) is threaded through
-  // so an expired Temporary/Companion grant loses access via this SAME
-  // single isActive value every gate in the app already reads.
-  const isActive  = masterFlag ? true : isSubscriptionActive(subscription, programActive);
+  // REPAIR 007 / Phase B: programActive and trialActive (both trusted,
+  // server-computed) are threaded through so an expired Temporary/
+  // Companion grant OR an expired residential trial loses access via this
+  // SAME single isActive value every gate in the app already reads.
+  const isActive  = masterFlag ? true : isSubscriptionActive(subscription, programActive, trialActive);
   const trialDays = trialDaysRemaining(subscription);
   const canRefund = isWithinRefundWindow(subscription);
   const isExpired = masterFlag ? false : isTrialExpired(subscription);
@@ -238,6 +263,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         canRefund,
         isExpired,
         programActive,
+        trialActive,
         isTempUserDemo,
         isCompanionActive,
         can,
