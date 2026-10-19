@@ -178,11 +178,23 @@ describe('recordHelpActivation — Correction F: never claims delivery', () => {
 describe('getHelpActivationHistory — Correction E/F: caregiver-visible safety history', () => {
   it('maps acknowledgedBy and never fabricates a non-empty array when nothing was acknowledged', async () => {
     rpcMock.mockResolvedValue({
-      data: [{ id: 'h1', created_at: '2026-01-01T00:00:00Z', phone_dialed: '555-0100', caregiver_count_at_time: 1, conversation_id: 'c1', acknowledged_count: 0, acknowledged_by: null }],
+      data: [{ id: 'h1', created_at: '2026-01-01T00:00:00Z', phone_dialed: '555-0100', caregiver_count_at_time: 1, conversation_id: 'c1', acknowledged_count: 0, acknowledged_by: null, notification_status: 'caregiver_notified' }],
       error: null,
     });
-    const [entry] = await getHelpActivationHistory('patient-1');
+    const { entries, error } = await getHelpActivationHistory('patient-1');
+    expect(error).toBeNull();
+    const [entry] = entries;
     expect(entry.acknowledgedCount).toBe(0);
     expect(entry.acknowledgedBy).toEqual([]);
+  });
+
+  // CODEX-VERIFIED CRITICAL REMEDIATION Critical 6/7: the exact regression
+  // this round's signature change exists to close — a failed query must
+  // never read identically to "no HELP activations recorded."
+  it('FAILURE REPRODUCTION: a failed query reports an error and an empty array, never a fabricated empty-but-successful history', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'connection timeout' } });
+    const { entries, error } = await getHelpActivationHistory('patient-1');
+    expect(entries).toEqual([]);
+    expect(error).toMatch(/connection timeout/);
   });
 });
