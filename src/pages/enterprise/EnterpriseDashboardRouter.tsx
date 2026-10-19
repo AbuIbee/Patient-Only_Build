@@ -13,10 +13,15 @@ import {
   getMyOrganizations, getMyPendingOrgInvites, respondToOrgInvite,
   type MyOrganization, type PendingOrgInvite,
 } from '@/services/organizationService';
+import {
+  getMyPendingTherapistInvites, respondToTherapistInvite, getMyTherapistPatients,
+  type PendingTherapistInvite, type ResidentialTherapistPatient,
+} from '@/services/therapistConnectionService';
 import { toast } from 'sonner';
 import CaregiverPortal from '@/pages/caregiver/CaregiverPortal';
 import OrganizationDirectorDashboard, { CreateOrgCard } from './OrganizationDirectorDashboard';
 import StaffCaseloadDashboard from './StaffCaseloadDashboard';
+import ResidentialTherapistDashboard from './ResidentialTherapistDashboard';
 
 function PendingInvitesBanner({ invites, onResolved }: { invites: PendingOrgInvite[]; onResolved: () => void }) {
   const [respondingId, setRespondingId] = useState<string | null>(null);
@@ -66,18 +71,77 @@ function PendingInvitesBanner({ invites, onResolved }: { invites: PendingOrgInvi
   );
 }
 
+// CODEX-VERIFIED CRITICAL REMEDIATION Critical 9 — "Provide
+// understandable onboarding and invitation-pending states." Shown
+// regardless of which dashboard branch below is ultimately chosen, so a
+// caregiver-signed-in-as-therapist case is never missed.
+function PendingTherapistInvitesBanner({ invites, onResolved }: { invites: PendingTherapistInvite[]; onResolved: () => void }) {
+  const [respondingId, setRespondingId] = useState<string | null>(null);
+
+  const respond = async (invite: PendingTherapistInvite, accept: boolean) => {
+    setRespondingId(invite.connectionId);
+    try {
+      const { error } = await respondToTherapistInvite(invite.connectionId, accept);
+      if (error) { toast.error(error); return; }
+      toast.success(accept ? `You can now communicate about ${invite.patientFirstName}.` : 'Invitation declined.');
+      onResolved();
+    } finally {
+      setRespondingId(null);
+    }
+  };
+
+  if (invites.length === 0) return null;
+
+  return (
+    <div className="max-w-md mx-auto mt-6 space-y-3">
+      {invites.map((inv) => (
+        <div key={inv.connectionId} className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
+          <p className="text-sm text-amber-900">
+            <strong>{inv.caregiverFirstName} {inv.caregiverLastName}</strong> invited you as a <strong>{inv.relationshipType}</strong> therapist
+            for <strong>{inv.patientPreferredName || inv.patientFirstName}</strong>.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => { void respond(inv, true); }}
+              disabled={respondingId === inv.connectionId}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg bg-soft-sage hover:bg-soft-sage/90 text-white text-xs font-semibold disabled:opacity-60"
+            >
+              <Check className="w-3.5 h-3.5" /> Accept
+            </button>
+            <button
+              type="button"
+              onClick={() => { void respond(inv, false); }}
+              disabled={respondingId === inv.connectionId}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg border border-soft-taupe text-charcoal text-xs font-semibold disabled:opacity-60"
+            >
+              <X className="w-3.5 h-3.5" /> Decline
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function EnterpriseDashboardRouter() {
   const [orgs, setOrgs] = useState<MyOrganization[]>([]);
   const [invites, setInvites] = useState<PendingOrgInvite[]>([]);
+  const [therapistInvites, setTherapistInvites] = useState<PendingTherapistInvite[]>([]);
+  const [therapistPatients, setTherapistPatients] = useState<ResidentialTherapistPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateOrg, setShowCreateOrg] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [o, i] = await Promise.all([getMyOrganizations(), getMyPendingOrgInvites()]);
+      const [o, i, ti, tp] = await Promise.all([
+        getMyOrganizations(), getMyPendingOrgInvites(), getMyPendingTherapistInvites(), getMyTherapistPatients(),
+      ]);
       setOrgs(o);
       setInvites(i);
+      setTherapistInvites(ti);
+      setTherapistPatients(tp);
     } finally {
       setLoading(false);
     }
@@ -94,12 +158,15 @@ export default function EnterpriseDashboardRouter() {
   const medical = orgs.find((o) => o.orgRole === 'medical_professional');
   const hasCaregiverOrgRole = orgs.some((o) => o.orgRole === 'caregiver');
 
+  const therapistBanner = <PendingTherapistInvitesBanner invites={therapistInvites} onResolved={() => { void refresh(); }} />;
+
   // Director takes priority when present — they manage the organization
   // itself, a superset of any other role they might also hold there.
   if (director) {
     return (
       <div>
         <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
+        {therapistBanner}
         <OrganizationDirectorDashboard organizationId={director.organizationId} />
       </div>
     );
@@ -109,6 +176,7 @@ export default function EnterpriseDashboardRouter() {
     return (
       <div>
         <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
+        {therapistBanner}
         <StaffCaseloadDashboard roleLabel="Therapist" filterRole="therapist" />
       </div>
     );
@@ -118,7 +186,24 @@ export default function EnterpriseDashboardRouter() {
     return (
       <div>
         <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
+        {therapistBanner}
         <StaffCaseloadDashboard roleLabel="Medical Professional" filterRole="medical_professional" />
+      </div>
+    );
+  }
+
+  // CODEX-VERIFIED CRITICAL REMEDIATION Critical 9: a plain RESIDENTIAL
+  // therapist (connected via the invite/accept workflow, migration 051,
+  // with no Enterprise organization at all) has no org role to route on
+  // — this is their only reachable dashboard. Deliberately only taken
+  // when they are not ALSO an ordinary org-caregiver, so an existing
+  // caregiver's own experience is never displaced by this new branch.
+  if (!hasCaregiverOrgRole && therapistPatients.length > 0) {
+    return (
+      <div>
+        <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
+        {therapistBanner}
+        <ResidentialTherapistDashboard />
       </div>
     );
   }
@@ -131,6 +216,7 @@ export default function EnterpriseDashboardRouter() {
     return (
       <div>
         <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
+        {therapistBanner}
         <CaregiverPortal onStartOrganization={() => setShowCreateOrg(true)} />
       </div>
     );
