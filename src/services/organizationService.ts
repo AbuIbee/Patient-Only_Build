@@ -42,11 +42,32 @@ export interface OrgMembershipRow {
   createdAt: string;
 }
 
+export type OrgLicenseStatus = 'proposed' | 'active' | 'expired' | 'canceled' | 'unpaid';
+
 export interface OrgLicense {
   licensedSeats: number | null;
   coveredPatientCapacity: number | null;
   annualLicenseFee: number | null;
-  status: 'proposed' | 'active' | 'expired';
+  status: OrgLicenseStatus;
+  activatedAt: string | null;
+}
+
+export interface StaffPatientAssignment {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  patientId: string;
+  patientFirstName: string;
+  patientLastName: string;
+  patientPreferredName: string | null;
+  orgRole: StaffRole;
+  isActive: boolean;
+}
+
+export interface OrgCommunicationsOverview {
+  activeConversations: number;
+  patientsWithConversations: number;
+  unresolvedFollowUps: number;
 }
 
 function errMsg(error: { message: string } | null, fallback: string): string {
@@ -113,7 +134,7 @@ export async function orgConfigureLicense(
 export async function getOrgLicense(orgId: string): Promise<OrgLicense | null> {
   const { data, error } = await supabase
     .from('organization_licenses')
-    .select('licensed_seats, covered_patient_capacity, annual_license_fee, status')
+    .select('licensed_seats, covered_patient_capacity, annual_license_fee, status, activated_at')
     .eq('organization_id', orgId)
     .maybeSingle();
   if (error || !data) return null;
@@ -122,6 +143,37 @@ export async function getOrgLicense(orgId: string): Promise<OrgLicense | null> {
     coveredPatientCapacity: data.covered_patient_capacity,
     annualLicenseFee: data.annual_license_fee,
     status: data.status,
+    activatedAt: data.activated_at,
+  };
+}
+
+// admin_set_organization_license_status(): the ONLY way a license status
+// can change away from 'proposed' — admin-only server-side, never
+// callable by a director. Staging/synthetic-integration-test use only;
+// this never runs against a real commercial activation.
+export async function adminSetOrganizationLicenseStatus(orgId: string, status: OrgLicenseStatus): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('admin_set_organization_license_status', { p_org_id: orgId, p_status: status });
+  return { error: error ? errMsg(error, 'Could not update the license status.') : null };
+}
+
+export async function getOrgStaffPatientAssignments(orgId: string): Promise<StaffPatientAssignment[]> {
+  const { data, error } = await supabase.rpc('get_org_staff_patient_assignments', { p_org_id: orgId });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    userId: r.user_id, firstName: r.first_name, lastName: r.last_name,
+    patientId: r.patient_id, patientFirstName: r.patient_first_name, patientLastName: r.patient_last_name,
+    patientPreferredName: r.patient_preferred_name, orgRole: r.org_role as StaffRole, isActive: r.is_active,
+  }));
+}
+
+export async function getOrgCommunicationsOverview(orgId: string): Promise<OrgCommunicationsOverview | null> {
+  const { data, error } = await supabase.rpc('get_org_communications_overview', { p_org_id: orgId });
+  if (error || !data || data.length === 0) return null;
+  const r = data[0];
+  return {
+    activeConversations: Number(r.active_conversations ?? 0),
+    patientsWithConversations: Number(r.patients_with_conversations ?? 0),
+    unresolvedFollowUps: Number(r.unresolved_follow_ups ?? 0),
   };
 }
 

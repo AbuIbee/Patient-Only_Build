@@ -5,9 +5,83 @@
 // scoped to the specific organization AND the caller's own active
 // assignment. Same "never PatientLayout" reasoning applies identically.
 import { useEffect, useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import CareConversations from '@/components/communications/CareConversations';
-import { ArrowLeft, Loader2, ShieldAlert, Pill, Heart, ClipboardList, Calendar, MapPin } from 'lucide-react';
+import { getProfessionalNotes, addProfessionalNote, type ProfessionalNote } from '@/services/professionalNotesService';
+import type { StaffRole } from '@/services/organizationService';
+import { ArrowLeft, Loader2, ShieldAlert, Pill, Heart, ClipboardList, Calendar, MapPin, Stethoscope, Send } from 'lucide-react';
+
+// "Never grant medical ordering, prescribing, clinical administration or
+// other regulated privileges solely through the selected job title" —
+// this section is a free-text note, the exact same shape every other
+// note_type in patient_notes already uses. staffRole only decides which
+// note_type/label is shown; it grants no capability beyond writing text.
+function ProfessionalNotesSection({ patientId, staffRole }: { patientId: string; staffRole: StaffRole }) {
+  const noteType = staffRole === 'medical_professional' ? 'clinical_observation' : 'therapist_session';
+  const title = staffRole === 'medical_professional' ? 'Clinical Observations' : 'Session Notes & Care Goals';
+  const placeholder = staffRole === 'medical_professional'
+    ? 'Record a clinical observation (not a diagnosis, order, or prescription)…'
+    : 'Record a session note or care-goal update…';
+  const [notes, setNotes] = useState<ProfessionalNote[]>([]);
+  const [draft, setDraft] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setNotes(await getProfessionalNotes(patientId, noteType));
+    setLoading(false);
+  }, [patientId, noteType]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const save = async () => {
+    if (!draft.trim()) return;
+    setSaving(true);
+    try {
+      const { error } = await addProfessionalNote(patientId, noteType, draft);
+      if (error) { toast.error(error); return; }
+      setDraft('');
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (staffRole === 'caregiver') return null;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+      <div className="flex items-center gap-2"><Stethoscope className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">{title}</h2></div>
+      <div className="flex gap-2">
+        <textarea
+          value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={placeholder} rows={2}
+          className="flex-1 px-3 py-2.5 rounded-xl border border-soft-taupe text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze/40 resize-none"
+        />
+        <button
+          type="button" onClick={() => { void save(); }} disabled={saving || !draft.trim()}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60 self-start"
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+        </button>
+      </div>
+      {loading ? (
+        <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" />
+      ) : notes.length === 0 ? (
+        <p className="text-sm text-medium-gray">No entries yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {notes.map((n) => (
+            <li key={n.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
+              <p className="text-sm text-charcoal whitespace-pre-wrap">{n.note}</p>
+              <p className="text-[11px] text-medium-gray mt-1">{new Date(n.createdAt).toLocaleString()}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 interface PatientHeader {
   firstName: string; lastName: string; preferredName: string | null;
@@ -19,8 +93,8 @@ interface MoodRow { id: string; mood: string; intensity: number; timestamp: stri
 type LoadState = 'checking' | 'denied' | 'loading' | 'ready' | 'error';
 
 export default function EnterpriseStaffPatientView({
-  organizationId, patientId, onBack,
-}: { organizationId: string; patientId: string; onBack: () => void }) {
+  organizationId, patientId, onBack, staffRole = 'therapist',
+}: { organizationId: string; patientId: string; onBack: () => void; staffRole?: StaffRole }) {
   const [loadState, setLoadState] = useState<LoadState>('checking');
   const [patient, setPatient] = useState<PatientHeader | null>(null);
   const [medications, setMedications] = useState<MedicationRow[]>([]);
@@ -145,6 +219,8 @@ export default function EnterpriseStaffPatientView({
           </ul>
         )}
       </div>
+
+      <ProfessionalNotesSection patientId={patientId} staffRole={staffRole} />
 
       <CareConversations patientId={patientId} patientName={displayName} />
     </div>

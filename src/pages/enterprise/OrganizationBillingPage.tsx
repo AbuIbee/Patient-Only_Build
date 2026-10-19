@@ -60,17 +60,28 @@ export default function OrganizationBillingPage({ organizationId, orgName, packa
 
   const planLabel = packageType === 'therapist' ? 'Enterprise Therapist' : 'Enterprise Integrated Care';
   const status = license?.status ?? 'proposed';
+  const isActive = status === 'active';
+  const statusBadgeCls = isActive ? 'text-soft-sage bg-soft-sage/10' : 'text-amber-700 bg-amber-100';
 
   return (
     <div className="space-y-5">
       <SectionCard icon={<CreditCard className="w-5 h-5 text-warm-bronze" />} title="Plan Overview">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <p className="text-sm text-charcoal"><strong>{orgName}</strong> — {planLabel}</p>
-          <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">{status}</span>
+          <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${statusBadgeCls}`}>{status}</span>
         </div>
-        <p className="text-xs text-medium-gray">
-          Every patient this organization covers receives the same Full Support experience — all patient features and all eight Arcade games — regardless of which business package was purchased. Covered patients are never billed individually or directed to a residential plan.
-        </p>
+        {isActive ? (
+          <p className="text-xs text-medium-gray">
+            This license is active. Every patient currently covered receives the same Full Support experience — all patient features and all eight Arcade games — regardless of which business package was purchased. Covered patients are never billed individually or directed to a residential plan.
+          </p>
+        ) : (
+          <p className="text-xs text-amber-800">
+            This license is <strong>{status}</strong>, not active. Covering a patient while the license is {status} records the coverage relationship, but does NOT grant Full Support — a patient only receives Full Support while their organization's license is active. Activation is an admin-only action, separate from configuring seats/capacity/fee below.
+          </p>
+        )}
+        {license?.activatedAt && (
+          <p className="text-[11px] text-medium-gray">Last activated {new Date(license.activatedAt).toLocaleString()}.</p>
+        )}
       </SectionCard>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">

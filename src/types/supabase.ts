@@ -23,7 +23,7 @@ export type DementiaStage = 'early' | 'middle' | 'late'
 // 006_patient_notes_author.sql's own widened CHECK constraint
 // (`patient_notes_note_type_check`), itself added because
 // src/pages/patient/PatientDocuments.tsx writes this exact value.
-export type NoteType = 'general' | 'medical' | 'behavior' | 'mood' | 'activity' | 'care_partner_personal'
+export type NoteType = 'general' | 'medical' | 'behavior' | 'mood' | 'activity' | 'care_partner_personal' | 'therapist_session' | 'clinical_observation'
 
 export type MedicationForm = 'pill' | 'liquid' | 'injection' | 'patch' | 'inhaler'
 
@@ -62,6 +62,7 @@ export type ConversationRow = Database['public']['Tables']['conversations']['Row
 export type ConversationParticipantRow = Database['public']['Tables']['conversation_participants']['Row']
 export type MessageRow = Database['public']['Tables']['messages']['Row']
 export type MessageAcknowledgmentRow = Database['public']['Tables']['message_acknowledgments']['Row']
+export type OrganizationLicenseRow = Database['public']['Tables']['organization_licenses']['Row']
 
 export interface Database {
   public: {
@@ -452,7 +453,9 @@ export interface Database {
           licensed_seats: number | null
           covered_patient_capacity: number | null
           annual_license_fee: number | null
-          status: "proposed" | "active" | "expired"
+          status: "proposed" | "active" | "expired" | "canceled" | "unpaid"
+          activated_by: string | null
+          activated_at: string | null
           created_at: string
           updated_at: string
         }
@@ -462,7 +465,9 @@ export interface Database {
           licensed_seats?: number | null
           covered_patient_capacity?: number | null
           annual_license_fee?: number | null
-          status?: "proposed" | "active" | "expired"
+          status?: "proposed" | "active" | "expired" | "canceled" | "unpaid"
+          activated_by?: string | null
+          activated_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -472,7 +477,9 @@ export interface Database {
           licensed_seats?: number | null
           covered_patient_capacity?: number | null
           annual_license_fee?: number | null
-          status?: "proposed" | "active" | "expired"
+          status?: "proposed" | "active" | "expired" | "canceled" | "unpaid"
+          activated_by?: string | null
+          activated_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -2702,6 +2709,41 @@ export interface Database {
           last_name: string
           participant_role: string
         }[]
+      }
+      // FINAL INTEGRATION CORRECTIONS — migrations 039/041/044.
+      admin_set_organization_license_status: {
+        Args: { p_org_id: string; p_status: string }
+        Returns: OrganizationLicenseRow
+      }
+      get_org_staff_patient_assignments: {
+        Args: { p_org_id: string }
+        Returns: {
+          user_id: string
+          first_name: string
+          last_name: string
+          patient_id: string
+          patient_first_name: string
+          patient_last_name: string
+          patient_preferred_name: string | null
+          org_role: string
+          is_active: boolean
+        }[]
+      }
+      get_org_communications_overview: {
+        Args: { p_org_id: string }
+        Returns: {
+          active_conversations: number
+          patients_with_conversations: number
+          unresolved_follow_ups: number
+        }[]
+      }
+      is_therapist_for_patient: {
+        Args: { p_patient_id: string }
+        Returns: boolean
+      }
+      is_medical_professional_for_patient: {
+        Args: { p_patient_id: string }
+        Returns: boolean
       }
       // REPAIR 007: trusted, server-`now()`-computed Temporary/Companion
       // program eligibility check (migration 018). Takes no arguments —

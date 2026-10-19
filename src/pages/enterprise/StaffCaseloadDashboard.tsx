@@ -58,12 +58,12 @@ export default function StaffCaseloadDashboard({ roleLabel, filterRole }: { role
 
       <main className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
         {open ? (
-          <EnterpriseStaffPatientView organizationId={open.orgId} patientId={open.patientId} onBack={() => setOpen(null)} />
+          <EnterpriseStaffPatientView organizationId={open.orgId} patientId={open.patientId} onBack={() => setOpen(null)} staffRole={filterRole} />
         ) : (
           <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-4">
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-warm-bronze" />
-              <h2 className="text-lg font-bold text-charcoal">My Authorized Caseload</h2>
+              <h2 className="text-lg font-bold text-charcoal">My Caseload &amp; Sessions</h2>
             </div>
             {loading ? (
               <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-warm-bronze" /></div>

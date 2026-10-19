@@ -19,7 +19,10 @@ import {
 } from '@/services/caregiverRegistrationService';
 import CaregiverPatientView from './CaregiverPatientView';
 import EnterpriseStaffPatientView from '@/pages/enterprise/EnterpriseStaffPatientView';
-import { getMyStaffPatients, type StaffPatient } from '@/services/organizationService';
+import {
+  getMyStaffPatients, getMyOrganizations, coverPatientViaStaffRegistration,
+  type StaffPatient, type MyOrganization,
+} from '@/services/organizationService';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -353,15 +356,33 @@ function RegisterPatientForm({ onRegistered, onBack }: { onRegistered: () => voi
  * reference, and an explicit "Open Patient Account" action. Label editing
  * is inline, scoped to this one card's relationship only. */
 function PatientCard({
-  patient, onOpen, onLabelSaved,
+  patient, onOpen, onLabelSaved, caregiverOrgs, onCovered,
 }: {
   patient: LinkedPatientSummary;
   onOpen: () => void;
   onLabelSaved: (patientId: string, label: string | null) => void;
+  caregiverOrgs: MyOrganization[];
+  onCovered: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(patient.displayLabel ?? '');
   const [saving, setSaving] = useState(false);
+  const [coveringOrgId, setCoveringOrgId] = useState('');
+  const [covering, setCovering] = useState(false);
+
+  const cover = async () => {
+    if (!coveringOrgId) return;
+    setCovering(true);
+    try {
+      const { error } = await coverPatientViaStaffRegistration(coveringOrgId, patient.id);
+      if (error) { toast.error(error); return; }
+      toast.success('This patient is now covered — Full Support is active under this organization.');
+      setCoveringOrgId('');
+      onCovered();
+    } finally {
+      setCovering(false);
+    }
+  };
 
   const saveLabel = async () => {
     setSaving(true);
@@ -425,6 +446,28 @@ function PatientCard({
       >
         Open Patient Account <ChevronRight className="w-4 h-4" />
       </button>
+      {caregiverOrgs.length > 0 && (
+        <div className="flex items-stretch gap-1.5 pt-1 border-t border-soft-taupe/60">
+          <select
+            value={coveringOrgId}
+            onChange={(e) => setCoveringOrgId(e.target.value)}
+            className="min-w-0 flex-1 px-2 py-1.5 border border-soft-taupe rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-warm-bronze"
+          >
+            <option value="">Bring under organization…</option>
+            {caregiverOrgs.map((o) => (
+              <option key={o.organizationId} value={o.organizationId}>{o.organizationName}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => { void cover(); }}
+            disabled={!coveringOrgId || covering}
+            className="flex-shrink-0 px-2.5 py-1.5 rounded-lg bg-soft-sage hover:bg-soft-sage/90 text-white text-xs font-semibold disabled:opacity-60"
+          >
+            {covering ? '…' : 'Cover'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -521,12 +564,14 @@ function IncompleteRegistrations({
 }
 
 function PatientsSection({
-  patients, onRegisterNew, onOpenPatient, onLabelSaved,
+  patients, onRegisterNew, onOpenPatient, onLabelSaved, caregiverOrgs, onCovered,
 }: {
   patients: LinkedPatientSummary[];
   onRegisterNew: () => void;
   onOpenPatient: (id: string) => void;
   onLabelSaved: (patientId: string, label: string | null) => void;
+  caregiverOrgs: MyOrganization[];
+  onCovered: () => void;
 }) {
   const [query, setQuery] = useState('');
   // item 6: simple windowed pagination once the list is long enough that
@@ -603,7 +648,7 @@ function PatientsSection({
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {visible.map((p) => (
-              <PatientCard key={p.id} patient={p} onOpen={() => onOpenPatient(p.id)} onLabelSaved={onLabelSaved} />
+              <PatientCard key={p.id} patient={p} onOpen={() => onOpenPatient(p.id)} onLabelSaved={onLabelSaved} caregiverOrgs={caregiverOrgs} onCovered={onCovered} />
             ))}
           </div>
           {visible.length < filtered.length && (
@@ -676,20 +721,23 @@ export default function CaregiverPortal({ onStartOrganization }: CaregiverPortal
   const [openOrgPatient, setOpenOrgPatient] = useState<{ orgId: string; patientId: string } | null>(null);
   const [patients, setPatients] = useState<LinkedPatientSummary[]>([]);
   const [orgPatients, setOrgPatients] = useState<StaffPatient[]>([]);
+  const [caregiverOrgs, setCaregiverOrgs] = useState<MyOrganization[]>([]);
   const [patientsLoading, setPatientsLoading] = useState(true);
   const [pending, setPending] = useState<PendingRegistrationSummary[]>([]);
 
   const refreshPatients = async () => {
     setPatientsLoading(true);
     try {
-      const [linked, pendingRegs, staffPatients] = await Promise.all([
+      const [linked, pendingRegs, staffPatients, orgs] = await Promise.all([
         getMyLinkedPatients(),
         getMyPendingRegistrations(),
         getMyStaffPatients(),
+        getMyOrganizations(),
       ]);
       setPatients(linked);
       setPending(pendingRegs);
       setOrgPatients(staffPatients.filter((p) => p.orgRole === 'caregiver'));
+      setCaregiverOrgs(orgs.filter((o) => o.orgRole === 'caregiver'));
     } finally {
       setPatientsLoading(false);
     }
@@ -797,6 +845,8 @@ export default function CaregiverPortal({ onStartOrganization }: CaregiverPortal
                   onRegisterNew={() => setView('register')}
                   onOpenPatient={openPatient}
                   onLabelSaved={handleLabelSaved}
+                  caregiverOrgs={caregiverOrgs}
+                  onCovered={() => { void refreshPatients(); }}
                 />
               </>
             )}

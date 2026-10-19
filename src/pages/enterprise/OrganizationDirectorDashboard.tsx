@@ -9,12 +9,15 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
   Building2, Users, LogOut, UserPlus, Trash2,
-  Loader2, CreditCard, ClipboardList,
+  Loader2, CreditCard, ClipboardList, MessageSquare, Link2, Unlink,
 } from 'lucide-react';
 import {
   getMyOrganizations, getOrgMembers, getOrgLicense, getOrgCoveredPatients,
   orgConfigureLicense, inviteOrgMember, removeOrgMember, createOrganization,
+  getOrgStaffPatientAssignments, assignStaffToPatient, unassignStaffFromPatient,
+  getOrgCommunicationsOverview,
   type OrgLicense, type OrgRole, type OrgMembershipRow, type OrgPackageType,
+  type StaffPatientAssignment, type StaffRole, type OrgCommunicationsOverview,
 } from '@/services/organizationService';
 import OrganizationBillingPage from './OrganizationBillingPage';
 
@@ -114,12 +117,12 @@ function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: Or
           <CreditCard className="w-5 h-5 text-warm-bronze" />
           <h2 className="font-bold text-charcoal">License &amp; Capacity</h2>
         </div>
-        <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-          {license?.status ?? 'proposed'} — not billed
+        <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${license?.status === 'active' ? 'text-soft-sage bg-soft-sage/10' : 'text-amber-700 bg-amber-100'}`}>
+          {license?.status ?? 'proposed'}
         </span>
       </div>
       <p className="text-xs text-medium-gray">
-        These are proposed, configurable commercial terms pending final owner approval — no charge is created by setting them.
+        Seats, capacity and fee are proposed, configurable commercial terms — setting them here never activates the license or creates a charge. Only an admin can activate, expire, or cancel a license (a separate, staging-only mechanism for synthetic integration testing); this status also controls whether covered patients actually receive Full Support.
       </p>
       {editing ? (
         <div className="space-y-3">
@@ -280,6 +283,144 @@ function CoveredPatientsCard({ orgId }: { orgId: string }) {
   );
 }
 
+function CommunicationsOverviewCard({ orgId }: { orgId: string }) {
+  const [overview, setOverview] = useState<OrgCommunicationsOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getOrgCommunicationsOverview(orgId).then((o) => { if (!cancelled) { setOverview(o); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [orgId]);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+      <div className="flex items-center gap-2">
+        <MessageSquare className="w-5 h-5 text-warm-bronze" />
+        <h2 className="font-bold text-charcoal">Therapist Office Communications</h2>
+      </div>
+      <p className="text-xs text-medium-gray">
+        Aggregate activity only — as a director you see volume and follow-up status, never message content from a conversation you were not personally added to.
+      </p>
+      {loading ? (
+        <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" />
+      ) : (
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
+            <p className="text-2xl font-bold text-charcoal">{overview?.activeConversations ?? 0}</p>
+            <p className="text-[11px] text-medium-gray mt-0.5">Active conversations</p>
+          </div>
+          <div className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
+            <p className="text-2xl font-bold text-charcoal">{overview?.patientsWithConversations ?? 0}</p>
+            <p className="text-[11px] text-medium-gray mt-0.5">Patients discussed</p>
+          </div>
+          <div className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
+            <p className="text-2xl font-bold text-gentle-coral">{overview?.unresolvedFollowUps ?? 0}</p>
+            <p className="text-[11px] text-medium-gray mt-0.5">Unresolved follow-ups</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssignmentsCard({ orgId, members }: {
+  orgId: string;
+  members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
+}) {
+  const [assignments, setAssignments] = useState<StaffPatientAssignment[]>([]);
+  const [coveredPatients, setCoveredPatients] = useState<{ patientId: string; firstName: string; lastName: string; preferredName: string | null }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [staffId, setStaffId] = useState('');
+  const [patientId, setPatientId] = useState('');
+  const [role, setRole] = useState<StaffRole>('caregiver');
+  const [saving, setSaving] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [a, p] = await Promise.all([getOrgStaffPatientAssignments(orgId), getOrgCoveredPatients(orgId)]);
+      setAssignments(a);
+      setCoveredPatients(p);
+    } finally {
+      setLoading(false);
+    }
+  }, [orgId]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const staffOptions = members.filter((m) => m.orgRole !== 'director' && m.status === 'active');
+
+  const assign = async () => {
+    if (!staffId || !patientId) { toast.error('Select both a staff member and a patient.'); return; }
+    setSaving(true);
+    try {
+      const { error } = await assignStaffToPatient(orgId, staffId, patientId, role);
+      if (error) { toast.error(error); return; }
+      toast.success('Assignment created.');
+      setStaffId(''); setPatientId('');
+      await refresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const unassign = async (userId: string, patId: string) => {
+    const { error } = await unassignStaffFromPatient(orgId, userId, patId);
+    if (error) { toast.error(error); return; }
+    toast.success('Assignment removed.');
+    await refresh();
+  };
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <Link2 className="w-5 h-5 text-warm-bronze" />
+        <h2 className="font-bold text-charcoal">Staff-to-Patient Assignments</h2>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-2">
+        <select value={staffId} onChange={(e) => setStaffId(e.target.value)} className={`${inputCls} flex-1`}>
+          <option value="">Select staff member…</option>
+          {staffOptions.map((m) => <option key={m.userId} value={m.userId}>{m.firstName} {m.lastName} ({ROLE_LABELS[m.orgRole]})</option>)}
+        </select>
+        <select value={patientId} onChange={(e) => setPatientId(e.target.value)} className={`${inputCls} flex-1`}>
+          <option value="">Select covered patient…</option>
+          {coveredPatients.map((p) => <option key={p.patientId} value={p.patientId}>{p.preferredName || `${p.firstName} ${p.lastName}`}</option>)}
+        </select>
+        <select value={role} onChange={(e) => setRole(e.target.value as StaffRole)} className={inputCls + ' sm:w-44'}>
+          <option value="caregiver">Caregiver</option>
+          <option value="therapist">Therapist</option>
+          <option value="medical_professional">Medical Professional</option>
+        </select>
+        <button type="button" onClick={() => { void assign(); }} disabled={saving} className="px-4 py-2.5 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60 whitespace-nowrap">
+          {saving ? 'Saving…' : 'Assign'}
+        </button>
+      </div>
+      <p className="text-xs text-medium-gray -mt-2">The staff member must already hold that role in this organization, and the patient must already be covered.</p>
+
+      {loading ? (
+        <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" />
+      ) : assignments.length === 0 ? (
+        <p className="text-sm text-medium-gray">No staff-to-patient assignments yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {assignments.filter((a) => a.isActive).map((a) => (
+            <li key={`${a.userId}-${a.patientId}`} className="flex items-center justify-between gap-3 p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
+              <p className="text-sm text-charcoal min-w-0 truncate">
+                <strong>{a.firstName} {a.lastName}</strong> ({ROLE_LABELS[a.orgRole as OrgRole]}) → {a.patientPreferredName || `${a.patientFirstName} ${a.patientLastName}`}
+              </p>
+              <button type="button" onClick={() => { void unassign(a.userId, a.patientId); }} className="flex-shrink-0 p-2 rounded-lg text-gentle-coral hover:bg-gentle-coral/10" aria-label="Remove assignment">
+                <Unlink className="w-4 h-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function OrganizationDirectorDashboard({ organizationId }: { organizationId: string }) {
   const { dispatch } = useApp();
   const [tab, setTab] = useState<'overview' | 'billing'>('overview');
@@ -352,6 +493,8 @@ export default function OrganizationDirectorDashboard({ organizationId }: { orga
             <LicenseCard orgId={organizationId} license={license} onUpdated={() => { void refresh(); }} />
             <StaffCard orgId={organizationId} members={members} onChanged={() => { void refresh(); }} />
             <CoveredPatientsCard orgId={organizationId} />
+            <AssignmentsCard orgId={organizationId} members={members} />
+            <CommunicationsOverviewCard orgId={organizationId} />
           </>
         ) : (
           <OrganizationBillingPage organizationId={organizationId} orgName={orgName || 'Organization'} packageType={packageType} />
