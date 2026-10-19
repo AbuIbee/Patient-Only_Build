@@ -3,6 +3,7 @@ import { useApp } from '@/store/useApp';
 import LandingPage from '@/pages/common/LandingPage';
 import LoginPage from '@/pages/common/LoginPage';
 import ResetPasswordPage from '@/pages/common/ResetPasswordPage';
+import ActivatePatientPage from '@/pages/common/ActivatePatientPage';
 import PublicPatientIntakePage from '@/pages/common/PublicPatientIntakePage';
 import AboutUsPage from '@/pages/common/AboutUsPage';
 import BusinessLandingPage from '@/pages/common/BusinessLandingPage';
@@ -86,8 +87,22 @@ function AppContent() {
   // commercial landing route — same public-route pattern as the other
   // unauthenticated marketing pages above.
   const isBusinessRoute = currentPath === '/business';
+  // REMEDIATION B: ALSO handled by its own, separate, earlier early
+  // return below — BEFORE checkingSession's render — so it never shows
+  // the ordinary loading spinner either.
+  const isActivationRoute = currentPath === '/activate';
+  // isActivationRoute is folded in here too: the URL-normalization and
+  // browser-back-history effects below must never rewrite /activate to
+  // "/" — confirmed live that they did exactly that before this fix
+  // (confirmed via a real browser: the address bar collapsed to "/"
+  // within the first render, which would also discard the activation
+  // context on any mid-flow page refresh). The separate, earlier
+  // render-time check for isActivationRoute (below, before
+  // checkingSession) remains distinct — stronger than these other
+  // public routes, which still pass through the ordinary
+  // checkingSession/renderContent path.
   const isPublicRoute =
-    isPublicPatientIntakeRoute || isPrivacyRoute || isAboutUsRoute || isBusinessRoute;
+    isPublicPatientIntakeRoute || isPrivacyRoute || isAboutUsRoute || isBusinessRoute || isActivationRoute;
 
   const restoreUser = useCallback((profile: Pick<Database['public']['Tables']['profiles']['Row'],
     'id' | 'email' | 'first_name' | 'last_name' | 'role' | 'phone' | 'created_at' | 'updated_at' | 'mfa_enabled'>) => {
@@ -477,6 +492,16 @@ function AppContent() {
       );
     };
   }, [state.isAuthenticated, dispatch, isPublicRoute]);
+
+  // REMEDIATION B: checked before everything else, including
+  // checkingSession's own spinner — this route never participates in
+  // the shared client's session-restore UI at all. The shared client
+  // already has detectSessionInUrl disabled for this exact path
+  // (src/lib/supabase.ts), so whatever restoreSession() above found (or
+  // didn't) is unaffected by and unrelated to this page.
+  if (isActivationRoute) {
+    return <ActivatePatientPage />;
+  }
 
   if (checkingSession) {
     return (

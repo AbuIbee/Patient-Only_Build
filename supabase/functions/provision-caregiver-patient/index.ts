@@ -305,10 +305,15 @@ serve(async (request) => {
     if (!resolvedRedirect) {
       console.error('No allowlisted callback origin and no APP_URL secret configured — activation link withheld rather than risking an incorrect redirect.');
     } else {
+      // REMEDIATION B: lands on the isolated /activate route (never the
+      // app root) — the shared, persistent client disables
+      // detectSessionInUrl specifically for that path, so this token is
+      // only ever consumed by a separate, non-persisted client built
+      // just to parse it (src/pages/common/ActivatePatientPage.tsx).
       const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
         type: 'recovery',
         email: registration.patient_email,
-        options: { redirectTo: resolvedRedirect },
+        options: { redirectTo: `${resolvedRedirect}/activate` },
       });
       if (linkError) {
         console.error('generateLink error (patient account still created and claimed):', linkError.message);

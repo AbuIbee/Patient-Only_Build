@@ -120,10 +120,12 @@ serve(async (request) => {
       return jsonResponse({ error: 'No allowlisted callback origin and no APP_URL secret configured — cannot safely generate an activation link.' }, 500);
     }
 
+    // REMEDIATION B: lands on the isolated /activate route — see the
+    // identical note in provision-caregiver-patient/index.ts.
     const { data: linkData, error: generateError } = await adminClient.auth.admin.generateLink({
       type: 'recovery',
       email: patientProfile.email,
-      options: { redirectTo: resolvedRedirect },
+      options: { redirectTo: `${resolvedRedirect}/activate` },
     });
     if (generateError) {
       return jsonResponse({ error: generateError.message }, 500);

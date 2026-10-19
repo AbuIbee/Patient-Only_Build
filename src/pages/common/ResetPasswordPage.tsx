@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase as sharedSupabase } from '@/lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/supabase';
 import { getErrorMessage } from '@/lib/utils';
 import { Heart, Eye, EyeOff, Lock, CheckCircle2, AlertCircle, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,9 +10,16 @@ interface ResetPasswordPageProps {
   onComplete:   () => void;
   forced?:      boolean;   // true = temp password set by admin/caregiver, cannot skip
   userEmail?:   string;    // shown to remind the user which account they're setting
+  // REMEDIATION B: ActivatePatientPage passes its own isolated,
+  // non-persisted client here so password-set never touches the shared,
+  // persistent client's session. Defaults to the shared client for the
+  // existing authenticated-app usage (forced reset, caregiver-initiated
+  // reset), which is unaffected.
+  client?:      SupabaseClient<Database>;
 }
 
-export default function ResetPasswordPage({ onComplete, forced = false, userEmail }: ResetPasswordPageProps) {
+export default function ResetPasswordPage({ onComplete, forced = false, userEmail, client }: ResetPasswordPageProps) {
+  const supabase = client ?? sharedSupabase;
   const [password, setPassword] = useState('');
   const [confirm,  setConfirm]  = useState('');
   const [showPass, setShowPass] = useState(false);

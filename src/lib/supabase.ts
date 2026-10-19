@@ -13,11 +13,24 @@ const sessionStorageAdapter = {
   removeItem: (key: string) => sessionStorage.removeItem(key),
 };
 
+// REMEDIATION B (activation-session isolation): this shared, persistent
+// client must NEVER consume a patient activation/recovery token from the
+// URL — doing so would silently swap whichever caregiver (or nobody) is
+// currently signed in on this tab to the token's own identity, before
+// any app-level code ever gets a chance to react. /activate (see
+// ActivatePatientPage.tsx) constructs its OWN separate, non-persisted
+// client specifically to parse that token in isolation. Checked once at
+// module-evaluation time, which is correct for this case: a real
+// activation link is always a fresh, full page load (from an email),
+// never a client-side SPA navigation into this path.
+const isActivationRoute =
+  typeof window !== 'undefined' && window.location.pathname === '/activate';
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
   auth: {
     persistSession:     true,           // keep within this tab
     autoRefreshToken:   true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: !isActivationRoute,
     storage:            sessionStorageAdapter, // ← sessionStorage, not localStorage
   },
 });
