@@ -336,8 +336,137 @@ export async function getMyPendingRegistrations(): Promise<PendingRegistrationSu
 /** ENTERPRISE CONSOLIDATED DELIVERY: the "Delete" control for an
  * incomplete registration — the dashboard's "Continue/Edit/Delete"
  * requirement. Only the owning caregiver's own unconsumed registration
- * can ever be deleted (migration 034). */
+ * can ever be deleted (migration 034).
+ *
+ * CRITICAL OWNER-REPORTED REMEDIATION Correction A: this bare RPC call is
+ * now used ONLY when the registration has no resumable patient id (no
+ * Auth account was ever created for it) — see
+ * deletePendingRegistrationSafely() below for the case where one was. */
 export async function cancelMyPendingRegistration(registrationId: string): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('cancel_my_pending_registration', { p_registration_id: registrationId });
+  return { error: error?.message ?? null };
+}
+
+/**
+ * CRITICAL OWNER-REPORTED REMEDIATION Correction A: the orphan-safe
+ * "Delete Registration" for a registration whose Auth account was
+ * already created (resumablePatientId present). cancelMyPendingRegistration()
+ * alone would strand that account permanently — unclaimed, unlinked, and
+ * blocking its email from ever being used again. This instead calls the
+ * delete-pending-registration Edge Function, which removes that unused
+ * account first (server-side, admin API) and only then removes the
+ * registration record. Safe to call even when no such account exists —
+ * the function checks and reports removedUnusedAccount: false in that case.
+ */
+export async function deletePendingRegistrationSafely(registrationId: string): Promise<{ removedUnusedAccount: boolean; error: string | null }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    return { removedUnusedAccount: false, error: 'You must be signed in as a caregiver.' };
+  }
+  const { data, error } = await supabase.functions.invoke<{ success?: boolean; removedUnusedAccount?: boolean; error?: string }>(
+    'delete-pending-registration',
+    { body: { registrationId } },
+  );
+  if (error || !data?.success) {
+    const { message } = error
+      ? await extractEdgeFunctionError(error, 'Could not delete this registration.')
+      : { message: data?.error || 'Could not delete this registration.' };
+    return { removedUnusedAccount: false, error: message };
+  }
+  return { removedUnusedAccount: Boolean(data.removedUnusedAccount), error: null };
+}
+
+/** CRITICAL OWNER-REPORTED REMEDIATION Correction A: "Edit Registration" —
+ * reloads every stored field for one of the caller's own unconsumed
+ * registrations. */
+export interface PendingRegistrationDetail {
+  registrationId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  preferredName: string | null;
+  dateOfBirth: string | null;
+  diagnosisDate: string | null;
+  dementiaStage: string | null;
+  location: string | null;
+  address: string | null;
+  emergencyContactName: string | null;
+  emergencyContactRelationship: string | null;
+  emergencyContactPhone: string | null;
+  emergencyContactEmail: string | null;
+  relationshipType: string;
+  /** True once an Auth account already exists for this registration's
+   * email — the email field becomes read-only in the edit form in that
+   * case (see caregiver_update_pending_registration()'s own check). */
+  hasResumableAccount: boolean;
+}
+
+export async function getPendingRegistrationDetail(registrationId: string): Promise<{ detail: PendingRegistrationDetail | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('get_my_pending_registration_detail', { p_registration_id: registrationId });
+  if (error || !data) {
+    return { detail: null, error: error?.message ?? 'Could not load this registration.' };
+  }
+  const pending = await getMyPendingRegistrations();
+  const summary = pending.find((p) => p.registrationId === registrationId);
+  return {
+    detail: {
+      registrationId: data.id,
+      firstName: data.patient_first_name,
+      lastName: data.patient_last_name,
+      email: data.patient_email,
+      preferredName: data.patient_preferred_name,
+      dateOfBirth: data.patient_date_of_birth,
+      diagnosisDate: data.patient_diagnosis_date,
+      dementiaStage: data.patient_dementia_stage,
+      location: data.patient_location,
+      address: data.patient_address,
+      emergencyContactName: data.emergency_contact_name,
+      emergencyContactRelationship: data.emergency_contact_relationship,
+      emergencyContactPhone: data.emergency_contact_phone,
+      emergencyContactEmail: data.emergency_contact_email,
+      relationshipType: data.relationship_type,
+      hasResumableAccount: Boolean(summary?.resumablePatientId),
+    },
+    error: null,
+  };
+}
+
+export interface PendingRegistrationEditInput {
+  firstName: string;
+  lastName: string;
+  email: string;
+  preferredName?: string | null;
+  dateOfBirth?: string | null;
+  diagnosisDate?: string | null;
+  dementiaStage?: string | null;
+  location?: string | null;
+  address?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactRelationship?: string | null;
+  emergencyContactPhone?: string | null;
+  emergencyContactEmail?: string | null;
+  relationshipType?: string;
+}
+
+export async function updatePendingRegistration(
+  registrationId: string, input: PendingRegistrationEditInput,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('caregiver_update_pending_registration', {
+    p_registration_id: registrationId,
+    p_first_name: input.firstName.trim(),
+    p_last_name: input.lastName.trim(),
+    p_email: normalizeEmail(input.email),
+    p_preferred_name: input.preferredName || null,
+    p_date_of_birth: input.dateOfBirth || null,
+    p_diagnosis_date: input.diagnosisDate || null,
+    p_dementia_stage: input.dementiaStage || null,
+    p_location: input.location || null,
+    p_address: input.address || null,
+    p_emergency_contact_name: input.emergencyContactName || null,
+    p_emergency_contact_relationship: input.emergencyContactRelationship || null,
+    p_emergency_contact_phone: input.emergencyContactPhone || null,
+    p_emergency_contact_email: input.emergencyContactEmail || null,
+    p_relationship_type: input.relationshipType || 'primary',
+  });
   return { error: error?.message ?? null };
 }

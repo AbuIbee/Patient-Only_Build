@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
   AlertCircle, ArrowLeft, Check, Copy, LogOut, UserPlus, Users,
-  Search, Pencil, X, ChevronRight, Clock, Building2,
+  Search, Pencil, X, ChevronRight, Clock, Building2, Loader2,
 } from 'lucide-react';
 import type { PatientIntakeFormData, DementiaStage } from '@/types/patientIntake';
 import {
@@ -13,9 +13,12 @@ import {
   getMyLinkedPatients,
   setPatientDisplayLabel,
   getMyPendingRegistrations,
-  cancelMyPendingRegistration,
+  deletePendingRegistrationSafely,
+  getPendingRegistrationDetail,
+  updatePendingRegistration,
   type LinkedPatientSummary,
   type PendingRegistrationSummary,
+  type PendingRegistrationDetail,
 } from '@/services/caregiverRegistrationService';
 import CaregiverPatientView from './CaregiverPatientView';
 import EnterpriseStaffPatientView from '@/pages/enterprise/EnterpriseStaffPatientView';
@@ -472,6 +475,112 @@ function PatientCard({
   );
 }
 
+/** CRITICAL OWNER-REPORTED REMEDIATION Correction A: the "Edit
+ * Registration" form — reloads every saved field for one unconsumed
+ * registration and resubmits via caregiver_update_pending_registration().
+ * Never creates a new identity: this always corrects the SAME
+ * registration row. The email field is read-only once an Auth account
+ * already exists for it (hasResumableAccount) — changing it without also
+ * abandoning that account would desync the already-created identity;
+ * the RPC itself enforces this too, this is just the matching UI. */
+function EditRegistrationForm({
+  registrationId, onSaved, onCancel,
+}: { registrationId: string; onSaved: () => void; onCancel: () => void }) {
+  const [detail, setDetail] = useState<PendingRegistrationDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    firstName: '', lastName: '', email: '', preferredName: '', dateOfBirth: '',
+    diagnosisDate: '', dementiaStage: '', location: '', address: '',
+    emergencyContactName: '', emergencyContactPhone: '', emergencyContactEmail: '', emergencyContactRelationship: '',
+    relationshipType: 'primary',
+  });
+
+  useEffect(() => {
+    void (async () => {
+      const { detail: d, error } = await getPendingRegistrationDetail(registrationId);
+      if (error || !d) {
+        toast.error(error || 'Could not load this registration.');
+        onCancel();
+        return;
+      }
+      setDetail(d);
+      setForm({
+        firstName: d.firstName, lastName: d.lastName, email: d.email,
+        preferredName: d.preferredName ?? '', dateOfBirth: d.dateOfBirth ?? '',
+        diagnosisDate: d.diagnosisDate ?? '', dementiaStage: d.dementiaStage ?? '',
+        location: d.location ?? '', address: d.address ?? '',
+        emergencyContactName: d.emergencyContactName ?? '', emergencyContactPhone: d.emergencyContactPhone ?? '',
+        emergencyContactEmail: d.emergencyContactEmail ?? '', emergencyContactRelationship: d.emergencyContactRelationship ?? '',
+        relationshipType: d.relationshipType,
+      });
+      setLoading(false);
+    })();
+  }, [registrationId, onCancel]);
+
+  const save = async () => {
+    if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim()) {
+      toast.error('First name, last name, and email are required.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await updatePendingRegistration(registrationId, form);
+      if (error) { toast.error('Could not save your changes: ' + error); return; }
+      toast.success('Registration updated.');
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading || !detail) {
+    return (
+      <div className="bg-white rounded-xl border border-amber-200 p-4">
+        <Loader2 className="w-5 h-5 animate-spin text-warm-bronze mx-auto" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-amber-200 p-4 space-y-3">
+      <p className="text-sm font-semibold text-charcoal">Edit Registration</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <input value={form.firstName} onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))} placeholder="First name" className={inputCls} />
+        <input value={form.lastName} onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))} placeholder="Last name" className={inputCls} />
+      </div>
+      <div className="space-y-1">
+        <input
+          type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+          disabled={detail.hasResumableAccount} placeholder="Patient email"
+          className={`${inputCls} ${detail.hasResumableAccount ? 'bg-soft-taupe/20 cursor-not-allowed' : ''}`}
+        />
+        {detail.hasResumableAccount && (
+          <p className="text-xs text-medium-gray">
+            An account was already created for this email — delete this registration first to change it.
+          </p>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <input value={form.preferredName} onChange={(e) => setForm((f) => ({ ...f, preferredName: e.target.value }))} placeholder="Preferred name" className={inputCls} />
+        <input type="date" value={form.dateOfBirth} onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))} className={inputCls} />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <input value={form.emergencyContactName} onChange={(e) => setForm((f) => ({ ...f, emergencyContactName: e.target.value }))} placeholder="Emergency contact name" className={inputCls} />
+        <input value={form.emergencyContactPhone} onChange={(e) => setForm((f) => ({ ...f, emergencyContactPhone: e.target.value }))} placeholder="Emergency contact phone" className={inputCls} />
+      </div>
+      <div className="flex gap-2">
+        <button type="button" onClick={() => { void save(); }} disabled={saving} className="px-4 py-2 rounded-lg bg-warm-bronze hover:bg-deep-bronze text-white text-xs font-semibold disabled:opacity-60">
+          {saving ? 'Saving…' : 'Save Changes'}
+        </button>
+        <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg border border-soft-taupe text-charcoal text-xs font-semibold">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** item 5: incomplete registrations stay visible on the dashboard — never
  * shown as a (fully registered) PatientCard, since no caregiver_patients
  * link exists for them yet. */
@@ -483,6 +592,7 @@ function IncompleteRegistrations({
 }) {
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   if (pending.length === 0) return null;
 
@@ -502,13 +612,16 @@ function IncompleteRegistrations({
     }
   };
 
-  // ENTERPRISE CONSOLIDATED DELIVERY: the "Delete" control — only ever
-  // removes the caller's own unconsumed registration (migration 034).
+  // CRITICAL OWNER-REPORTED REMEDIATION Correction A: always the
+  // orphan-safe path now — it removes any unused account already
+  // created for this registration before removing the record itself, so
+  // "Delete" can never permanently strand an identity (and its email)
+  // the way the bare RPC alone could.
   const deleteRegistration = async (reg: PendingRegistrationSummary) => {
     if (!window.confirm(`Delete the incomplete registration for ${reg.firstName} ${reg.lastName}? This cannot be undone.`)) return;
     setDeletingId(reg.registrationId);
     try {
-      const { error } = await cancelMyPendingRegistration(reg.registrationId);
+      const { error } = await deletePendingRegistrationSafely(reg.registrationId);
       if (error) {
         toast.error('Could not delete this registration: ' + error);
         return;
@@ -528,34 +641,52 @@ function IncompleteRegistrations({
       </div>
       <ul className="space-y-2">
         {pending.map((reg) => (
-          <li key={reg.registrationId} className="flex items-center justify-between gap-3 bg-white rounded-xl border border-amber-200 p-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-charcoal truncate">{reg.firstName} {reg.lastName}</p>
-              <p className="text-xs text-medium-gray truncate">{reg.email}</p>
-              <p className="text-xs text-amber-700 mt-0.5">
-                {reg.resumablePatientId ? 'Account created — registration did not finish.' : 'The account could not be created.'}
-              </p>
-            </div>
-            <div className="flex-shrink-0 flex items-center gap-2">
-              {reg.resumablePatientId && (
-                <button
-                  type="button"
-                  onClick={() => { void resume(reg); }}
-                  disabled={resumingId === reg.registrationId || deletingId === reg.registrationId}
-                  className="px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-60 transition-colors"
-                >
-                  {resumingId === reg.registrationId ? 'Finishing…' : 'Finish Registration'}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => { void deleteRegistration(reg); }}
-                disabled={resumingId === reg.registrationId || deletingId === reg.registrationId}
-                className="px-3 py-2 rounded-lg border border-gentle-coral/40 text-gentle-coral hover:bg-gentle-coral/10 text-xs font-semibold disabled:opacity-60 transition-colors"
-              >
-                {deletingId === reg.registrationId ? 'Deleting…' : 'Delete'}
-              </button>
-            </div>
+          <li key={reg.registrationId} className="bg-white rounded-xl border border-amber-200 p-3 space-y-2">
+            {editingId === reg.registrationId ? (
+              <EditRegistrationForm
+                registrationId={reg.registrationId}
+                onCancel={() => setEditingId(null)}
+                onSaved={() => { setEditingId(null); onResumed(); }}
+              />
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-charcoal truncate">{reg.firstName} {reg.lastName}</p>
+                  <p className="text-xs text-medium-gray truncate">{reg.email}</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    {reg.resumablePatientId ? 'Account created — registration did not finish.' : 'The account could not be created.'}
+                  </p>
+                </div>
+                <div className="flex-shrink-0 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(reg.registrationId)}
+                    disabled={resumingId === reg.registrationId || deletingId === reg.registrationId}
+                    className="flex items-center gap-1 px-3 py-2 rounded-lg border border-soft-taupe text-charcoal text-xs font-semibold disabled:opacity-60 transition-colors"
+                  >
+                    <Pencil className="w-3 h-3" /> Edit
+                  </button>
+                  {reg.resumablePatientId && (
+                    <button
+                      type="button"
+                      onClick={() => { void resume(reg); }}
+                      disabled={resumingId === reg.registrationId || deletingId === reg.registrationId}
+                      className="px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-60 transition-colors"
+                    >
+                      {resumingId === reg.registrationId ? 'Finishing…' : 'Finish Registration'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { void deleteRegistration(reg); }}
+                    disabled={resumingId === reg.registrationId || deletingId === reg.registrationId}
+                    className="px-3 py-2 rounded-lg border border-gentle-coral/40 text-gentle-coral hover:bg-gentle-coral/10 text-xs font-semibold disabled:opacity-60 transition-colors"
+                  >
+                    {deletingId === reg.registrationId ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            )}
           </li>
         ))}
       </ul>
