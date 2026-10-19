@@ -10,7 +10,6 @@ import PrivacyPage from '@/pages/privacy/PrivacyPage';
 import { Toaster } from '@/components/ui/sonner';
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
-import type { User } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 import { cancelAllReminderNotifications } from '@/lib/reminderScheduler';
 import { selfHealMissingProfile } from '@/services/profileService';
@@ -40,6 +39,23 @@ function AppContent() {
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [forcedChange, setForcedChange] = useState(false);
   const [currentUserEmail, setCurrentUserEmail] = useState('');
+  // CODEX-VERIFIED CRITICAL REMEDIATION Critical 4: when self-heal fails,
+  // the session is BLOCKED here — never let through on
+  // buildAuthFallbackProfile(), which is a real auth.uid() with no
+  // matching profiles row and would let the user reach FK-dependent
+  // writes (patient_intake, etc.) that the database would then reject
+  // anyway, after the UI had already implied things were fine.
+  const [profileSetupBlocked, setProfileSetupBlocked] = useState(false);
+  // CODEX-VERIFIED CRITICAL REMEDIATION Critical 3: a recovery link
+  // ALWAYS swaps the browser's Supabase session to the link's own
+  // target user the moment the hash is consumed — that happens before
+  // this app ever sees the PASSWORD_RECOVERY event, so it cannot be
+  // prevented outright. What this CAN do is detect that the session just
+  // changed to a DIFFERENT identity than whoever was previously signed
+  // in, and require an explicit, deliberate confirmation before showing
+  // the password-setup screen — "deliberate account switching," never a
+  // silent swap the caregiver might not notice.
+  const [pendingIdentitySwitch, setPendingIdentitySwitch] = useState<{ previousUserId: string; recoveryEmail: string } | null>(null);
   // MYMEMORIA-FUNCTIONAL-CLOSURE-MASTER-009 / PHASE 2: the trusted,
   // server-computed Temporary-program signal for THIS session's routing
   // decision below — never derived from an email pattern. Populated by
@@ -100,26 +116,6 @@ function AppContent() {
     dispatch({ type: 'SET_AUTHENTICATED', payload: true });
   }, [dispatch]);
 
-  // Used only when an authenticated user has no readable `profiles` row.
-  // `role` is deliberately NEVER sourced from `user_metadata` here: that field
-  // is editable by the client via supabase.auth.updateUser({ data: {...} }),
-  // so trusting it for authorization would let any user self-elevate simply
-  // by setting their own metadata and then losing/forcing a missing profile
-  // row. A missing profile is treated as "most restrictive known role", not
-  // as a hint to read from an untrusted source. F01 remediation.
-  const buildAuthFallbackProfile = (user: User) => ({
-    id: user.id,
-    email: user.email || '',
-    first_name: user.user_metadata?.first_name || '',
-    last_name: user.user_metadata?.last_name || '',
-    role: 'patient' as UserRole,
-    phone: user.phone || user.user_metadata?.phone || null,
-    created_at: user.created_at,
-    updated_at: user.updated_at || user.created_at,
-    must_change_password: false,
-    mfa_enabled: false,
-  });
-
   useEffect(() => {
     const restoreSession = async () => {
       try {
@@ -135,34 +131,42 @@ function AppContent() {
           .eq('id', session.user.id)
           .maybeSingle();
 
-        // A valid Supabase session must not be turned into an apparent logout
-        // merely because the profile query is temporarily unavailable or a
-        // legacy account has no profile row yet.
-        if (profileError) {
-          console.error('Profile restore query failed:', profileError.message);
-        }
-
-        // CRITICAL OWNER-REPORTED REMEDIATION Correction C: a missing
-        // profile row is no longer papered over with an in-memory-only
-        // fallback and let through — that fallback's id is a real,
-        // valid auth.uid() with NO matching profiles row, and a later
-        // FK-dependent write (patient_intake.patient_profile_id, etc.)
-        // would correctly be rejected by the database. Self-heal the
-        // row now (idempotent, scoped to this user, sources only the
-        // same fields handle_new_user() already derives) and use the
-        // REAL resulting row — never the synthesized fallback — once
-        // repaired.
+        // CODEX-VERIFIED CRITICAL REMEDIATION Critical 4: a missing OR
+        // unreadable profile row is no longer papered over with an
+        // in-memory-only fallback and let through — that fallback's id
+        // is a real, valid auth.uid() with NO matching profiles row,
+        // and a later FK-dependent write (patient_intake.
+        // patient_profile_id, etc.) would correctly be rejected by the
+        // database anyway, after the UI had already implied things were
+        // fine. A genuinely missing row is self-healed (idempotent,
+        // scoped to this user, sources only the same fields
+        // handle_new_user() already derives) and the REAL resulting row
+        // used afterward; a query that outright failed (e.g. a network
+        // blip) is retried once before blocking, rather than treated the
+        // same as "no row exists."
         let realProfile = profile;
-        if (!realProfile && !profileError) {
+        let lastProfileError = profileError;
+        if (!realProfile && profileError) {
+          const retry = await supabase.from('profiles').select(PROFILE_COLUMNS).eq('id', session.user.id).maybeSingle();
+          realProfile = retry.data;
+          lastProfileError = retry.error;
+        }
+        if (!realProfile && !lastProfileError) {
           console.warn('Authenticated user has no profile row — attempting self-heal before proceeding.');
           const { profile: healed, error: healError } = await selfHealMissingProfile();
           if (healed) {
             realProfile = healed;
           } else {
-            console.error('Profile self-heal failed:', healError);
+            console.error('Profile self-heal failed — blocking entry rather than proceeding on a fabricated profile:', healError);
+            setProfileSetupBlocked(true);
+            return;
           }
         }
-        const activeProfile = realProfile || buildAuthFallbackProfile(session.user);
+        if (!realProfile) {
+          console.error('Profile could not be verified after retry — blocking entry rather than proceeding on a fabricated profile:', lastProfileError?.message);
+          setProfileSetupBlocked(true);
+          return;
+        }
 
         if (realProfile?.must_change_password) {
           setCurrentUserEmail(realProfile.email || '');
@@ -243,7 +247,25 @@ function AppContent() {
             // eligibility means losing the program, never "needs payment,"
             // exactly as needsPayment() in src/types/subscription.ts
             // already defines for every other gate in this app).
-            const needsPayment = !subError && Boolean(sub) && isBlockedStatus;
+            // CODEX-VERIFIED CRITICAL REMEDIATION Critical 5: a stale
+            // personal subscription (e.g. 'expired' or 'canceled' from
+            // before this patient joined an Enterprise organization)
+            // must never sign out and payment-wall a patient who is
+            // ACTIVELY covered by that organization's license — coverage
+            // is checked via the same authoritative
+            // is_my_enterprise_coverage_active() SubscriptionContext and
+            // every database policy already use, never a second,
+            // divergent definition.
+            let isEnterpriseCovered = false;
+            if (!isMaster && isBlockedStatus) {
+              const { data: covered, error: coverageError } = await supabase.rpc('is_my_enterprise_coverage_active');
+              if (coverageError) {
+                console.error('Enterprise coverage check failed:', coverageError.message);
+              }
+              isEnterpriseCovered = covered === true;
+            }
+
+            const needsPayment = !subError && Boolean(sub) && isBlockedStatus && !isEnterpriseCovered;
 
             if (!isMaster && needsPayment) {
               await supabase.auth.signOut();
@@ -265,13 +287,9 @@ function AppContent() {
               console.error('Subscription restore query failed:', subError.message);
             }
           }
-        } else {
-          console.error(
-            'Authenticated user still has no profile row after a self-heal attempt. Restoring the session from Auth metadata only; profile-dependent writes (e.g. patient intake) will be blocked until this is resolved.'
-          );
         }
 
-        restoreUser(activeProfile);
+        restoreUser(realProfile);
       } catch (err) {
         console.error('Session restore error:', err);
       } finally {
@@ -284,7 +302,7 @@ function AppContent() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event) => {
+    } = supabase.auth.onAuthStateChange(async (event, recoverySession) => {
       if (event === 'SIGNED_OUT') {
         if (!initialCheckDoneRef.current) return;
 
@@ -308,6 +326,16 @@ function AppContent() {
       }
 
       if (event === 'PASSWORD_RECOVERY') {
+        const previousUserId = currentUserIdRef.current;
+        const recoveryUserId = recoverySession?.user?.id;
+        if (previousUserId && recoveryUserId && previousUserId !== recoveryUserId) {
+          // A DIFFERENT identity's recovery link while someone is
+          // already signed in — never swap silently. Show the explicit
+          // confirmation interstitial instead of the password form.
+          setPendingIdentitySwitch({ previousUserId, recoveryEmail: recoverySession?.user?.email || 'this account' });
+          setCheckingSession(false);
+          return;
+        }
         setShowPasswordReset(true);
         setForcedChange(false);
         setCheckingSession(false);
@@ -396,13 +424,28 @@ function AppContent() {
 
     let realProfile = profile;
     if (!realProfile && !profileError) {
-      const { profile: healed } = await selfHealMissingProfile();
-      if (healed) realProfile = healed;
+      const { profile: healed, error: healError } = await selfHealMissingProfile();
+      if (healed) {
+        realProfile = healed;
+      } else {
+        console.error('Profile self-heal failed after password setup — blocking entry rather than proceeding on a fabricated profile:', healError);
+        setShowPasswordReset(false);
+        setForcedChange(false);
+        setProfileSetupBlocked(true);
+        return;
+      }
+    }
+    if (!realProfile) {
+      console.error('Profile could not be verified after password setup — blocking entry rather than proceeding on a fabricated profile:', profileError?.message);
+      setShowPasswordReset(false);
+      setForcedChange(false);
+      setProfileSetupBlocked(true);
+      return;
     }
 
     setShowPasswordReset(false);
     setForcedChange(false);
-    restoreUser(realProfile || buildAuthFallbackProfile(session.user));
+    restoreUser(realProfile);
   };
 
   useEffect(() => {
@@ -441,6 +484,64 @@ function AppContent() {
         <div className="text-center space-y-4">
           <div className="w-16 h-16 border-4 border-warm-bronze border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-charcoal font-medium">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // CODEX-VERIFIED CRITICAL REMEDIATION Critical 4: shown instead of any
+  // authenticated view whenever the profile row could not be verified or
+  // repaired — the user is signed in (a real Auth session exists) but
+  // deliberately not routed anywhere, since every patient-scoped write
+  // in this app depends on a real profiles row existing.
+  if (profileSetupBlocked) {
+    return (
+      <div className="min-h-screen bg-warm-ivory flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white border border-soft-taupe rounded-2xl shadow-card p-8 text-center space-y-4">
+          <h2 className="text-xl font-bold text-charcoal">We couldn&apos;t finish setting up your account</h2>
+          <p className="text-medium-gray text-sm">
+            Your sign-in was verified, but your account profile could not be loaded or repaired automatically.
+            Please try signing out and back in — if this continues, contact support.
+          </p>
+          <button
+            onClick={async () => { await supabase.auth.signOut(); setProfileSetupBlocked(false); dispatch({ type: 'LOGOUT' }); }}
+            className="w-full rounded-xl bg-warm-bronze text-white font-semibold px-4 py-3 hover:bg-deep-bronze transition-colors"
+          >
+            Sign Out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // CODEX-VERIFIED CRITICAL REMEDIATION Critical 3: deliberate account
+  // switching — the browser's session already changed to the recovery
+  // link's target identity; this screen makes that change EXPLICIT and
+  // reversible-by-choice rather than silent.
+  if (pendingIdentitySwitch) {
+    return (
+      <div className="min-h-screen bg-warm-ivory flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white border border-soft-taupe rounded-2xl shadow-card p-8 text-center space-y-4">
+          <h2 className="text-xl font-bold text-charcoal">This activation link is for a different account</h2>
+          <p className="text-medium-gray text-sm">
+            You are currently signed in as a different user. Continuing will switch this browser to
+            <strong> {pendingIdentitySwitch.recoveryEmail}</strong> to finish setting up that account's password.
+            Your own session here cannot be restored afterward — sign back in separately once you&apos;re done.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={async () => { await supabase.auth.signOut(); setPendingIdentitySwitch(null); dispatch({ type: 'LOGOUT' }); }}
+              className="flex-1 rounded-xl border border-soft-taupe text-charcoal font-semibold px-4 py-3 hover:bg-soft-taupe/20 transition-colors"
+            >
+              Cancel &amp; Sign Out
+            </button>
+            <button
+              onClick={() => { setPendingIdentitySwitch(null); setShowPasswordReset(true); setForcedChange(false); }}
+              className="flex-1 rounded-xl bg-warm-bronze text-white font-semibold px-4 py-3 hover:bg-deep-bronze transition-colors"
+            >
+              Continue to Activate
+            </button>
+          </div>
         </div>
       </div>
     );
