@@ -66,6 +66,7 @@ export type OrganizationLicenseRow = Database['public']['Tables']['organization_
 export type ProfileRow = Database['public']['Tables']['profiles']['Row']
 export type PendingCaregiverRegistrationRow = Database['public']['Tables']['pending_caregiver_registrations']['Row']
 export type HelpActivationRow = Database['public']['Tables']['help_activations']['Row']
+export type PendingTherapistConnectionRow = Database['public']['Tables']['pending_therapist_connections']['Row']
 
 export interface Database {
   public: {
@@ -779,7 +780,9 @@ export interface Database {
           patient_id: string
           phone_dialed: string | null
           conversation_id: string | null
+          message_id: string | null
           caregiver_count_at_time: number
+          notification_status: string
           created_at: string
         }
         Insert: {
@@ -787,7 +790,9 @@ export interface Database {
           patient_id: string
           phone_dialed?: string | null
           conversation_id?: string | null
+          message_id?: string | null
           caregiver_count_at_time?: number
+          notification_status?: string
           created_at?: string
         }
         Update: {
@@ -795,7 +800,9 @@ export interface Database {
           patient_id?: string
           phone_dialed?: string | null
           conversation_id?: string | null
+          message_id?: string | null
           caregiver_count_at_time?: number
+          notification_status?: string
           created_at?: string
         }
         Relationships: [
@@ -2348,6 +2355,8 @@ export interface Database {
           created_at: string
           consumed_at: string | null
           patient_id: string | null
+          provisioned_auth_user_id: string | null
+          deletion_locked_at: string | null
         }
         Insert: {
           id?: string
@@ -2370,6 +2379,8 @@ export interface Database {
           created_at?: string
           consumed_at?: string | null
           patient_id?: string | null
+          provisioned_auth_user_id?: string | null
+          deletion_locked_at?: string | null
         }
         Update: {
           id?: string
@@ -2392,6 +2403,8 @@ export interface Database {
           created_at?: string
           consumed_at?: string | null
           patient_id?: string | null
+          provisioned_auth_user_id?: string | null
+          deletion_locked_at?: string | null
         }
         Relationships: [
           {
@@ -2406,6 +2419,55 @@ export interface Database {
             columns: ["patient_id"]
             isOneToOne: false
             referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // CODEX-VERIFIED CRITICAL REMEDIATION Critical 9 — migration 051.
+      pending_therapist_connections: {
+        Row: {
+          id: string
+          patient_id: string
+          caregiver_id: string
+          therapist_id: string
+          relationship_type: string
+          status: string
+          created_at: string
+          responded_at: string | null
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          caregiver_id: string
+          therapist_id: string
+          relationship_type?: string
+          status?: string
+          created_at?: string
+          responded_at?: string | null
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          caregiver_id?: string
+          therapist_id?: string
+          relationship_type?: string
+          status?: string
+          created_at?: string
+          responded_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_therapist_connections_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_therapist_connections_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -2796,6 +2858,59 @@ export interface Database {
         Args: Record<PropertyKey, never>
         Returns: ProfileRow
       }
+      // CODEX-VERIFIED CRITICAL REMEDIATION Critical 9 — migration 051.
+      caregiver_invite_therapist: {
+        Args: { p_patient_id: string; p_therapist_email: string; p_relationship_type: string }
+        Returns: PendingTherapistConnectionRow
+      }
+      respond_to_therapist_invite: {
+        Args: { p_connection_id: string; p_accept: boolean }
+        Returns: PendingTherapistConnectionRow
+      }
+      get_my_pending_therapist_invites: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          connection_id: string
+          patient_id: string
+          patient_first_name: string
+          patient_last_name: string
+          patient_preferred_name: string | null
+          caregiver_first_name: string
+          caregiver_last_name: string
+          relationship_type: string
+          created_at: string
+        }[]
+      }
+      get_patient_care_team_connections: {
+        Args: { p_patient_id: string }
+        Returns: {
+          source: string
+          connection_id: string
+          therapist_id: string
+          first_name: string
+          last_name: string
+          relationship_type: string
+          status: string
+          created_at: string
+        }[]
+      }
+      revoke_therapist_connection: {
+        Args: { p_patient_id: string; p_therapist_id: string }
+        Returns: boolean
+      }
+      // CODEX-VERIFIED CRITICAL REMEDIATION Critical 1 — migration 049.
+      caregiver_begin_registration_deletion: {
+        Args: { p_registration_id: string }
+        Returns: PendingCaregiverRegistrationRow
+      }
+      caregiver_finish_registration_deletion: {
+        Args: { p_registration_id: string }
+        Returns: boolean
+      }
+      caregiver_cancel_registration_deletion_lock: {
+        Args: { p_registration_id: string }
+        Returns: boolean
+      }
       // CRITICAL OWNER-REPORTED REMEDIATION Correction A — migration 046.
       get_my_pending_registration_detail: {
         Args: { p_registration_id: string }
@@ -2814,8 +2929,23 @@ export interface Database {
           phone_dialed: string | null
           caregiver_count_at_time: number
           conversation_id: string | null
+          notification_status: string
           acknowledged_count: number
           acknowledged_by: string[] | null
+        }[]
+      }
+      is_patient_enterprise_covered: {
+        Args: { p_patient_id: string }
+        Returns: boolean
+      }
+      get_my_therapist_patients: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          patient_id: string
+          first_name: string
+          last_name: string
+          preferred_name: string | null
+          relationship_type: string
         }[]
       }
       caregiver_update_pending_registration: {
