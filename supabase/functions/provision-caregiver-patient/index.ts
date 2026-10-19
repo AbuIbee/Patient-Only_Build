@@ -77,6 +77,37 @@ interface RegisterPatientBody {
   emergencyContactPhone?: string | null;
   emergencyContactEmail?: string | null;
   relationshipType?: string | null;
+  // CODEX-VERIFIED CRITICAL REMEDIATION Critical 8/9 (Part B): the
+  // caregiver's browser sends ITS OWN origin (window.location.origin) —
+  // e.g. http://localhost:3000 in local dev, or the staging Preview's
+  // HTTPS origin — but this is NEVER trusted directly. resolveRedirect()
+  // below validates it against an explicit, hardcoded allowlist before
+  // ever using it as generateLink()'s redirectTo.
+  callbackOrigin?: string | null;
+}
+
+// "Validate callback origins and paths server-side against explicit
+// environment-specific allowlists. Never trust an arbitrary
+// client-supplied redirect." Exact-match only (no prefix/substring
+// matching, which is how open-redirect bypasses are usually smuggled
+// in) — adding a new legitimate origin means adding it here explicitly,
+// not loosening the match rule.
+const ALLOWED_REDIRECT_ORIGINS = [
+  'http://localhost:3000',
+  'https://patientonly-git-remediation-mymemoria-funct-452d31-memoriahelps.vercel.app',
+];
+
+function resolveRedirectOrigin(requestedOrigin: string | null | undefined): string | null {
+  if (requestedOrigin && ALLOWED_REDIRECT_ORIGINS.includes(requestedOrigin)) {
+    return requestedOrigin;
+  }
+  if (requestedOrigin) {
+    console.error('Rejected non-allowlisted callbackOrigin:', requestedOrigin);
+  }
+  // Falls back to the server-controlled APP_URL secret — never to the
+  // rejected client value.
+  const appUrl = Deno.env.get('APP_URL')?.replace(/\/$/, '');
+  return appUrl || null;
 }
 
 serve(async (request) => {
@@ -168,6 +199,23 @@ serve(async (request) => {
     }
     const patientId = created.user.id;
 
+    // CODEX-VERIFIED CRITICAL REMEDIATION Critical 1: record the
+    // IMMUTABLE link from this registration to the Auth user id the
+    // MOMENT it exists — before any later step can fail. This is the
+    // ONLY thing delete-pending-registration will ever trust to identify
+    // a deletion target going forward; it never re-derives it from
+    // email/role/provisioning_status matching.
+    // pending_caregiver_registrations has zero client-facing RLS policies
+    // by design (migration 030) — this write uses the admin client, the
+    // same way Step 3 below already must for `profiles`.
+    const { error: linkIdError } = await adminClient
+      .from('pending_caregiver_registrations')
+      .update({ provisioned_auth_user_id: patientId })
+      .eq('id', registration.id);
+    if (linkIdError) {
+      console.error('Could not record provisioned_auth_user_id (non-fatal, continuing):', linkIdError.message);
+    }
+
     // Step 3 — correct provisioning_status via the ADMIN client (bypasses
     // RLS entirely — the exact fix for the confirmed mismatch). UPSERT, not
     // UPDATE: staging evidence found several real auth.users rows with NO
@@ -216,31 +264,35 @@ serve(async (request) => {
     // Step 5 — one-time activation link (never a plaintext password).
     // Reuses the existing PASSWORD_RECOVERY / ResetPasswordPage flow.
     //
-    // CRITICAL OWNER-REPORTED REMEDIATION Correction B: generateLink()'s
-    // `redirectTo` was previously omitted entirely, which makes Supabase
-    // Auth fall back to this PROJECT's dashboard-configured Site URL — on
-    // this isolated staging project that is still the original
-    // create-react-app-era default (http://localhost:3000), exactly
-    // matching the reported "activation URL redirects to localhost:3000"
-    // defect. redirectTo is now always computed from the APP_URL secret —
-    // the SAME env-var convention create-checkout-session already uses
-    // for its own redirect — so this never depends on (or silently
-    // reproduces) the dashboard Site URL again. There is deliberately NO
-    // hardcoded fallback here: an activation link pointed at the wrong
-    // domain is worse than no link at all, so a missing APP_URL fails
-    // closed to activationLink: null (the existing frontend already
-    // handles this — "no activation link was generated, contact
-    // support") rather than risk sending a patient to localhost or an
-    // unintended production domain.
-    const appUrl = Deno.env.get('APP_URL')?.replace(/\/$/, '');
+    // CRITICAL OWNER-REPORTED REMEDIATION Correction B / CODEX-VERIFIED
+    // CRITICAL REMEDIATION Critical 8/9: generateLink()'s `redirectTo` is
+    // now resolved by resolveRedirectOrigin() — the caregiver's own
+    // browser origin (local dev at http://localhost:3000, or the staging
+    // Preview's HTTPS origin) ONLY if it matches the explicit allowlist
+    // above, otherwise the server-controlled APP_URL secret, otherwise
+    // nothing. This is never a blind trust of client input — a
+    // non-allowlisted origin is rejected and logged, not used. There is
+    // deliberately no further fallback: an activation link pointed at
+    // the wrong domain is worse than no link at all, so activationLink
+    // stays null (the existing frontend already handles this — "no
+    // activation link was generated, contact support") rather than risk
+    // sending a patient to localhost or an unintended domain.
+    //
+    // NOTE on "does this send an email": generateLink() ONLY returns a
+    // URL — it never dispatches anything itself. Whether the patient
+    // receives this by email depends entirely on whether this Supabase
+    // project has SMTP configured, which is a separate, owner-controlled
+    // setting documented in the final report, not something this
+    // function can verify or claim.
+    const resolvedRedirect = resolveRedirectOrigin(body.callbackOrigin);
     let activationLink: string | null = null;
-    if (!appUrl) {
-      console.error('APP_URL secret is not configured for this Supabase project — activation link withheld rather than risking an incorrect redirect.');
+    if (!resolvedRedirect) {
+      console.error('No allowlisted callback origin and no APP_URL secret configured — activation link withheld rather than risking an incorrect redirect.');
     } else {
       const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
         type: 'recovery',
         email: registration.patient_email,
-        options: { redirectTo: appUrl },
+        options: { redirectTo: resolvedRedirect },
       });
       if (linkError) {
         console.error('generateLink error (patient account still created and claimed):', linkError.message);

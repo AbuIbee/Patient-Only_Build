@@ -1,30 +1,35 @@
 // delete-pending-registration — CRITICAL OWNER-REPORTED REMEDIATION
-// Correction A: the safe half of "Delete Registration."
+// Correction A, rewritten per CODEX-VERIFIED CRITICAL REMEDIATION
+// Critical 1.
 //
-// cancel_my_pending_registration() (migration 034) only ever removes the
-// pending_caregiver_registrations metadata row. When the Edge Function
-// provision-caregiver-patient had already created the patient's Auth
-// account + profile (Step 2/3) before the final claim (Step 4) failed,
-// a caregiver clicking plain "Delete" left that identity permanently
-// stranded: no caregiver_patients link would ever be created for it, and
-// because Supabase Auth enforces email uniqueness independently of
-// profiles.provisioning_status, that email could never be used to
-// register a patient again.
+// PREVIOUS (unsafe) design: identified the Auth user to delete by
+// matching profiles.email to the registration's stored email, filtered
+// by role='patient' AND provisioning_status='profile_created'. Codex
+// correctly flagged this as insufficient proof of ownership — email/
+// status matching is not an immutable, provenance-verified link to THIS
+// SPECIFIC registration, and could misidentify the target if, for
+// example, the email were ever edited out from under the match (closed
+// separately — migration 046/049 block exactly that edit) or if the
+// matching heuristic were ever reused in a context with weaker
+// guarantees.
 //
-// This function, called instead of the bare RPC whenever the
-// registration being deleted has a resumable (already-created) patient
-// identity, deletes that orphaned Auth account first — via the admin
-// client, server-side only, exactly like provision-caregiver-patient's
-// own createUser call — then removes the pending registration row. It
-// is narrowly scoped and verified, never a blind deletion:
-//   - the registration must belong to the calling caregiver and be
-//     unconsumed (enforced by get_my_pending_registration_detail(),
-//     called as the caller's own session);
-//   - the candidate profile must match that registration's email AND
-//     have role='patient' AND provisioning_status='profile_created' —
-//     the exact, narrow state only an unclaimed, newly-created-but-
-//     never-linked patient identity can be in. A claimed/linked patient
-//     always has provisioning_status='complete' and can never match.
+// CURRENT design: the target Auth user id is read EXCLUSIVELY from
+// pending_caregiver_registrations.provisioned_auth_user_id — written
+// once, immutably, by provision-caregiver-patient the moment
+// admin.createUser() succeeds (migration 049). This function never
+// looks anything up by email, name, or status again.
+//
+// Concurrency/atomicity (migration 049): the registration row is locked
+// via caregiver_begin_registration_deletion() (SELECT ... FOR UPDATE)
+// before the admin.deleteUser() call — which cannot share a Postgres
+// transaction with that HTTP admin-API call, so true cross-service
+// atomicity is impossible. Explicit compensation: if deleteUser() fails,
+// caregiver_cancel_registration_deletion_lock() releases the lock so the
+// caregiver can safely retry rather than being stuck; only on confirmed
+// success (or confirmed nothing-to-delete) does
+// caregiver_finish_registration_deletion() remove the registration row —
+// and THAT RPC itself refuses unless the lock was actually set,
+// preventing any path that bypasses the begin step.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
@@ -76,46 +81,47 @@ serve(async (request) => {
       return jsonResponse({ error: 'registrationId is required.' }, 400);
     }
 
-    // Ownership + unconsumed re-verified server-side by this RPC itself —
-    // never trusted from the request body alone.
-    const { data: registration, error: regError } = await callerClient.rpc(
-      'get_my_pending_registration_detail',
+    // Step 1 — acquire the deletion lock. Ownership, "not already
+    // claimed," and "not already mid-deletion" are all verified here,
+    // server-side, inside the RPC itself (migration 049) — never
+    // trusted from this function's own logic.
+    const { data: locked, error: lockError } = await callerClient.rpc(
+      'caregiver_begin_registration_deletion',
       { p_registration_id: registrationId },
     );
-    if (regError || !registration) {
-      return jsonResponse({ error: regError?.message || 'No editable registration found for this id.' }, 404);
+    if (lockError || !locked) {
+      return jsonResponse({ error: lockError?.message || 'Could not begin deletion for this registration.' }, 409);
     }
 
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    const provisionedAuthUserId: string | null = locked.provisioned_auth_user_id ?? null;
 
-    const { data: orphanProfile, error: orphanLookupError } = await adminClient
-      .from('profiles')
-      .select('id')
-      .eq('role', 'patient')
-      .eq('provisioning_status', 'profile_created')
-      .ilike('email', registration.patient_email)
-      .maybeSingle();
-    if (orphanLookupError) {
-      console.error('Orphan profile lookup failed:', orphanLookupError.message);
-    }
-
-    if (orphanProfile?.id) {
-      const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(orphanProfile.id);
-      if (deleteUserError) {
+    // Step 2 — delete the orphaned Auth account, IDENTIFIED SOLELY by
+    // the immutable id recorded at creation time. No email/name/status
+    // lookup of any kind happens here.
+    if (provisionedAuthUserId) {
+      const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(provisionedAuthUserId);
+      if (deleteUserError && !deleteUserError.message?.toLowerCase().includes('not found')) {
+        // Compensation: release the lock so this is safely retryable —
+        // the registration row itself is left completely untouched.
+        await callerClient.rpc('caregiver_cancel_registration_deletion_lock', { p_registration_id: registrationId });
         return jsonResponse({ error: 'Could not remove the unused account for this registration: ' + deleteUserError.message }, 500);
       }
     }
 
-    const { error: cancelError } = await callerClient.rpc('cancel_my_pending_registration', {
+    // Step 3 — only now remove the registration record itself. This RPC
+    // independently re-verifies the lock was actually set by Step 1,
+    // not merely assumed.
+    const { error: finishError } = await callerClient.rpc('caregiver_finish_registration_deletion', {
       p_registration_id: registrationId,
     });
-    if (cancelError) {
-      return jsonResponse({ error: cancelError.message }, 500);
+    if (finishError) {
+      return jsonResponse({ error: finishError.message }, 500);
     }
 
-    return jsonResponse({ success: true, removedUnusedAccount: Boolean(orphanProfile?.id) });
+    return jsonResponse({ success: true, removedUnusedAccount: Boolean(provisionedAuthUserId) });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('FATAL delete-pending-registration error:', message);
