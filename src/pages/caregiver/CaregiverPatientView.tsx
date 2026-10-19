@@ -106,6 +106,9 @@ function CareTeamCommunicationAccess({ patientId }: { patientId: string }) {
       <p className="text-xs text-medium-gray">
         Invite this patient's therapist so they can appear as a Care Communications recipient. No one is added automatically — the therapist must accept before they gain any access.
       </p>
+      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+        This platform does not independently verify a therapist's license or credentials — accepting an invitation confirms only that this person controls the email address you invited. For credential-verified clinical staff, use an Enterprise organization instead.
+      </p>
 
       <div className="flex flex-col sm:flex-row gap-2">
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="therapist@example.com (must already have an account)" className="min-w-0 flex-1 px-3 py-2.5 border border-soft-taupe rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze" />

@@ -75,6 +75,9 @@ export default function ResidentialTherapistDashboard() {
               <Users className="w-5 h-5 text-warm-bronze" />
               <h2 className="text-lg font-bold text-charcoal">My Patients</h2>
             </div>
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              This platform does not independently verify a therapist's license or credentials through this residential connection path — it confirms only that each caregiver's invitation went to the email address on your account.
+            </p>
             {loading ? (
               <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-warm-bronze" /></div>
             ) : patients.length === 0 ? (
