@@ -273,10 +273,19 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
       // verification flow (sends a confirmation link to the new address;
       // the change only takes effect once confirmed) rather than a raw
       // table write. profiles.email intentionally stays as the OLD value
-      // until Auth confirms the new one — there is no trigger in this
-      // project syncing auth.users.email back into profiles.email after a
-      // change, so updating it here early would claim a change that has
-      // not actually been verified yet.
+      // until Auth confirms the new one — updating it here early would
+      // claim a change that has not actually been verified yet.
+      // CODEX-VERIFIED CRITICAL REMEDIATION Critical 8 — verified live
+      // against staging: the trigger `on_auth_user_email_confirmed`
+      // (`AFTER UPDATE OF email ON auth.users WHEN old.email IS DISTINCT
+      // FROM new.email`, function `sync_profile_email_from_auth()`) DOES
+      // exist and correctly propagates auth.users.email -> profiles.email
+      // — but only once Supabase Auth itself applies the change (i.e.
+      // after the confirmation link is clicked; a pending, unconfirmed
+      // change lives in auth.users.email_change/new_email and never
+      // touches auth.users.email or fires this trigger). So this write
+      // never needs to set profiles.email itself; the trigger handles it
+      // at the moment the identity is actually, verifiably confirmed.
       // CRITICAL OWNER-REPORTED REMEDIATION Correction D: `originalEmail`
       // is now the live Auth email (see the load effect above), and a
       // call is also skipped when the typed value already matches a
