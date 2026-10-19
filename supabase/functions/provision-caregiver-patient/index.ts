@@ -208,12 +208,28 @@ serve(async (request) => {
     // pending_caregiver_registrations has zero client-facing RLS policies
     // by design (migration 030) — this write uses the admin client, the
     // same way Step 3 below already must for `profiles`.
-    const { error: linkIdError } = await adminClient
+    // S1 FIX (Senior Architect Execution Contract, Section 2): a failed
+    // or no-op provenance write is no longer treated as non-fatal. The
+    // claim RPC (migration 054) now REQUIRES provisioned_auth_user_id to
+    // be set and will reject the claim otherwise — continuing past a
+    // failed write here would just defer that same failure to a later,
+    // less diagnosable step. `.select('id')` confirms the UPDATE actually
+    // affected the intended row, not merely that no error was thrown
+    // (an UPDATE matching zero rows returns no error by default).
+    const { data: linkIdRows, error: linkIdError } = await adminClient
       .from('pending_caregiver_registrations')
       .update({ provisioned_auth_user_id: patientId })
-      .eq('id', registration.id);
-    if (linkIdError) {
-      console.error('Could not record provisioned_auth_user_id (non-fatal, continuing):', linkIdError.message);
+      .eq('id', registration.id)
+      .select('id');
+    if (linkIdError || !linkIdRows || linkIdRows.length === 0) {
+      console.error('FATAL: could not record provisioned_auth_user_id for registration', registration.id, '-> auth user', patientId, linkIdError?.message);
+      return jsonResponse({
+        error: 'The patient Auth account was created, but could not be linked to this registration, so provisioning was stopped before any further step. The Auth account was NOT discarded. This requires manual reconciliation.',
+        operationState: 'provenance_write_failed',
+        retryable: false,
+        registrationId: registration.id,
+        createdAuthUserId: patientId,
+      }, 500);
     }
 
     // Step 3 — correct provisioning_status via the ADMIN client (bypasses
