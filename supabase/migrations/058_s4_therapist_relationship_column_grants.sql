@@ -1,0 +1,33 @@
+-- S4/S5 (Section 5) — restrict direct client UPDATE on
+-- therapist_relationships to only the is_active column.
+--
+-- CONFIRMED EXPLOITABLE, live-tested against a disposable fixture row
+-- (cleaned up immediately after): the "Caregivers can end (not create)
+-- their patients' therapist relationships" policy's WITH CHECK is
+-- `is_active = false` alone. A retarget of patient_id was (incidentally)
+-- blocked by Postgres re-applying the USING clause's caregiver_patients
+-- check to the new row, but therapist_id and relationship_type are NOT
+-- covered by USING at all. Reproduced: a caregiver "ending" a
+-- relationship (is_active -> false) simultaneously rewrote therapist_id
+-- to an arbitrary other profile id and relationship_type to a different
+-- value, in the same UPDATE, with no rejection — exactly the gap this
+-- contract's "don't treat WITH CHECK (is_active=false) as proof that
+-- therapist_id, patient_id, relationship_type cannot be rewritten"
+-- warns about.
+--
+-- RLS's WITH CHECK cannot compare OLD vs NEW column values on its own
+-- (unlike a trigger), so the correct, minimal fix is Postgres's
+-- column-level privilege system: REVOKE the blanket table UPDATE grant
+-- from authenticated/anon (Supabase's default; RLS alone was the only
+-- gate) and GRANT UPDATE on only the columns the client is ever
+-- legitimately allowed to change directly. The real app never issues a
+-- raw table UPDATE here at all — both the accept path
+-- (respond_to_therapist_invite) and the revoke path
+-- (revoke_therapist_connection) go through SECURITY DEFINER RPCs, which
+-- run as the function owner and are unaffected by the caller's own
+-- column grants. This closes the raw-PostgREST-bypass vector
+-- specifically (a direct PATCH against the table via the client's own
+-- session), independent of whatever the RLS policy text says.
+
+REVOKE UPDATE ON TABLE therapist_relationships FROM authenticated, anon;
+GRANT UPDATE (is_active, updated_at) ON therapist_relationships TO authenticated;
