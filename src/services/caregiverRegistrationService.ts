@@ -148,6 +148,12 @@ export async function registerPatientAsCaregiver(
       emergencyContactPhone: formData.emergencyContactPhone || null,
       emergencyContactEmail: formData.emergencyContactEmail || null,
       relationshipType: formData.caregiverRelationship || 'primary',
+      // CODEX-VERIFIED CRITICAL REMEDIATION Critical 8/9 (Part B): the
+      // caller's own origin — localhost:3000 in local dev, the staging
+      // Preview's HTTPS origin otherwise. The Edge Function validates
+      // this against its own server-side allowlist before ever using
+      // it; sending it is not the same as trusting it.
+      callbackOrigin: typeof window !== 'undefined' ? window.location.origin : null,
     },
   });
 
@@ -204,7 +210,41 @@ export async function finishCaregiverPatientClaim(
     };
   }
 
-  return { success: true, patientId: patient.id };
+  // CRITICAL 2 fix: a successful claim-only retry previously left the
+  // patient with NO activation path at all — this RPC-only resume never
+  // called the Edge Function that generates one. Fetched now,
+  // best-effort: a failure here does not undo the successful claim
+  // above (the caregiver can still use "Regenerate Activation Link"
+  // afterward), it only means activationLink comes back null this time.
+  const { link } = await regenerateActivationLink(patient.id);
+  return { success: true, patientId: patient.id, activationLink: link };
+}
+
+/**
+ * CODEX-VERIFIED CRITICAL REMEDIATION Critical 2: "regenerate activation
+ * where authorized" — callable any time for an ALREADY-linked patient
+ * (lost/expired link), and also called automatically right after a
+ * successful resume-claim above, closing the "successful claim-only
+ * retry leaves no activation path" gap. Ownership (caregiver_patients)
+ * is re-verified server-side inside the Edge Function — never trusted
+ * from this call alone.
+ */
+export async function regenerateActivationLink(patientId: string): Promise<{ link: string | null; error: string | null }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    return { link: null, error: 'You must be signed in as a caregiver.' };
+  }
+  const { data, error } = await supabase.functions.invoke<{ success?: boolean; activationLink?: string | null; error?: string }>(
+    'regenerate-activation-link',
+    { body: { patientId, callbackOrigin: typeof window !== 'undefined' ? window.location.origin : null } },
+  );
+  if (error || !data?.success) {
+    const { message } = error
+      ? await extractEdgeFunctionError(error, 'Could not generate a new activation link.')
+      : { message: data?.error || 'Could not generate a new activation link.' };
+    return { link: null, error: message };
+  }
+  return { link: data.activationLink ?? null, error: null };
 }
 
 // ─── My Patients ──────────────────────────────────────────────────────────

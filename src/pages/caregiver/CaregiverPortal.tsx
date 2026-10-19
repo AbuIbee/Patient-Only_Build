@@ -16,6 +16,7 @@ import {
   deletePendingRegistrationSafely,
   getPendingRegistrationDetail,
   updatePendingRegistration,
+  regenerateActivationLink,
   type LinkedPatientSummary,
   type PendingRegistrationSummary,
   type PendingRegistrationDetail,
@@ -372,6 +373,25 @@ function PatientCard({
   const [saving, setSaving] = useState(false);
   const [coveringOrgId, setCoveringOrgId] = useState('');
   const [covering, setCovering] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [newActivationLink, setNewActivationLink] = useState<string | null>(null);
+
+  // CODEX-VERIFIED CRITICAL REMEDIATION Critical 2: "regenerate
+  // activation where authorized" — for a patient whose original link
+  // was lost, expired, or possibly compromised. Server-verified
+  // ownership happens inside the Edge Function; this never creates a
+  // new identity, only a fresh one-time recovery link for the SAME
+  // existing patient.
+  const regenerateLink = async () => {
+    setRegenerating(true);
+    try {
+      const { link, error } = await regenerateActivationLink(patient.id);
+      if (error || !link) { toast.error(error || 'Could not generate a new activation link.'); return; }
+      setNewActivationLink(link);
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   const cover = async () => {
     if (!coveringOrgId) return;
@@ -449,6 +469,32 @@ function PatientCard({
       >
         Open Patient Account <ChevronRight className="w-4 h-4" />
       </button>
+      {newActivationLink ? (
+        <div className="space-y-1.5 pt-1 border-t border-soft-taupe/60">
+          <p className="text-[11px] text-medium-gray">New one-time activation link — share it with {patient.firstName}:</p>
+          <div className="flex items-stretch gap-1.5">
+            <input readOnly value={newActivationLink} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 px-2 py-1.5 border border-soft-taupe rounded-lg text-[11px] font-mono" />
+            <button
+              type="button"
+              onClick={() => { void navigator.clipboard.writeText(newActivationLink).then(() => toast.success('Copied')); }}
+              className="flex-shrink-0 px-2 py-1.5 rounded-lg bg-warm-bronze text-white"
+              aria-label="Copy link"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <button type="button" onClick={() => setNewActivationLink(null)} className="text-[11px] text-medium-gray hover:text-charcoal underline">Dismiss</button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => { void regenerateLink(); }}
+          disabled={regenerating}
+          className="w-full text-xs text-medium-gray hover:text-charcoal underline disabled:opacity-60"
+        >
+          {regenerating ? 'Generating…' : 'Regenerate Activation Link'}
+        </button>
+      )}
       {caregiverOrgs.length > 0 && (
         <div className="flex items-stretch gap-1.5 pt-1 border-t border-soft-taupe/60">
           <select
