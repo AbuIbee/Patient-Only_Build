@@ -6,17 +6,29 @@ import ResetPasswordPage from '@/pages/common/ResetPasswordPage';
 import PublicPatientIntakePage from '@/pages/common/PublicPatientIntakePage';
 import AboutUsPage from '@/pages/common/AboutUsPage';
 import BusinessLandingPage from '@/pages/common/BusinessLandingPage';
-import PatientLayout from '@/pages/patient/PatientLayout';
-import AdminLayout from '@/pages/admin/AdminLayout';
-import EnterpriseDashboardRouter from '@/pages/enterprise/EnterpriseDashboardRouter';
 import PrivacyPage from '@/pages/privacy/PrivacyPage';
 import { Toaster } from '@/components/ui/sonner';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 import { cancelAllReminderNotifications } from '@/lib/reminderScheduler';
+import { selfHealMissingProfile } from '@/services/profileService';
 import type { UserRole } from '@/types';
+
+// CRITICAL OWNER-REPORTED REMEDIATION Correction H: these three are the
+// entire authenticated app — every patient view, the full admin panel,
+// and every Enterprise dashboard — previously imported eagerly at the
+// top of this file, so EVERY visitor (including an unauthenticated one
+// on the public /patient-intake form) paid the cost of downloading and
+// parsing all of it before the page they actually requested could
+// become interactive. Lazy-loading means an unauthenticated visitor's
+// bundle now only includes the small public pages above; the
+// authenticated trees load on demand, exactly when state.isAuthenticated
+// actually requires one of them.
+const PatientLayout = lazy(() => import('@/pages/patient/PatientLayout'));
+const AdminLayout = lazy(() => import('@/pages/admin/AdminLayout'));
+const EnterpriseDashboardRouter = lazy(() => import('@/pages/enterprise/EnterpriseDashboardRouter'));
 import './App.css';
 
 const PROFILE_COLUMNS =
@@ -130,22 +142,42 @@ function AppContent() {
           console.error('Profile restore query failed:', profileError.message);
         }
 
-        const activeProfile = profile || buildAuthFallbackProfile(session.user);
+        // CRITICAL OWNER-REPORTED REMEDIATION Correction C: a missing
+        // profile row is no longer papered over with an in-memory-only
+        // fallback and let through — that fallback's id is a real,
+        // valid auth.uid() with NO matching profiles row, and a later
+        // FK-dependent write (patient_intake.patient_profile_id, etc.)
+        // would correctly be rejected by the database. Self-heal the
+        // row now (idempotent, scoped to this user, sources only the
+        // same fields handle_new_user() already derives) and use the
+        // REAL resulting row — never the synthesized fallback — once
+        // repaired.
+        let realProfile = profile;
+        if (!realProfile && !profileError) {
+          console.warn('Authenticated user has no profile row — attempting self-heal before proceeding.');
+          const { profile: healed, error: healError } = await selfHealMissingProfile();
+          if (healed) {
+            realProfile = healed;
+          } else {
+            console.error('Profile self-heal failed:', healError);
+          }
+        }
+        const activeProfile = realProfile || buildAuthFallbackProfile(session.user);
 
-        if (profile?.must_change_password) {
-          setCurrentUserEmail(profile.email || '');
+        if (realProfile?.must_change_password) {
+          setCurrentUserEmail(realProfile.email || '');
 
           dispatch({
             type: 'SET_USER',
             payload: {
-              id: profile.id,
-              email: profile.email,
-              firstName: profile.first_name,
-              lastName: profile.last_name,
-              role: (profile.role as UserRole) || 'patient',
-              phone: profile.phone || undefined,
-              createdAt: profile.created_at,
-              updatedAt: profile.updated_at,
+              id: realProfile.id,
+              email: realProfile.email,
+              firstName: realProfile.first_name,
+              lastName: realProfile.last_name,
+              role: (realProfile.role as UserRole) || 'patient',
+              phone: realProfile.phone || undefined,
+              createdAt: realProfile.created_at,
+              updatedAt: realProfile.updated_at,
             },
           });
 
@@ -155,8 +187,8 @@ function AppContent() {
 
         // Retain the current subscription policy for accounts with a profile,
         // but never sign a user out because the subscription query itself failed.
-        if (profile) {
-          const isPrivileged = ['admin', 'caregiver', 'master', 'superadmin'].includes(profile.role);
+        if (realProfile) {
+          const isPrivileged = ['admin', 'caregiver', 'master', 'superadmin'].includes(realProfile.role);
 
           if (!isPrivileged) {
             // MYMEMORIA-FUNCTIONAL-CLOSURE-MASTER-009 / PHASE 1 + PHASE 2:
@@ -187,7 +219,7 @@ function AppContent() {
             const { data: sub, error: subError } = await supabase
               .from('subscriptions')
               .select('status, tier, program, stripe_subscription_id')
-              .eq('user_id', profile.id)
+              .eq('user_id', realProfile.id)
               .maybeSingle();
 
             const isMaster = sub?.tier === 'master';
@@ -234,8 +266,8 @@ function AppContent() {
             }
           }
         } else {
-          console.warn(
-            'Authenticated user has no readable profile row. Restoring the session from Auth metadata; profile setup/repair may still be needed.'
+          console.error(
+            'Authenticated user still has no profile row after a self-heal attempt. Restoring the session from Auth metadata only; profile-dependent writes (e.g. patient intake) will be blocked until this is resolved.'
           );
         }
 
@@ -362,9 +394,15 @@ function AppContent() {
       return;
     }
 
+    let realProfile = profile;
+    if (!realProfile && !profileError) {
+      const { profile: healed } = await selfHealMissingProfile();
+      if (healed) realProfile = healed;
+    }
+
     setShowPasswordReset(false);
     setForcedChange(false);
-    restoreUser(profile || buildAuthFallbackProfile(session.user));
+    restoreUser(realProfile || buildAuthFallbackProfile(session.user));
   };
 
   useEffect(() => {
@@ -499,7 +537,13 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-warm-ivory">
-      {renderContent()}
+      <Suspense fallback={
+        <div className="min-h-screen bg-warm-ivory flex items-center justify-center">
+          <div className="w-16 h-16 border-4 border-warm-bronze border-t-transparent rounded-full animate-spin" />
+        </div>
+      }>
+        {renderContent()}
+      </Suspense>
       <Toaster position="top-center" />
     </div>
   );

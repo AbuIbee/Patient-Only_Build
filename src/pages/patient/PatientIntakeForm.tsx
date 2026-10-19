@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase';
 import type { DementiaStage } from '@/types/supabase';
 import { getErrorMessage } from '@/lib/utils';
 import { useApp } from '@/store/useApp';
+import { selfHealMissingProfile } from '@/services/profileService';
 import {
   Save, CheckCircle2, AlertCircle, Loader2, User,
   MapPin, Heart, Stethoscope, Shield, FileText,
@@ -103,7 +104,23 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
   // load time, so handleSave() can detect an actual change and route it
   // through Supabase Auth's verification flow instead of a raw profiles
   // write (see handleSave() below).
+  //
+  // CRITICAL OWNER-REPORTED REMEDIATION Correction D: this now comes from
+  // supabase.auth.getUser() — the live, Supabase-verified identity —
+  // never from profiles.email alone. profiles.email is deliberately left
+  // stale by design once an email change is REQUESTED (see the comment
+  // at the updateUser() call below), and nothing in this project syncs
+  // it back even after a change is later CONFIRMED — so comparing
+  // against it as the sole source of truth could compare a freshly-typed
+  // email against a baseline that was already wrong, either missing a
+  // real change or triggering an unnecessary updateUser() call.
   const [originalEmail, setOriginalEmail] = useState('');
+  // The Supabase-tracked pending target, if a change was requested but
+  // not yet confirmed (auth.users.new_email) — truthful, retryable
+  // status rather than a one-shot toast the user has no way to check
+  // back on.
+  const [pendingEmailChange, setPendingEmailChange] = useState<{ newEmail: string; sentAt: string | null } | null>(null);
+  const [resendingEmailChange, setResendingEmailChange] = useState(false);
 
   // ── Load existing data ────────────────────────────────────────────────────
   useEffect(() => {
@@ -111,11 +128,24 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
     const load = async () => {
       setLoading(true);
       try {
-        const [{ data: profile }, { data: patient }, { data: intake }] = await Promise.all([
+        const [{ data: profile }, { data: patient }, { data: intake }, { data: authUserData }] = await Promise.all([
           supabase.from('profiles').select('first_name, last_name, phone, email').eq('id', userId).maybeSingle(),
           supabase.from('patients').select('preferred_name, date_of_birth, dementia_stage, diagnosis_date, location').eq('id', userId).maybeSingle(),
           supabase.from('patient_intake').select('id, patient_first_name, patient_last_name, patient_preferred_name, patient_date_of_birth, patient_phone, patient_email, patient_street_address, patient_city, patient_state, patient_zip_code, patient_dementia_stage, patient_diagnosis_date, doctor_therapist_name, doctor_therapist_phone, preferred_hospital, caregiver_name, caregiver_relationship, caregiver_phone, medications_and_dosage, emergency_contact_full_name, emergency_contact_phone, emergency_contact_email, emergency_contact_relationship').eq('patient_profile_id', userId).maybeSingle(),
+          supabase.auth.getUser(),
         ]);
+
+        // CRITICAL OWNER-REPORTED REMEDIATION Correction D: the live
+        // Auth identity is the source of truth for "what is my current
+        // email" and "is a change already pending" — never profiles.email,
+        // which this project deliberately never syncs after a change.
+        const authUser = authUserData?.user ?? null;
+        const currentAuthEmail = (authUser?.email || profile?.email || '').trim().toLowerCase();
+        if (authUser?.new_email) {
+          setPendingEmailChange({ newEmail: authUser.new_email, sentAt: authUser.email_change_sent_at ?? null });
+        } else {
+          setPendingEmailChange(null);
+        }
 
         setForm({
           firstName:          intake?.patient_first_name  || profile?.first_name    || '',
@@ -123,7 +153,7 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
           preferredName:      intake?.patient_preferred_name || patient?.preferred_name || '',
           dateOfBirth:        intake?.patient_date_of_birth || patient?.date_of_birth || '',
           phone:              intake?.patient_phone        || profile?.phone         || '',
-          email:              intake?.patient_email        || profile?.email         || '',
+          email:              currentAuthEmail || intake?.patient_email || '',
           streetAddress:      intake?.patient_street_address || '',
           city:               intake?.patient_city         || patient?.location      || '',
           state:              intake?.patient_state        || '',
@@ -144,13 +174,32 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
         });
 
         if (intake?.id) setIntakeId(intake.id);
-        setOriginalEmail((profile?.email || '').trim().toLowerCase());
+        setOriginalEmail(currentAuthEmail);
       } catch (err) {
         toast.error('Failed to load your information: ' + getErrorMessage(err));
       } finally { setLoading(false); }
     };
     load();
   }, [userId]);
+
+  // CRITICAL OWNER-REPORTED REMEDIATION Correction D: "allow safe retry" —
+  // re-sends Auth's own confirmation link for the SAME already-pending
+  // target without creating a second, divergent request.
+  const resendEmailConfirmation = async () => {
+    if (!pendingEmailChange) return;
+    setResendingEmailChange(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ email: pendingEmailChange.newEmail });
+      if (error) {
+        toast.error('Could not resend the confirmation link: ' + error.message);
+        return;
+      }
+      setPendingEmailChange({ newEmail: pendingEmailChange.newEmail, sentAt: new Date().toISOString() });
+      toast.success('Confirmation link resent.');
+    } finally {
+      setResendingEmailChange(false);
+    }
+  };
 
   const set = (field: keyof IntakeForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
@@ -182,6 +231,27 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
 
     setSaving(true);
     try {
+      // CRITICAL OWNER-REPORTED REMEDIATION Correction C: verify (and, if
+      // needed, repair) the required profiles row BEFORE any write below
+      // is attempted — not after one of them already partially succeeded.
+      // Without this, a session with no profiles row (handle_new_user()
+      // did not run) would previously: (1) silently no-op the profiles
+      // update below (an UPDATE matching zero rows is not an error), (2)
+      // successfully upsert a `patients` row for a profile id that does
+      // not exist (patients.id has no FK at all), and only THEN (3) fail
+      // on the patient_intake insert's patient_profile_id FK — leaving an
+      // orphaned `patients` row behind as a misleading partial-success
+      // artifact. Bailing here, before step 1, makes that sequence
+      // impossible.
+      const { data: existingProfile } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
+      if (!existingProfile) {
+        const { profile: healed, error: healError } = await selfHealMissingProfile();
+        if (!healed) {
+          toast.error('Your account profile could not be verified, so nothing was saved: ' + (healError || 'unknown error') + '. Please sign out and back in, or contact support.');
+          return;
+        }
+      }
+
       const now = new Date().toISOString();
 
       // 1. Update profiles. REPAIR C: `email` deliberately NOT included —
@@ -207,14 +277,22 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
       // project syncing auth.users.email back into profiles.email after a
       // change, so updating it here early would claim a change that has
       // not actually been verified yet.
+      // CRITICAL OWNER-REPORTED REMEDIATION Correction D: `originalEmail`
+      // is now the live Auth email (see the load effect above), and a
+      // call is also skipped when the typed value already matches a
+      // change that is ALREADY pending (auth.users.new_email) — re-saving
+      // the form without touching this field must never re-trigger
+      // Auth's own confirmation flow a second time for no reason.
       const normalizedEmail = form.email.trim().toLowerCase();
-      if (normalizedEmail !== originalEmail) {
+      const alreadyPendingForThisValue = pendingEmailChange?.newEmail?.toLowerCase() === normalizedEmail;
+      if (normalizedEmail !== originalEmail && !alreadyPendingForThisValue) {
         const { error: emailErr } = await supabase.auth.updateUser({ email: normalizedEmail });
         if (emailErr) {
           toast.error('Failed to update email: ' + emailErr.message);
           return;
         }
-        toast.success('A confirmation link has been sent to your new email address. Your email will update once you confirm it.');
+        setPendingEmailChange({ newEmail: normalizedEmail, sentAt: new Date().toISOString() });
+        toast.success('A confirmation link has been sent to your new email address. Your email will update once you confirm it — this page will show that status until then.');
       }
 
       // 2. Upsert patients — column names match the actual patients table schema
@@ -345,6 +423,22 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
           </div>
           <Field label="Email Address" error={errors.email} required>
             <input type="email" value={form.email} onChange={set('email')} className={inp(errors.email)} />
+            {pendingEmailChange && (
+              <div className="mt-1.5 flex items-center justify-between gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                <span className="text-amber-800">
+                  Confirmation pending for <strong>{pendingEmailChange.newEmail}</strong>
+                  {pendingEmailChange.sentAt && ` (sent ${new Date(pendingEmailChange.sentAt).toLocaleString()})`} — your email stays {originalEmail} until confirmed.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { void resendEmailConfirmation(); }}
+                  disabled={resendingEmailChange}
+                  className="flex-shrink-0 font-semibold text-amber-800 hover:underline disabled:opacity-60"
+                >
+                  {resendingEmailChange ? 'Resending…' : 'Resend'}
+                </button>
+              </div>
+            )}
           </Field>
         </div>
       </div>
