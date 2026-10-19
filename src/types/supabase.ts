@@ -63,6 +63,9 @@ export type ConversationParticipantRow = Database['public']['Tables']['conversat
 export type MessageRow = Database['public']['Tables']['messages']['Row']
 export type MessageAcknowledgmentRow = Database['public']['Tables']['message_acknowledgments']['Row']
 export type OrganizationLicenseRow = Database['public']['Tables']['organization_licenses']['Row']
+export type ProfileRow = Database['public']['Tables']['profiles']['Row']
+export type PendingCaregiverRegistrationRow = Database['public']['Tables']['pending_caregiver_registrations']['Row']
+export type HelpActivationRow = Database['public']['Tables']['help_activations']['Row']
 
 export interface Database {
   public: {
@@ -765,6 +768,49 @@ export interface Database {
             columns: ["message_id"]
             isOneToOne: false
             referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // CRITICAL OWNER-REPORTED REMEDIATION Correction F — migration 048.
+      help_activations: {
+        Row: {
+          id: string
+          patient_id: string
+          phone_dialed: string | null
+          conversation_id: string | null
+          caregiver_count_at_time: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          phone_dialed?: string | null
+          conversation_id?: string | null
+          caregiver_count_at_time?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          phone_dialed?: string | null
+          conversation_id?: string | null
+          caregiver_count_at_time?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "help_activations_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "help_activations_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
             referencedColumns: ["id"]
           },
         ]
@@ -2744,6 +2790,53 @@ export interface Database {
       is_medical_professional_for_patient: {
         Args: { p_patient_id: string }
         Returns: boolean
+      }
+      // CRITICAL OWNER-REPORTED REMEDIATION Correction C — migration 045.
+      self_heal_my_profile: {
+        Args: Record<PropertyKey, never>
+        Returns: ProfileRow
+      }
+      // CRITICAL OWNER-REPORTED REMEDIATION Correction A — migration 046.
+      get_my_pending_registration_detail: {
+        Args: { p_registration_id: string }
+        Returns: PendingCaregiverRegistrationRow
+      }
+      // CRITICAL OWNER-REPORTED REMEDIATION Correction F — migration 048.
+      record_help_activation: {
+        Args: { p_phone_dialed: string | null }
+        Returns: HelpActivationRow
+      }
+      get_patient_help_activation_history: {
+        Args: { p_patient_id: string }
+        Returns: {
+          id: string
+          created_at: string
+          phone_dialed: string | null
+          caregiver_count_at_time: number
+          conversation_id: string | null
+          acknowledged_count: number
+          acknowledged_by: string[] | null
+        }[]
+      }
+      caregiver_update_pending_registration: {
+        Args: {
+          p_registration_id: string
+          p_first_name: string
+          p_last_name: string
+          p_email: string
+          p_preferred_name: string | null
+          p_date_of_birth: string | null
+          p_diagnosis_date: string | null
+          p_dementia_stage: string | null
+          p_location: string | null
+          p_address: string | null
+          p_emergency_contact_name: string | null
+          p_emergency_contact_relationship: string | null
+          p_emergency_contact_phone: string | null
+          p_emergency_contact_email: string | null
+          p_relationship_type: string
+        }
+        Returns: PendingCaregiverRegistrationRow
       }
       // REPAIR 007: trusted, server-`now()`-computed Temporary/Companion
       // program eligibility check (migration 018). Takes no arguments —

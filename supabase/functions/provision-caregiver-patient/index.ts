@@ -215,15 +215,38 @@ serve(async (request) => {
 
     // Step 5 — one-time activation link (never a plaintext password).
     // Reuses the existing PASSWORD_RECOVERY / ResetPasswordPage flow.
+    //
+    // CRITICAL OWNER-REPORTED REMEDIATION Correction B: generateLink()'s
+    // `redirectTo` was previously omitted entirely, which makes Supabase
+    // Auth fall back to this PROJECT's dashboard-configured Site URL — on
+    // this isolated staging project that is still the original
+    // create-react-app-era default (http://localhost:3000), exactly
+    // matching the reported "activation URL redirects to localhost:3000"
+    // defect. redirectTo is now always computed from the APP_URL secret —
+    // the SAME env-var convention create-checkout-session already uses
+    // for its own redirect — so this never depends on (or silently
+    // reproduces) the dashboard Site URL again. There is deliberately NO
+    // hardcoded fallback here: an activation link pointed at the wrong
+    // domain is worse than no link at all, so a missing APP_URL fails
+    // closed to activationLink: null (the existing frontend already
+    // handles this — "no activation link was generated, contact
+    // support") rather than risk sending a patient to localhost or an
+    // unintended production domain.
+    const appUrl = Deno.env.get('APP_URL')?.replace(/\/$/, '');
     let activationLink: string | null = null;
-    const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-      type: 'recovery',
-      email: registration.patient_email,
-    });
-    if (linkError) {
-      console.error('generateLink error (patient account still created and claimed):', linkError.message);
+    if (!appUrl) {
+      console.error('APP_URL secret is not configured for this Supabase project — activation link withheld rather than risking an incorrect redirect.');
     } else {
-      activationLink = linkData?.properties?.action_link ?? null;
+      const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
+        type: 'recovery',
+        email: registration.patient_email,
+        options: { redirectTo: appUrl },
+      });
+      if (linkError) {
+        console.error('generateLink error (patient account still created and claimed):', linkError.message);
+      } else {
+        activationLink = linkData?.properties?.action_link ?? null;
+      }
     }
 
     return jsonResponse({
