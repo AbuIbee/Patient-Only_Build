@@ -182,7 +182,7 @@ interface IntakeRow {
 }
 interface AppointmentRow { id: string; title: string; provider: string | null; location: string | null; date: string; time: string | null; notes: string | null }
 interface CareTeamRow { id: string; name: string; role: string | null; specialty: string | null; organization: string | null; phone: string | null; email: string | null; is_primary: boolean }
-interface DocumentRow { id: string; file_name: string; section: string | null; note_text: string | null; uploaded_at: string; storage_path: string; signedUrl: string }
+interface DocumentRow { id: string; file_name: string; section: string | null; note_text: string | null; uploaded_at: string | null; storage_path: string; signedUrl: string }
 interface EmergencyContactRow { id: string; full_name: string; relationship: string | null; phone: string | null; email: string | null; address: string | null }
 interface CheckinRow {
   id: string; check_in_date: string; submitted_by_name: string | null;
@@ -195,7 +195,7 @@ interface CheckinRow {
 // clinical_observation — migration 044) — all already caregiver-
 // readable via existing RLS, simply never queried by this view before.
 interface MedicationLogRow { id: string; medication_name: string | null; scheduled_time: string | null; taken_time: string | null; status: string | null; date: string }
-interface TaskRow { id: string; title: string; description: string | null; status: string; scheduled_time: string; is_active: boolean }
+interface TaskRow { id: string; title: string; description: string | null; status: string; scheduled_time: string | null; is_active: boolean }
 interface ProfessionalNoteRow { id: string; note: string; note_type: string; created_at: string }
 
 type LoadState = 'checking' | 'denied' | 'loading' | 'ready' | 'error';
@@ -536,7 +536,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
           <ul className="space-y-2">
             {tasks.map((t) => (
               <li key={t.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
-                <p className="font-medium text-charcoal">{t.title} <span className="text-xs text-medium-gray">— {t.scheduled_time}</span></p>
+                <p className="font-medium text-charcoal">{t.title} <span className="text-xs text-medium-gray">— {t.scheduled_time || 'Time not recorded'}</span></p>
                 {t.description && <p className="text-xs text-medium-gray">{t.description}</p>}
                 <p className="text-xs text-medium-gray capitalize">Status: {t.status}</p>
               </li>
@@ -701,7 +701,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
               <li key={d.id} className="flex items-center justify-between gap-2 p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
                 <div className="min-w-0">
                   <p className="font-medium text-charcoal truncate">{d.file_name}</p>
-                  <p className="text-xs text-medium-gray">{[d.section, new Date(d.uploaded_at).toLocaleDateString()].filter(Boolean).join(' · ')}{d.note_text ? ` — ${d.note_text}` : ''}</p>
+                  <p className="text-xs text-medium-gray">{[d.section, d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString() : 'Date unavailable'].filter(Boolean).join(' · ')}{d.note_text ? ` — ${d.note_text}` : ''}</p>
                 </div>
                 {d.signedUrl && (
                   <a href={d.signedUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 p-2 rounded-lg text-warm-bronze hover:bg-warm-bronze/10" aria-label="Open document">
