@@ -201,7 +201,7 @@ export default function PatientHome({ onNavigateToGame, onNavigateToView }: Pati
   // caregiver' is recorded but no one is linked to notify; 'failed' means
   // the write itself did not go through (e.g. offline) — distinct from
   // the telephone action, which is unaffected either way.
-  const [helpActivationStatus, setHelpActivationStatus] = useState<'idle' | 'recording' | 'recorded-notified' | 'recorded-no-caregiver' | 'failed'>('idle');
+  const [helpActivationStatus, setHelpActivationStatus] = useState<'idle' | 'recording' | 'recorded-notified' | 'recorded-no-caregiver' | 'recorded-notification-failed' | 'failed'>('idle');
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showHomePhoto, setShowHomePhoto] = useState(false);
   const [showStoryDialog, setShowStoryDialog] = useState(false);
@@ -519,7 +519,14 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
       if (!result.recorded) {
         setHelpActivationStatus('failed');
         console.error('HELP activation could not be recorded:', result.error);
-      } else if (result.caregiverCount > 0) {
+      } else if (result.notificationStatus === 'notification_failed') {
+        // CODEX-VERIFIED CRITICAL REMEDIATION Critical 6: the event
+        // record itself was saved — only the caregiver-notification
+        // attempt failed. Shown as its own distinct state, never
+        // conflated with "failed" (which means the record itself did
+        // not save) or "notified" (which would overclaim here).
+        setHelpActivationStatus('recorded-notification-failed');
+      } else if (result.notificationStatus === 'caregiver_notified') {
         setHelpActivationStatus('recorded-notified');
       } else {
         setHelpActivationStatus('recorded-no-caregiver');
@@ -1219,6 +1226,11 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
               {helpActivationStatus === 'recorded-no-caregiver' && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-center text-sm text-amber-800">
                   This activation was recorded, but no caregiver is currently linked to your account to see it.
+                </div>
+              )}
+              {helpActivationStatus === 'recorded-notification-failed' && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-center text-sm text-amber-800">
+                  This activation was recorded, but placing it in your caregiver's inbox failed. The record itself is saved.
                 </div>
               )}
               {helpActivationStatus === 'failed' && (
