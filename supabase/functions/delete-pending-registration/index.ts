@@ -94,6 +94,10 @@ serve(async (request) => {
     }
 
     const provisionedAuthUserId: string | null = locked.provisioned_auth_user_id ?? null;
+    // S2: the fencing token this specific begin call acquired — every
+    // follow-up step must present it exactly, so a delayed call from a
+    // superseded attempt can never act on a newer one.
+    const operationId: string | null = locked.deletion_operation_id ?? null;
 
     // Step 2 — delete the orphaned Auth account, IDENTIFIED SOLELY by
     // the immutable id recorded at creation time. No email/name/status
@@ -106,16 +110,17 @@ serve(async (request) => {
       if (deleteUserError && !deleteUserError.message?.toLowerCase().includes('not found')) {
         // Compensation: release the lock so this is safely retryable —
         // the registration row itself is left completely untouched.
-        await callerClient.rpc('caregiver_cancel_registration_deletion_lock', { p_registration_id: registrationId });
+        await callerClient.rpc('caregiver_cancel_registration_deletion_lock', { p_registration_id: registrationId, p_operation_id: operationId });
         return jsonResponse({ error: 'Could not remove the unused account for this registration: ' + deleteUserError.message }, 500);
       }
     }
 
     // Step 3 — only now remove the registration record itself. This RPC
-    // independently re-verifies the lock was actually set by Step 1,
-    // not merely assumed.
+    // independently re-verifies the lock was actually set by Step 1 AND
+    // that this is the exact same lock operation, not merely assumed.
     const { error: finishError } = await callerClient.rpc('caregiver_finish_registration_deletion', {
       p_registration_id: registrationId,
+      p_operation_id: operationId,
     });
     if (finishError) {
       return jsonResponse({ error: finishError.message }, 500);

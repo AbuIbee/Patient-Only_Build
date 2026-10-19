@@ -2357,6 +2357,7 @@ export interface Database {
           patient_id: string | null
           provisioned_auth_user_id: string | null
           deletion_locked_at: string | null
+          deletion_operation_id: string | null
         }
         Insert: {
           id?: string
@@ -2381,6 +2382,7 @@ export interface Database {
           patient_id?: string | null
           provisioned_auth_user_id?: string | null
           deletion_locked_at?: string | null
+          deletion_operation_id?: string | null
         }
         Update: {
           id?: string
@@ -2405,6 +2407,7 @@ export interface Database {
           patient_id?: string | null
           provisioned_auth_user_id?: string | null
           deletion_locked_at?: string | null
+          deletion_operation_id?: string | null
         }
         Relationships: [
           {
@@ -2903,12 +2906,15 @@ export interface Database {
         Args: { p_registration_id: string }
         Returns: PendingCaregiverRegistrationRow
       }
+      // S2 — migration 055 adds a fencing operation id, required exactly
+      // by finish/cancel so a delayed call from a superseded begin can
+      // never act on a newer one.
       caregiver_finish_registration_deletion: {
-        Args: { p_registration_id: string }
+        Args: { p_registration_id: string; p_operation_id: string }
         Returns: boolean
       }
       caregiver_cancel_registration_deletion_lock: {
-        Args: { p_registration_id: string }
+        Args: { p_registration_id: string; p_operation_id: string }
         Returns: boolean
       }
       // CRITICAL OWNER-REPORTED REMEDIATION Correction A — migration 046.
