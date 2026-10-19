@@ -5,29 +5,40 @@
 // AppContext (the SIGNED-IN patient's own session) throughout — rendering
 // them unmodified for a caregiver viewing a DIFFERENT patient would
 // silently attribute any write (a medication dose, a mood entry) to the
-// CAREGIVER's own id instead of the patient being viewed. This is a new,
+// CAREGIVER's own id instead of the patient being viewed. This is a
 // self-contained, read-focused care-management view where every single
 // query is scoped by an EXPLICIT, server-verified `patientId` prop — never
 // derived from the caller's own session — so there is no path for a
 // caregiver's own identity to leak into a write meant for the patient.
 //
-// Scope note (intentionally not full PatientLayout parity, reported
-// honestly rather than silently assumed complete): medications, mood
-// history, and memories are READ-ONLY here. Care Partner notes are
-// read/write — that table (migration 031) already has caregiver-write RLS
-// verified in an earlier round, and its write is naturally scoped by an
-// explicit patientId with no identity-mixing risk. Fuller write parity
-// for the other sections would require parametrizing each of those
-// existing patient components (all currently keyed off
-// state.currentUser.id) — real, but separate, follow-up work.
+// CRITICAL OWNER-REPORTED REMEDIATION Correction E — "Expand the existing
+// caregiver's patient view into a comprehensive Patient Care Record":
+// every section below queries a table this audit confirmed already has a
+// working caregiver-read RLS policy via caregiver_patients (appointments,
+// care_team_members, patient_document_uploads, medication_logs,
+// care_partner_checkins — simply never wired into this view before), or a
+// policy added alongside this file in the same correction cycle
+// (patient_intake, patient_emergency_contacts — migration 047 — which
+// previously only ever checked `*_profile_id = auth.uid()`, the exact
+// "incorrect reliance on auth.uid() as the patient identity" this
+// correction was asked to find). Nothing here invents data: a section
+// with nothing recorded says so plainly instead of fabricating a record
+// (patients.allergies does not exist anywhere in this schema — that
+// section states this honestly rather than showing a blank that could be
+// misread as "no known allergies").
+//
+// Per explicit instruction, entertainment photo/video content (memories)
+// and game-playing activity are excluded from this record — the former
+// Memories section is removed, not relocated.
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { verifyCaregiverPatientLink } from '@/services/caregiverRegistrationService';
+import { getHelpActivationHistory, type HelpActivationHistoryEntry } from '@/services/helpActivationService';
 import CareConversations from '@/components/communications/CareConversations';
 import {
-  ArrowLeft, Loader2, ShieldAlert, Pill, Heart, Image as ImageIcon,
-  ClipboardList, Phone, Calendar, MapPin, Save,
+  ArrowLeft, Loader2, ShieldAlert, Pill, Heart, ClipboardList, Phone, Calendar, MapPin, Save,
+  FileText, Users, CalendarClock, ShieldX, Stethoscope, AlertTriangle, Download, Mail,
 } from 'lucide-react';
 
 const NOTE_CATEGORIES: { id: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'; title: string }[] = [
@@ -39,6 +50,8 @@ const NOTE_CATEGORIES: { id: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'; title: str
   { id: 'F', title: 'F — Mood & Social Engagement' },
   { id: 'G', title: 'G — Symptoms & Comfort' },
 ];
+
+const DOC_BUCKET = 'patient-documents';
 
 interface PatientHeader {
   id: string;
@@ -55,19 +68,45 @@ interface PatientHeader {
 
 interface MedicationRow { id: string; name: string; dosage: string; instructions: string; is_active: boolean }
 interface MoodRow { id: string; mood: string; intensity: number; note: string | null; timestamp: string }
-interface MemoryRow { id: string; title: string; description: string | null; date: string | null; created_at: string }
+interface IntakeRow {
+  doctor_therapist_name: string | null; doctor_therapist_phone: string | null; preferred_hospital: string | null;
+  medications_and_dosage: string | null; patient_phone: string | null; patient_email: string | null;
+  patient_street_address: string | null; patient_city: string | null; patient_state: string | null; patient_zip_code: string | null;
+}
+interface AppointmentRow { id: string; title: string; provider: string | null; location: string | null; date: string; time: string | null; notes: string | null }
+interface CareTeamRow { id: string; name: string; role: string | null; specialty: string | null; organization: string | null; phone: string | null; email: string | null; is_primary: boolean }
+interface DocumentRow { id: string; file_name: string; section: string | null; note_text: string | null; uploaded_at: string; storage_path: string; signedUrl: string }
+interface EmergencyContactRow { id: string; full_name: string; relationship: string | null; phone: string | null; email: string | null; address: string | null }
+interface CheckinRow {
+  id: string; check_in_date: string; submitted_by_name: string | null;
+  sa_falls: string | null; sa_safety_concerns: boolean | null;
+  be_agitation: string | null; be_wandering_risk: string | null;
+  mo_mood: string | null; sy_pain: string | null; sy_symptoms: string[] | null;
+}
 
 type LoadState = 'checking' | 'denied' | 'loading' | 'ready' | 'error';
+
+async function signDocUrl(storagePath: string): Promise<string> {
+  const { data, error } = await supabase.storage.from(DOC_BUCKET).createSignedUrl(storagePath, 3600);
+  if (error || !data) return '';
+  return data.signedUrl;
+}
 
 export default function CaregiverPatientView({ patientId, onBack }: { patientId: string; onBack: () => void }) {
   const [loadState, setLoadState] = useState<LoadState>('checking');
   const [patient, setPatient] = useState<PatientHeader | null>(null);
   const [medications, setMedications] = useState<MedicationRow[]>([]);
   const [moods, setMoods] = useState<MoodRow[]>([]);
-  const [memories, setMemories] = useState<MemoryRow[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [openCategory, setOpenCategory] = useState<string>('A');
+  const [intake, setIntake] = useState<IntakeRow | null>(null);
+  const [appointments, setAppointments] = useState<AppointmentRow[]>([]);
+  const [careTeam, setCareTeam] = useState<CareTeamRow[]>([]);
+  const [documents, setDocuments] = useState<DocumentRow[]>([]);
+  const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContactRow[]>([]);
+  const [checkins, setCheckins] = useState<CheckinRow[]>([]);
+  const [helpHistory, setHelpHistory] = useState<HelpActivationHistoryEntry[]>([]);
 
   const loadPatient = useCallback(async () => {
     setLoadState('checking');
@@ -85,22 +124,42 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
 
     setLoadState('loading');
     try {
-      const [{ data: patientRow, error: patientError }, { data: medRows }, { data: moodRows }, { data: memoryRows }, { data: noteRows }] = await Promise.all([
+      const [
+        { data: patientRow, error: patientError }, { data: medRows }, { data: moodRows }, { data: noteRows },
+        { data: intakeRow }, { data: apptRows }, { data: teamRows }, { data: docRows }, { data: contactRows },
+        { data: checkinRows }, helpRows,
+      ] = await Promise.all([
         supabase.from('patients')
           .select('id, first_name, last_name, preferred_name, date_of_birth, dementia_stage, diagnosis_date, location, emergency_contact_name, emergency_contact_phone')
           .eq('id', patientId).maybeSingle(),
         supabase.from('medications')
           .select('id, name, dosage, instructions, is_active')
-          .eq('patient_id', patientId).eq('is_active', true).limit(50),
+          .eq('patient_id', patientId).order('is_active', { ascending: false }).limit(100),
         supabase.from('mood_entries')
           .select('id, mood, intensity, note, timestamp')
-          .eq('patient_id', patientId).order('timestamp', { ascending: false }).limit(10),
-        supabase.from('memories')
-          .select('id, title, description, date, created_at')
-          .eq('patient_id', patientId).order('created_at', { ascending: false }).limit(10),
+          .eq('patient_id', patientId).order('timestamp', { ascending: false }).limit(30),
         supabase.from('care_partner_notes')
           .select('category, note')
           .eq('patient_id', patientId),
+        supabase.from('patient_intake')
+          .select('doctor_therapist_name, doctor_therapist_phone, preferred_hospital, medications_and_dosage, patient_phone, patient_email, patient_street_address, patient_city, patient_state, patient_zip_code')
+          .eq('patient_profile_id', patientId).maybeSingle(),
+        supabase.from('appointments')
+          .select('id, title, provider, location, date, time, notes')
+          .eq('patient_id', patientId).order('date', { ascending: false }).limit(30),
+        supabase.from('care_team_members')
+          .select('id, name, role, specialty, organization, phone, email, is_primary')
+          .eq('patient_id', patientId),
+        supabase.from('patient_document_uploads')
+          .select('id, file_name, section, note_text, uploaded_at, storage_path')
+          .eq('patient_id', patientId).order('uploaded_at', { ascending: false }).limit(50),
+        supabase.from('patient_emergency_contacts')
+          .select('id, full_name, relationship, phone, email, address')
+          .eq('patient_id', patientId),
+        supabase.from('care_partner_checkins')
+          .select('id, check_in_date, submitted_by_name, sa_falls, sa_safety_concerns, be_agitation, be_wandering_risk, mo_mood, sy_pain, sy_symptoms')
+          .eq('patient_id', patientId).order('check_in_date', { ascending: false }).limit(10),
+        getHelpActivationHistory(patientId),
       ]);
 
       // Re-verify rather than trust an empty/null patient row as "not
@@ -128,10 +187,19 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
       });
       setMedications(medRows ?? []);
       setMoods(moodRows ?? []);
-      setMemories(memoryRows ?? []);
       const byCategory: Record<string, string> = {};
       (noteRows ?? []).forEach((r) => { byCategory[r.category] = r.note; });
       setNotes(byCategory);
+      setIntake(intakeRow ?? null);
+      setAppointments(apptRows ?? []);
+      setCareTeam(teamRows ?? []);
+      setEmergencyContacts(contactRows ?? []);
+      setCheckins(checkinRows ?? []);
+      setHelpHistory(helpRows);
+
+      const docsWithUrls = await Promise.all((docRows ?? []).map(async (d) => ({ ...d, signedUrl: await signDocUrl(d.storage_path) })));
+      setDocuments(docsWithUrls);
+
       setLoadState('ready');
     } catch {
       setLoadState('error');
@@ -212,6 +280,8 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
   }
 
   const displayName = patient.preferredName || `${patient.firstName} ${patient.lastName}`;
+  const activeMeds = medications.filter((m) => m.is_active);
+  const pastMeds = medications.filter((m) => !m.is_active);
 
   return (
     <div className="space-y-5">
@@ -231,7 +301,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
             <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-warm-bronze flex-shrink-0" /> Born {patient.dateOfBirth}</div>
           )}
           {patient.dementiaStage && (
-            <div className="flex items-center gap-2"><ClipboardList className="w-4 h-4 text-warm-bronze flex-shrink-0" /> {patient.dementiaStage} stage</div>
+            <div className="flex items-center gap-2"><ClipboardList className="w-4 h-4 text-warm-bronze flex-shrink-0" /> {patient.dementiaStage} stage dementia{patient.diagnosisDate ? ` — diagnosed ${patient.diagnosisDate}` : ''}</div>
           )}
           {patient.location && (
             <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-warm-bronze flex-shrink-0" /> {patient.location}</div>
@@ -245,16 +315,18 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
         </div>
       </div>
 
+      {/* Allergies & safety instructions — honest "not recorded" rather
+          than inventing a field this schema has nowhere else. */}
+      <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-2">
+        <div className="flex items-center gap-2"><ShieldX className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Allergies &amp; Safety Instructions</h2></div>
+        <p className="text-sm text-medium-gray">No allergy information has been recorded in this system for {displayName}.</p>
+      </div>
+
       <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
-        <div className="flex items-center gap-2">
-          <Pill className="w-5 h-5 text-warm-bronze" />
-          <h2 className="font-bold text-charcoal">Medications</h2>
-        </div>
-        {medications.length === 0 ? (
-          <p className="text-sm text-medium-gray">No active medications on file.</p>
-        ) : (
+        <div className="flex items-center gap-2"><Pill className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Medications</h2></div>
+        {activeMeds.length === 0 ? <p className="text-sm text-medium-gray">No active medications on file.</p> : (
           <ul className="space-y-2">
-            {medications.map((m) => (
+            {activeMeds.map((m) => (
               <li key={m.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
                 <p className="font-medium text-charcoal text-sm">{m.name} — {m.dosage}</p>
                 <p className="text-xs text-medium-gray">{m.instructions}</p>
@@ -262,40 +334,62 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
             ))}
           </ul>
         )}
+        {pastMeds.length > 0 && (
+          <details className="text-sm">
+            <summary className="cursor-pointer text-medium-gray font-medium">Medication history ({pastMeds.length} discontinued)</summary>
+            <ul className="space-y-2 mt-2">
+              {pastMeds.map((m) => (
+                <li key={m.id} className="p-3 bg-soft-taupe/10 rounded-xl border border-soft-taupe opacity-80">
+                  <p className="font-medium text-charcoal text-sm">{m.name} — {m.dosage} <span className="text-xs text-medium-gray">(discontinued)</span></p>
+                  <p className="text-xs text-medium-gray">{m.instructions}</p>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        {intake?.medications_and_dosage && (
+          <div className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
+            <p className="text-xs font-semibold text-warm-bronze mb-1">From patient intake</p>
+            <p className="text-sm text-charcoal whitespace-pre-wrap">{intake.medications_and_dosage}</p>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
-        <div className="flex items-center gap-2">
-          <Heart className="w-5 h-5 text-warm-bronze" />
-          <h2 className="font-bold text-charcoal">Recent Mood</h2>
-        </div>
-        {moods.length === 0 ? (
-          <p className="text-sm text-medium-gray">No mood entries yet.</p>
-        ) : (
-          <ul className="space-y-2">
+        <div className="flex items-center gap-2"><Heart className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Mood &amp; Behavioral History</h2></div>
+        {moods.length === 0 ? <p className="text-sm text-medium-gray">No mood entries yet.</p> : (
+          <ul className="space-y-2 max-h-72 overflow-y-auto">
             {moods.map((m) => (
               <li key={m.id} className="flex items-center justify-between p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
-                <span className="text-charcoal font-medium">{m.mood} ({m.intensity}/10)</span>
-                <span className="text-xs text-medium-gray">{new Date(m.timestamp).toLocaleDateString()}</span>
+                <span className="text-charcoal font-medium">{m.mood} ({m.intensity}/10){m.note ? ` — ${m.note}` : ''}</span>
+                <span className="text-xs text-medium-gray flex-shrink-0 ml-2">{new Date(m.timestamp).toLocaleDateString()}</span>
               </li>
             ))}
           </ul>
         )}
       </div>
 
+      {/* Care Partner A-G structured check-ins — distinct from, and more
+          detailed than, the free-text Care Partner Notes below. */}
       <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
-        <div className="flex items-center gap-2">
-          <ImageIcon className="w-5 h-5 text-warm-bronze" />
-          <h2 className="font-bold text-charcoal">Recent Memories</h2>
-        </div>
-        {memories.length === 0 ? (
-          <p className="text-sm text-medium-gray">No memories added yet.</p>
-        ) : (
+        <div className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Care Partner A–G Check-In Reports</h2></div>
+        {checkins.length === 0 ? <p className="text-sm text-medium-gray">No structured check-in reports yet.</p> : (
           <ul className="space-y-2">
-            {memories.map((m) => (
-              <li key={m.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
-                <p className="font-medium text-charcoal text-sm">{m.title}</p>
-                {m.description && <p className="text-xs text-medium-gray">{m.description}</p>}
+            {checkins.map((c) => (
+              <li key={c.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm space-y-1">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-charcoal">{new Date(c.check_in_date).toLocaleDateString()}</p>
+                  {c.submitted_by_name && <span className="text-xs text-medium-gray">by {c.submitted_by_name}</span>}
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-medium-gray">
+                  {c.sa_safety_concerns && <span className="text-gentle-coral font-semibold">Safety concern flagged</span>}
+                  {c.sa_falls && <span>Falls: {c.sa_falls}</span>}
+                  {c.mo_mood && <span>Mood: {c.mo_mood}</span>}
+                  {c.be_agitation && <span>Agitation: {c.be_agitation}</span>}
+                  {c.be_wandering_risk && <span>Wandering risk: {c.be_wandering_risk}</span>}
+                  {c.sy_pain && <span>Pain: {c.sy_pain}</span>}
+                  {c.sy_symptoms && c.sy_symptoms.length > 0 && <span>Symptoms: {c.sy_symptoms.join(', ')}</span>}
+                </div>
               </li>
             ))}
           </ul>
@@ -344,6 +438,102 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
             );
           })}
         </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+        <div className="flex items-center gap-2"><CalendarClock className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Appointments &amp; Care Schedule</h2></div>
+        {appointments.length === 0 ? <p className="text-sm text-medium-gray">No appointments on file.</p> : (
+          <ul className="space-y-2">
+            {appointments.map((a) => (
+              <li key={a.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+                <p className="font-medium text-charcoal">{a.title} — {new Date(a.date).toLocaleDateString()}{a.time ? ` at ${a.time}` : ''}</p>
+                {(a.provider || a.location) && <p className="text-xs text-medium-gray">{[a.provider, a.location].filter(Boolean).join(' · ')}</p>}
+                {a.notes && <p className="text-xs text-medium-gray mt-0.5">{a.notes}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+        <div className="flex items-center gap-2"><Stethoscope className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Physicians, Therapists &amp; Care-Team Contacts</h2></div>
+        {careTeam.length === 0 && !intake?.doctor_therapist_name ? (
+          <p className="text-sm text-medium-gray">No care-team contacts on file.</p>
+        ) : (
+          <ul className="space-y-2">
+            {intake?.doctor_therapist_name && (
+              <li className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+                <p className="font-medium text-charcoal">{intake.doctor_therapist_name} <span className="text-xs text-medium-gray">(from intake)</span></p>
+                <p className="text-xs text-medium-gray">{[intake.doctor_therapist_phone, intake.preferred_hospital].filter(Boolean).join(' · ')}</p>
+              </li>
+            )}
+            {careTeam.map((c) => (
+              <li key={c.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+                <p className="font-medium text-charcoal">{c.name} {c.is_primary && <span className="text-xs text-warm-bronze">(Primary)</span>}</p>
+                <p className="text-xs text-medium-gray">{[c.role, c.specialty, c.organization].filter(Boolean).join(' · ')}</p>
+                <p className="text-xs text-medium-gray">{[c.phone, c.email].filter(Boolean).join(' · ')}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+        <div className="flex items-center gap-2"><FileText className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Medical Documents &amp; Care Plans</h2></div>
+        {documents.length === 0 ? <p className="text-sm text-medium-gray">No documents uploaded.</p> : (
+          <ul className="space-y-2">
+            {documents.map((d) => (
+              <li key={d.id} className="flex items-center justify-between gap-2 p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+                <div className="min-w-0">
+                  <p className="font-medium text-charcoal truncate">{d.file_name}</p>
+                  <p className="text-xs text-medium-gray">{[d.section, new Date(d.uploaded_at).toLocaleDateString()].filter(Boolean).join(' · ')}{d.note_text ? ` — ${d.note_text}` : ''}</p>
+                </div>
+                {d.signedUrl && (
+                  <a href={d.signedUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 p-2 rounded-lg text-warm-bronze hover:bg-warm-bronze/10" aria-label="Open document">
+                    <Download className="w-4 h-4" />
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+        <div className="flex items-center gap-2"><Users className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Emergency Contacts</h2></div>
+        {emergencyContacts.length === 0 && !patient.emergencyContactPhone ? (
+          <p className="text-sm text-medium-gray">No emergency contacts on file.</p>
+        ) : (
+          <ul className="space-y-2">
+            {emergencyContacts.map((c) => (
+              <li key={c.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+                <p className="font-medium text-charcoal">{c.full_name} {c.relationship && <span className="text-xs text-medium-gray">({c.relationship})</span>}</p>
+                <p className="text-xs text-medium-gray flex items-center gap-1">{c.phone && <><Phone className="w-3 h-3" /> {c.phone}</>}</p>
+                {c.email && <p className="text-xs text-medium-gray flex items-center gap-1"><Mail className="w-3 h-3" /> {c.email}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+        <div className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-gentle-coral" /><h2 className="font-bold text-charcoal">HELP Activation History</h2></div>
+        <p className="text-xs text-medium-gray">
+          A record of when {displayName} used the emergency HELP button. This reflects when the activation was recorded, not whether a call connected — and whether you or another caregiver has acknowledged it.
+        </p>
+        {helpHistory.length === 0 ? <p className="text-sm text-medium-gray">No HELP activations recorded.</p> : (
+          <ul className="space-y-2">
+            {helpHistory.map((h) => (
+              <li key={h.id} className="p-3 bg-gentle-coral/5 border border-gentle-coral/20 rounded-xl text-sm">
+                <p className="font-medium text-charcoal">{new Date(h.createdAt).toLocaleString()}</p>
+                <p className="text-xs text-medium-gray">
+                  {h.phoneDialed ? `Call attempted to ${h.phoneDialed}. ` : ''}
+                  {h.acknowledgedCount > 0 ? `Acknowledged by ${h.acknowledgedBy.join(', ')}.` : 'Not yet acknowledged by any caregiver.'}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <CareConversations patientId={patientId} patientName={displayName} />

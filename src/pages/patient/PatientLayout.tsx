@@ -58,7 +58,7 @@ function PatientLayoutInner() {
   // isActive/tier both fail closed (free_tier/false) while the context is
   // still loading, exactly matching the "Fail closed" comment this
   // replaces.
-  const { can, tier, isActive, isMaster, isTempUserDemo } = useSubscription();
+  const { can, tier, isActive, isMaster, isTempUserDemo, isEnterpriseCovered } = useSubscription();
   const hasPaidOrMasterAccess = isMaster || (tier !== 'free_tier' && isActive);
   const { state, dispatch } = useApp();
   const patient = state.patient;
@@ -415,8 +415,13 @@ function PatientLayoutInner() {
     { id: 'careteam',           label: 'Care Team & Messages', emoji: '💬' },
   ];
 
+  // CRITICAL OWNER-REPORTED REMEDIATION Correction G: an Enterprise-
+  // covered patient must see "Full Support provided by your organization"
+  // — never a generic "Paid Plan" label that implies a personal
+  // residential subscription they do not have.
   const planLabel =
     isMaster ? 'Master Access'
+    : isEnterpriseCovered ? 'Full Support — provided by your organization'
     : tier === 'paid_tier' && isActive ? 'Paid Plan'
     : 'Free Plan';
 
@@ -682,18 +687,34 @@ function PatientLayoutInner() {
         </nav>
 
         <div className="p-3 border-t border-soft-taupe flex-shrink-0">
-          <button
-            onClick={() => setShowManagePlan(true)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-charcoal bg-warm-bronze/10 hover:bg-warm-bronze/20 transition-colors"
-          >
-            <span className="w-9 h-9 rounded-2xl bg-white border border-warm-bronze/30 flex items-center justify-center shadow-sm flex-shrink-0">
-              <RefreshCw className="w-4.5 h-4.5 text-warm-bronze" />
-            </span>
-            <span className="flex flex-col items-start leading-tight">
-              <span className="font-semibold text-sm">Change Plan</span>
-              <span className="text-xs text-medium-gray">{planLabel}</span>
-            </span>
-          </button>
+          {/* CRITICAL OWNER-REPORTED REMEDIATION Correction G: a covered
+              Enterprise patient never sees a residential payment/
+              tier-selection entry point — this becomes a plain status
+              row, not a button into PricingPage. */}
+          {isEnterpriseCovered ? (
+            <div className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-charcoal bg-soft-sage/10">
+              <span className="w-9 h-9 rounded-2xl bg-white border border-soft-sage/40 flex items-center justify-center shadow-sm flex-shrink-0">
+                <RefreshCw className="w-4.5 h-4.5 text-soft-sage" />
+              </span>
+              <span className="flex flex-col items-start leading-tight">
+                <span className="font-semibold text-sm">Your Plan</span>
+                <span className="text-xs text-medium-gray">{planLabel}</span>
+              </span>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowManagePlan(true)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-charcoal bg-warm-bronze/10 hover:bg-warm-bronze/20 transition-colors"
+            >
+              <span className="w-9 h-9 rounded-2xl bg-white border border-warm-bronze/30 flex items-center justify-center shadow-sm flex-shrink-0">
+                <RefreshCw className="w-4.5 h-4.5 text-warm-bronze" />
+              </span>
+              <span className="flex flex-col items-start leading-tight">
+                <span className="font-semibold text-sm">Change Plan</span>
+                <span className="text-xs text-medium-gray">{planLabel}</span>
+              </span>
+            </button>
+          )}
 
           <div className="my-2 border-t border-soft-taupe" />
 
@@ -866,19 +887,29 @@ function PatientLayoutInner() {
 
               {/* Bottom actions */}
               <div className="px-4 pb-6 pt-2 border-t border-soft-taupe flex flex-col gap-2">
-                <button
-                  onClick={() => {
-                    setShowMobileMenu(false);
-                    setShowManagePlan(true);
-                  }}
-                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-warm-bronze/10 text-charcoal font-semibold text-sm"
-                >
-                  <span className="w-8 h-8 rounded-xl bg-white border border-warm-bronze/30 flex items-center justify-center shadow-sm">
-                    <RefreshCw className="w-4 h-4 text-warm-bronze" />
-                  </span>
-                  Change Plan
-                  <span className="text-xs font-normal text-medium-gray">· {planLabel}</span>
-                </button>
+                {isEnterpriseCovered ? (
+                  <div className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-soft-sage/10 text-charcoal font-semibold text-sm">
+                    <span className="w-8 h-8 rounded-xl bg-white border border-soft-sage/40 flex items-center justify-center shadow-sm">
+                      <RefreshCw className="w-4 h-4 text-soft-sage" />
+                    </span>
+                    Your Plan
+                    <span className="text-xs font-normal text-medium-gray">· {planLabel}</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      setShowManagePlan(true);
+                    }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-warm-bronze/10 text-charcoal font-semibold text-sm"
+                  >
+                    <span className="w-8 h-8 rounded-xl bg-white border border-warm-bronze/30 flex items-center justify-center shadow-sm">
+                      <RefreshCw className="w-4 h-4 text-warm-bronze" />
+                    </span>
+                    Change Plan
+                    <span className="text-xs font-normal text-medium-gray">· {planLabel}</span>
+                  </button>
+                )}
                 <button
                   onClick={handleLogout}
                   className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gentle-coral/10 text-charcoal font-semibold text-sm"

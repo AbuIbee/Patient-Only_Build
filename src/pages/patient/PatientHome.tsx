@@ -23,6 +23,7 @@ import {
   WEATHER_UNAVAILABLE_MESSAGE,
   type WeatherCondition,
 } from '@/lib/weatherMessage';
+import { recordHelpActivation } from '@/services/helpActivationService';
 
 // Weather types and functions
 interface WeatherData {
@@ -193,6 +194,14 @@ export default function PatientHome({ onNavigateToGame, onNavigateToView }: Pati
   const [selectedFace, setSelectedFace] = useState<FamiliarFace | null>(null);
   const [showComfortMenu, setShowComfortMenu] = useState(false);
   const [showEmergencyDialog, setShowEmergencyDialog] = useState(false);
+  // CRITICAL OWNER-REPORTED REMEDIATION Correction F: truthful states
+  // only — 'recorded-notified' means the DB write succeeded AND at least
+  // one caregiver is linked to see it (never that they HAVE seen it or
+  // that any alert was delivered to a phone/email); 'recorded-no-
+  // caregiver' is recorded but no one is linked to notify; 'failed' means
+  // the write itself did not go through (e.g. offline) — distinct from
+  // the telephone action, which is unaffected either way.
+  const [helpActivationStatus, setHelpActivationStatus] = useState<'idle' | 'recording' | 'recorded-notified' | 'recorded-no-caregiver' | 'failed'>('idle');
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showHomePhoto, setShowHomePhoto] = useState(false);
   const [showStoryDialog, setShowStoryDialog] = useState(false);
@@ -495,8 +504,27 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
     // a call connected, or anyone was reached. Only ever describe this as
     // "we tried to start a call," never as a completed or confirmed fact
     // (see the dialog copy below).
-    window.location.href = `tel:${patient?.emergencyContact?.phone || '911'}`;
+    const phone = patient?.emergencyContact?.phone || '911';
+    window.location.href = `tel:${phone}`;
     setShowEmergencyDialog(true);
+
+    // CRITICAL OWNER-REPORTED REMEDIATION Correction F: the telephone
+    // action above is completely unchanged — this only ADDS a persistent,
+    // caregiver-visible safety record alongside it. Never claims delivery:
+    // helpActivationStatus only ever reflects whether the DB write itself
+    // succeeded (and, if so, how many caregivers were linked to see it),
+    // never whether anyone actually saw or responded to it yet.
+    setHelpActivationStatus('recording');
+    void recordHelpActivation(phone).then((result) => {
+      if (!result.recorded) {
+        setHelpActivationStatus('failed');
+        console.error('HELP activation could not be recorded:', result.error);
+      } else if (result.caregiverCount > 0) {
+        setHelpActivationStatus('recorded-notified');
+      } else {
+        setHelpActivationStatus('recorded-no-caregiver');
+      }
+    });
   };
 
   const openGame = (game: (typeof GAMES)[number]) => {
@@ -1143,7 +1171,7 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
           }}
         />
 
-        <Dialog open={showEmergencyDialog} onOpenChange={() => setShowEmergencyDialog(false)}>
+        <Dialog open={showEmergencyDialog} onOpenChange={() => { setShowEmergencyDialog(false); setHelpActivationStatus('idle'); }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="text-center text-2xl text-red-800 flex items-center justify-center gap-2">
@@ -1179,10 +1207,30 @@ const tasks = (state.tasks ?? []).filter((t) => t.status !== 'completed').slice(
                 <p className="text-medium-gray text-sm mt-1">Or ask someone nearby for help right away.</p>
               </div>
 
+              {/* CRITICAL OWNER-REPORTED REMEDIATION Correction F: truthful
+                  recording status only — never "help is on the way" or
+                  "your caregiver has been alerted," since neither can be
+                  confirmed. */}
+              {helpActivationStatus === 'recorded-notified' && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-center text-sm text-blue-800">
+                  This activation was recorded and placed in your caregiver's message inbox as urgent. This is not a text or push alert — they will see it when they next check.
+                </div>
+              )}
+              {helpActivationStatus === 'recorded-no-caregiver' && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-center text-sm text-amber-800">
+                  This activation was recorded, but no caregiver is currently linked to your account to see it.
+                </div>
+              )}
+              {helpActivationStatus === 'failed' && (
+                <div className="p-3 bg-gentle-coral/10 border border-gentle-coral/30 rounded-xl text-center text-sm text-gentle-coral">
+                  This activation could not be recorded (you may be offline) — your caregiver will not see it. The phone call attempt above is unaffected.
+                </div>
+              )}
+
               <div className="flex gap-3">
                 <Button
                   variant="outline"
-                  onClick={() => setShowEmergencyDialog(false)}
+                  onClick={() => { setShowEmergencyDialog(false); setHelpActivationStatus('idle'); }}
                   className="flex-1 rounded-xl"
                 >
                   I'm Okay Now
