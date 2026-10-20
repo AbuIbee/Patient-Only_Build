@@ -87,7 +87,61 @@ CREATE TABLE patients (
 -- Enable RLS
 ALTER TABLE patients ENABLE ROW LEVEL SECURITY;
 
--- Patients policies
+-- ROUND 5 / migration-chain fix: the four "patients" policies below
+-- (originally placed here, immediately after this ALTER TABLE) all
+-- reference caregiver_patients, which this file does not create until
+-- further down. On every environment this migration had ALREADY been
+-- applied to (staging, production), that was never hit — the tracked
+-- file content here only matters to a FRESH install, and no fresh
+-- install had ever actually been attempted against this file until
+-- Round 4's local-stack work, which reproduced
+-- "ERROR: relation \"caregiver_patients\" does not exist (SQLSTATE 42P01)"
+-- verbatim. This edit is a PURE REORDERING — the exact same four
+-- CREATE POLICY statements, byte-for-byte, simply moved to after
+-- caregiver_patients is created below. No table, column, policy
+-- definition, grant, or semantic behavior changes. Because Supabase's
+-- migration history only tracks whether a given migration VERSION
+-- (this file's timestamp-prefixed name) has already been applied —
+-- never re-diffing or re-running file content against an
+-- already-migrated database — this has zero effect on any environment
+-- where 001 has already run; it only fixes the chain for a genuinely
+-- fresh install (local dev, CI, a new environment), which is exactly
+-- the "explicit, justified clean-install compatibility plan" this
+-- change needs.
+
+-- ============================================
+-- CAREGIVER_PATIENTS TABLE (junction table)
+-- ============================================
+CREATE TABLE caregiver_patients (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    caregiver_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+    relationship TEXT DEFAULT 'Primary Caregiver',
+    is_primary BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    UNIQUE(caregiver_id, patient_id)
+);
+
+-- Enable RLS
+ALTER TABLE caregiver_patients ENABLE ROW LEVEL SECURITY;
+
+-- Caregiver_patients policies
+CREATE POLICY "Caregivers can view their relationships"
+    ON caregiver_patients FOR SELECT
+    USING (caregiver_id = auth.uid());
+
+CREATE POLICY "Caregivers can create relationships"
+    ON caregiver_patients FOR INSERT
+    WITH CHECK (caregiver_id = auth.uid());
+
+CREATE POLICY "Caregivers can delete their relationships"
+    ON caregiver_patients FOR DELETE
+    USING (caregiver_id = auth.uid());
+
+-- Patients policies (moved here from immediately after "ALTER TABLE
+-- patients ENABLE ROW LEVEL SECURITY" above — see the Round 5 note
+-- there; unchanged otherwise)
 CREATE POLICY "Caregivers can view their patients"
     ON patients FOR SELECT
     USING (
@@ -122,36 +176,6 @@ CREATE POLICY "Caregivers can delete their patients"
             AND cp.is_primary = true
         )
     );
-
--- ============================================
--- CAREGIVER_PATIENTS TABLE (junction table)
--- ============================================
-CREATE TABLE caregiver_patients (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    caregiver_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
-    relationship TEXT DEFAULT 'Primary Caregiver',
-    is_primary BOOLEAN DEFAULT false,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
-    UNIQUE(caregiver_id, patient_id)
-);
-
--- Enable RLS
-ALTER TABLE caregiver_patients ENABLE ROW LEVEL SECURITY;
-
--- Caregiver_patients policies
-CREATE POLICY "Caregivers can view their relationships"
-    ON caregiver_patients FOR SELECT
-    USING (caregiver_id = auth.uid());
-
-CREATE POLICY "Caregivers can create relationships"
-    ON caregiver_patients FOR INSERT
-    WITH CHECK (caregiver_id = auth.uid());
-
-CREATE POLICY "Caregivers can delete their relationships"
-    ON caregiver_patients FOR DELETE
-    USING (caregiver_id = auth.uid());
 
 -- ============================================
 -- PATIENT NOTES TABLE
