@@ -26,6 +26,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 import ResetPasswordPage from './ResetPasswordPage';
 import { Heart, ShieldAlert } from 'lucide-react';
+import { saveResumeRecord, readResumeRecord, clearResumeRecord } from '@/lib/activationResume';
 
 type Phase = 'resolving' | 'ready' | 'invalid' | 'timed_out' | 'done';
 
@@ -91,29 +92,60 @@ export default function ActivatePatientPage() {
   );
 
   useEffect(() => {
-    let settled = false;
+    // ACT-02: distinct from the old `settled` flag, this only guards
+    // against handling the SAME recovery twice — it must NOT block a
+    // recovery event that arrives after the timeout has already fired
+    // ("must handle late Auth events without permanently ignoring them
+    // after a timeout state transition"). A late success still wins.
+    let recovered = false;
 
-    // ACT-02: an explicit GoTrue error or a genuinely empty hash is a
-    // real, immediate determination — resolved before ever starting
-    // the timeout, never conflated with "took too long to verify."
-    // Uses the signal captured at first render (see initialSignal
-    // above), not a fresh read here — the hash can already be gone by
-    // the time an effect runs.
+    // ACT-02: an explicit GoTrue error is a real, immediate
+    // determination — resolved before ever starting the timeout, never
+    // conflated with "took too long to verify." Uses the signal
+    // captured at first render (see initialSignal above), not a fresh
+    // read here — the hash can already be gone by the time an effect
+    // runs.
     if (initialSignal.kind === 'error') {
       setInvalidReason(initialSignal.message);
       setPhase('invalid');
       return;
     }
     if (initialSignal.kind === 'empty') {
-      setInvalidReason(null);
-      setPhase('invalid');
+      // ACT-02: an empty hash is exactly what a same-tab refresh looks
+      // like AFTER GoTrue already consumed and cleared a one-time
+      // recovery token on a prior load — not necessarily "there was
+      // never anything here." Before declaring this invalid, try to
+      // resume the session that verification already established.
+      const resume = readResumeRecord();
+      if (!resume) {
+        setInvalidReason(null);
+        setPhase('invalid');
+        return;
+      }
+      void client.auth.setSession({ access_token: resume.accessToken, refresh_token: resume.refreshToken }).then(({ data, error }) => {
+        if (error || !data.session?.user?.email) {
+          clearResumeRecord();
+          setInvalidReason(null);
+          setPhase('invalid');
+          return;
+        }
+        recovered = true;
+        setEmail(data.session.user.email);
+        setPhase('ready');
+      });
       return;
     }
 
     const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
-      if (settled) return;
-      if (event === 'PASSWORD_RECOVERY' && session?.user?.email) {
-        settled = true;
+      if (recovered) return;
+      if (event === 'PASSWORD_RECOVERY' && session?.user?.email && session.refresh_token) {
+        recovered = true;
+        saveResumeRecord({
+          accessToken: session.access_token,
+          refreshToken: session.refresh_token,
+          email: session.user.email,
+          savedAt: Date.now(),
+        });
         setEmail(session.user.email);
         setPhase('ready');
       }
@@ -124,9 +156,10 @@ export default function ActivatePatientPage() {
     // recoverable state (offers a retry), never auto-declared invalid.
     // detectSessionInUrl's own exchange is normally near-instant; this
     // is a generous margin for a slow network, not a precise deadline.
+    // Deliberately does NOT set `recovered` — a PASSWORD_RECOVERY event
+    // that resolves after this fires must still be accepted (above).
     const timeout = window.setTimeout(() => {
-      if (!settled) {
-        settled = true;
+      if (!recovered) {
         setPhase('timed_out');
       }
     }, 8000);
@@ -138,6 +171,9 @@ export default function ActivatePatientPage() {
   }, [client, initialSignal]);
 
   const handleComplete = async () => {
+    // The activation is finished — the cached resume session is no
+    // longer needed and must not outlive this flow.
+    clearResumeRecord();
     // Discard this page's isolated session entirely — the newly-
     // activated patient goes through their own ordinary sign-in next,
     // never auto-signed-in through this activation session.

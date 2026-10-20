@@ -500,7 +500,18 @@ function AppContent() {
   // (src/lib/supabase.ts), so whatever restoreSession() above found (or
   // didn't) is unaffected by and unrelated to this page.
   if (isActivationRoute) {
-    return <ActivatePatientPage />;
+    // ACT-03: this early return bypasses every other <Toaster> mount
+    // further down this component — on /activate, ResetPasswordPage's
+    // toast.error() calls (e.g. "Failed to set password: ...") had no
+    // notification provider to render into and were silently
+    // invisible. Mounted here explicitly so activation errors are
+    // never swallowed.
+    return (
+      <>
+        <ActivatePatientPage />
+        <Toaster position="top-center" />
+      </>
+    );
   }
 
   if (checkingSession) {
