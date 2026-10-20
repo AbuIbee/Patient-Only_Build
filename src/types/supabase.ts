@@ -266,6 +266,346 @@ export interface Database {
         // relationship above, never the referencing side.
         Relationships: []
       }
+      caregiver_visits: {
+        Row: {
+          actual_end: string | null
+          actual_start: string | null
+          caregiver_id: string
+          created_at: string
+          evv_latitude: number | null
+          evv_longitude: number | null
+          evv_offline_exception: boolean
+          evv_required: boolean
+          id: string
+          organization_id: string
+          patient_id: string
+          scheduled_end: string | null
+          scheduled_start: string | null
+          status: string
+          updated_at: string
+          visit_notes: string | null
+        }
+        Insert: {
+          actual_end?: string | null
+          actual_start?: string | null
+          caregiver_id: string
+          created_at?: string
+          evv_latitude?: number | null
+          evv_longitude?: number | null
+          evv_offline_exception?: boolean
+          evv_required?: boolean
+          id?: string
+          organization_id: string
+          patient_id: string
+          scheduled_end?: string | null
+          scheduled_start?: string | null
+          status?: string
+          updated_at?: string
+          visit_notes?: string | null
+        }
+        Update: {
+          actual_end?: string | null
+          actual_start?: string | null
+          caregiver_id?: string
+          created_at?: string
+          evv_latitude?: number | null
+          evv_longitude?: number | null
+          evv_offline_exception?: boolean
+          evv_required?: boolean
+          id?: string
+          organization_id?: string
+          patient_id?: string
+          scheduled_end?: string | null
+          scheduled_start?: string | null
+          status?: string
+          updated_at?: string
+          visit_notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "caregiver_visits_caregiver_id_fkey"
+            columns: ["caregiver_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caregiver_visits_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caregiver_visits_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_handoffs: {
+        Row: {
+          author_id: string
+          concerns: string | null
+          created_at: string
+          id: string
+          organization_id: string
+          patient_id: string
+          pending_tasks: string | null
+          summary: string
+        }
+        Insert: {
+          author_id: string
+          concerns?: string | null
+          created_at?: string
+          id?: string
+          organization_id: string
+          patient_id: string
+          pending_tasks?: string | null
+          summary: string
+        }
+        Update: {
+          author_id?: string
+          concerns?: string | null
+          created_at?: string
+          id?: string
+          organization_id?: string
+          patient_id?: string
+          pending_tasks?: string | null
+          summary?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_handoffs_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_handoffs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_handoffs_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shift_handoff_acknowledgments: {
+        Row: {
+          acknowledged_at: string
+          acknowledged_by: string
+          handoff_id: string
+          id: string
+        }
+        Insert: {
+          acknowledged_at?: string
+          acknowledged_by: string
+          handoff_id: string
+          id?: string
+        }
+        Update: {
+          acknowledged_at?: string
+          acknowledged_by?: string
+          handoff_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_handoff_acknowledgments_acknowledged_by_fkey"
+            columns: ["acknowledged_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shift_handoff_acknowledgments_handoff_id_fkey"
+            columns: ["handoff_id"]
+            isOneToOne: false
+            referencedRelation: "shift_handoffs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      incident_reports: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          incident_type: string
+          occurred_at: string
+          organization_id: string
+          patient_id: string
+          reported_by: string
+          resolution_notes: string | null
+          resolution_status: string
+          severity: string
+          supervisor_notified_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          id?: string
+          incident_type: string
+          occurred_at?: string
+          organization_id: string
+          patient_id: string
+          reported_by: string
+          resolution_notes?: string | null
+          resolution_status?: string
+          severity?: string
+          supervisor_notified_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          incident_type?: string
+          occurred_at?: string
+          organization_id?: string
+          patient_id?: string
+          reported_by?: string
+          resolution_notes?: string | null
+          resolution_status?: string
+          severity?: string
+          supervisor_notified_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incident_reports_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incident_reports_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incident_reports_reported_by_fkey"
+            columns: ["reported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scope_concerns: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          organization_id: string
+          patient_id: string
+          reported_by: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          id?: string
+          organization_id: string
+          patient_id: string
+          reported_by: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          organization_id?: string
+          patient_id?: string
+          reported_by?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scope_concerns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scope_concerns_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scope_concerns_reported_by_fkey"
+            columns: ["reported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      caregiver_credentials: {
+        Row: {
+          created_at: string
+          credential_name: string
+          expires_at: string | null
+          id: string
+          issued_at: string | null
+          organization_id: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          credential_name: string
+          expires_at?: string | null
+          id?: string
+          issued_at?: string | null
+          organization_id?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          credential_name?: string
+          expires_at?: string | null
+          id?: string
+          issued_at?: string | null
+          organization_id?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "caregiver_credentials_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caregiver_credentials_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       caregiver_patients: {
         Row: {
           id: string
@@ -2525,6 +2865,306 @@ export interface Database {
       }
     }
     Functions: {
+      schedule_caregiver_visit: {
+        Args: {
+          p_org_id: string
+          p_patient_id: string
+          p_scheduled_end: string
+          p_scheduled_start: string
+        }
+        Returns: {
+          actual_end: string | null
+          actual_start: string | null
+          caregiver_id: string
+          created_at: string
+          evv_latitude: number | null
+          evv_longitude: number | null
+          evv_offline_exception: boolean
+          evv_required: boolean
+          id: string
+          organization_id: string
+          patient_id: string
+          scheduled_end: string | null
+          scheduled_start: string | null
+          status: string
+          updated_at: string
+          visit_notes: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "caregiver_visits"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      start_caregiver_visit: {
+        Args: { p_latitude?: number; p_longitude?: number; p_visit_id: string }
+        Returns: {
+          actual_end: string | null
+          actual_start: string | null
+          caregiver_id: string
+          created_at: string
+          evv_latitude: number | null
+          evv_longitude: number | null
+          evv_offline_exception: boolean
+          evv_required: boolean
+          id: string
+          organization_id: string
+          patient_id: string
+          scheduled_end: string | null
+          scheduled_start: string | null
+          status: string
+          updated_at: string
+          visit_notes: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "caregiver_visits"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      end_caregiver_visit: {
+        Args: { p_visit_id: string; p_visit_notes?: string }
+        Returns: {
+          actual_end: string | null
+          actual_start: string | null
+          caregiver_id: string
+          created_at: string
+          evv_latitude: number | null
+          evv_longitude: number | null
+          evv_offline_exception: boolean
+          evv_required: boolean
+          id: string
+          organization_id: string
+          patient_id: string
+          scheduled_end: string | null
+          scheduled_start: string | null
+          status: string
+          updated_at: string
+          visit_notes: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "caregiver_visits"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      get_my_visits: {
+        Args: { p_patient_id?: string }
+        Returns: {
+          actual_end: string | null
+          actual_start: string | null
+          caregiver_id: string
+          created_at: string
+          evv_latitude: number | null
+          evv_longitude: number | null
+          evv_offline_exception: boolean
+          evv_required: boolean
+          id: string
+          organization_id: string
+          patient_id: string
+          scheduled_end: string | null
+          scheduled_start: string | null
+          status: string
+          updated_at: string
+          visit_notes: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "caregiver_visits"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      record_shift_handoff: {
+        Args: {
+          p_concerns?: string
+          p_org_id: string
+          p_patient_id: string
+          p_pending_tasks?: string
+          p_summary: string
+        }
+        Returns: {
+          author_id: string
+          concerns: string | null
+          created_at: string
+          id: string
+          organization_id: string
+          patient_id: string
+          pending_tasks: string | null
+          summary: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "shift_handoffs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      acknowledge_shift_handoff: {
+        Args: { p_handoff_id: string }
+        Returns: {
+          acknowledged_at: string
+          acknowledged_by: string
+          handoff_id: string
+          id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "shift_handoff_acknowledgments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      get_patient_shift_handoffs: {
+        Args: { p_org_id: string; p_patient_id: string }
+        Returns: {
+          acknowledged_count: number
+          author_first_name: string
+          author_id: string
+          author_last_name: string
+          concerns: string
+          created_at: string
+          id: string
+          pending_tasks: string
+          summary: string
+        }[]
+      }
+      file_incident_report: {
+        Args: {
+          p_description: string
+          p_incident_type: string
+          p_org_id: string
+          p_patient_id: string
+          p_severity?: string
+        }
+        Returns: {
+          created_at: string
+          description: string
+          id: string
+          incident_type: string
+          occurred_at: string
+          organization_id: string
+          patient_id: string
+          reported_by: string
+          resolution_notes: string | null
+          resolution_status: string
+          severity: string
+          supervisor_notified_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "incident_reports"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      resolve_incident_report: {
+        Args: {
+          p_incident_id: string
+          p_resolution_notes?: string
+          p_resolution_status: string
+        }
+        Returns: {
+          created_at: string
+          description: string
+          id: string
+          incident_type: string
+          occurred_at: string
+          organization_id: string
+          patient_id: string
+          reported_by: string
+          resolution_notes: string | null
+          resolution_status: string
+          severity: string
+          supervisor_notified_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "incident_reports"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      report_scope_concern: {
+        Args: { p_description: string; p_org_id: string; p_patient_id: string }
+        Returns: {
+          created_at: string
+          description: string
+          id: string
+          organization_id: string
+          patient_id: string
+          reported_by: string
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "scope_concerns"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      get_my_credentials: {
+        Args: never
+        Returns: {
+          created_at: string
+          credential_name: string
+          expires_at: string | null
+          id: string
+          issued_at: string | null
+          organization_id: string | null
+          status: string
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "caregiver_credentials"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      record_staff_credential: {
+        Args: {
+          p_credential_name: string
+          p_expires_at?: string
+          p_issued_at?: string
+          p_org_id: string
+          p_user_id: string
+        }
+        Returns: {
+          created_at: string
+          credential_name: string
+          expires_at: string | null
+          id: string
+          issued_at: string | null
+          organization_id: string | null
+          status: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "caregiver_credentials"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      get_org_staff_credentials: {
+        Args: { p_org_id: string }
+        Returns: {
+          credential_name: string
+          expires_at: string
+          first_name: string
+          id: string
+          issued_at: string
+          last_name: string
+          status: string
+          user_id: string
+        }[]
+      }
       // RELEASE-BLOCKER-CLOSURE PHASE 1: corrected to match the actual
       // function (024_release_blocker_closure_phase_a.sql) — parameterless,
       // checks auth.uid() internally. It is an RLS-internal helper (used
