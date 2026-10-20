@@ -10,7 +10,33 @@ import { supabase } from '@/lib/supabase';
 import CareConversations from '@/components/communications/CareConversations';
 import { getProfessionalNotes, addProfessionalNote, type ProfessionalNote } from '@/services/professionalNotesService';
 import type { StaffRole } from '@/services/organizationService';
-import { ArrowLeft, Loader2, ShieldAlert, Pill, Heart, ClipboardList, Calendar, MapPin, Stethoscope, Send } from 'lucide-react';
+import { ArrowLeft, Loader2, ShieldAlert, Pill, Heart, ClipboardList, Calendar, MapPin, Stethoscope, Send, BadgeCheck, AlertTriangle } from 'lucide-react';
+
+// F01 — "Full Support — Covered by Organization" must be shown to the
+// caregiver, with expired/ended/unlicensed states accurately
+// distinguished, never a generic success banner. Backed by a direct read
+// of covered_patient_memberships + organization_licenses (both already
+// readable by assigned staff per migration 035's own RLS — no new
+// backend needed), not the single collapsed boolean
+// is_patient_enterprise_covered() RPC, specifically so this UI can tell
+// "never covered," "coverage ended," and "org license inactive" apart
+// rather than collapsing all three into one false negative.
+export function CoverageBanner({ status }: { status: PatientHeader['coverageStatus'] }) {
+  if (status === 'covered') {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-soft-sage/30 border border-soft-sage text-sm font-semibold text-charcoal">
+        <BadgeCheck className="w-4 h-4 text-deep-bronze" /> Full Support — Covered by Organization
+      </div>
+    );
+  }
+  if (status === 'not_covered') return null;
+  const label = status === 'coverage_ended' ? 'Organization coverage for this patient has ended' : 'Organization license is not currently active';
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gentle-coral/15 border border-gentle-coral text-sm font-semibold text-charcoal">
+      <AlertTriangle className="w-4 h-4 text-gentle-coral" /> {label}
+    </div>
+  );
+}
 
 // "Never grant medical ordering, prescribing, clinical administration or
 // other regulated privileges solely through the selected job title" —
@@ -89,6 +115,7 @@ export interface PatientHeader {
   address: string | null; photoUrl: string | null; language: string | null;
   emergencyContactName: string | null; emergencyContactRelationship: string | null;
   emergencyContactPhone: string | null; emergencyContactEmail: string | null;
+  coverageStatus: 'covered' | 'not_covered' | 'coverage_ended' | 'license_inactive';
 }
 interface MedicationRow { id: string; name: string; dosage: string; instructions: string }
 interface MoodRow { id: string; mood: string; intensity: number; timestamp: string }
@@ -127,19 +154,27 @@ export default function EnterpriseStaffPatientView({
 
     setLoadState('loading');
     try {
-      const [{ data: patientRow }, { data: medRows }, { data: moodRows }, { data: noteRows }] = await Promise.all([
+      const [{ data: patientRow }, { data: medRows }, { data: moodRows }, { data: noteRows }, { data: coverageRow }, { data: licenseRow }] = await Promise.all([
         supabase.from('patients').select('first_name, last_name, preferred_name, date_of_birth, dementia_stage, location, address, photo_url, preferences_language, emergency_contact_name, emergency_contact_relationship, emergency_contact_phone, emergency_contact_email').eq('id', patientId).maybeSingle(),
         supabase.from('medications').select('id, name, dosage, instructions').eq('patient_id', patientId).eq('is_active', true).limit(50),
         supabase.from('mood_entries').select('id, mood, intensity, timestamp').eq('patient_id', patientId).order('timestamp', { ascending: false }).limit(10),
         supabase.from('care_partner_notes').select('category, note').eq('patient_id', patientId),
+        supabase.from('covered_patient_memberships').select('status').eq('organization_id', organizationId).eq('patient_id', patientId).maybeSingle(),
+        supabase.from('organization_licenses').select('status').eq('organization_id', organizationId).maybeSingle(),
       ]);
       if (!patientRow) { setLoadState('error'); return; }
+      const coverageStatus: PatientHeader['coverageStatus'] =
+        !coverageRow ? 'not_covered'
+        : coverageRow.status === 'ended' ? 'coverage_ended'
+        : (!licenseRow || licenseRow.status !== 'active') ? 'license_inactive'
+        : 'covered';
       setPatient({
         firstName: patientRow.first_name, lastName: patientRow.last_name, preferredName: patientRow.preferred_name,
         dateOfBirth: patientRow.date_of_birth, dementiaStage: patientRow.dementia_stage, location: patientRow.location,
         address: patientRow.address, photoUrl: patientRow.photo_url, language: patientRow.preferences_language,
         emergencyContactName: patientRow.emergency_contact_name, emergencyContactRelationship: patientRow.emergency_contact_relationship,
         emergencyContactPhone: patientRow.emergency_contact_phone, emergencyContactEmail: patientRow.emergency_contact_email,
+        coverageStatus,
       });
       setMedications(medRows ?? []);
       setMoods(moodRows ?? []);
@@ -191,6 +226,7 @@ export default function EnterpriseStaffPatientView({
       <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
         <h1 className="text-xl font-bold text-charcoal">{displayName}</h1>
         <p className="text-sm text-medium-gray">{patient.firstName} {patient.lastName}</p>
+        <CoverageBanner status={patient.coverageStatus} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-charcoal pt-2">
           {patient.dateOfBirth && <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-warm-bronze" /> Born {patient.dateOfBirth}</div>}
           {patient.dementiaStage && <div className="flex items-center gap-2"><ClipboardList className="w-4 h-4 text-warm-bronze" /> {patient.dementiaStage} stage</div>}

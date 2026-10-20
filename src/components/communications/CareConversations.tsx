@@ -139,6 +139,7 @@ function NewConversation({
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [isUrgent, setIsUrgent] = useState(false);
+  const [isCareUpdate, setIsCareUpdate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [myId, setMyId] = useState<string | null>(null);
 
@@ -166,7 +167,7 @@ function NewConversation({
     try {
       const { conversationId, error } = await createConversation(patientId, Array.from(selected), subject.trim() || null);
       if (error || !conversationId) { toast.error(error ?? 'Could not start this conversation.'); return; }
-      const sendResult = await sendMessage(conversationId, body, isUrgent);
+      const sendResult = await sendMessage(conversationId, body, isUrgent, null, isCareUpdate ? 'care_update' : 'message');
       if (sendResult.error) { toast.error(sendResult.error); }
       onCreated(conversationId);
     } finally {
@@ -217,6 +218,10 @@ function NewConversation({
           <label className="flex items-center gap-2 text-sm text-charcoal">
             <input type="checkbox" checked={isUrgent} onChange={(e) => setIsUrgent(e.target.checked)} className="accent-gentle-coral w-4 h-4" />
             Mark as urgent
+          </label>
+          <label className="flex items-center gap-2 text-sm text-charcoal">
+            <input type="checkbox" checked={isCareUpdate} onChange={(e) => setIsCareUpdate(e.target.checked)} className="accent-warm-bronze w-4 h-4" />
+            Send as a structured Care Update (not Private Journal)
           </label>
           {isUrgent && (
             <p className="text-[11px] text-medium-gray -mt-2">
@@ -352,7 +357,10 @@ function ConversationThread({
               <li key={m.id} className={`p-3 rounded-xl border ${isMine ? 'bg-warm-bronze/10 border-warm-bronze/30 ml-4' : 'bg-warm-ivory border-soft-taupe mr-4'}`}>
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-semibold text-charcoal">{m.senderFirstName} {m.senderLastName} <span className="text-medium-gray font-normal">· {roleLabel(m.senderRole)}</span></p>
-                  {m.isUrgent && <span className="flex items-center gap-1 text-[10px] font-bold text-gentle-coral"><AlertTriangle className="w-3 h-3" /> URGENT</span>}
+                  <div className="flex items-center gap-2">
+                    {m.messageType === 'care_update' && <span className="text-[10px] font-bold text-warm-bronze bg-warm-bronze/10 px-1.5 py-0.5 rounded">CARE UPDATE</span>}
+                    {m.isUrgent && <span className="flex items-center gap-1 text-[10px] font-bold text-gentle-coral"><AlertTriangle className="w-3 h-3" /> URGENT</span>}
+                  </div>
                 </div>
                 <p className="text-sm text-charcoal mt-1 whitespace-pre-wrap">{m.body}</p>
                 <div className="flex items-center justify-between mt-2">

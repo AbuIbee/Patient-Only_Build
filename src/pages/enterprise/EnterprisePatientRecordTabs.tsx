@@ -18,7 +18,8 @@ import {
   ShieldAlert, FileText, Pill, Heart, Activity, Target, Clock, Globe,
 } from 'lucide-react';
 import type { StaffRole } from '@/services/organizationService';
-import type { PatientHeader } from './EnterpriseStaffPatientView';
+import type { MoodType } from '@/types/supabase';
+import { CoverageBanner, type PatientHeader } from './EnterpriseStaffPatientView';
 import { getProfessionalNotes, addProfessionalNote, type ProfessionalNote } from '@/services/professionalNotesService';
 import CareConversations from '@/components/communications/CareConversations';
 import { getHelpActivationHistory, type HelpActivationHistoryEntry } from '@/services/helpActivationService';
@@ -26,10 +27,11 @@ import {
   getPatientDiagnoses, recordPatientDiagnosis, getPatientAllergies, recordPatientAllergy,
   getPatientCarePlans, recordPatientCarePlan, getPatientVitals, recordPatientVitals,
   getTherapyGoals, recordTherapyGoal, getCarePreferences, recordCarePreference,
-  type PatientDiagnosis, type PatientAllergy, type PatientCarePlan, type PatientVitals, type TherapyGoal, type CarePreference,
+  getPatientProviders, recordPatientProvider,
+  type PatientDiagnosis, type PatientAllergy, type PatientCarePlan, type PatientVitals, type TherapyGoal, type CarePreference, type PatientCareProvider,
 } from '@/services/patientClinicalRecordService';
 import {
-  getMyVisits, getPatientShiftHandoffs, getPatientIncidentReports,
+  getMyVisits, getPatientShiftHandoffs, getPatientIncidentReports, reportScopeConcern,
   type CaregiverVisit, type IncidentReport,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 
@@ -62,9 +64,10 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-2">
         <h1 className="text-xl font-bold text-charcoal">{displayName}</h1>
         <p className="text-sm text-medium-gray">{patientHeader.firstName} {patientHeader.lastName}</p>
+        <CoverageBanner status={patientHeader.coverageStatus} />
       </div>
 
       <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1">
@@ -85,7 +88,7 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         {tab === 'medical' && <MedicalTab patientId={patientId} staffRole={staffRole} />}
         {tab === 'medications' && <MedicationsTab patientId={patientId} />}
         {tab === 'ag' && <AGTab patientId={patientId} />}
-        {tab === 'carePlan' && <CarePlanTab patientId={patientId} />}
+        {tab === 'carePlan' && <CarePlanTab patientId={patientId} orgId={orgId} />}
         {tab === 'appointments' && <AppointmentsTab patientId={patientId} orgId={orgId} />}
         {tab === 'documents' && <DocumentsTab patientId={patientId} />}
         {tab === 'safety' && <SafetyTab patientId={patientId} patientHeader={patientHeader} />}
@@ -93,6 +96,97 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         {tab === 'timeline' && <TimelineTab patientId={patientId} orgId={orgId} />}
       </div>
     </div>
+  );
+}
+
+// W03 — fast, attributed, timestamped capture across the six permitted
+// observation kinds. Mood/pain go through their own already-reviewed
+// tables (mood_entries, patient_vitals via recordPatientVitals);
+// hydration/appetite/mobility/sleep go into care_partner_checkins'
+// matching single column, relying on migration 072's new staff INSERT
+// policy on that table.
+type QuickObsKind = 'mood' | 'pain' | 'hydration' | 'appetite' | 'mobility' | 'sleep';
+const QUICK_OBS_KINDS: { key: QuickObsKind; label: string }[] = [
+  { key: 'mood', label: 'Mood' }, { key: 'pain', label: 'Pain' }, { key: 'hydration', label: 'Hydration' },
+  { key: 'appetite', label: 'Appetite' }, { key: 'mobility', label: 'Mobility' }, { key: 'sleep', label: 'Sleep' },
+];
+function QuickObservationForm({ patientId }: { patientId: string }) {
+  const [kind, setKind] = useState<QuickObsKind>('mood');
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!value.trim()) return;
+    setSaving(true);
+    try {
+      if (kind === 'mood') {
+        const { error } = await supabase.from('mood_entries').insert({
+          patient_id: patientId, mood: value as MoodType, intensity: 5, recorded_by: 'enterprise_staff',
+        });
+        if (error) { toast.error(error.message); return; }
+      } else if (kind === 'pain') {
+        const { error } = await recordPatientVitals(patientId, { painLevel: Number(value) });
+        if (error) { toast.error(error); return; }
+      } else {
+        const column = { hydration: 'nu_fluids', appetite: 'nu_appetite', mobility: 'fn_mobility', sleep: 'mo_sleep' }[kind as 'hydration' | 'appetite' | 'mobility' | 'sleep'];
+        const { data: userData } = await supabase.auth.getUser();
+        const authorId = userData?.user?.id;
+        if (!authorId) { toast.error('Not signed in.'); return; }
+        const { error } = await supabase.from('care_partner_checkins').insert({
+          patient_id: patientId, submitted_by: authorId, submitted_by_name: 'Enterprise Staff', check_in_date: new Date().toISOString().slice(0, 10),
+          [column]: value,
+        });
+        if (error) { toast.error(error.message); return; }
+      }
+      setValue('');
+      toast.success('Observation recorded.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SectionCard title="Quick Observation Entry" icon={Heart}>
+      <div className="flex flex-wrap gap-2">
+        <select value={kind} onChange={(e) => { setKind(e.target.value as QuickObsKind); setValue(''); }} className="px-2 py-2 rounded-xl border border-soft-taupe text-sm">
+          {QUICK_OBS_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+        </select>
+        {kind === 'mood' ? (
+          <select value={value} onChange={(e) => setValue(e.target.value)} className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm">
+            <option value="">Select mood…</option>
+            {['happy', 'calm', 'sad', 'anxious', 'angry', 'confused', 'scared', 'worried'].map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        ) : kind === 'pain' ? (
+          <input value={value} onChange={(e) => setValue(e.target.value)} type="number" min={0} max={10} placeholder="Pain level 0-10" className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+        ) : (
+          <input value={value} onChange={(e) => setValue(e.target.value)} placeholder={`Describe ${kind}…`} className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+        )}
+        <button type="button" onClick={() => { void submit(); }} disabled={saving || !value.trim()} className="px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">Record</button>
+      </div>
+      <p className="text-[11px] text-medium-gray">Mood and pain appear in Medical; hydration/appetite/mobility/sleep appear in A–G.</p>
+    </SectionCard>
+  );
+}
+
+// P07 — read-only intake summary, admin-reviewed data surfaced to
+// authorized staff for the first time this round (migration 072).
+function IntakeSummaryCard({ patientId }: { patientId: string }) {
+  const [intake, setIntake] = useState<{ doctor_therapist_name: string | null; doctor_therapist_phone: string | null; preferred_hospital: string | null; medications_and_dosage: string | null } | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    void supabase.from('patient_intake').select('doctor_therapist_name, doctor_therapist_phone, preferred_hospital, medications_and_dosage').eq('patient_profile_id', patientId).maybeSingle()
+      .then(({ data }) => { setIntake(data ?? null); setLoading(false); });
+  }, [patientId]);
+  if (loading) return null;
+  if (!intake) return null;
+  return (
+    <SectionCard title="Patient Intake Information" icon={ClipboardList}>
+      <div className="text-sm text-charcoal space-y-1">
+        {intake.doctor_therapist_name && <p>Doctor/Therapist: {intake.doctor_therapist_name}{intake.doctor_therapist_phone ? ` · ${intake.doctor_therapist_phone}` : ''}</p>}
+        {intake.preferred_hospital && <p>Preferred hospital: {intake.preferred_hospital}</p>}
+        {intake.medications_and_dosage && <p>Intake-reported medications: {intake.medications_and_dosage}</p>}
+      </div>
+    </SectionCard>
   );
 }
 
@@ -135,6 +229,9 @@ function OverviewTab({ patientId, patientHeader }: { patientId: string; patientH
           <p className="text-[11px] text-medium-gray mt-1">Effective {currentPlan.effectiveDate} · v{currentPlan.version}</p>
         </SectionCard>
       )}
+
+      <IntakeSummaryCard patientId={patientId} />
+      <QuickObservationForm patientId={patientId} />
 
       <SectionCard title="Patient Preferences" icon={Heart}>
         <div className="flex gap-2">
@@ -192,13 +289,16 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
   const [diagnoses, setDiagnoses] = useState<PatientDiagnosis[]>([]);
   const [vitals, setVitals] = useState<PatientVitals[]>([]);
   const [goals, setGoals] = useState<TherapyGoal[]>([]);
+  const [providers, setProviders] = useState<PatientCareProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [newDiagnosis, setNewDiagnosis] = useState('');
   const [newGoal, setNewGoal] = useState('');
+  const [newProviderName, setNewProviderName] = useState('');
+  const [newProviderRole, setNewProviderRole] = useState('');
 
   const load = useCallback(async () => {
-    const [d, v, g] = await Promise.all([getPatientDiagnoses(patientId), getPatientVitals(patientId), getTherapyGoals(patientId)]);
-    setDiagnoses(d); setVitals(v); setGoals(g); setLoading(false);
+    const [d, v, g, p] = await Promise.all([getPatientDiagnoses(patientId), getPatientVitals(patientId), getTherapyGoals(patientId), getPatientProviders(patientId)]);
+    setDiagnoses(d); setVitals(v); setGoals(g); setProviders(p); setLoading(false);
   }, [patientId]);
   useEffect(() => { void load(); }, [load]);
 
@@ -213,6 +313,12 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
     const { error } = await recordTherapyGoal(patientId, newGoal.trim());
     if (error) { toast.error(error); return; }
     setNewGoal(''); await load();
+  };
+  const addProvider = async () => {
+    if (!newProviderName.trim() || !newProviderRole.trim()) return;
+    const { error } = await recordPatientProvider(patientId, newProviderName.trim(), newProviderRole.trim());
+    if (error) { toast.error(error); return; }
+    setNewProviderName(''); setNewProviderRole(''); await load();
   };
 
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
@@ -230,6 +336,24 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
                 <span className="font-medium text-charcoal">{d.conditionName}</span>
                 {d.diagnosedDate && <span className="text-xs text-medium-gray"> · diagnosed {d.diagnosedDate}</span>}
                 <span className="text-[11px] text-medium-gray block capitalize">source: {d.source.replace('_', ' ')}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Medical Providers" icon={Stethoscope}>
+        <div className="flex gap-2">
+          <input value={newProviderName} onChange={(e) => setNewProviderName(e.target.value)} placeholder="Provider name…" className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+          <input value={newProviderRole} onChange={(e) => setNewProviderRole(e.target.value)} placeholder="Role e.g. Primary Physician" className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+          <button type="button" onClick={() => { void addProvider(); }} className="px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold">Add</button>
+        </div>
+        {providers.length === 0 ? <p className="text-sm text-medium-gray">No providers recorded.</p> : (
+          <ul className="space-y-1.5">
+            {providers.map((p) => (
+              <li key={p.id} className="p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+                <span className="font-medium text-charcoal">{p.providerName}</span> — {p.providerRole}
+                {p.phone && <span className="text-xs text-medium-gray block">{p.phone}</span>}
               </li>
             ))}
           </ul>
@@ -390,14 +514,23 @@ function AGTab({ patientId }: { patientId: string }) {
   );
 }
 
-function CarePlanTab({ patientId }: { patientId: string }) {
+// W05 — "read current verified instructions, flag ambiguities and
+// request clarification rather than modifying clinician orders." The
+// care plan itself is read-only prose here (recording a new version is
+// a separate, explicit action below it, not an edit to the order); a
+// flagged ambiguity goes through report_scope_concern (already
+// reviewed, director-only read) rather than any direct edit path.
+function CarePlanTab({ patientId, orgId }: { patientId: string; orgId: string }) {
   const [plans, setPlans] = useState<PatientCarePlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [goals, setGoalsText] = useState('');
   const [tasks, setTasksText] = useState('');
+  const [ambiguity, setAmbiguity] = useState('');
+  const [flagging, setFlagging] = useState(false);
 
   const load = useCallback(() => void getPatientCarePlans(patientId).then((p) => { setPlans(p); setLoading(false); }), [patientId]);
   useEffect(() => { load(); }, [load]);
+  const currentPlan = plans.find((p) => p.isCurrent);
 
   const submit = async () => {
     if (!goals.trim()) return;
@@ -406,25 +539,54 @@ function CarePlanTab({ patientId }: { patientId: string }) {
     setGoalsText(''); setTasksText(''); load();
   };
 
+  const flagAmbiguity = async () => {
+    if (!ambiguity.trim()) return;
+    setFlagging(true);
+    try {
+      const { error } = await reportScopeConcern(orgId, patientId, `Care plan clarification requested: ${ambiguity.trim()}`);
+      if (error) { toast.error(error); return; }
+      setAmbiguity('');
+      toast.success('Clarification request sent to your supervisor.');
+    } finally {
+      setFlagging(false);
+    }
+  };
+
   return (
-    <SectionCard title="Official Care Plan" icon={Target}>
-      <textarea value={goals} onChange={(e) => setGoalsText(e.target.value)} placeholder="Care plan goals…" rows={2} className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm resize-none" />
-      <input value={tasks} onChange={(e) => setTasksText(e.target.value)} placeholder="Permitted caregiver tasks (optional)…" className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
-      <button type="button" onClick={() => { void submit(); }} disabled={!goals.trim()} className="px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">Record New Version</button>
-      {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : plans.length === 0 ? (
-        <p className="text-sm text-medium-gray">No care plan recorded yet.</p>
-      ) : (
-        <ul className="space-y-2">
-          {plans.map((p) => (
-            <li key={p.id} className={`p-3 rounded-xl border text-sm ${p.isCurrent ? 'bg-warm-bronze/5 border-warm-bronze/30' : 'bg-warm-ivory border-soft-taupe'}`}>
-              <p className="text-charcoal">{p.goals}</p>
-              {p.permittedTasks && <p className="text-xs text-medium-gray">Permitted: {p.permittedTasks}</p>}
-              <p className="text-[11px] text-medium-gray mt-1">v{p.version} · effective {p.effectiveDate}{p.isCurrent ? ' · current' : ''}</p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </SectionCard>
+    <>
+      <SectionCard title="Patient Instructions" icon={ClipboardList}>
+        {currentPlan ? (
+          <div className="text-sm text-charcoal space-y-1">
+            <p>{currentPlan.goals}</p>
+            {currentPlan.permittedTasks && <p className="text-xs text-medium-gray">Permitted tasks: {currentPlan.permittedTasks}</p>}
+          </div>
+        ) : <p className="text-sm text-medium-gray">No current verified instructions on file.</p>}
+        <div className="flex gap-2 pt-2 border-t border-soft-taupe">
+          <input value={ambiguity} onChange={(e) => setAmbiguity(e.target.value)} placeholder="Flag an ambiguity or request clarification…" className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+          <button type="button" onClick={() => { void flagAmbiguity(); }} disabled={flagging || !ambiguity.trim()} className="px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">Flag</button>
+        </div>
+        <p className="text-[11px] text-medium-gray">Never modifies the order itself — sent to your supervisor for review.</p>
+      </SectionCard>
+
+      <SectionCard title="Official Care Plan" icon={Target}>
+        <textarea value={goals} onChange={(e) => setGoalsText(e.target.value)} placeholder="Care plan goals…" rows={2} className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm resize-none" />
+        <input value={tasks} onChange={(e) => setTasksText(e.target.value)} placeholder="Permitted caregiver tasks (optional)…" className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+        <button type="button" onClick={() => { void submit(); }} disabled={!goals.trim()} className="px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">Record New Version</button>
+        {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : plans.length === 0 ? (
+          <p className="text-sm text-medium-gray">No care plan recorded yet.</p>
+        ) : (
+          <ul className="space-y-2">
+            {plans.map((p) => (
+              <li key={p.id} className={`p-3 rounded-xl border text-sm ${p.isCurrent ? 'bg-warm-bronze/5 border-warm-bronze/30' : 'bg-warm-ivory border-soft-taupe'}`}>
+                <p className="text-charcoal">{p.goals}</p>
+                {p.permittedTasks && <p className="text-xs text-medium-gray">Permitted: {p.permittedTasks}</p>}
+                <p className="text-[11px] text-medium-gray mt-1">v{p.version} · effective {p.effectiveDate}{p.isCurrent ? ' · current' : ''}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SectionCard>
+    </>
   );
 }
 

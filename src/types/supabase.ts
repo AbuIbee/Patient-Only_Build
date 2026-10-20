@@ -614,6 +614,95 @@ export interface Database {
           },
         ]
       }
+      patient_care_providers: {
+        Row: {
+          author_id: string
+          created_at: string
+          email: string | null
+          id: string
+          notes: string | null
+          patient_id: string
+          phone: string | null
+          provider_name: string
+          provider_role: string
+          source: string
+        }
+        Insert: {
+          author_id: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          notes?: string | null
+          patient_id: string
+          phone?: string | null
+          provider_name: string
+          provider_role: string
+          source?: string
+        }
+        Update: {
+          author_id?: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          notes?: string | null
+          patient_id?: string
+          phone?: string | null
+          provider_name?: string
+          provider_role?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_care_providers_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_care_providers_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      caregiver_notification_preferences: {
+        Row: {
+          channel: string
+          notify_follow_up_due: boolean
+          notify_help_alerts: boolean
+          notify_messages: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          channel?: string
+          notify_follow_up_due?: boolean
+          notify_help_alerts?: boolean
+          notify_messages?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          channel?: string
+          notify_follow_up_due?: boolean
+          notify_help_alerts?: boolean
+          notify_messages?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "caregiver_notification_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       patient_diagnoses: {
         Row: {
           author_id: string
@@ -3214,6 +3303,35 @@ export interface Database {
         Args: { p_patient_id: string }
         Returns: boolean
       }
+      record_patient_provider: {
+        Args: {
+          p_email?: string
+          p_notes?: string
+          p_patient_id: string
+          p_phone?: string
+          p_provider_name: string
+          p_provider_role: string
+          p_source?: string
+        }
+        Returns: {
+          author_id: string
+          created_at: string
+          email: string | null
+          id: string
+          notes: string | null
+          patient_id: string
+          phone: string | null
+          provider_name: string
+          provider_role: string
+          source: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_care_providers"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       record_patient_diagnosis: {
         Args: {
           p_condition_name: string
@@ -3971,7 +4089,7 @@ export interface Database {
         Returns: boolean
       }
       send_message: {
-        Args: { p_conversation_id: string; p_body: string; p_is_urgent: boolean; p_reply_to_message_id: string | null }
+        Args: { p_conversation_id: string; p_body: string; p_is_urgent: boolean; p_reply_to_message_id: string | null; p_message_type?: string }
         Returns: MessageRow
       }
       mark_message_read: {

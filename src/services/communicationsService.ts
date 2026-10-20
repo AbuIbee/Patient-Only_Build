@@ -50,6 +50,7 @@ export interface ConversationMessage {
   senderLastName: string;
   body: string;
   isUrgent: boolean;
+  messageType: 'message' | 'care_update';
   replyToMessageId: string | null;
   createdAt: string;
   // Every participant's own read/acknowledgment/follow-up state for this
@@ -148,7 +149,7 @@ export async function removeConversationParticipant(conversationId: string, user
 export async function getConversationMessages(conversationId: string): Promise<ConversationMessage[]> {
   const { data, error } = await supabase
     .from('messages')
-    .select('id, conversation_id, sender_id, sender_role, body, is_urgent, reply_to_message_id, created_at, profiles:sender_id(first_name, last_name), message_acknowledgments(user_id, read_at, acknowledged_at, follow_up_requested, follow_up_note, follow_up_resolved)')
+    .select('id, conversation_id, sender_id, sender_role, body, is_urgent, message_type, reply_to_message_id, created_at, profiles:sender_id(first_name, last_name), message_acknowledgments(user_id, read_at, acknowledged_at, follow_up_requested, follow_up_note, follow_up_resolved)')
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: true });
   if (error || !data) return [];
@@ -168,6 +169,7 @@ export async function getConversationMessages(conversationId: string): Promise<C
       senderLastName: sender?.last_name ?? '',
       body: r.body,
       isUrgent: r.is_urgent,
+      messageType: r.message_type as 'message' | 'care_update',
       replyToMessageId: r.reply_to_message_id,
       createdAt: r.created_at,
       acknowledgments: acks.map((a) => ({
@@ -180,9 +182,16 @@ export async function getConversationMessages(conversationId: string): Promise<C
 
 export async function sendMessage(
   conversationId: string, body: string, isUrgent: boolean, replyToMessageId: string | null = null,
+  // C03 — "Care Updates" are the same conversation/message
+  // infrastructure with message_type='care_update' instead of the
+  // default 'message', set server-side (migration 073) — never a
+  // client-only label, so it survives being read back by anyone else
+  // in the thread.
+  messageType: 'message' | 'care_update' = 'message',
 ): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('send_message', {
     p_conversation_id: conversationId, p_body: body.trim(), p_is_urgent: isUrgent, p_reply_to_message_id: replyToMessageId,
+    p_message_type: messageType,
   });
   return { error: error ? errMsg(error, 'Could not send this message.') : null };
 }

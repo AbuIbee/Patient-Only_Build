@@ -37,6 +37,29 @@ export async function recordPatientDiagnosis(
   return { error: error ? errMsg(error, 'Could not record this diagnosis.') : null };
 }
 
+export interface PatientCareProvider {
+  id: string; providerName: string; providerRole: string; phone: string | null; email: string | null;
+  notes: string | null; source: ProvenanceSource; authorId: string; createdAt: string;
+}
+
+export async function getPatientProviders(patientId: string): Promise<PatientCareProvider[]> {
+  const { data, error } = await supabase.from('patient_care_providers').select('*').eq('patient_id', patientId).order('created_at', { ascending: false });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id, providerName: r.provider_name, providerRole: r.provider_role, phone: r.phone, email: r.email,
+    notes: r.notes, source: r.source as ProvenanceSource, authorId: r.author_id, createdAt: r.created_at,
+  }));
+}
+
+export async function recordPatientProvider(
+  patientId: string, providerName: string, providerRole: string, phone?: string, email?: string, notes?: string, source: ProvenanceSource = 'caregiver_report',
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('record_patient_provider', {
+    p_patient_id: patientId, p_provider_name: providerName, p_provider_role: providerRole, p_phone: phone, p_email: email, p_notes: notes, p_source: source,
+  });
+  return { error: error ? errMsg(error, 'Could not record this provider.') : null };
+}
+
 export interface PatientAllergy {
   id: string; allergen: string; reaction: string | null; severity: string | null; notes: string | null;
   source: ProvenanceSource; authorId: string; createdAt: string;

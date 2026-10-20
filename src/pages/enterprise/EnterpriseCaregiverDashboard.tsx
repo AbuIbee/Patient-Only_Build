@@ -26,11 +26,12 @@ import {
   type StaffPatient, type CareTeamMember,
 } from '@/services/organizationService';
 import { getMyConversations, createConversation, type ConversationSummary } from '@/services/communicationsService';
+import { inviteTherapist } from '@/services/therapistConnectionService';
 import { getHelpActivationHistory } from '@/services/helpActivationService';
 import {
   getMyVisits, startCaregiverVisit, endCaregiverVisit, scheduleCaregiverVisit,
   getPatientIncidentReports, fileIncidentReport,
-  reportScopeConcern, getMyCredentials,
+  reportScopeConcern, getMyCredentials, getPatientShiftHandoffs,
   type CaregiverVisit, type IncidentReport, type CaregiverCredential,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
@@ -213,6 +214,9 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
   const [helpCount, setHelpCount] = useState(0);
+  const [recentUpdates, setRecentUpdates] = useState<{ patientName: string; note: string; at: string }[]>([]);
+  const [medConcerns, setMedConcerns] = useState<{ patientName: string; medName: string; status: string; at: string }[]>([]);
+  const [unacknowledgedHandoffs, setUnacknowledgedHandoffs] = useState(0);
   const [loadingExtra, setLoadingExtra] = useState(true);
 
   useEffect(() => {
@@ -221,15 +225,60 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
       const [convos, myVisits] = await Promise.all([getMyConversations(), getMyVisits()]);
       const allIncidents = (await Promise.all(patients.map((p) => getPatientIncidentReports(p.patientId)))).flat();
       const allHelp = (await Promise.all(patients.map(async (p) => (await getHelpActivationHistory(p.patientId)).entries))).flat();
+
+      // H09 — "overnight observations, authorized patient/family shared
+      // notes, condition changes... excluding Private Journal content."
+      // patient_notes' own RLS already excludes care_partner_personal
+      // (the Private Journal type); this reads only the general/
+      // professional types staff can already see.
+      const sinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const noteRows = (await Promise.all(patients.map(async (p) => {
+        const { data } = await supabase.from('patient_notes').select('note, created_at').eq('patient_id', p.patientId).gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(5);
+        return (data ?? []).map((r) => ({ patientName: p.preferredName || p.firstName, note: r.note, at: r.created_at }));
+      }))).flat();
+      noteRows.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
+      // H10 — "documented missed/refused doses" across assigned patients.
+      const medRows = (await Promise.all(patients.map(async (p) => {
+        const { data } = await supabase.from('medication_logs').select('status, scheduled_time, date, medication_id, medications(name)').eq('patient_id', p.patientId).in('status', ['missed', 'refused']).order('date', { ascending: false }).limit(5);
+        return (data ?? []).map((r) => ({ patientName: p.preferredName || p.firstName, medName: (r as { medications: { name: string } | null }).medications?.name ?? 'Medication', status: r.status, at: `${r.date} ${r.scheduled_time}` }));
+      }))).flat();
+
+      // H14 — unacknowledged shift handoffs across assigned patients.
+      const handoffCounts = await Promise.all(patients.map((p) => getPatientShiftHandoffs(orgId, p.patientId)));
+      const unackCount = handoffCounts.flat().filter((h) => h.acknowledgedCount === 0).length;
+
       if (!active) return;
       setConversations(convos);
       setVisits(myVisits);
       setIncidents(allIncidents.filter((i) => i.resolutionStatus !== 'resolved'));
       setHelpCount(allHelp.length);
+      setRecentUpdates(noteRows.slice(0, 8));
+      setMedConcerns(medRows.slice(0, 8));
+      setUnacknowledgedHandoffs(unackCount);
       setLoadingExtra(false);
     })();
     return () => { active = false; };
-  }, [patients]);
+  }, [patients, orgId]);
+
+  // H18 — "Connection & Synchronization." Genuinely implemented via
+  // the browser's own online/offline events and a localStorage-recorded
+  // last-successful-load timestamp — never a guaranteed-delivery claim,
+  // and no local draft queue exists in this shell (disclosed below, not
+  // claimed).
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+  useEffect(() => {
+    if (!loadingExtra) { try { localStorage.setItem('enterprise_last_sync', new Date().toISOString()); } catch { /* best-effort */ } }
+  }, [loadingExtra]);
+  let lastSync: string | null = null;
+  try { lastSync = localStorage.getItem('enterprise_last_sync'); } catch { /* best-effort */ }
 
   const unreadCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
   const todayVisits = visits.filter((v) => v.scheduledStart && new Date(v.scheduledStart).toDateString() === new Date().toDateString());
@@ -298,6 +347,50 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
             ))}
           </div>
         )}
+      </Card>
+
+      {recentUpdates.length > 0 && (
+        <Card>
+          <div className="flex items-center gap-2"><FileText className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Recent Patient Updates</h2></div>
+          <ul className="space-y-1.5">
+            {recentUpdates.map((u, idx) => (
+              <li key={idx} className="p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+                <span className="font-medium text-charcoal">{u.patientName}: </span>{u.note}
+                <span className="text-[11px] text-medium-gray block">{new Date(u.at).toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {medConcerns.length > 0 && (
+        <Card>
+          <div className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-gentle-coral" /><h2 className="font-bold text-charcoal">Medication Reminders &amp; Concerns</h2></div>
+          <ul className="space-y-1.5">
+            {medConcerns.map((m, idx) => (
+              <li key={idx} className="p-2.5 bg-gentle-coral/5 border border-gentle-coral/30 rounded-xl text-sm">
+                <span className="font-medium text-charcoal">{m.patientName}</span> — {m.medName} <span className="capitalize text-gentle-coral font-semibold">{m.status}</span>
+                <span className="text-[11px] text-medium-gray block">{m.at}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] text-medium-gray">A caregiver may document a missed/refused dose only — administration remains within clinical authority.</p>
+        </Card>
+      )}
+
+      {unacknowledgedHandoffs > 0 && (
+        <Card>
+          <div className="flex items-center gap-2"><ClipboardList className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Incomplete Documentation</h2></div>
+          <p className="text-sm text-charcoal">{unacknowledgedHandoffs} shift handoff{unacknowledgedHandoffs === 1 ? '' : 's'} not yet acknowledged.</p>
+          <button type="button" onClick={() => onNavigate('handoffs')} className="text-sm font-semibold text-warm-bronze hover:underline">Review Shift Handoffs →</button>
+        </Card>
+      )}
+
+      <Card>
+        <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Connection &amp; Synchronization</h2></div>
+        <p className="text-sm text-charcoal">{isOnline ? 'Online' : 'Offline — changes may not be saved until reconnected'}</p>
+        <p className="text-[11px] text-medium-gray">Last successful sync: {lastSync ? new Date(lastSync).toLocaleString() : 'not yet recorded'}</p>
+        <p className="text-[11px] text-medium-gray">No locally queued offline drafts exist in this shell — nothing here is reported as sent unless it has actually reached the server.</p>
       </Card>
     </>
   );
@@ -616,9 +709,31 @@ function CareTeamView({ orgId, patients }: { orgId: string; patients: StaffPatie
   const [supervisor, setSupervisor] = useState<{ userId: string; firstName: string; lastName: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [messagingSupervisor, setMessagingSupervisor] = useState(false);
+  const [invitePatientId, setInvitePatientId] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviting, setInviting] = useState(false);
   useEffect(() => {
     void Promise.all([getMyCareTeam(orgId), getMyOrgSupervisor(orgId)]).then(([t, s]) => { setTeam(t); setSupervisor(s); setLoading(false); });
   }, [orgId]);
+
+  // W10 — "initiate caregiver-authorized therapist... connection
+  // requests" — the underlying RPC (THER-01/02-hardened) was real and
+  // pre-existing but never reachable from this shell; migration 072
+  // widened its sole authorization check to also accept an active
+  // staff_patient_assignments row (previously caregiver_patients-only),
+  // live-verified this round.
+  const invite = async () => {
+    if (!invitePatientId || !inviteEmail.trim()) return;
+    setInviting(true);
+    try {
+      const { error } = await inviteTherapist(invitePatientId, inviteEmail.trim());
+      if (error) { toast.error(error); return; }
+      setInviteEmail('');
+      toast.success('Invitation sent.');
+    } finally {
+      setInviting(false);
+    }
+  };
 
   // W09 — ROUND 6: "communicate via private, explicitly addressed
   // professional conversation" — previously only displayed the
@@ -666,8 +781,162 @@ function CareTeamView({ orgId, patients }: { orgId: string; patients: StaffPatie
               ))}
             </ul>
           )}
+          {patients.length > 0 && (
+            <div className="pt-3 border-t border-soft-taupe space-y-2">
+              <p className="text-xs font-semibold text-medium-gray">Invite a verified therapist for a patient</p>
+              <div className="flex flex-wrap gap-2">
+                <select value={invitePatientId} onChange={(e) => setInvitePatientId(e.target.value)} className="px-2 py-2 rounded-xl border border-soft-taupe text-sm">
+                  <option value="">Select patient…</option>
+                  {patients.map((p) => <option key={p.patientId} value={p.patientId}>{p.firstName} {p.lastName}</option>)}
+                </select>
+                <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="Therapist's email" type="email" className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+                <button type="button" onClick={() => { void invite(); }} disabled={inviting || !invitePatientId || !inviteEmail.trim()} className="px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">Invite</button>
+              </div>
+            </div>
+          )}
         </>
       )}
+    </Card>
+  );
+}
+
+// O05 — "pending, accepted, expired, declined and revoked professional/
+// patient care connections" for the CALLER's own membership history.
+// "Members can view their own membership row" (migration 035) already
+// has no status filter, so every status this caller has ever held in
+// any organization is readable directly — no new backend needed.
+function MyInvitationsCard() {
+  const [rows, setRows] = useState<{ id: string; org_role: string; status: string; created_at: string; organizations: { name: string } | null }[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    void supabase.from('organization_memberships').select('id, org_role, status, created_at, organizations(name)').order('created_at', { ascending: false })
+      .then(({ data }) => { setRows((data ?? []) as unknown as typeof rows); setLoading(false); });
+  }, []);
+  if (loading) return null;
+  return (
+    <Card>
+      <div className="flex items-center gap-2"><Send className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Invitations</h2></div>
+      {rows.length === 0 ? <p className="text-sm text-medium-gray">No invitation history.</p> : (
+        <ul className="space-y-1.5">
+          {rows.map((r) => (
+            <li key={r.id} className="flex items-center justify-between p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+              <span className="text-charcoal">{r.organizations?.name ?? 'Organization'} — {r.org_role}</span>
+              <span className="text-xs font-semibold capitalize text-medium-gray">{r.status}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+// O07 — "own visit history, task completion, authored documentation
+// and appropriate time/audit records," all scoped to self via the
+// caller's own id, every one of which already has self-row read access.
+function MyActivityCard() {
+  const { state } = useApp();
+  const [visits, setVisits] = useState<CaregiverVisit[]>([]);
+  const [taskUpdates, setTaskUpdates] = useState<{ id: string; title: string; status: string; status_updated_at: string | null }[]>([]);
+  const [noteCount, setNoteCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const myId = state.currentUser?.id;
+    void Promise.all([
+      getMyVisits(),
+      myId ? supabase.from('tasks').select('id, title, status, status_updated_at').eq('status_updated_by', myId).order('status_updated_at', { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
+      myId ? supabase.from('patient_notes').select('id', { count: 'exact', head: true }).eq('author_id', myId) : Promise.resolve({ count: 0 }),
+    ]).then(([v, t, n]) => {
+      setVisits(v); setTaskUpdates((t.data ?? []) as typeof taskUpdates); setNoteCount((n as { count: number | null }).count ?? 0); setLoading(false);
+    });
+  }, [state.currentUser?.id]);
+  if (loading) return null;
+  return (
+    <Card>
+      <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Activity</h2></div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="p-2 bg-warm-ivory rounded-xl border border-soft-taupe"><p className="text-lg font-bold text-charcoal">{visits.length}</p><p className="text-[11px] text-medium-gray">Visits</p></div>
+        <div className="p-2 bg-warm-ivory rounded-xl border border-soft-taupe"><p className="text-lg font-bold text-charcoal">{taskUpdates.length}</p><p className="text-[11px] text-medium-gray">Tasks updated</p></div>
+        <div className="p-2 bg-warm-ivory rounded-xl border border-soft-taupe"><p className="text-lg font-bold text-charcoal">{noteCount}</p><p className="text-[11px] text-medium-gray">Notes authored</p></div>
+      </div>
+    </Card>
+  );
+}
+
+// O08 — self-row preferences only; no delivery-receipt column exists
+// anywhere in this table, so this UI structurally cannot claim
+// guaranteed delivery.
+function NotificationsCard() {
+  const { state } = useApp();
+  const [prefs, setPrefs] = useState({ notify_messages: true, notify_help_alerts: true, notify_follow_up_due: true, channel: 'in_app' });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    const myId = state.currentUser?.id;
+    if (!myId) { setLoading(false); return; }
+    void supabase.from('caregiver_notification_preferences').select('*').eq('user_id', myId).maybeSingle()
+      .then(({ data }) => { if (data) setPrefs(data); setLoading(false); });
+  }, [state.currentUser?.id]);
+
+  const save = async (next: typeof prefs) => {
+    const myId = state.currentUser?.id;
+    if (!myId) return;
+    setPrefs(next);
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('caregiver_notification_preferences').upsert({ user_id: myId, ...next });
+      if (error) toast.error(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return null;
+  return (
+    <Card>
+      <div className="flex items-center gap-2"><MessageSquare className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Notifications</h2></div>
+      <label className="flex items-center justify-between text-sm text-charcoal">
+        Messages <input type="checkbox" checked={prefs.notify_messages} disabled={saving} onChange={(e) => { void save({ ...prefs, notify_messages: e.target.checked }); }} />
+      </label>
+      <label className="flex items-center justify-between text-sm text-charcoal">
+        HELP/safety updates <input type="checkbox" checked={prefs.notify_help_alerts} disabled={saving} onChange={(e) => { void save({ ...prefs, notify_help_alerts: e.target.checked }); }} />
+      </label>
+      <label className="flex items-center justify-between text-sm text-charcoal">
+        Follow-up due reminders <input type="checkbox" checked={prefs.notify_follow_up_due} disabled={saving} onChange={(e) => { void save({ ...prefs, notify_follow_up_due: e.target.checked }); }} />
+      </label>
+      <p className="text-[11px] text-medium-gray">These are delivery PREFERENCES, not a guarantee every notification is delivered.</p>
+    </Card>
+  );
+}
+
+// O09 — genuinely implemented text-sizing and high-contrast; language
+// selection and speech support are not built this round (disclosed,
+// not silently hidden behind a non-functional control).
+function AccessibilityCard() {
+  const [fontScale, setFontScale] = useState(() => { try { return localStorage.getItem('enterprise_font_scale') || 'normal'; } catch { return 'normal'; } });
+  const [highContrast, setHighContrast] = useState(() => { try { return localStorage.getItem('enterprise_high_contrast') === 'true'; } catch { return false; } });
+
+  useEffect(() => {
+    document.documentElement.style.fontSize = fontScale === 'large' ? '18px' : fontScale === 'larger' ? '20px' : '';
+    try { localStorage.setItem('enterprise_font_scale', fontScale); } catch { /* best-effort */ }
+  }, [fontScale]);
+  useEffect(() => {
+    document.documentElement.classList.toggle('enterprise-high-contrast', highContrast);
+    try { localStorage.setItem('enterprise_high_contrast', String(highContrast)); } catch { /* best-effort */ }
+  }, [highContrast]);
+
+  return (
+    <Card>
+      <div className="flex items-center gap-2"><SettingsIcon className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Accessibility</h2></div>
+      <label className="flex items-center justify-between text-sm text-charcoal">
+        Text size
+        <select value={fontScale} onChange={(e) => setFontScale(e.target.value)} className="px-2 py-1.5 rounded-lg border border-soft-taupe text-sm">
+          <option value="normal">Normal</option><option value="large">Large</option><option value="larger">Larger</option>
+        </select>
+      </label>
+      <label className="flex items-center justify-between text-sm text-charcoal">
+        High contrast <input type="checkbox" checked={highContrast} onChange={(e) => setHighContrast(e.target.checked)} />
+      </label>
+      <p className="text-[11px] text-medium-gray">Language selection and speech support are not yet implemented in this shell.</p>
     </Card>
   );
 }
@@ -709,6 +978,10 @@ function OrganizationView({ orgId, orgName }: { orgId: string; orgName: string }
           </ul>
         )}
       </Card>
+      <MyInvitationsCard />
+      <MyActivityCard />
+      <NotificationsCard />
+      <AccessibilityCard />
     </>
   );
 }
