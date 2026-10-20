@@ -48,9 +48,22 @@ export async function inviteTherapist(
   return { error: error ? errMsg(error, 'Could not invite this therapist.') : null };
 }
 
+// THER-02: a stale invite whose inviting caregiver lost authority over
+// the patient is withdrawn (status -> 'revoked') by returning the
+// updated row rather than throwing — an uncaught RAISE in that RPC
+// would have rolled back the very UPDATE recording the withdrawal. So
+// a successful (non-error) call here must still be checked: if the
+// caller asked to accept but the returned status isn't 'accepted', the
+// accept did not actually happen and must be reported as a failure.
 export async function respondToTherapistInvite(connectionId: string, accept: boolean): Promise<{ error: string | null }> {
-  const { error } = await supabase.rpc('respond_to_therapist_invite', { p_connection_id: connectionId, p_accept: accept });
-  return { error: error ? errMsg(error, 'Could not respond to this invitation.') : null };
+  const { data, error } = await supabase.rpc('respond_to_therapist_invite', { p_connection_id: connectionId, p_accept: accept });
+  if (error) {
+    return { error: errMsg(error, 'Could not respond to this invitation.') };
+  }
+  if (accept && data?.status !== 'accepted') {
+    return { error: 'The caregiver who sent this invitation is no longer authorized for this patient — the invitation has been withdrawn.' };
+  }
+  return { error: null };
 }
 
 export async function getMyPendingTherapistInvites(): Promise<PendingTherapistInvite[]> {
