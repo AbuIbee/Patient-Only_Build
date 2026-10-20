@@ -22,6 +22,7 @@ import CaregiverPortal from '@/pages/caregiver/CaregiverPortal';
 import OrganizationDirectorDashboard, { CreateOrgCard } from './OrganizationDirectorDashboard';
 import StaffCaseloadDashboard from './StaffCaseloadDashboard';
 import ResidentialTherapistDashboard from './ResidentialTherapistDashboard';
+import EnterpriseCaregiverDashboard from './EnterpriseCaregiverDashboard';
 
 function PendingInvitesBanner({ invites, onResolved }: { invites: PendingOrgInvite[]; onResolved: () => void }) {
   const [respondingId, setRespondingId] = useState<string | null>(null);
@@ -208,11 +209,29 @@ export default function EnterpriseDashboardRouter() {
     );
   }
 
-  // Ordinary caregiver (residential, enterprise org-caregiver, or both) —
-  // CaregiverPortal itself merges org-assigned patients into "My
-  // Patients" when hasCaregiverOrgRole is true; the residential
-  // experience is byte-for-byte unchanged when it is false.
-  if (invites.length > 0 || hasCaregiverOrgRole || !showCreateOrg) {
+  // ROUND 5 — locked Enterprise Caregiver Portal requirement:
+  // "Enterprise caregivers land in their own shell," with its own
+  // stable 14-item navigation, distinct from the residential
+  // CaregiverPortal. Previously an org-caregiver fell through into
+  // CaregiverPortal with org patients merely merged into "My
+  // Patients" — never a dedicated shell. Takes priority over the
+  // generic caregiver branch below the moment the caregiver org role
+  // is ACTIVE (not merely invited — an outstanding invite still needs
+  // CaregiverPortal's accept banner first).
+  if (hasCaregiverOrgRole) {
+    return (
+      <div>
+        <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
+        {therapistBanner}
+        <EnterpriseCaregiverDashboard />
+      </div>
+    );
+  }
+
+  // Ordinary residential caregiver, or one with an outstanding org
+  // invite not yet accepted — unchanged, byte-for-byte residential
+  // experience.
+  if (invites.length > 0 || !showCreateOrg) {
     return (
       <div>
         <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
