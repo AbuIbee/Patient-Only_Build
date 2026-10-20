@@ -246,8 +246,13 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
       noteRows.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 
       // H10 — "documented missed/refused doses" across assigned patients.
+      // ROUND 7 CORRECTION: medication_logs.status's real CHECK constraint
+      // is ('taken','missed','pending','skipped') — 'refused' is not a
+      // valid value and this filter was silently matching zero rows for
+      // that half of its own name. Discovered via real seeded-data
+      // verification, not source review alone.
       const medRows = (await Promise.all(patients.map(async (p) => {
-        const { data } = await supabase.from('medication_logs').select('status, scheduled_time, date, medication_id, medications(name)').eq('patient_id', p.patientId).in('status', ['missed', 'refused']).order('date', { ascending: false }).limit(5);
+        const { data } = await supabase.from('medication_logs').select('status, scheduled_time, date, medication_id, medications(name)').eq('patient_id', p.patientId).in('status', ['missed', 'skipped']).order('date', { ascending: false }).limit(5);
         return (data ?? []).map((r) => ({ patientName: p.preferredName || p.firstName, medName: (r as { medications: { name: string } | null }).medications?.name ?? 'Medication', status: r.status, at: `${r.date} ${r.scheduled_time}` }));
       }))).flat();
 
@@ -381,7 +386,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
               </li>
             ))}
           </ul>
-          <p className="text-[11px] text-medium-gray">A caregiver may document a missed/refused dose only — administration remains within clinical authority.</p>
+          <p className="text-[11px] text-medium-gray">A caregiver may document a missed/skipped dose only — administration remains within clinical authority.</p>
         </Card>
       )}
 
