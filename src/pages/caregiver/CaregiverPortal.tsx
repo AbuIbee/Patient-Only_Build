@@ -120,7 +120,14 @@ function ActivationLinkCard({ link, patientName, onDone }: { link: string; patie
   );
 }
 
-function RegisterPatientForm({ onRegistered, onBack }: { onRegistered: () => void; onBack: () => void }) {
+// ROUND 6 — exported so the Enterprise Caregiver Dashboard can reuse
+// this exact, already-reviewed registration flow (H15) instead of
+// duplicating it. `onRegistered` now optionally receives the new
+// patient's id so an Enterprise caller can immediately fold the new
+// patient into its organization's coverage via
+// coverPatientViaStaffRegistration() — the residential caller below
+// still passes a zero-arg callback, which remains valid.
+export function RegisterPatientForm({ onRegistered, onBack }: { onRegistered: (patientId?: string) => void; onBack: () => void }) {
   const [form, setForm] = useState<PatientIntakeFormData>(emptyForm());
   const [loading, setLoading] = useState(false);
   const [resume, setResume] = useState<ResumeState | null>(null);
@@ -176,7 +183,7 @@ function RegisterPatientForm({ onRegistered, onBack }: { onRegistered: () => voi
       }
       setForm(emptyForm());
       setResume(null);
-      onRegistered();
+      onRegistered(result.patientId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     } finally {
@@ -197,7 +204,7 @@ function RegisterPatientForm({ onRegistered, onBack }: { onRegistered: () => voi
       toast.success('Registration completed successfully.');
       setForm(emptyForm());
       setResume(null);
-      onRegistered();
+      onRegistered(resume.patientId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     } finally {
@@ -630,7 +637,7 @@ function EditRegistrationForm({
 /** item 5: incomplete registrations stay visible on the dashboard — never
  * shown as a (fully registered) PatientCard, since no caregiver_patients
  * link exists for them yet. */
-function IncompleteRegistrations({
+export function IncompleteRegistrations({
   pending, onResumed,
 }: {
   pending: PendingRegistrationSummary[];

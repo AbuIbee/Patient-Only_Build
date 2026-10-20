@@ -22,9 +22,11 @@ import {
   AlertTriangle, CheckCircle2, PlayCircle, StopCircle,
 } from 'lucide-react';
 import {
-  getMyStaffPatients, getMyCareTeam, getMyOrgSupervisor, getMyOrganizations,
+  getMyStaffPatients, getMyCareTeam, getMyOrgSupervisor, getMyOrganizations, coverPatientViaStaffRegistration,
   type StaffPatient, type CareTeamMember,
 } from '@/services/organizationService';
+import { getMyPendingRegistrations, type PendingRegistrationSummary } from '@/services/caregiverRegistrationService';
+import { RegisterPatientForm, IncompleteRegistrations } from '@/pages/caregiver/CaregiverPortal';
 import { getMyConversations, createConversation, type ConversationSummary } from '@/services/communicationsService';
 import { inviteTherapist } from '@/services/therapistConnectionService';
 import { getHelpActivationHistory } from '@/services/helpActivationService';
@@ -179,7 +181,7 @@ export default function EnterpriseCaregiverDashboard() {
             <div className="max-w-3xl mx-auto space-y-5">
               {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={setOpenPatient} onNavigate={setNav} />}
               {(nav === 'patients' || nav === 'records') && (
-                <PatientsListView patients={patients} onOpenPatient={setOpenPatient} />
+                <PatientsListView patients={patients} onOpenPatient={setOpenPatient} orgId={orgId} onChanged={() => { void load(); }} />
               )}
               {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} />}
               {nav === 'visits' && <VisitsListView />}
@@ -450,7 +452,50 @@ function MyDocumentationHistoryView() {
   );
 }
 
-function PatientsListView({ patients, onOpenPatient, title }: { patients: StaffPatient[]; onOpenPatient: (id: string) => void; title?: string }) {
+// H15 — "Register a new patient and provide Edit/Resume/Delete for
+// incomplete registrations, activation/resend status and link
+// management without orphaned or duplicate Auth identities. One
+// primary registration action when no patients." Reuses
+// RegisterPatientForm/IncompleteRegistrations verbatim (the real,
+// already-reviewed residential registration flow — never
+// reimplemented) and folds a newly registered patient into this
+// organization's coverage + this caregiver's own staff assignment via
+// the same cover_patient_via_staff_registration() RPC the residential
+// "cover an existing patient" action already uses.
+function RegistrationAction({ orgId, onChanged }: { orgId: string; onChanged: () => void }) {
+  const [showForm, setShowForm] = useState(false);
+  const [pending, setPending] = useState<PendingRegistrationSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(() => void getMyPendingRegistrations().then((p) => { setPending(p); setLoading(false); }), []);
+  useEffect(() => { load(); }, [load]);
+
+  const handleRegistered = async (patientId?: string) => {
+    setShowForm(false);
+    if (patientId) {
+      const { error } = await coverPatientViaStaffRegistration(orgId, patientId);
+      if (error) toast.error(`Patient registered, but could not be covered under this organization: ${error}`);
+      else toast.success('Patient registered and covered under this organization.');
+    }
+    load();
+    onChanged();
+  };
+
+  if (showForm) {
+    return <RegisterPatientForm onRegistered={(id) => { void handleRegistered(id); }} onBack={() => setShowForm(false)} />;
+  }
+
+  return (
+    <>
+      {!loading && pending.length > 0 && <IncompleteRegistrations pending={pending} onResumed={() => { load(); onChanged(); }} />}
+      <button type="button" onClick={() => setShowForm(true)} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 border-dashed border-warm-bronze/40 text-warm-bronze font-semibold text-sm hover:bg-warm-bronze/5">
+        <Users className="w-4 h-4" /> Register a new patient
+      </button>
+    </>
+  );
+}
+
+function PatientsListView({ patients, onOpenPatient, title, orgId, onChanged }: { patients: StaffPatient[]; onOpenPatient: (id: string) => void; title?: string; orgId?: string; onChanged?: () => void }) {
   return (
     <Card>
       <div className="flex items-center gap-2"><Users className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">{title || 'My Patients'}</h2></div>
@@ -466,6 +511,7 @@ function PatientsListView({ patients, onOpenPatient, title }: { patients: StaffP
           ))}
         </div>
       )}
+      {orgId && onChanged && <RegistrationAction orgId={orgId} onChanged={onChanged} />}
     </Card>
   );
 }
