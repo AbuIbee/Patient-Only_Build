@@ -606,6 +606,318 @@ export interface Database {
           },
         ]
       }
+      patient_diagnoses: {
+        Row: {
+          author_id: string
+          condition_name: string
+          created_at: string
+          diagnosed_date: string | null
+          id: string
+          is_active: boolean
+          notes: string | null
+          patient_id: string
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          condition_name: string
+          created_at?: string
+          diagnosed_date?: string | null
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          patient_id: string
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          condition_name?: string
+          created_at?: string
+          diagnosed_date?: string | null
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          patient_id?: string
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_diagnoses_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_diagnoses_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patient_allergies: {
+        Row: {
+          allergen: string
+          author_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          patient_id: string
+          reaction: string | null
+          severity: string | null
+          source: string
+        }
+        Insert: {
+          allergen: string
+          author_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          patient_id: string
+          reaction?: string | null
+          severity?: string | null
+          source?: string
+        }
+        Update: {
+          allergen?: string
+          author_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          patient_id?: string
+          reaction?: string | null
+          severity?: string | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_allergies_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_allergies_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patient_care_plans: {
+        Row: {
+          author_id: string
+          created_at: string
+          effective_date: string
+          goals: string
+          id: string
+          is_current: boolean
+          patient_id: string
+          permitted_tasks: string | null
+          version: number
+        }
+        Insert: {
+          author_id: string
+          created_at?: string
+          effective_date?: string
+          goals: string
+          id?: string
+          is_current?: boolean
+          patient_id: string
+          permitted_tasks?: string | null
+          version?: number
+        }
+        Update: {
+          author_id?: string
+          created_at?: string
+          effective_date?: string
+          goals?: string
+          id?: string
+          is_current?: boolean
+          patient_id?: string
+          permitted_tasks?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_care_plans_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_care_plans_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patient_vitals: {
+        Row: {
+          author_id: string
+          blood_pressure: string | null
+          created_at: string
+          id: string
+          measured_at: string
+          notes: string | null
+          oxygen_saturation: number | null
+          pain_level: number | null
+          patient_id: string
+          pulse_bpm: number | null
+          source: string
+          temperature_f: number | null
+          weight_lbs: number | null
+        }
+        Insert: {
+          author_id: string
+          blood_pressure?: string | null
+          created_at?: string
+          id?: string
+          measured_at?: string
+          notes?: string | null
+          oxygen_saturation?: number | null
+          pain_level?: number | null
+          patient_id: string
+          pulse_bpm?: number | null
+          source?: string
+          temperature_f?: number | null
+          weight_lbs?: number | null
+        }
+        Update: {
+          author_id?: string
+          blood_pressure?: string | null
+          created_at?: string
+          id?: string
+          measured_at?: string
+          notes?: string | null
+          oxygen_saturation?: number | null
+          pain_level?: number | null
+          patient_id?: string
+          pulse_bpm?: number | null
+          source?: string
+          temperature_f?: number | null
+          weight_lbs?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_vitals_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_vitals_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patient_therapy_goals: {
+        Row: {
+          author_id: string
+          created_at: string
+          id: string
+          objective: string
+          patient_id: string
+          progress_notes: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          created_at?: string
+          id?: string
+          objective: string
+          patient_id: string
+          progress_notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          created_at?: string
+          id?: string
+          objective?: string
+          patient_id?: string
+          progress_notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_therapy_goals_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_therapy_goals_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patient_care_preferences: {
+        Row: {
+          author_id: string
+          category: string
+          created_at: string
+          description: string
+          id: string
+          patient_id: string
+          reported_by: string | null
+        }
+        Insert: {
+          author_id: string
+          category: string
+          created_at?: string
+          description: string
+          id?: string
+          patient_id: string
+          reported_by?: string | null
+        }
+        Update: {
+          author_id?: string
+          category?: string
+          created_at?: string
+          description?: string
+          id?: string
+          patient_id?: string
+          reported_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_care_preferences_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_care_preferences_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       caregiver_patients: {
         Row: {
           id: string
@@ -2865,6 +3177,189 @@ export interface Database {
       }
     }
     Functions: {
+      has_patient_access: { Args: { p_patient_id: string }; Returns: boolean }
+      is_professional_staff_for_patient: {
+        Args: { p_patient_id: string }
+        Returns: boolean
+      }
+      record_patient_diagnosis: {
+        Args: {
+          p_condition_name: string
+          p_diagnosed_date?: string
+          p_notes?: string
+          p_patient_id: string
+          p_source?: string
+        }
+        Returns: {
+          author_id: string
+          condition_name: string
+          created_at: string
+          diagnosed_date: string | null
+          id: string
+          is_active: boolean
+          notes: string | null
+          patient_id: string
+          source: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_diagnoses"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      record_patient_allergy: {
+        Args: {
+          p_allergen: string
+          p_notes?: string
+          p_patient_id: string
+          p_reaction?: string
+          p_severity?: string
+          p_source?: string
+        }
+        Returns: {
+          allergen: string
+          author_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          patient_id: string
+          reaction: string | null
+          severity: string | null
+          source: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_allergies"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      record_patient_care_plan: {
+        Args: {
+          p_effective_date?: string
+          p_goals: string
+          p_patient_id: string
+          p_permitted_tasks?: string
+        }
+        Returns: {
+          author_id: string
+          created_at: string
+          effective_date: string
+          goals: string
+          id: string
+          is_current: boolean
+          patient_id: string
+          permitted_tasks: string | null
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_care_plans"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      record_patient_vitals: {
+        Args: {
+          p_blood_pressure?: string
+          p_notes?: string
+          p_oxygen_saturation?: number
+          p_pain_level?: number
+          p_patient_id: string
+          p_pulse_bpm?: number
+          p_source?: string
+          p_temperature_f?: number
+          p_weight_lbs?: number
+        }
+        Returns: {
+          author_id: string
+          blood_pressure: string | null
+          created_at: string
+          id: string
+          measured_at: string
+          notes: string | null
+          oxygen_saturation: number | null
+          pain_level: number | null
+          patient_id: string
+          pulse_bpm: number | null
+          source: string
+          temperature_f: number | null
+          weight_lbs: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_vitals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      record_therapy_goal: {
+        Args: {
+          p_objective: string
+          p_patient_id: string
+          p_progress_notes?: string
+        }
+        Returns: {
+          author_id: string
+          created_at: string
+          id: string
+          objective: string
+          patient_id: string
+          progress_notes: string | null
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_therapy_goals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_therapy_goal_progress: {
+        Args: { p_goal_id: string; p_progress_notes: string; p_status?: string }
+        Returns: {
+          author_id: string
+          created_at: string
+          id: string
+          objective: string
+          patient_id: string
+          progress_notes: string | null
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_therapy_goals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      record_care_preference: {
+        Args: {
+          p_category: string
+          p_description: string
+          p_patient_id: string
+          p_reported_by?: string
+        }
+        Returns: {
+          author_id: string
+          category: string
+          created_at: string
+          description: string
+          id: string
+          patient_id: string
+          reported_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_care_preferences"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       get_my_care_team: {
         Args: { p_org_id: string }
         Returns: {
