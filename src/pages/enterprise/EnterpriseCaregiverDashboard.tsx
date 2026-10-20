@@ -185,7 +185,12 @@ export default function EnterpriseCaregiverDashboard() {
               {nav === 'visits' && <VisitsListView />}
               {nav === 'tasks' && <TasksView patients={patients} />}
               {nav === 'communications' && <CommunicationsView />}
-              {nav === 'notes' && <PatientsListView patients={patients} onOpenPatient={setOpenPatient} title="Select a patient to view or add Care Notes & Observations" />}
+              {nav === 'notes' && (
+                <>
+                  <MyDocumentationHistoryView />
+                  <PatientsListView patients={patients} onOpenPatient={setOpenPatient} title="Select a patient to view or add Care Notes & Observations" />
+                </>
+              )}
               {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={setOpenPatient} title="Select a patient to record or review Shift Handoffs" />}
               {nav === 'alerts' && <AlertsView patients={patients} orgId={orgId} />}
               {nav === 'careTeam' && <CareTeamView orgId={orgId} patients={patients} />}
@@ -393,6 +398,55 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
         <p className="text-[11px] text-medium-gray">No locally queued offline drafts exist in this shell — nothing here is reported as sent unless it has actually reached the server.</p>
       </Card>
     </>
+  );
+}
+
+// W14 — "Show authored entries... recorded times and audit information
+// accessible to caregiver." Every entry is already self-row readable
+// (author_id = auth.uid() / reported_by = auth.uid()); no amendment/
+// correction tracking exists anywhere in this schema, so this
+// genuinely shows only original entries — disclosed, not claimed.
+function MyDocumentationHistoryView() {
+  const { state } = useApp();
+  const [notes, setNotes] = useState<{ id: string; note: string; created_at: string; note_type: string }[]>([]);
+  const [incidents, setIncidents] = useState<IncidentReport[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const myId = state.currentUser?.id;
+    if (!myId) { setLoading(false); return; }
+    void Promise.all([
+      supabase.from('patient_notes').select('id, note, created_at, note_type').eq('author_id', myId).order('created_at', { ascending: false }).limit(20),
+      supabase.from('incident_reports').select('id, patient_id, reported_by, incident_type, description, severity, occurred_at, resolution_status, resolution_notes, supervisor_notified_at').eq('reported_by', myId).order('occurred_at', { ascending: false }).limit(10),
+    ]).then(([n, i]) => {
+      setNotes((n.data ?? []) as typeof notes);
+      setIncidents((i.data ?? []).map((r) => ({
+        id: r.id, patientId: r.patient_id, reportedBy: r.reported_by, incidentType: r.incident_type as IncidentReport['incidentType'],
+        description: r.description, severity: r.severity as IncidentReport['severity'], occurredAt: r.occurred_at,
+        resolutionStatus: r.resolution_status as IncidentReport['resolutionStatus'], resolutionNotes: r.resolution_notes, supervisorNotifiedAt: r.supervisor_notified_at,
+      })));
+      setLoading(false);
+    });
+  }, [state.currentUser?.id]);
+  if (loading) return null;
+  const combined = [
+    ...notes.map((n) => ({ at: n.created_at, label: `Note (${n.note_type.replace('_', ' ')}): ${n.note}` })),
+    ...incidents.map((i) => ({ at: i.occurredAt, label: `Incident report: ${i.incidentType.replace('_', ' ')}` })),
+  ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  return (
+    <Card>
+      <div className="flex items-center gap-2"><FileText className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Documentation History</h2></div>
+      {combined.length === 0 ? <p className="text-sm text-medium-gray">You have not authored any documentation yet.</p> : (
+        <ul className="space-y-1.5 max-h-72 overflow-y-auto">
+          {combined.map((c, idx) => (
+            <li key={idx} className="p-2 bg-warm-ivory rounded-lg border border-soft-taupe text-xs text-charcoal">
+              {c.label}
+              <span className="text-medium-gray block">{new Date(c.at).toLocaleString()}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-[11px] text-medium-gray">Every entry shown is the original record — no amendment/correction history exists in this schema yet.</p>
+    </Card>
   );
 }
 

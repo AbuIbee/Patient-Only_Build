@@ -472,6 +472,49 @@ const AG_DOMAINS = [
   { code: 'G', label: 'Symptoms & Comfort', fields: ['sy_symptoms', 'sy_severity', 'sy_pain', 'sy_comments'] },
 ] as const;
 
+// P13 — distinct from P12's A-G domains: overnight observations
+// specifically, drawn from the same care_partner_checkins history
+// (mo_sleep) plus any HELP activation whose timestamp falls in the
+// overnight window. "Morning follow-up and attribution" is satisfied
+// by showing each entry's own submitter/timestamp already carried on
+// the row — no separate follow-up workflow exists yet (disclosed, not
+// claimed).
+function SleepOvernightCard({ patientId }: { patientId: string }) {
+  const [rows, setRows] = useState<{ at: string; sleep: string | null; submittedByName: string | null }[]>([]);
+  const [overnightHelp, setOvernightHelp] = useState<HelpActivationHistoryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    void Promise.all([
+      supabase.from('care_partner_checkins').select('check_in_date, mo_sleep, submitted_by_name').eq('patient_id', patientId).order('check_in_date', { ascending: false }).limit(10),
+      getHelpActivationHistory(patientId),
+    ]).then(([c, h]) => {
+      setRows((c.data ?? []).filter((r) => r.mo_sleep).map((r) => ({ at: r.check_in_date, sleep: r.mo_sleep, submittedByName: r.submitted_by_name })));
+      setOvernightHelp(h.entries.filter((e) => { const hr = new Date(e.createdAt).getHours(); return hr >= 20 || hr < 6; }));
+      setLoading(false);
+    });
+  }, [patientId]);
+  if (loading) return null;
+  return (
+    <SectionCard title="Sleep & Overnight Reports" icon={Clock}>
+      {rows.length === 0 && overnightHelp.length === 0 ? <p className="text-sm text-medium-gray">No overnight observations recorded.</p> : (
+        <ul className="space-y-1.5">
+          {overnightHelp.map((h) => (
+            <li key={h.id} className="p-2 bg-gentle-coral/5 border border-gentle-coral/30 rounded-lg text-xs text-charcoal">
+              Overnight HELP activation · {new Date(h.createdAt).toLocaleString()}
+            </li>
+          ))}
+          {rows.map((r, idx) => (
+            <li key={idx} className="p-2 bg-warm-ivory rounded-lg border border-soft-taupe text-xs text-charcoal">
+              {r.sleep}{r.submittedByName ? ` — reported by ${r.submittedByName}` : ''}
+              <span className="text-medium-gray block">{r.at}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SectionCard>
+  );
+}
+
 function AGTab({ patientId }: { patientId: string }) {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [checkins, setCheckins] = useState<Record<string, unknown>[]>([]);
@@ -510,6 +553,7 @@ function AGTab({ patientId }: { patientId: string }) {
           )}
         </SectionCard>
       ))}
+      <SleepOvernightCard patientId={patientId} />
     </>
   );
 }
