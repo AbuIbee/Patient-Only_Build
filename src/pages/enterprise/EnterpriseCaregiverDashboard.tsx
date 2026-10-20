@@ -25,7 +25,8 @@ import {
   getMyStaffPatients, getMyCareTeam, getMyOrgSupervisor, getMyOrganizations,
   type StaffPatient, type CareTeamMember,
 } from '@/services/organizationService';
-import { getMyConversations, type ConversationSummary } from '@/services/communicationsService';
+import { getMyConversations, createConversation, type ConversationSummary } from '@/services/communicationsService';
+import { getHelpActivationHistory } from '@/services/helpActivationService';
 import {
   getMyVisits, startCaregiverVisit, endCaregiverVisit, scheduleCaregiverVisit,
   getPatientIncidentReports, fileIncidentReport,
@@ -185,7 +186,7 @@ export default function EnterpriseCaregiverDashboard() {
             </div>
           ) : (
             <div className="max-w-3xl mx-auto space-y-5">
-              {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={setOpenPatient} />}
+              {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={setOpenPatient} onNavigate={setNav} />}
               {(nav === 'patients' || nav === 'records') && (
                 <PatientsListView patients={patients} onOpenPatient={setOpenPatient} />
               )}
@@ -196,7 +197,7 @@ export default function EnterpriseCaregiverDashboard() {
               {nav === 'notes' && <PatientsListView patients={patients} onOpenPatient={setOpenPatient} title="Select a patient to view or add Care Notes & Observations" />}
               {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={setOpenPatient} title="Select a patient to record or review Shift Handoffs" />}
               {nav === 'alerts' && <AlertsView patients={patients} orgId={orgId} />}
-              {nav === 'careTeam' && <CareTeamView orgId={orgId} />}
+              {nav === 'careTeam' && <CareTeamView orgId={orgId} patients={patients} />}
               {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={setOpenPatient} title="Select a patient to view their Documents" />}
               {nav === 'organization' && <OrganizationView orgId={orgId} orgName={orgName} />}
               {nav === 'settings' && <SettingsView userName={state.currentUser?.firstName} onLogout={handleLogout} />}
@@ -216,11 +217,12 @@ function Card({ children }: { children: React.ReactNode }) {
 // H05 (assigned patients), H06/H07 (schedule/next visit) — real counts
 // from the data already loaded by the shell, each navigating to its
 // underlying authorized records per the locked requirement.
-function DashboardView({ patients, orgId, onOpenPatient }: { patients: StaffPatient[]; orgId: string; onOpenPatient: (id: string) => void }) {
+function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patients: StaffPatient[]; orgId: string; onOpenPatient: (id: string) => void; onNavigate: (nav: NavItem) => void }) {
   const { state } = useApp();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
+  const [helpCount, setHelpCount] = useState(0);
   const [loadingExtra, setLoadingExtra] = useState(true);
 
   useEffect(() => {
@@ -228,10 +230,12 @@ function DashboardView({ patients, orgId, onOpenPatient }: { patients: StaffPati
     (async () => {
       const [convos, myVisits] = await Promise.all([getMyConversations(), getMyVisits()]);
       const allIncidents = (await Promise.all(patients.map((p) => getPatientIncidentReports(p.patientId)))).flat();
+      const allHelp = (await Promise.all(patients.map(async (p) => (await getHelpActivationHistory(p.patientId)).entries))).flat();
       if (!active) return;
       setConversations(convos);
       setVisits(myVisits);
       setIncidents(allIncidents.filter((i) => i.resolutionStatus !== 'resolved'));
+      setHelpCount(allHelp.length);
       setLoadingExtra(false);
     })();
     return () => { active = false; };
@@ -248,17 +252,23 @@ function DashboardView({ patients, orgId, onOpenPatient }: { patients: StaffPati
         <p className="text-sm text-medium-gray">Signed in as an Enterprise caregiver — {orgId ? 'active organization confirmed' : ''}.</p>
       </Card>
 
+      {/* H02 — ROUND 6: each count now navigates to its underlying,
+          authorized record set ("Each count must navigate to its
+          underlying, authorized records"), not just the sidebar. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: 'Assigned Patients', value: patients.length },
-          { label: "Today's Visits", value: todayVisits.length },
-          { label: 'Unread Messages', value: unreadCount },
-          { label: 'Open Alerts', value: incidents.length },
-        ].map((m) => (
-          <div key={m.label} className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-4 text-center">
+        {([
+          { label: 'Assigned Patients', value: patients.length, nav: 'patients' as NavItem },
+          { label: "Today's Visits", value: todayVisits.length, nav: 'schedule' as NavItem },
+          { label: 'Unread Messages', value: unreadCount, nav: 'communications' as NavItem },
+          { label: 'Open Alerts', value: incidents.length + helpCount, nav: 'alerts' as NavItem },
+        ]).map((m) => (
+          <button
+            key={m.label} type="button" onClick={() => onNavigate(m.nav)}
+            className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-4 text-center hover:shadow-md hover:border-warm-bronze/40 transition-all"
+          >
             <p className="text-2xl font-bold text-warm-bronze">{loadingExtra ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : m.value}</p>
             <p className="text-xs text-medium-gray mt-1">{m.label}</p>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -424,21 +434,41 @@ function VisitsListView() {
 // (pending/completed/skipped); "Not Applicable" is not yet a
 // representable status and is disclosed as a known gap rather than
 // silently mapped to one of the existing three.
+type TaskStatus = 'pending' | 'completed' | 'skipped' | 'not_applicable';
+interface TaskRow { id: string; patient_id: string; title: string; status: TaskStatus; refusal_reason: string | null }
+
+// H08/W02/N04 — ROUND 6: all four locked statuses (Completed,
+// Declined [skipped], Not Completed [pending], Not Applicable) are now
+// representable (migration 071 added 'not_applicable' to the CHECK
+// constraint, which previously only allowed pending/completed/skipped).
+// A refusal reason is requested for skipped/not_applicable, matching
+// "documented patient refusal."
 function TasksView({ patients }: { patients: StaffPatient[] }) {
-  const [tasks, setTasks] = useState<{ id: string; patient_id: string; title: string; status: string }[]>([]);
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const { state } = useApp();
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (patients.length === 0) { setLoading(false); return; }
-    void supabase.from('tasks').select('id, patient_id, title, status').in('patient_id', patients.map((p) => p.patientId)).eq('is_active', true)
-      .then(({ data }) => { setTasks(data ?? []); setLoading(false); });
+    void supabase.from('tasks').select('id, patient_id, title, status, refusal_reason').in('patient_id', patients.map((p) => p.patientId)).eq('is_active', true)
+      .then(({ data }) => { setTasks((data ?? []) as TaskRow[]); setLoading(false); });
   }, [patients]);
+  useEffect(() => { load(); }, [load]);
 
-  const markStatus = async (taskId: string, status: 'completed' | 'skipped' | 'pending') => {
-    const { error } = await supabase.from('tasks').update({ status, completed_at: status === 'completed' ? new Date().toISOString() : null }).eq('id', taskId);
+  const markStatus = async (taskId: string, status: TaskStatus) => {
+    let refusalReason: string | null = null;
+    if (status === 'skipped' || status === 'not_applicable') {
+      refusalReason = window.prompt(status === 'skipped' ? 'Reason the patient declined (optional):' : 'Reason this task is not applicable (optional):') || null;
+    }
+    const { error } = await supabase.from('tasks').update({
+      status, refusal_reason: refusalReason, completed_at: status === 'completed' ? new Date().toISOString() : null,
+      status_updated_by: state.currentUser?.id ?? null, status_updated_at: new Date().toISOString(),
+    }).eq('id', taskId).select('id');
     if (error) { toast.error(error.message); return; }
-    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status } : t)));
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status, refusal_reason: refusalReason } : t)));
   };
+
+  const statusLabel: Record<TaskStatus, string> = { pending: 'Not Completed', completed: 'Completed', skipped: 'Declined', not_applicable: 'Not Applicable' };
 
   return (
     <Card>
@@ -451,11 +481,13 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
             <li key={t.id} className="flex items-center justify-between p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
               <div>
                 <p className="text-sm font-medium text-charcoal">{t.title}</p>
-                <p className="text-xs text-medium-gray">{patients.find((p) => p.patientId === t.patient_id)?.preferredName} · <span className="capitalize">{t.status}</span></p>
+                <p className="text-xs text-medium-gray">{patients.find((p) => p.patientId === t.patient_id)?.preferredName} · {statusLabel[t.status]}</p>
+                {t.refusal_reason && <p className="text-xs text-medium-gray italic">&quot;{t.refusal_reason}&quot;</p>}
               </div>
               <div className="flex gap-1.5">
-                <button type="button" onClick={() => { void markStatus(t.id, 'completed'); }} className="p-1.5 rounded-lg bg-soft-sage/20 text-soft-sage"><CheckCircle2 className="w-4 h-4" /></button>
-                <button type="button" onClick={() => { void markStatus(t.id, 'skipped'); }} className="p-1.5 rounded-lg bg-gentle-coral/20 text-gentle-coral"><X className="w-4 h-4" /></button>
+                <button type="button" title="Completed" onClick={() => { void markStatus(t.id, 'completed'); }} className="p-1.5 rounded-lg bg-soft-sage/20 text-soft-sage"><CheckCircle2 className="w-4 h-4" /></button>
+                <button type="button" title="Declined" onClick={() => { void markStatus(t.id, 'skipped'); }} className="p-1.5 rounded-lg bg-gentle-coral/20 text-gentle-coral"><X className="w-4 h-4" /></button>
+                <button type="button" title="Not Applicable" onClick={() => { void markStatus(t.id, 'not_applicable'); }} className="p-1.5 rounded-lg bg-medium-gray/20 text-medium-gray text-xs font-bold">N/A</button>
               </div>
             </li>
           ))}
@@ -492,8 +524,17 @@ function CommunicationsView() {
 }
 
 // H12/W07/N09 — file/view incidents across every assigned patient.
+interface HelpAlertRow { kind: 'help'; id: string; patientName: string; occurredAt: string; detail: string }
+interface IncidentAlertRow extends IncidentReport { kind: 'incident'; patientName: string }
+type AlertRow = HelpAlertRow | IncidentAlertRow;
+
+// H03/P17 — ROUND 6: merges HELP-button activations alongside
+// incident_reports into one feed — "never equate recording with
+// delivery or emergency dispatch" is preserved verbatim: the
+// notification_status text is shown as recorded, never translated into
+// a delivery/dispatch claim.
 function AlertsView({ patients, orgId }: { patients: StaffPatient[]; orgId: string }) {
-  const [incidents, setIncidents] = useState<(IncidentReport & { patientName: string })[]>([]);
+  const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [patientId, setPatientId] = useState('');
   const [incidentType, setIncidentType] = useState<'fall' | 'injury' | 'behavioral' | 'medication_concern' | 'safety_event' | 'other'>('other');
@@ -501,8 +542,17 @@ function AlertsView({ patients, orgId }: { patients: StaffPatient[]; orgId: stri
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const all = await Promise.all(patients.map(async (p) => (await getPatientIncidentReports(p.patientId)).map((i) => ({ ...i, patientName: p.preferredName || p.firstName }))));
-    setIncidents(all.flat().sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()));
+    const incidentRows = (await Promise.all(patients.map(async (p) => (await getPatientIncidentReports(p.patientId)).map((i): IncidentAlertRow => ({ ...i, kind: 'incident', patientName: p.preferredName || p.firstName }))))).flat();
+    const helpRows = (await Promise.all(patients.map(async (p) => {
+      const { entries } = await getHelpActivationHistory(p.patientId);
+      return entries.map((e): HelpAlertRow => ({
+        kind: 'help', id: e.id, patientName: p.preferredName || p.firstName, occurredAt: e.createdAt,
+        detail: `HELP button activated${e.phoneDialed ? ` — attempted call to ${e.phoneDialed}` : ''} (${e.notificationStatus.replace('_', ' ')})`,
+      }));
+    }))).flat();
+    const merged: AlertRow[] = [...incidentRows, ...helpRows];
+    merged.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
+    setAlerts(merged);
     setLoading(false);
   }, [patients]);
   useEffect(() => { void load(); }, [load]);
@@ -549,15 +599,20 @@ function AlertsView({ patients, orgId }: { patients: StaffPatient[]; orgId: stri
           </button>
         </div>
       </div>
-      {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : incidents.length === 0 ? (
-        <p className="text-sm text-medium-gray">No incidents recorded.</p>
+      {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : alerts.length === 0 ? (
+        <p className="text-sm text-medium-gray">No alerts or incidents recorded.</p>
       ) : (
         <ul className="space-y-2">
-          {incidents.map((i) => (
-            <li key={i.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
-              <p className="text-sm font-medium text-charcoal capitalize">{i.patientName} — {i.incidentType.replace('_', ' ')} ({i.severity})</p>
-              <p className="text-xs text-medium-gray">{i.description}</p>
-              <p className="text-[11px] text-medium-gray mt-1">{new Date(i.occurredAt).toLocaleString()} · <span className="capitalize">{i.resolutionStatus.replace('_', ' ')}</span></p>
+          {alerts.map((a) => a.kind === 'help' ? (
+            <li key={`help-${a.id}`} className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+              <p className="text-sm font-medium text-charcoal">{a.patientName} — {a.detail}</p>
+              <p className="text-[11px] text-medium-gray mt-1">{new Date(a.occurredAt).toLocaleString()} · recorded in app only, not a verified emergency dispatch</p>
+            </li>
+          ) : (
+            <li key={`incident-${a.id}`} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
+              <p className="text-sm font-medium text-charcoal capitalize">{a.patientName} — {a.incidentType.replace('_', ' ')} ({a.severity})</p>
+              <p className="text-xs text-medium-gray">{a.description}</p>
+              <p className="text-[11px] text-medium-gray mt-1">{new Date(a.occurredAt).toLocaleString()} · <span className="capitalize">{a.resolutionStatus.replace('_', ' ')}</span></p>
             </li>
           ))}
         </ul>
@@ -566,22 +621,49 @@ function AlertsView({ patients, orgId }: { patients: StaffPatient[]; orgId: stri
   );
 }
 
-function CareTeamView({ orgId }: { orgId: string }) {
+function CareTeamView({ orgId, patients }: { orgId: string; patients: StaffPatient[] }) {
   const [team, setTeam] = useState<CareTeamMember[]>([]);
   const [supervisor, setSupervisor] = useState<{ userId: string; firstName: string; lastName: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [messagingSupervisor, setMessagingSupervisor] = useState(false);
   useEffect(() => {
     void Promise.all([getMyCareTeam(orgId), getMyOrgSupervisor(orgId)]).then(([t, s]) => { setTeam(t); setSupervisor(s); setLoading(false); });
   }, [orgId]);
+
+  // W09 — ROUND 6: "communicate via private, explicitly addressed
+  // professional conversation" — previously only displayed the
+  // supervisor's name. Every conversation in this app is patient-
+  // scoped, so the caregiver's first assigned patient provides that
+  // context; a caregiver with no assigned patient cannot yet message a
+  // supervisor this way (disclosed, not silently hidden).
+  const messageSupervisor = async () => {
+    if (!supervisor || patients.length === 0) return;
+    setMessagingSupervisor(true);
+    try {
+      const { error } = await createConversation(patients[0].patientId, [supervisor.userId], `Message to ${supervisor.firstName} ${supervisor.lastName}`);
+      if (error) { toast.error(error); return; }
+      toast.success('Conversation started — continue it from Care Communications.');
+    } finally {
+      setMessagingSupervisor(false);
+    }
+  };
+
   return (
     <Card>
       <div className="flex items-center gap-2"><UserCog className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Care Team</h2></div>
       {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : (
         <>
           {supervisor && (
-            <div className="p-3 bg-warm-bronze/5 rounded-xl border border-warm-bronze/20">
-              <p className="text-xs text-medium-gray">Supervisor Contact</p>
-              <p className="text-sm font-semibold text-charcoal">{supervisor.firstName} {supervisor.lastName}</p>
+            <div className="p-3 bg-warm-bronze/5 rounded-xl border border-warm-bronze/20 flex items-center justify-between">
+              <div>
+                <p className="text-xs text-medium-gray">Supervisor Contact</p>
+                <p className="text-sm font-semibold text-charcoal">{supervisor.firstName} {supervisor.lastName}</p>
+              </div>
+              {patients.length > 0 && (
+                <button type="button" onClick={() => { void messageSupervisor(); }} disabled={messagingSupervisor} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-warm-bronze hover:bg-deep-bronze text-white text-xs font-semibold disabled:opacity-60">
+                  <Send className="w-3.5 h-3.5" /> Message
+                </button>
+              )}
             </div>
           )}
           {team.length === 0 ? <p className="text-sm text-medium-gray">No colleagues share a patient assignment with you yet.</p> : (

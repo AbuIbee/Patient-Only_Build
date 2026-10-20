@@ -1335,34 +1335,37 @@ export interface Database {
       }
       messages: {
         Row: {
-          id: string
-          conversation_id: string
-          sender_id: string
-          sender_role: "patient" | "caregiver" | "therapist" | "medical_professional"
           body: string
-          is_urgent: boolean
-          reply_to_message_id: string | null
+          conversation_id: string
           created_at: string
+          id: string
+          is_urgent: boolean
+          message_type: string
+          reply_to_message_id: string | null
+          sender_id: string
+          sender_role: string
         }
         Insert: {
-          id?: string
-          conversation_id: string
-          sender_id: string
-          sender_role: "patient" | "caregiver" | "therapist" | "medical_professional"
           body: string
-          is_urgent?: boolean
-          reply_to_message_id?: string | null
+          conversation_id: string
           created_at?: string
+          id?: string
+          is_urgent?: boolean
+          message_type?: string
+          reply_to_message_id?: string | null
+          sender_id: string
+          sender_role: string
         }
         Update: {
-          id?: string
-          conversation_id?: string
-          sender_id?: string
-          sender_role?: "patient" | "caregiver" | "therapist" | "medical_professional"
           body?: string
-          is_urgent?: boolean
-          reply_to_message_id?: string | null
+          conversation_id?: string
           created_at?: string
+          id?: string
+          is_urgent?: boolean
+          message_type?: string
+          reply_to_message_id?: string | null
+          sender_id?: string
+          sender_role?: string
         }
         Relationships: [
           {
@@ -1377,6 +1380,13 @@ export interface Database {
             columns: ["reply_to_message_id"]
             isOneToOne: false
             referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1595,61 +1605,75 @@ export interface Database {
       }
       tasks: {
         Row: {
-          id: string
-          patient_id: string
-          title: string
-          description: string | null
-          icon: string
-          time_of_day: TimeOfDay | null
-          scheduled_time: string | null
-          days_of_week: number[]
-          status: TaskStatus
           completed_at: string | null
-          is_recurring: boolean
-          difficulty: DementiaStage | null
-          is_active: boolean
-          created_at: string
+          created_at: string | null
+          days_of_week: number[] | null
+          description: string | null
+          difficulty: string | null
+          icon: string | null
+          id: string
+          is_active: boolean | null
+          is_recurring: boolean | null
+          patient_id: string
+          refusal_reason: string | null
+          scheduled_time: string | null
+          status: string | null
+          status_updated_at: string | null
+          status_updated_by: string | null
+          time_of_day: string | null
+          title: string
         }
         Insert: {
-          id?: string
-          patient_id: string
-          title: string
-          description?: string | null
-          icon?: string
-          time_of_day?: TimeOfDay | null
-          scheduled_time?: string | null
-          days_of_week?: number[]
-          status?: TaskStatus
           completed_at?: string | null
-          is_recurring?: boolean
-          difficulty?: DementiaStage | null
-          is_active?: boolean
-          created_at?: string
+          created_at?: string | null
+          days_of_week?: number[] | null
+          description?: string | null
+          difficulty?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_recurring?: boolean | null
+          patient_id: string
+          refusal_reason?: string | null
+          scheduled_time?: string | null
+          status?: string | null
+          status_updated_at?: string | null
+          status_updated_by?: string | null
+          time_of_day?: string | null
+          title: string
         }
         Update: {
-          id?: string
-          patient_id?: string
-          title?: string
-          description?: string | null
-          icon?: string
-          time_of_day?: TimeOfDay | null
-          scheduled_time?: string | null
-          days_of_week?: number[]
-          status?: TaskStatus
           completed_at?: string | null
-          is_recurring?: boolean
-          difficulty?: DementiaStage | null
-          is_active?: boolean
-          created_at?: string
+          created_at?: string | null
+          days_of_week?: number[] | null
+          description?: string | null
+          difficulty?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_recurring?: boolean | null
+          patient_id?: string
+          refusal_reason?: string | null
+          scheduled_time?: string | null
+          status?: string | null
+          status_updated_at?: string | null
+          status_updated_by?: string | null
+          time_of_day?: string | null
+          title?: string
         }
-        // REPAIR D: confirmed via 001_initial_schema.sql's `patient_id
-        // UUID NOT NULL REFERENCES patients(id)`.
         Relationships: [
           {
             foreignKeyName: "tasks_patient_id_fkey"
             columns: ["patient_id"]
             isOneToOne: false
             referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_status_updated_by_fkey"
+            columns: ["status_updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
