@@ -27,10 +27,41 @@ import type { Database } from '@/types/supabase';
 import ResetPasswordPage from './ResetPasswordPage';
 import { Heart, ShieldAlert } from 'lucide-react';
 
-type Phase = 'resolving' | 'ready' | 'invalid' | 'done';
+type Phase = 'resolving' | 'ready' | 'invalid' | 'timed_out' | 'done';
+
+// ACT-02: read the URL's own signal before guessing. GoTrue redirects
+// a genuinely expired/already-used/malformed token back with explicit
+// error/error_description/error_code hash params — that is a REAL,
+// immediate "invalid" determination, never a timeout guess. A hash
+// with no token-like params at all (no access_token, no error) means
+// there was never anything to verify, equally immediate. Only when
+// neither is true — a token IS present but verification simply hasn't
+// resolved yet — does a timeout apply, and even then it means
+// "could not confirm in time," not "confirmed invalid."
+function readUrlSignal(): { kind: 'error'; message: string } | { kind: 'empty' } | { kind: 'pending' } {
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const search = new URLSearchParams(window.location.search);
+  const errorDescription = hash.get('error_description') || search.get('error_description');
+  const errorCode = hash.get('error_code') || search.get('error_code');
+  if (errorDescription || errorCode) {
+    return { kind: 'error', message: (errorDescription || errorCode || 'This link is no longer valid.').replace(/\+/g, ' ') };
+  }
+  const hasToken = hash.get('access_token') || hash.get('token') || search.get('token') || hash.get('type') || search.get('type');
+  if (!hasToken) {
+    return { kind: 'empty' };
+  }
+  return { kind: 'pending' };
+}
 
 export default function ActivatePatientPage() {
+  // Captured via useState's lazy initializer so it runs synchronously
+  // during this component's FIRST render, before the client-creating
+  // useState below — confirmed live that reading window.location
+  // later, inside a useEffect, could already see the hash cleared
+  // (GoTrue's own detectSessionInUrl processing races ahead of it).
+  const [initialSignal] = useState(() => readUrlSignal());
   const [phase, setPhase] = useState<Phase>('resolving');
+  const [invalidReason, setInvalidReason] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   // Constructed exactly ONCE for this page load, via useState's lazy
   // initializer (unlike useRef(createClient(...)), whose argument is
@@ -62,6 +93,23 @@ export default function ActivatePatientPage() {
   useEffect(() => {
     let settled = false;
 
+    // ACT-02: an explicit GoTrue error or a genuinely empty hash is a
+    // real, immediate determination — resolved before ever starting
+    // the timeout, never conflated with "took too long to verify."
+    // Uses the signal captured at first render (see initialSignal
+    // above), not a fresh read here — the hash can already be gone by
+    // the time an effect runs.
+    if (initialSignal.kind === 'error') {
+      setInvalidReason(initialSignal.message);
+      setPhase('invalid');
+      return;
+    }
+    if (initialSignal.kind === 'empty') {
+      setInvalidReason(null);
+      setPhase('invalid');
+      return;
+    }
+
     const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
       if (settled) return;
       if (event === 'PASSWORD_RECOVERY' && session?.user?.email) {
@@ -71,23 +119,23 @@ export default function ActivatePatientPage() {
       }
     });
 
-    // Fallback: detectSessionInUrl's parsing is asynchronous but usually
-    // resolves almost immediately on construction. If no
-    // PASSWORD_RECOVERY event arrives within a few seconds, the link is
-    // treated as invalid/expired/already-used rather than leaving the
-    // page stuck on a spinner forever.
+    // A token WAS present but verification hasn't resolved within a
+    // few seconds — this is "could not confirm in time," a distinct,
+    // recoverable state (offers a retry), never auto-declared invalid.
+    // detectSessionInUrl's own exchange is normally near-instant; this
+    // is a generous margin for a slow network, not a precise deadline.
     const timeout = window.setTimeout(() => {
       if (!settled) {
         settled = true;
-        setPhase('invalid');
+        setPhase('timed_out');
       }
-    }, 4000);
+    }, 8000);
 
     return () => {
       subscription.unsubscribe();
       window.clearTimeout(timeout);
     };
-  }, [client]);
+  }, [client, initialSignal]);
 
   const handleComplete = async () => {
     // Discard this page's isolated session entirely — the newly-
@@ -122,11 +170,33 @@ export default function ActivatePatientPage() {
           <ShieldAlert className="w-10 h-10 text-gentle-coral mx-auto" />
           <h2 className="text-xl font-bold text-charcoal">This activation link is invalid or has expired</h2>
           <p className="text-sm text-medium-gray">
+            {invalidReason ? `${invalidReason} ` : ''}
             Activation links are single-use and expire after a period of time. Ask your caregiver to generate a new one from their Caregiver Portal, then open it in a fresh tab.
           </p>
           <a href="/" className="inline-block text-sm text-warm-bronze hover:text-deep-bronze font-semibold underline">
             Return to sign in
           </a>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'timed_out') {
+    return (
+      <div className="min-h-screen bg-warm-ivory flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white border border-soft-taupe rounded-2xl shadow-sm p-8 text-center space-y-4">
+          <ShieldAlert className="w-10 h-10 text-amber-600 mx-auto" />
+          <h2 className="text-xl font-bold text-charcoal">This is taking longer than expected</h2>
+          <p className="text-sm text-medium-gray">
+            Your activation link could not be confirmed in time — this may be a temporary network issue, not a problem with the link itself. Try again before requesting a new one.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="inline-block px-5 py-2.5 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white font-semibold text-sm transition-colors"
+          >
+            Try again
+          </button>
         </div>
       </div>
     );
@@ -157,7 +227,12 @@ export default function ActivatePatientPage() {
           You are activating the account for <strong>{email}</strong>. If this is not the account you expected, close this tab without setting a password.
         </div>
       </div>
-      <ResetPasswordPage forced={false} userEmail={email ?? undefined} client={client} onComplete={() => { void handleComplete(); }} />
+      {/* ACT-01: forced=true removes ResetPasswordPage's "Skip for
+          now" button entirely — that button calls onComplete()
+          directly with no password ever set, which previously let
+          this page report "Account activated" with no password set at
+          all. Mandatory activation must never be skippable. */}
+      <ResetPasswordPage forced={true} activationMode={true} userEmail={email ?? undefined} client={client} onComplete={() => { void handleComplete(); }} />
     </div>
   );
 }

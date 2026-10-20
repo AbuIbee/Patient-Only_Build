@@ -8,8 +8,12 @@ import { toast } from 'sonner';
 
 interface ResetPasswordPageProps {
   onComplete:   () => void;
-  forced?:      boolean;   // true = temp password set by admin/caregiver, cannot skip
+  forced?:      boolean;   // true = cannot skip (temp password set by admin/caregiver, OR first-time activation)
   userEmail?:   string;    // shown to remind the user which account they're setting
+  // ACT-01: distinguishes copy only — "forced" already removes the
+  // skip path for both cases; this just avoids showing "temporary
+  // password" wording to a patient who never had any password at all.
+  activationMode?: boolean;
   // REMEDIATION B: ActivatePatientPage passes its own isolated,
   // non-persisted client here so password-set never touches the shared,
   // persistent client's session. Defaults to the shared client for the
@@ -18,7 +22,7 @@ interface ResetPasswordPageProps {
   client?:      SupabaseClient<Database>;
 }
 
-export default function ResetPasswordPage({ onComplete, forced = false, userEmail, client }: ResetPasswordPageProps) {
+export default function ResetPasswordPage({ onComplete, forced = false, userEmail, activationMode = false, client }: ResetPasswordPageProps) {
   const supabase = client ?? sharedSupabase;
   const [password, setPassword] = useState('');
   const [confirm,  setConfirm]  = useState('');
@@ -47,17 +51,27 @@ export default function ResetPasswordPage({ onComplete, forced = false, userEmai
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // F01 remediation: a forced reset must not report success unless the
-        // flag that gates re-entry is confirmed cleared — otherwise the next
-        // screen (App.tsx handlePasswordSet) would see a stale
-        // must_change_password=true and correctly re-show this screen, but
-        // the user would see a false "Password set!" confirmation first.
-        const { error: clearError } = await supabase.from('profiles')
-          .update({ must_change_password: false })
-          .eq('id', user.id);
-        if (clearError) throw clearError;
+      // ACT-01: a successfully redeemed token / a successful Auth
+      // password update is NOT, by itself, proof of activation — the
+      // persistent profile transition must actually be confirmed. Both
+      // a missing identity and a zero-row update are treated as
+      // failures, never silently skipped into a reported success.
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Could not verify the account to finish activation. Please try again or request a new link.');
+      }
+      // F01 remediation: a forced reset must not report success unless the
+      // flag that gates re-entry is confirmed cleared — otherwise the next
+      // screen (App.tsx handlePasswordSet) would see a stale
+      // must_change_password=true and correctly re-show this screen, but
+      // the user would see a false "Password set!" confirmation first.
+      const { data: updatedRows, error: clearError } = await supabase.from('profiles')
+        .update({ must_change_password: false })
+        .eq('id', user.id)
+        .select('id');
+      if (clearError) throw clearError;
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error('Your password was set, but your account profile could not be confirmed. Please contact support before signing in.');
       }
 
       setDone(true);
@@ -79,7 +93,7 @@ export default function ResetPasswordPage({ onComplete, forced = false, userEmai
           </div>
           <h1 className="text-2xl font-bold text-charcoal">My Memoria Ally</h1>
           <p className="text-medium-gray mt-1 text-sm">
-            {forced ? 'You must create your own password to continue' : 'Set your password to access your portal'}
+            {activationMode ? 'Create your password to activate your account' : forced ? 'You must create your own password to continue' : 'Set your password to access your portal'}
           </p>
         </div>
 
@@ -101,14 +115,14 @@ export default function ResetPasswordPage({ onComplete, forced = false, userEmai
                 </div>
                 <div>
                   <h2 className="font-semibold text-charcoal">
-                    {forced ? 'Create Your Password' : 'Set New Password'}
+                    {activationMode ? 'Activate Your Account' : forced ? 'Create Your Password' : 'Set New Password'}
                   </h2>
                   {userEmail && <p className="text-xs text-medium-gray">{userEmail}</p>}
                 </div>
               </div>
 
               {/* Forced warning banner */}
-              {forced && (
+              {forced && !activationMode && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
                   ⚠️ Your account was created with a temporary password. You must set your own permanent password before you can continue.
                 </div>
