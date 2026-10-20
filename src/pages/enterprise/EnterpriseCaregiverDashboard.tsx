@@ -30,8 +30,8 @@ import {
   getMyVisits, startCaregiverVisit, endCaregiverVisit, scheduleCaregiverVisit,
   getPatientIncidentReports, fileIncidentReport,
   recordShiftHandoff, getPatientShiftHandoffs, acknowledgeShiftHandoff,
-  reportScopeConcern,
-  type CaregiverVisit, type IncidentReport, type ShiftHandoff,
+  reportScopeConcern, getMyCredentials,
+  type CaregiverVisit, type IncidentReport, type ShiftHandoff, type CaregiverCredential,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 
@@ -178,6 +178,9 @@ export default function EnterpriseCaregiverDashboard() {
               </div>
               <div className="mt-5">
                 <IncidentsSection patientId={openPatient} />
+              </div>
+              <div className="mt-5">
+                <DocumentsSection patientId={openPatient} />
               </div>
             </div>
           ) : (
@@ -599,16 +602,42 @@ function CareTeamView({ orgId }: { orgId: string }) {
 
 function OrganizationView({ orgId, orgName }: { orgId: string; orgName: string }) {
   const { state } = useApp();
+  const [credentials, setCredentials] = useState<CaregiverCredential[]>([]);
+  const [loadingCreds, setLoadingCreds] = useState(true);
+  useEffect(() => { void getMyCredentials().then((c) => { setCredentials(c); setLoadingCreds(false); }); }, []);
+
   return (
-    <Card>
-      <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Organization</h2></div>
-      <div className="space-y-1 text-sm">
-        <p className="text-charcoal font-medium">{orgName}</p>
-        <p className="text-medium-gray">Role: Caregiver</p>
-        <p className="text-medium-gray">Signed in as {state.currentUser?.firstName} {state.currentUser?.lastName}</p>
-      </div>
-      <p className="text-xs text-medium-gray">Organization id: {orgId}</p>
-    </Card>
+    <>
+      <Card>
+        <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Organization</h2></div>
+        <div className="space-y-1 text-sm">
+          <p className="text-charcoal font-medium">{orgName}</p>
+          <p className="text-medium-gray">Role: Caregiver</p>
+          <p className="text-medium-gray">Signed in as {state.currentUser?.firstName} {state.currentUser?.lastName}</p>
+        </div>
+        <p className="text-xs text-medium-gray">Organization id: {orgId}</p>
+      </Card>
+      {/* H17/O06 — Credentials & Training. Recorded by a director only
+          (admin_set_role-style gate — a caregiver cannot self-certify);
+          shown here read-only. */}
+      <Card>
+        <div className="flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Credentials &amp; Training</h2></div>
+        {loadingCreds ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : credentials.length === 0 ? (
+          <p className="text-sm text-medium-gray">No credentials on file. Your organization's director can record one for you.</p>
+        ) : (
+          <ul className="space-y-2">
+            {credentials.map((c) => (
+              <li key={c.id} className="flex items-center justify-between p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
+                <span className="text-sm font-medium text-charcoal">{c.credentialName}</span>
+                <span className={`text-xs font-semibold capitalize ${c.status === 'expired' ? 'text-gentle-coral' : c.status === 'expiring_soon' ? 'text-amber-600' : 'text-soft-sage'}`}>
+                  {c.status.replace('_', ' ')}{c.expiresAt ? ` · ${new Date(c.expiresAt).toLocaleDateString()}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </>
   );
 }
 
@@ -711,6 +740,41 @@ function IncidentsSection({ patientId }: { patientId: string }) {
           </li>
         ))}
       </ul>
+    </Card>
+  );
+}
+
+// P15/N12/W12 — Documents. Read-only in this pass (migration 067
+// already extended patient_document_uploads' SELECT RLS to recognize
+// an active staff_patient_assignments row — this reuses that directly
+// rather than any new RPC). Upload and secure signed-URL download are
+// disclosed as a known remaining gap: this list intentionally shows
+// only file_name/section/uploaded_at/note_text metadata, never a
+// public URL (per CLAUDE.md's getSignedMediaUrl()-only rule), and does
+// not yet wire that signed-URL flow for staff.
+function DocumentsSection({ patientId }: { patientId: string }) {
+  const [docs, setDocs] = useState<{ id: string; file_name: string; section: string; note_text: string | null; uploaded_at: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    void supabase.from('patient_document_uploads').select('id, file_name, section, note_text, uploaded_at').eq('patient_id', patientId).order('uploaded_at', { ascending: false })
+      .then(({ data }) => { setDocs(data ?? []); setLoading(false); });
+  }, [patientId]);
+  return (
+    <Card>
+      <div className="flex items-center gap-2"><FileText className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Documents</h2></div>
+      {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : docs.length === 0 ? (
+        <p className="text-sm text-medium-gray">No documents on file for this patient.</p>
+      ) : (
+        <ul className="space-y-2">
+          {docs.map((d) => (
+            <li key={d.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+              <p className="font-medium text-charcoal">{d.file_name}</p>
+              <p className="text-xs text-medium-gray capitalize">{d.section.replace('_', ' ')} · {new Date(d.uploaded_at).toLocaleDateString()}</p>
+              {d.note_text && <p className="text-xs text-charcoal mt-1">{d.note_text}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 }
