@@ -2358,6 +2358,8 @@ export interface Database {
           provisioned_auth_user_id: string | null
           deletion_locked_at: string | null
           deletion_operation_id: string | null
+          deletion_destructive_authorized_at: string | null
+          deletion_outcome: string | null
         }
         Insert: {
           id?: string
@@ -2383,6 +2385,8 @@ export interface Database {
           provisioned_auth_user_id?: string | null
           deletion_locked_at?: string | null
           deletion_operation_id?: string | null
+          deletion_destructive_authorized_at?: string | null
+          deletion_outcome?: string | null
         }
         Update: {
           id?: string
@@ -2408,6 +2412,8 @@ export interface Database {
           provisioned_auth_user_id?: string | null
           deletion_locked_at?: string | null
           deletion_operation_id?: string | null
+          deletion_destructive_authorized_at?: string | null
+          deletion_outcome?: string | null
         }
         Relationships: [
           {
@@ -2916,6 +2922,28 @@ export interface Database {
       caregiver_cancel_registration_deletion_lock: {
         Args: { p_registration_id: string; p_operation_id: string }
         Returns: boolean
+      }
+      // DEL-01/DEL-02 — migration 061. The point-of-no-return before any
+      // external Auth deletion call; once committed, cancel/begin-again
+      // are both permanently refused for this operation.
+      caregiver_authorize_destructive_deletion: {
+        Args: { p_registration_id: string; p_operation_id: string }
+        Returns: PendingCaregiverRegistrationRow
+      }
+      // Records the real, resolved external outcome — the only thing
+      // that can ever make caregiver_finish_registration_deletion
+      // succeed.
+      caregiver_record_deletion_outcome: {
+        Args: { p_registration_id: string; p_operation_id: string; p_outcome: string }
+        Returns: PendingCaregiverRegistrationRow
+      }
+      // Admin-only reconciliation for a registration whose deletion
+      // outcome is 'requires_manual_review'. p_confirmed_deleted=true
+      // completes the cleanup; false restores the registration to a
+      // normal, claimable state.
+      admin_reconcile_stuck_registration_deletion: {
+        Args: { p_registration_id: string; p_confirmed_deleted: boolean }
+        Returns: PendingCaregiverRegistrationRow
       }
       // CRITICAL OWNER-REPORTED REMEDIATION Correction A — migration 046.
       get_my_pending_registration_detail: {
