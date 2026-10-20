@@ -2865,6 +2865,24 @@ export interface Database {
       }
     }
     Functions: {
+      get_my_care_team: {
+        Args: { p_org_id: string }
+        Returns: {
+          first_name: string
+          is_director: boolean
+          last_name: string
+          member_user_id: string
+          org_role: string
+        }[]
+      }
+      get_my_org_supervisor: {
+        Args: { p_org_id: string }
+        Returns: {
+          first_name: string
+          last_name: string
+          member_user_id: string
+        }[]
+      }
       schedule_caregiver_visit: {
         Args: {
           p_org_id: string

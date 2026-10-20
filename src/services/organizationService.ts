@@ -245,3 +245,33 @@ export async function getOrgCoveredPatients(orgId: string): Promise<{ patientId:
     return { patientId: r.patient_id, firstName: p?.first_name ?? '', lastName: p?.last_name ?? '', preferredName: p?.preferred_name ?? null };
   });
 }
+
+// ROUND 5 — H16/O04/N11 (Care Team Directory) + W09 (Supervisor
+// Contact lookup). Migration 069: organization_memberships' RLS only
+// ever let a member see their OWN row, or a director see every row —
+// an ordinary staff member had no path to see ANY colleague. These two
+// RPCs are SECURITY DEFINER and independently re-verify the caller's
+// own active membership first.
+export interface CareTeamMember {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  orgRole: OrgRole;
+  isDirector: boolean;
+}
+
+export async function getMyCareTeam(orgId: string): Promise<CareTeamMember[]> {
+  const { data, error } = await supabase.rpc('get_my_care_team', { p_org_id: orgId });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    userId: r.member_user_id, firstName: r.first_name, lastName: r.last_name,
+    orgRole: r.org_role as OrgRole, isDirector: r.is_director,
+  }));
+}
+
+export async function getMyOrgSupervisor(orgId: string): Promise<{ userId: string; firstName: string; lastName: string } | null> {
+  const { data, error } = await supabase.rpc('get_my_org_supervisor', { p_org_id: orgId });
+  if (error || !data || data.length === 0) return null;
+  const row = data[0];
+  return { userId: row.member_user_id, firstName: row.first_name, lastName: row.last_name };
+}
