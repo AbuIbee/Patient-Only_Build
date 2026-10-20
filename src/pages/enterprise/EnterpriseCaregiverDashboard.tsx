@@ -17,7 +17,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
   LogOut, Users, Loader2, MessageSquare, Calendar, ClipboardList,
-  ChevronRight, ArrowLeft, Menu, X, ShieldAlert, Clock, Building2,
+  ChevronRight, Menu, X, ShieldAlert, Clock, Building2,
   ClipboardCheck, FileText, UserCog, Settings as SettingsIcon, Send,
   AlertTriangle, CheckCircle2, PlayCircle, StopCircle,
 } from 'lucide-react';
@@ -30,11 +30,11 @@ import { getHelpActivationHistory } from '@/services/helpActivationService';
 import {
   getMyVisits, startCaregiverVisit, endCaregiverVisit, scheduleCaregiverVisit,
   getPatientIncidentReports, fileIncidentReport,
-  recordShiftHandoff, getPatientShiftHandoffs, acknowledgeShiftHandoff,
   reportScopeConcern, getMyCredentials,
-  type CaregiverVisit, type IncidentReport, type ShiftHandoff, type CaregiverCredential,
+  type CaregiverVisit, type IncidentReport, type CaregiverCredential,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
+import EnterprisePatientRecordTabs from './EnterprisePatientRecordTabs';
 
 type NavItem =
   | 'dashboard' | 'patients' | 'schedule' | 'tasks' | 'records' | 'communications'
@@ -167,22 +167,12 @@ export default function EnterpriseCaregiverDashboard() {
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           {openPatient ? (
             <div className="max-w-3xl mx-auto">
-              <button type="button" onClick={() => setOpenPatient(null)} className="flex items-center gap-1.5 text-sm font-semibold text-medium-gray hover:text-charcoal px-3 py-1.5 -ml-3 mb-3 rounded-lg hover:bg-soft-taupe/30">
-                <ArrowLeft className="w-4 h-4" /> Back
-              </button>
-              <EnterpriseStaffPatientView organizationId={orgId} patientId={openPatient} onBack={() => setOpenPatient(null)} staffRole="caregiver" />
-              <div className="mt-5">
-                <VisitsSection patientId={openPatient} />
-              </div>
-              <div className="mt-5">
-                <ShiftHandoffsSection orgId={orgId} patientId={openPatient} />
-              </div>
-              <div className="mt-5">
-                <IncidentsSection patientId={openPatient} />
-              </div>
-              <div className="mt-5">
-                <DocumentsSection patientId={openPatient} />
-              </div>
+              <EnterpriseStaffPatientView
+                organizationId={orgId} patientId={openPatient} onBack={() => setOpenPatient(null)} staffRole="caregiver"
+                onReady={(patient) => (
+                  <EnterprisePatientRecordTabs patientId={openPatient} patientHeader={patient} staffRole="caregiver" orgId={orgId} onBack={() => setOpenPatient(null)} />
+                )}
+              />
             </div>
           ) : (
             <div className="max-w-3xl mx-auto space-y-5">
@@ -735,128 +725,8 @@ function SettingsView({ userName, onLogout }: { userName?: string; onLogout: () 
   );
 }
 
-function VisitsSection({ patientId }: { patientId: string }) {
-  const [visits, setVisits] = useState<CaregiverVisit[]>([]);
-  useEffect(() => { void getMyVisits(patientId).then(setVisits); }, [patientId]);
-  if (visits.length === 0) return null;
-  return (
-    <Card>
-      <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Visits for this Patient</h2></div>
-      <ul className="space-y-2">
-        {visits.map((v) => (
-          <li key={v.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
-            <span className="capitalize font-medium text-charcoal">{v.status.replace('_', ' ')}</span>
-            {v.scheduledStart && <span className="text-xs text-medium-gray ml-2">{new Date(v.scheduledStart).toLocaleString()}</span>}
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
-function ShiftHandoffsSection({ orgId, patientId }: { orgId: string; patientId: string }) {
-  const [handoffs, setHandoffs] = useState<ShiftHandoff[]>([]);
-  const [summary, setSummary] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const load = useCallback(async () => setHandoffs(await getPatientShiftHandoffs(orgId, patientId)), [orgId, patientId]);
-  useEffect(() => { void load(); }, [load]);
-
-  const submit = async () => {
-    if (!summary.trim()) return;
-    setSaving(true);
-    try {
-      const { error } = await recordShiftHandoff(orgId, patientId, summary);
-      if (error) { toast.error(error); return; }
-      setSummary('');
-      await load();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const ack = async (id: string) => {
-    const { error } = await acknowledgeShiftHandoff(id);
-    if (error) { toast.error(error); return; }
-    await load();
-  };
-
-  return (
-    <Card>
-      <div className="flex items-center gap-2"><Send className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Shift Handoffs</h2></div>
-      <div className="flex gap-2">
-        <textarea value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Shift summary…" rows={2} className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm resize-none" />
-        <button type="button" onClick={() => { void submit(); }} disabled={saving || !summary.trim()} className="px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60 self-start">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Record'}
-        </button>
-      </div>
-      {handoffs.length === 0 ? <p className="text-sm text-medium-gray">No handoffs recorded.</p> : (
-        <ul className="space-y-2">
-          {handoffs.map((h) => (
-            <li key={h.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
-              <p className="text-sm text-charcoal">{h.summary}</p>
-              <div className="flex items-center justify-between mt-1">
-                <p className="text-[11px] text-medium-gray">{h.authorFirstName} {h.authorLastName} · {new Date(h.createdAt).toLocaleString()} · {h.acknowledgedCount} acknowledged</p>
-                <button type="button" onClick={() => { void ack(h.id); }} className="text-[11px] font-semibold text-warm-bronze">Acknowledge</button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Card>
-  );
-}
-
-function IncidentsSection({ patientId }: { patientId: string }) {
-  const [incidents, setIncidents] = useState<IncidentReport[]>([]);
-  useEffect(() => { void getPatientIncidentReports(patientId).then(setIncidents); }, [patientId]);
-  if (incidents.length === 0) return null;
-  return (
-    <Card>
-      <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-gentle-coral" /><h2 className="font-bold text-charcoal">Incident History</h2></div>
-      <ul className="space-y-2">
-        {incidents.map((i) => (
-          <li key={i.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
-            <span className="capitalize font-medium text-charcoal">{i.incidentType.replace('_', ' ')}</span> — {i.description}
-            <p className="text-[11px] text-medium-gray mt-1">{new Date(i.occurredAt).toLocaleString()} · <span className="capitalize">{i.resolutionStatus.replace('_', ' ')}</span></p>
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
-// P15/N12/W12 — Documents. Read-only in this pass (migration 067
-// already extended patient_document_uploads' SELECT RLS to recognize
-// an active staff_patient_assignments row — this reuses that directly
-// rather than any new RPC). Upload and secure signed-URL download are
-// disclosed as a known remaining gap: this list intentionally shows
-// only file_name/section/uploaded_at/note_text metadata, never a
-// public URL (per CLAUDE.md's getSignedMediaUrl()-only rule), and does
-// not yet wire that signed-URL flow for staff.
-function DocumentsSection({ patientId }: { patientId: string }) {
-  const [docs, setDocs] = useState<{ id: string; file_name: string; section: string; note_text: string | null; uploaded_at: string }[]>([]);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    void supabase.from('patient_document_uploads').select('id, file_name, section, note_text, uploaded_at').eq('patient_id', patientId).order('uploaded_at', { ascending: false })
-      .then(({ data }) => { setDocs(data ?? []); setLoading(false); });
-  }, [patientId]);
-  return (
-    <Card>
-      <div className="flex items-center gap-2"><FileText className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Documents</h2></div>
-      {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : docs.length === 0 ? (
-        <p className="text-sm text-medium-gray">No documents on file for this patient.</p>
-      ) : (
-        <ul className="space-y-2">
-          {docs.map((d) => (
-            <li key={d.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
-              <p className="font-medium text-charcoal">{d.file_name}</p>
-              <p className="text-xs text-medium-gray capitalize">{d.section.replace('_', ' ')} · {new Date(d.uploaded_at).toLocaleDateString()}</p>
-              {d.note_text && <p className="text-xs text-charcoal mt-1">{d.note_text}</p>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Card>
-  );
-}
+// ROUND 6: the four per-patient sections previously appended below
+// EnterpriseStaffPatientView (visits, shift handoffs, incidents,
+// documents) have moved into EnterprisePatientRecordTabs.tsx's
+// Appointments/Safety/Documents tabs, reached via the onReady
+// delegation above. See that file for the current implementation.

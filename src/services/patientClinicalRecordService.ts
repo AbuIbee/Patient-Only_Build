@@ -32,7 +32,7 @@ export async function recordPatientDiagnosis(
   patientId: string, conditionName: string, diagnosedDate?: string, notes?: string, source: ProvenanceSource = 'caregiver_report',
 ): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('record_patient_diagnosis', {
-    p_patient_id: patientId, p_condition_name: conditionName, p_diagnosed_date: diagnosedDate ?? null, p_notes: notes ?? null, p_source: source,
+    p_patient_id: patientId, p_condition_name: conditionName, p_diagnosed_date: diagnosedDate, p_notes: notes, p_source: source,
   });
   return { error: error ? errMsg(error, 'Could not record this diagnosis.') : null };
 }
@@ -55,7 +55,7 @@ export async function recordPatientAllergy(
   patientId: string, allergen: string, reaction?: string, severity = 'unknown', notes?: string, source: ProvenanceSource = 'caregiver_report',
 ): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('record_patient_allergy', {
-    p_patient_id: patientId, p_allergen: allergen, p_reaction: reaction ?? null, p_severity: severity, p_notes: notes ?? null, p_source: source,
+    p_patient_id: patientId, p_allergen: allergen, p_reaction: reaction, p_severity: severity, p_notes: notes, p_source: source,
   });
   return { error: error ? errMsg(error, 'Could not record this allergy.') : null };
 }
@@ -76,7 +76,7 @@ export async function getPatientCarePlans(patientId: string): Promise<PatientCar
 
 export async function recordPatientCarePlan(patientId: string, goals: string, permittedTasks?: string, effectiveDate?: string): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('record_patient_care_plan', {
-    p_patient_id: patientId, p_goals: goals, p_permitted_tasks: permittedTasks ?? null, p_effective_date: effectiveDate ?? new Date().toISOString().slice(0, 10),
+    p_patient_id: patientId, p_goals: goals, p_permitted_tasks: permittedTasks, p_effective_date: effectiveDate ?? new Date().toISOString().slice(0, 10),
   });
   return { error: error ? errMsg(error, 'Could not record this care plan.') : null };
 }
@@ -101,9 +101,9 @@ export async function recordPatientVitals(patientId: string, vitals: {
   bloodPressure?: string; pulseBpm?: number; temperatureF?: number; oxygenSaturation?: number; weightLbs?: number; painLevel?: number; notes?: string; source?: ProvenanceSource;
 }): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('record_patient_vitals', {
-    p_patient_id: patientId, p_blood_pressure: vitals.bloodPressure ?? null, p_pulse_bpm: vitals.pulseBpm ?? null,
-    p_temperature_f: vitals.temperatureF ?? null, p_oxygen_saturation: vitals.oxygenSaturation ?? null,
-    p_weight_lbs: vitals.weightLbs ?? null, p_pain_level: vitals.painLevel ?? null, p_notes: vitals.notes ?? null,
+    p_patient_id: patientId, p_blood_pressure: vitals.bloodPressure, p_pulse_bpm: vitals.pulseBpm,
+    p_temperature_f: vitals.temperatureF, p_oxygen_saturation: vitals.oxygenSaturation,
+    p_weight_lbs: vitals.weightLbs, p_pain_level: vitals.painLevel, p_notes: vitals.notes,
     p_source: vitals.source ?? 'caregiver_report',
   });
   return { error: error ? errMsg(error, 'Could not record vitals.') : null };
@@ -122,12 +122,12 @@ export async function getTherapyGoals(patientId: string): Promise<TherapyGoal[]>
 }
 
 export async function recordTherapyGoal(patientId: string, objective: string, progressNotes?: string): Promise<{ error: string | null }> {
-  const { error } = await supabase.rpc('record_therapy_goal', { p_patient_id: patientId, p_objective: objective, p_progress_notes: progressNotes ?? null });
+  const { error } = await supabase.rpc('record_therapy_goal', { p_patient_id: patientId, p_objective: objective, p_progress_notes: progressNotes });
   return { error: error ? errMsg(error, 'Could not record this therapy goal.') : null };
 }
 
 export async function updateTherapyGoalProgress(goalId: string, progressNotes: string, status?: string): Promise<{ error: string | null }> {
-  const { error } = await supabase.rpc('update_therapy_goal_progress', { p_goal_id: goalId, p_progress_notes: progressNotes, p_status: status ?? null });
+  const { error } = await supabase.rpc('update_therapy_goal_progress', { p_goal_id: goalId, p_progress_notes: progressNotes, p_status: status });
   return { error: error ? errMsg(error, 'Could not update this therapy goal.') : null };
 }
 
@@ -142,6 +142,6 @@ export async function getCarePreferences(patientId: string): Promise<CarePrefere
 }
 
 export async function recordCarePreference(patientId: string, category: string, description: string, reportedBy?: string): Promise<{ error: string | null }> {
-  const { error } = await supabase.rpc('record_care_preference', { p_patient_id: patientId, p_category: category, p_description: description, p_reported_by: reportedBy ?? null });
+  const { error } = await supabase.rpc('record_care_preference', { p_patient_id: patientId, p_category: category, p_description: description, p_reported_by: reportedBy });
   return { error: error ? errMsg(error, 'Could not record this care preference.') : null };
 }

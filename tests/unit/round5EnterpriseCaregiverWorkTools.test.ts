@@ -74,12 +74,23 @@ describe('W01 — caregiver visit lifecycle', () => {
     });
   });
 
-  it('startCaregiverVisit passes optional EVV coordinates through, defaulting to null', async () => {
+  it('startCaregiverVisit passes optional EVV coordinates through, omitting them (undefined) when not supplied', async () => {
+    // ROUND 6 CORRECTION: the RPC's generated Args type is
+    // `p_latitude?: number` (optional/undefined), not `number | null`
+    // — passing an explicit `null` here was itself a type error this
+    // round's real `npm run typecheck` (tsc -p tsconfig.app.json, the
+    // project's actual script) caught, which a prior round's `npx tsc
+    // --noEmit` with no -p flag had been silently skipping entirely
+    // (that invocation compiles zero files against this repo's
+    // project-references root tsconfig.json). `undefined` is dropped
+    // by JSON.stringify before the request is sent, which is
+    // functionally identical to the RPC's own `DEFAULT NULL` — no
+    // behavior change, only a type correctness fix.
     rpcMock.mockResolvedValue({ data: { ...visitRow, status: 'in_progress' }, error: null });
     await startCaregiverVisit('v1', 40.7, -74.0);
     expect(rpcMock).toHaveBeenCalledWith('start_caregiver_visit', { p_visit_id: 'v1', p_latitude: 40.7, p_longitude: -74.0 });
     await startCaregiverVisit('v1');
-    expect(rpcMock).toHaveBeenCalledWith('start_caregiver_visit', { p_visit_id: 'v1', p_latitude: null, p_longitude: null });
+    expect(rpcMock).toHaveBeenCalledWith('start_caregiver_visit', { p_visit_id: 'v1', p_latitude: undefined, p_longitude: undefined });
   });
 
   it('endCaregiverVisit surfaces a server rejection rather than fabricating a completed visit', async () => {

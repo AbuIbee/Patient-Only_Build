@@ -27,7 +27,7 @@ export type NoteType = 'general' | 'medical' | 'behavior' | 'mood' | 'activity' 
 
 export type MedicationForm = 'pill' | 'liquid' | 'injection' | 'patch' | 'inhaler'
 
-export type TaskStatus = 'pending' | 'completed' | 'skipped'
+export type TaskStatus = 'pending' | 'completed' | 'skipped' | 'not_applicable'
 
 export type MoodType = 'happy' | 'calm' | 'sad' | 'anxious' | 'angry' | 'confused' | 'scared' | 'worried'
 
@@ -185,6 +185,12 @@ export interface Database {
           preferred_name: string | null
           location: string | null
           address: string | null
+          // ROUND 6: confirmed via 001_initial_schema.sql's tracked
+          // CREATE TABLE (photo_url) — never previously selected by any
+          // tracked call site until EnterpriseStaffPatientView.tsx's
+          // Round 6 patient-header query, which is what surfaced this
+          // pre-existing gap in this hand-maintained type file.
+          photo_url: string | null
           affirmation: string
           preferences_language: string
           preferences_font_size: 'normal' | 'large' | 'extra-large'
@@ -221,6 +227,7 @@ export interface Database {
           preferred_name?: string | null
           location?: string | null
           address?: string | null
+          photo_url?: string | null
           affirmation?: string
           preferences_language?: string
           preferences_font_size?: 'normal' | 'large' | 'extra-large'
@@ -251,6 +258,7 @@ export interface Database {
           preferred_name?: string | null
           location?: string | null
           address?: string | null
+          photo_url?: string | null
           affirmation?: string
           preferences_language?: string
           preferences_font_size?: 'normal' | 'large' | 'extra-large'
@@ -1335,37 +1343,37 @@ export interface Database {
       }
       messages: {
         Row: {
-          body: string
-          conversation_id: string
-          created_at: string
           id: string
-          is_urgent: boolean
-          message_type: string
-          reply_to_message_id: string | null
+          conversation_id: string
           sender_id: string
-          sender_role: string
+          sender_role: "patient" | "caregiver" | "therapist" | "medical_professional"
+          body: string
+          is_urgent: boolean
+          reply_to_message_id: string | null
+          created_at: string
+          message_type: "message" | "care_update"
         }
         Insert: {
-          body: string
-          conversation_id: string
-          created_at?: string
           id?: string
-          is_urgent?: boolean
-          message_type?: string
-          reply_to_message_id?: string | null
+          conversation_id: string
           sender_id: string
-          sender_role: string
+          sender_role: "patient" | "caregiver" | "therapist" | "medical_professional"
+          body: string
+          is_urgent?: boolean
+          reply_to_message_id?: string | null
+          created_at?: string
+          message_type?: "message" | "care_update"
         }
         Update: {
-          body?: string
-          conversation_id?: string
-          created_at?: string
           id?: string
-          is_urgent?: boolean
-          message_type?: string
-          reply_to_message_id?: string | null
+          conversation_id?: string
           sender_id?: string
-          sender_role?: string
+          sender_role?: "patient" | "caregiver" | "therapist" | "medical_professional"
+          body?: string
+          is_urgent?: boolean
+          reply_to_message_id?: string | null
+          created_at?: string
+          message_type?: "message" | "care_update"
         }
         Relationships: [
           {
@@ -1605,61 +1613,61 @@ export interface Database {
       }
       tasks: {
         Row: {
-          completed_at: string | null
-          created_at: string | null
-          days_of_week: number[] | null
-          description: string | null
-          difficulty: string | null
-          icon: string | null
           id: string
-          is_active: boolean | null
-          is_recurring: boolean | null
           patient_id: string
-          refusal_reason: string | null
-          scheduled_time: string | null
-          status: string | null
-          status_updated_at: string | null
-          status_updated_by: string | null
-          time_of_day: string | null
           title: string
+          description: string | null
+          icon: string
+          time_of_day: TimeOfDay | null
+          scheduled_time: string | null
+          days_of_week: number[]
+          status: TaskStatus
+          completed_at: string | null
+          is_recurring: boolean
+          difficulty: DementiaStage | null
+          is_active: boolean
+          created_at: string
+          refusal_reason: string | null
+          status_updated_by: string | null
+          status_updated_at: string | null
         }
         Insert: {
-          completed_at?: string | null
-          created_at?: string | null
-          days_of_week?: number[] | null
-          description?: string | null
-          difficulty?: string | null
-          icon?: string | null
           id?: string
-          is_active?: boolean | null
-          is_recurring?: boolean | null
           patient_id: string
-          refusal_reason?: string | null
-          scheduled_time?: string | null
-          status?: string | null
-          status_updated_at?: string | null
-          status_updated_by?: string | null
-          time_of_day?: string | null
           title: string
+          description?: string | null
+          icon?: string
+          time_of_day?: TimeOfDay | null
+          scheduled_time?: string | null
+          days_of_week?: number[]
+          status?: TaskStatus
+          completed_at?: string | null
+          is_recurring?: boolean
+          difficulty?: DementiaStage | null
+          is_active?: boolean
+          created_at?: string
+          refusal_reason?: string | null
+          status_updated_by?: string | null
+          status_updated_at?: string | null
         }
         Update: {
-          completed_at?: string | null
-          created_at?: string | null
-          days_of_week?: number[] | null
-          description?: string | null
-          difficulty?: string | null
-          icon?: string | null
           id?: string
-          is_active?: boolean | null
-          is_recurring?: boolean | null
           patient_id?: string
-          refusal_reason?: string | null
-          scheduled_time?: string | null
-          status?: string | null
-          status_updated_at?: string | null
-          status_updated_by?: string | null
-          time_of_day?: string | null
           title?: string
+          description?: string | null
+          icon?: string
+          time_of_day?: TimeOfDay | null
+          scheduled_time?: string | null
+          days_of_week?: number[]
+          status?: TaskStatus
+          completed_at?: string | null
+          is_recurring?: boolean
+          difficulty?: DementiaStage | null
+          is_active?: boolean
+          created_at?: string
+          refusal_reason?: string | null
+          status_updated_by?: string | null
+          status_updated_at?: string | null
         }
         Relationships: [
           {

@@ -101,7 +101,13 @@ export interface Task {
   isRecurring?: boolean;
   difficulty?: 'early' | 'middle' | 'late' | null;
   scheduledTime: string;
-  status: 'pending' | 'completed' | 'skipped';
+  // ROUND 6: 'not_applicable' added (migration 071) alongside the
+  // Enterprise caregiver dashboard's task-status options — a task a
+  // caregiver marked not applicable is a real possible value flowing
+  // through this same shared `tasks` table/query path into the
+  // patient's own view; widened here so that value is representable
+  // rather than silently mistyped.
+  status: 'pending' | 'completed' | 'skipped' | 'not_applicable';
   isActive: boolean;
 }
 

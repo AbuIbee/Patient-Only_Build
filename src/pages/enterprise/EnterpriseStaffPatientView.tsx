@@ -83,9 +83,12 @@ function ProfessionalNotesSection({ patientId, staffRole }: { patientId: string;
   );
 }
 
-interface PatientHeader {
+export interface PatientHeader {
   firstName: string; lastName: string; preferredName: string | null;
   dateOfBirth: string | null; dementiaStage: string | null; location: string | null;
+  address: string | null; photoUrl: string | null; language: string | null;
+  emergencyContactName: string | null; emergencyContactRelationship: string | null;
+  emergencyContactPhone: string | null; emergencyContactEmail: string | null;
 }
 interface MedicationRow { id: string; name: string; dosage: string; instructions: string }
 interface MoodRow { id: string; mood: string; intensity: number; timestamp: string }
@@ -93,8 +96,18 @@ interface MoodRow { id: string; mood: string; intensity: number; timestamp: stri
 type LoadState = 'checking' | 'denied' | 'loading' | 'ready' | 'error';
 
 export default function EnterpriseStaffPatientView({
-  organizationId, patientId, onBack, staffRole = 'therapist',
-}: { organizationId: string; patientId: string; onBack: () => void; staffRole?: StaffRole }) {
+  organizationId, patientId, onBack, staffRole = 'therapist', onReady,
+}: {
+  organizationId: string; patientId: string; onBack: () => void; staffRole?: StaffRole;
+  // ROUND 6: when provided, a verified-access "ready" state renders
+  // this callback's result INSTEAD of this component's own flat body —
+  // used by EnterpriseCaregiverDashboard to delegate to the full
+  // tabbed EnterprisePatientRecordTabs (P01-P22) while reusing this
+  // component's already-reviewed staff_patient_assignments access
+  // check unchanged. StaffCaseloadDashboard's existing therapist/
+  // medical-professional callers omit this and keep the original body.
+  onReady?: (patient: PatientHeader) => React.ReactNode;
+}) {
   const [loadState, setLoadState] = useState<LoadState>('checking');
   const [patient, setPatient] = useState<PatientHeader | null>(null);
   const [medications, setMedications] = useState<MedicationRow[]>([]);
@@ -115,7 +128,7 @@ export default function EnterpriseStaffPatientView({
     setLoadState('loading');
     try {
       const [{ data: patientRow }, { data: medRows }, { data: moodRows }, { data: noteRows }] = await Promise.all([
-        supabase.from('patients').select('first_name, last_name, preferred_name, date_of_birth, dementia_stage, location').eq('id', patientId).maybeSingle(),
+        supabase.from('patients').select('first_name, last_name, preferred_name, date_of_birth, dementia_stage, location, address, photo_url, preferences_language, emergency_contact_name, emergency_contact_relationship, emergency_contact_phone, emergency_contact_email').eq('id', patientId).maybeSingle(),
         supabase.from('medications').select('id, name, dosage, instructions').eq('patient_id', patientId).eq('is_active', true).limit(50),
         supabase.from('mood_entries').select('id, mood, intensity, timestamp').eq('patient_id', patientId).order('timestamp', { ascending: false }).limit(10),
         supabase.from('care_partner_notes').select('category, note').eq('patient_id', patientId),
@@ -124,6 +137,9 @@ export default function EnterpriseStaffPatientView({
       setPatient({
         firstName: patientRow.first_name, lastName: patientRow.last_name, preferredName: patientRow.preferred_name,
         dateOfBirth: patientRow.date_of_birth, dementiaStage: patientRow.dementia_stage, location: patientRow.location,
+        address: patientRow.address, photoUrl: patientRow.photo_url, language: patientRow.preferences_language,
+        emergencyContactName: patientRow.emergency_contact_name, emergencyContactRelationship: patientRow.emergency_contact_relationship,
+        emergencyContactPhone: patientRow.emergency_contact_phone, emergencyContactEmail: patientRow.emergency_contact_email,
       });
       setMedications(medRows ?? []);
       setMoods(moodRows ?? []);
@@ -158,6 +174,10 @@ export default function EnterpriseStaffPatientView({
         <button type="button" onClick={() => { void load(); }} className="px-5 py-2.5 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white font-semibold text-sm">Retry</button>
       </div>
     );
+  }
+
+  if (onReady) {
+    return <>{onReady(patient)}</>;
   }
 
   const displayName = patient.preferredName || `${patient.firstName} ${patient.lastName}`;

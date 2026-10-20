@@ -56,7 +56,7 @@ export async function startCaregiverVisit(
   visitId: string, latitude?: number, longitude?: number,
 ): Promise<{ visit: CaregiverVisit | null; error: string | null }> {
   const { data, error } = await supabase.rpc('start_caregiver_visit', {
-    p_visit_id: visitId, p_latitude: latitude ?? null, p_longitude: longitude ?? null,
+    p_visit_id: visitId, p_latitude: latitude, p_longitude: longitude,
   });
   if (error || !data) return { visit: null, error: errMsg(error, 'Could not start this visit.') };
   return { visit: mapVisit(data), error: null };
@@ -65,13 +65,13 @@ export async function startCaregiverVisit(
 export async function endCaregiverVisit(
   visitId: string, visitNotes?: string,
 ): Promise<{ visit: CaregiverVisit | null; error: string | null }> {
-  const { data, error } = await supabase.rpc('end_caregiver_visit', { p_visit_id: visitId, p_visit_notes: visitNotes ?? null });
+  const { data, error } = await supabase.rpc('end_caregiver_visit', { p_visit_id: visitId, p_visit_notes: visitNotes });
   if (error || !data) return { visit: null, error: errMsg(error, 'Could not end this visit.') };
   return { visit: mapVisit(data), error: null };
 }
 
 export async function getMyVisits(patientId?: string): Promise<CaregiverVisit[]> {
-  const { data, error } = await supabase.rpc('get_my_visits', { p_patient_id: patientId ?? null });
+  const { data, error } = await supabase.rpc('get_my_visits', { p_patient_id: patientId });
   if (error || !data) return [];
   return data.map(mapVisit);
 }
@@ -93,7 +93,7 @@ export async function recordShiftHandoff(
 ): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('record_shift_handoff', {
     p_org_id: orgId, p_patient_id: patientId, p_summary: summary,
-    p_pending_tasks: pendingTasks ?? null, p_concerns: concerns ?? null,
+    p_pending_tasks: pendingTasks, p_concerns: concerns,
   });
   return { error: error ? errMsg(error, 'Could not record this shift handoff.') : null };
 }
@@ -156,7 +156,7 @@ export async function resolveIncidentReport(
   incidentId: string, resolutionStatus: IncidentResolutionStatus, resolutionNotes?: string,
 ): Promise<{ report: IncidentReport | null; error: string | null }> {
   const { data, error } = await supabase.rpc('resolve_incident_report', {
-    p_incident_id: incidentId, p_resolution_status: resolutionStatus, p_resolution_notes: resolutionNotes ?? null,
+    p_incident_id: incidentId, p_resolution_status: resolutionStatus, p_resolution_notes: resolutionNotes,
   });
   if (error || !data) return { report: null, error: errMsg(error, 'Could not update this incident report.') };
   return { report: mapIncident(data), error: null };
@@ -202,7 +202,7 @@ export async function recordStaffCredential(
 ): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('record_staff_credential', {
     p_org_id: orgId, p_user_id: userId, p_credential_name: credentialName,
-    p_issued_at: issuedAt ?? null, p_expires_at: expiresAt ?? null,
+    p_issued_at: issuedAt, p_expires_at: expiresAt,
   });
   return { error: error ? errMsg(error, 'Could not record this credential.') : null };
 }
