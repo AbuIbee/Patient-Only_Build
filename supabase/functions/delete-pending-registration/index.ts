@@ -1,6 +1,7 @@
 // delete-pending-registration — CRITICAL OWNER-REPORTED REMEDIATION
 // Correction A, rewritten per CODEX-VERIFIED CRITICAL REMEDIATION
-// Critical 1, then DEL-01/DEL-02 (Codex-confirmed P0/P1).
+// Critical 1, then DEL-01/DEL-02 (Codex-confirmed P0/P1), then ROUND 4
+// (Codex-reproduced exploit of the Round 3 fix itself).
 //
 // CURRENT design: the target Auth user id is read EXCLUSIVELY from
 // pending_caregiver_registrations.provisioned_auth_user_id — written
@@ -8,27 +9,24 @@
 // admin.createUser() succeeds (migration 049). This function never
 // looks anything up by email, name, or status.
 //
-// DEL-01 fix (migration 061): the destructive external Auth deletion
-// is now preceded by an explicit, committed-to-the-database
-// "destructive execution authorized" transition — the point of no
-// return. Once authorize_destructive_deletion() succeeds, the
-// registration can no longer be cancelled back into a claimable state
-// by anyone, and a timed-out lock can no longer be reused to start a
-// competing operation — closing the race where a cancel+claim could
-// complete while this worker's own deleteUser() call was still in
-// flight, only for that call to then destroy a now-legitimately-
-// claimed account. The actual external call happens only AFTER that
-// transition commits.
-//
-// DEL-02 fix: record_deletion_outcome() records the REAL, resolved
-// external result (confirmed_deleted, or requires_manual_review for
-// anything else — a real error, a timeout, or an ambiguous result) —
-// and finish() now additionally requires that exact recorded outcome,
-// so an ordinary client can never forge completion merely by calling
-// finish with a plausible-looking operation id. An unresolved outcome
-// is never silently retried or reopened for claiming — it is left in
-// an explicit, auditable blocked state pending admin reconciliation
-// (admin_reconcile_stuck_registration_deletion).
+// ROUND 4 fix (migration 063) — authority separation. Codex reproduced
+// the exact exploit the Round 3 "point of no return" design left open:
+// caregiver_authorize_destructive_deletion, caregiver_record_deletion_
+// outcome, and caregiver_finish_registration_deletion were ALL granted
+// to `authenticated`, meaning the caregiver who owns the registration
+// could call every one of these "trusted" steps directly via RPC —
+// including fabricating a 'confirmed_deleted' outcome with no external
+// deletion ever having happened, or fabricating 'requires_manual_
+// review' to leave a path toward a later replacement operation. The
+// Round 3 fencing closed TIMING races; it never closed the fact that
+// the attestation step itself was reachable by the party with the
+// clearest incentive to lie about it. These three functions are now
+// granted to `service_role` ONLY (REVOKE'd from authenticated/anon/
+// PUBLIC) — this Edge Function is the one and only path to them, using
+// the ADMIN client, never the caller's own session. Request authority
+// (begin/cancel) remains on the caller's own session throughout —
+// requesting or backing out of your own deletion grants no destructive
+// capability by itself.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
@@ -66,6 +64,9 @@ serve(async (request) => {
       throw new Error('Supabase URL/keys are not available to this function.');
     }
 
+    // Request authority (A) — the caller's OWN session. Everything
+    // that follows authorize_destructive_deletion uses adminClient
+    // instead; callerClient is never used again past Step 1/compensation.
     const callerClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: `Bearer ${accessToken}` } },
       auth: { persistSession: false, autoRefreshToken: false },
@@ -75,15 +76,20 @@ serve(async (request) => {
       return jsonResponse({ error: 'Your sign-in session could not be verified.' }, 401);
     }
 
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
     const { registrationId } = (await request.json()) as { registrationId?: string };
     if (!registrationId) {
       return jsonResponse({ error: 'registrationId is required.' }, 400);
     }
 
-    // Step 1 — acquire the deletion lock. Ownership, "not already
-    // claimed," and "not already mid-deletion/unresolved" are all
-    // verified here, server-side, inside the RPC itself — never trusted
-    // from this function's own logic.
+    // Step 1 — request authority: acquire the deletion lock. Ownership,
+    // "not already claimed," and "not already mid-deletion/unresolved"
+    // are all verified here, server-side, inside the RPC itself, using
+    // the CALLER's own session — never trusted from this function's
+    // own logic.
     const { data: locked, error: lockError } = await callerClient.rpc(
       'caregiver_begin_registration_deletion',
       { p_registration_id: registrationId },
@@ -96,43 +102,43 @@ serve(async (request) => {
     const operationId: string | null = locked.deletion_operation_id ?? null;
 
     if (!provisionedAuthUserId) {
-      // Nothing was ever provisioned for this registration — there is
-      // no destructive external action to authorize or perform at all.
-      // Safe to finish immediately via the same trusted path, recording
-      // a confirmed (vacuously true) outcome first so finish's own
-      // requirement is satisfied honestly rather than bypassed.
-      await callerClient.rpc('caregiver_record_deletion_outcome', {
-        p_registration_id: registrationId, p_operation_id: operationId, p_outcome: 'confirmed_deleted',
-      });
-      const { error: finishError } = await callerClient.rpc('caregiver_finish_registration_deletion', {
+      // DEL-02 §5.4: never-provisioned registration — there is no
+      // external Auth identity, so there is no external operation
+      // whose outcome needs attesting at all. finish() has its own
+      // explicit provisioned_auth_user_id IS NULL path for exactly
+      // this case; no outcome-recording call is attempted, so there is
+      // nothing here to silently swallow an error from.
+      const { error: finishError } = await adminClient.rpc('caregiver_finish_registration_deletion', {
         p_registration_id: registrationId, p_operation_id: operationId,
       });
       if (finishError) {
-        return jsonResponse({ error: finishError.message, operationState: 'finish_failed' }, 500);
+        return jsonResponse({ error: finishError.message, operationState: 'finish_failed', registrationId }, 500);
       }
       return jsonResponse({ success: true, removedUnusedAccount: false });
     }
 
-    // Step 2 — DEL-01: commit the point of no return to the database
-    // BEFORE making the external call. From this moment on, no
-    // cancellation and no competing begin (even past the staleness
-    // window) can succeed for this registration until an outcome is
-    // recorded and, if needed, an administrator reconciles it.
-    const { error: authorizeError } = await callerClient.rpc('caregiver_authorize_destructive_deletion', {
+    // Step 2 — destructive-execution authority (B), trusted
+    // infrastructure ONLY (adminClient; the function itself is granted
+    // to service_role alone — an ordinary authenticated call to it now
+    // fails at the grant level, before any of its own logic runs).
+    // Commits the point of no return to the database BEFORE making the
+    // external call. From this moment on, no cancellation and no
+    // competing begin (even past the staleness window) can succeed for
+    // this registration until an outcome is recorded and, if needed,
+    // an administrator reconciles it.
+    const { error: authorizeError } = await adminClient.rpc('caregiver_authorize_destructive_deletion', {
       p_registration_id: registrationId, p_operation_id: operationId,
     });
     if (authorizeError) {
-      // Safe to compensate here — destructive execution was NOT
-      // authorized, so cancellation is still permitted.
+      // Safe to compensate here via the caller's own session —
+      // destructive execution was NOT authorized, so cancellation is
+      // still permitted by capability A.
       await callerClient.rpc('caregiver_cancel_registration_deletion_lock', { p_registration_id: registrationId, p_operation_id: operationId });
       return jsonResponse({ error: authorizeError.message, operationState: 'authorization_failed', retryable: true }, 409);
     }
 
     // Step 3 — the external, irreversible Auth deletion. Identified
     // SOLELY by the immutable id recorded at creation time.
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
     let outcome: 'confirmed_deleted' | 'requires_manual_review';
     try {
       const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(provisionedAuthUserId);
@@ -150,9 +156,11 @@ serve(async (request) => {
       outcome = 'requires_manual_review';
     }
 
-    // Step 4 — record the real, resolved outcome. This is the only
-    // thing that can ever make finish() succeed.
-    const { error: outcomeError } = await callerClient.rpc('caregiver_record_deletion_outcome', {
+    // Step 4 — outcome-attestation authority (C), trusted
+    // infrastructure ONLY (adminClient). This is the only thing that
+    // can ever make finish() succeed, and it is now unreachable by the
+    // caller under any circumstance.
+    const { error: outcomeError } = await adminClient.rpc('caregiver_record_deletion_outcome', {
       p_registration_id: registrationId, p_operation_id: operationId, p_outcome: outcome,
     });
     if (outcomeError) {
@@ -173,11 +181,11 @@ serve(async (request) => {
       }, 500);
     }
 
-    // Step 5 — only now remove the registration record itself. This
-    // RPC independently re-verifies the lock, the exact operation,
-    // destructive authorization, AND the confirmed outcome — not
-    // merely assumed from the steps above.
-    const { error: finishError } = await callerClient.rpc('caregiver_finish_registration_deletion', {
+    // Step 5 — only now remove the registration record itself, via
+    // trusted infrastructure. This RPC independently re-verifies the
+    // lock, the exact operation, destructive authorization, AND the
+    // confirmed outcome — not merely assumed from the steps above.
+    const { error: finishError } = await adminClient.rpc('caregiver_finish_registration_deletion', {
       p_registration_id: registrationId,
       p_operation_id: operationId,
     });
