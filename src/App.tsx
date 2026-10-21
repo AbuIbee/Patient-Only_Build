@@ -86,7 +86,14 @@ function AppContent() {
   // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase C item 1: a separate
   // commercial landing route — same public-route pattern as the other
   // unauthenticated marketing pages above.
-  const isBusinessRoute = currentPath === '/business';
+  //
+  // APPROVED ENTERPRISE UI DIRECTIVE §5 — "direct navigation, browser
+  // refresh... handled safely": a prefix match, not exact equality, so a
+  // fresh (non-SPA) load of a deep link like /business/patients/<id>
+  // (EnterpriseCaregiverDashboard's own URL-synced sub-routes) is still
+  // recognized as the business route even when unauthenticated, landing
+  // on BusinessLandingPage/LoginPage rather than the residential one.
+  const isBusinessRoute = currentPath === '/business' || currentPath.startsWith('/business/');
   // REMEDIATION B: ALSO handled by its own, separate, earlier early
   // return below — BEFORE checkingSession's render — so it never shows
   // the ordinary loading spinner either.

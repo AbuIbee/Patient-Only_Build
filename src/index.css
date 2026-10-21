@@ -42,7 +42,24 @@
   --soft-sage: #A8C5A8;
   --calm-blue: #98B4C5;
   --warm-amber: #D4A574;
-  
+
+  /* Enterprise Caregiver Portal — owner-approved palette (MASTER
+     CORRECTIVE UI directive). Scoped with an `ent-` prefix so the
+     patient-facing app's existing warm-bronze palette is untouched. */
+  --ent-bg: #f7f6f2;
+  --ent-panel: #ffffff;
+  --ent-ink: #243530;
+  --ent-text: #465951;
+  --ent-muted: #7d8c85;
+  --ent-line: #e4e7e1;
+  --ent-forest: #25594c;
+  --ent-green: #edf5f0;
+  --ent-green-active: #e8f1eb;
+  --ent-bronze: #9b704e;
+  --ent-rust: #ba6653;
+  --ent-amber: #fbf0de;
+  --ent-pale: #f2f5f0;
+
   /* Semantic Colors */
   --background: var(--warm-ivory);
   --foreground: var(--charcoal);
@@ -120,6 +137,21 @@
   --color-soft-sage: var(--soft-sage);
   --color-calm-blue: var(--calm-blue);
   --color-warm-amber: var(--warm-amber);
+
+  /* Enterprise Caregiver Portal palette */
+  --color-ent-bg: var(--ent-bg);
+  --color-ent-panel: var(--ent-panel);
+  --color-ent-ink: var(--ent-ink);
+  --color-ent-text: var(--ent-text);
+  --color-ent-muted: var(--ent-muted);
+  --color-ent-line: var(--ent-line);
+  --color-ent-forest: var(--ent-forest);
+  --color-ent-green: var(--ent-green);
+  --color-ent-green-active: var(--ent-green-active);
+  --color-ent-bronze: var(--ent-bronze);
+  --color-ent-rust: var(--ent-rust);
+  --color-ent-amber: var(--ent-amber);
+  --color-ent-pale: var(--ent-pale);
 }
 
 @layer base {

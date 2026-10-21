@@ -19,7 +19,7 @@ import {
   LogOut, Users, Loader2, MessageSquare, Calendar, ClipboardList,
   ChevronRight, Menu, X, ShieldAlert, Clock, Building2,
   ClipboardCheck, FileText, UserCog, Settings as SettingsIcon, Send,
-  AlertTriangle, CheckCircle2, PlayCircle, StopCircle,
+  AlertTriangle, CheckCircle2, PlayCircle, StopCircle, Sparkles, Flag, Moon,
 } from 'lucide-react';
 import {
   getMyStaffPatients, getMyCareTeam, getMyOrgSupervisor, getMyOrganizations, coverPatientViaStaffRegistration,
@@ -60,15 +60,67 @@ const NAV_ITEMS: { key: NavItem; label: string; icon: typeof Users }[] = [
   { key: 'settings', label: 'Settings & Account', icon: SettingsIcon },
 ];
 
+// APPROVED ENTERPRISE UI DIRECTIVE §2 — the exact 3 navigation groups
+// and their exact item order, as approved against
+// MyMemoria_Enterprise_Caregiver_Dashboard_Preview.png.
+const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
+  { label: 'WORKSPACE', items: ['dashboard', 'patients', 'schedule', 'tasks', 'records'] },
+  { label: 'CARE COLLABORATION', items: ['communications', 'notes', 'handoffs', 'alerts'] },
+  { label: 'PROFESSIONAL TOOLS', items: ['visits', 'careTeam', 'documents', 'organization', 'settings'] },
+];
+
+// APPROVED ENTERPRISE UI DIRECTIVE §2/§5/§9 — "Support direct navigation,
+// browser refresh, back and forward." The shell's own nav/open-patient
+// state is kept in sync with the URL under /business/... via
+// history.pushState (this app's existing manual-routing convention —
+// see CLAUDE.md), so a reload or a shared deep link lands on the same
+// screen instead of always resetting to the dashboard.
+function parseEnterprisePath(): { nav: NavItem; openPatient: string | null } {
+  const segments = window.location.pathname.split('/').filter(Boolean); // e.g. ['business','patients','<id>']
+  const sub = segments[1];
+  const sub2 = segments[2];
+  if (sub === 'patients' && sub2) return { nav: 'patients', openPatient: sub2 };
+  if (sub && NAV_ITEMS.some((n) => n.key === sub)) return { nav: sub as NavItem, openPatient: null };
+  return { nav: 'dashboard', openPatient: null };
+}
+
 export default function EnterpriseCaregiverDashboard() {
   const { state, dispatch } = useApp();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string>('');
   const [patients, setPatients] = useState<StaffPatient[]>([]);
   const [loading, setLoading] = useState(true);
-  const [nav, setNav] = useState<NavItem>('dashboard');
+  const [nav, setNav] = useState<NavItem>(() => parseEnterprisePath().nav);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [openPatient, setOpenPatient] = useState<string | null>(null);
+  const [openPatient, setOpenPatient] = useState<string | null>(() => parseEnterprisePath().openPatient);
+
+  // Keeps the URL in sync so reload/back/forward/shared links land on
+  // the same screen, instead of defaulting back to the dashboard.
+  const navigateTo = useCallback((nextNav: NavItem, patientId: string | null = null) => {
+    const path = patientId ? `/business/patients/${patientId}` : `/business/${nextNav}`;
+    if (window.location.pathname !== path) window.history.pushState({}, '', path);
+    setNav(nextNav);
+    setOpenPatient(patientId);
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const parsed = parseEnterprisePath();
+      setNav(parsed.nav);
+      setOpenPatient(parsed.openPatient);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Canonicalize a bare /business (no sub-path) to /business/dashboard
+  // without adding an extra back-stack entry, so the URL always
+  // reflects a real nav destination once the shell has mounted.
+  useEffect(() => {
+    if (window.location.pathname === '/business') {
+      window.history.replaceState({}, '', '/business/dashboard');
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -107,81 +159,141 @@ export default function EnterpriseCaregiverDashboard() {
     );
   }
 
+  const firstName = state.currentUser?.firstName || 'Caregiver';
+  const lastName = state.currentUser?.lastName || '';
+  const fullName = `${firstName} ${lastName}`.trim();
+  const initials = (`${firstName[0] || ''}${lastName[0] || ''}` || 'U').toUpperCase();
+
   return (
-    <div className="min-h-screen bg-warm-ivory flex">
-      {/* Desktop sidebar — persistent, all 14 items, never collapsed below entitlement (locked requirement: "still exposes every item without overflow or reduced entitlement"). */}
-      <aside className="hidden lg:flex lg:flex-col w-64 bg-white border-r border-soft-taupe">
-        <div className="p-4 border-b border-soft-taupe flex items-center gap-2">
-          <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-8 h-8 rounded-lg object-cover" />
-          <div>
-            <div className="font-semibold text-charcoal text-sm">My Memoria Ally</div>
-            <div className="text-xs text-medium-gray truncate">{orgName}</div>
+    <div className="min-h-screen bg-ent-bg flex">
+      {/* Desktop sidebar — persistent, all 14 items grouped exactly as
+          approved (WORKSPACE / CARE COLLABORATION / PROFESSIONAL TOOLS),
+          never collapsed below entitlement (locked requirement: "still
+          exposes every item without overflow or reduced entitlement"). */}
+      <aside className="hidden lg:flex lg:flex-col w-64 bg-ent-panel border-r border-ent-line sticky top-0 h-screen">
+        <div className="flex items-center gap-2.5 px-4 pt-5 pb-4 border-b border-ent-line">
+          <div className="w-10 h-10 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0">
+            <Sparkles className="w-5 h-5 text-ent-forest" />
+          </div>
+          <div className="min-w-0">
+            <div className="font-bold text-ent-ink text-sm leading-tight truncate">My Memoria Ally</div>
+            <div className="text-[10px] font-extrabold tracking-[0.14em] text-ent-bronze mt-0.5">ENTERPRISE CARE</div>
           </div>
         </div>
-        <nav className="flex-1 overflow-y-auto py-2">
-          {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key} type="button" onClick={() => { setNav(key); setOpenPatient(null); }}
-              className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left transition-colors ${
-                nav === key ? 'bg-warm-bronze/10 text-warm-bronze font-semibold border-r-2 border-warm-bronze' : 'text-charcoal hover:bg-warm-ivory'
-              }`}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" /> {label}
-            </button>
+        <nav aria-label="Enterprise navigation" className="flex-1 overflow-y-auto px-2.5 py-2">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label}>
+              <div className="text-[9px] font-extrabold tracking-[0.16em] text-ent-muted uppercase px-2.5 pt-4 pb-1.5">{group.label}</div>
+              {group.items.map((itemKey) => {
+                const item = NAV_ITEMS.find((n) => n.key === itemKey);
+                if (!item) return null;
+                const Icon = item.icon;
+                const isActive = nav === itemKey;
+                return (
+                  <button
+                    key={itemKey} type="button" aria-current={isActive ? 'page' : undefined}
+                    onClick={() => navigateTo(itemKey)}
+                    className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg text-left text-[12.5px] font-semibold transition-colors ${
+                      isActive ? 'bg-ent-green-active text-ent-forest' : 'text-ent-text hover:bg-ent-pale'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 flex-shrink-0" /> {item.label}
+                  </button>
+                );
+              })}
+            </div>
           ))}
         </nav>
-        <div className="p-3 border-t border-soft-taupe">
-          <button type="button" onClick={() => { void handleLogout(); }} className="w-full flex items-center gap-2 text-sm text-medium-gray hover:text-charcoal px-3 py-2 rounded-lg hover:bg-warm-ivory">
-            <LogOut className="w-4 h-4" /> Logout
+        <div className="p-3 border-t border-ent-line flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0" aria-hidden="true">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-semibold text-ent-ink truncate">{fullName}</div>
+            <div className="text-[11px] text-ent-muted truncate">Professional Caregiver</div>
+          </div>
+          <button type="button" onClick={() => { void handleLogout(); }} aria-label="Logout" className="p-1.5 text-ent-muted hover:text-ent-ink flex-shrink-0 rounded-lg hover:bg-ent-pale">
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile top bar + drawer */}
-        <header className="lg:hidden bg-white border-b border-soft-taupe px-4 py-3 flex items-center justify-between">
-          <button type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation" className="p-1.5 -ml-1.5 text-charcoal">
-            <Menu className="w-5 h-5" />
-          </button>
-          <div className="font-semibold text-charcoal text-sm truncate">{NAV_ITEMS.find((n) => n.key === nav)?.label}</div>
-          <button type="button" onClick={() => { void handleLogout(); }} aria-label="Logout" className="p-1.5 -mr-1.5 text-medium-gray">
-            <LogOut className="w-5 h-5" />
-          </button>
+        {/* Header bar — org/workspace identification + signed-in identity, every viewport. */}
+        <header className="bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
+          <div className="flex items-center gap-3 min-w-0">
+            <button type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation" className="lg:hidden p-1.5 -ml-1.5 text-ent-ink flex-shrink-0">
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="text-[12.5px] sm:text-[13px] font-semibold truncate">
+              <span className="text-ent-ink">{orgName}</span>
+              <span className="text-ent-muted"> / Caregiver Workspace</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="hidden sm:block w-8 h-8 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-[11px]" aria-hidden="true">{initials}</div>
+            <button type="button" onClick={() => { void handleLogout(); }} aria-label="Logout" className="lg:hidden p-1.5 text-ent-muted hover:text-ent-ink">
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
         </header>
+
         {mobileNavOpen && (
           <div className="lg:hidden fixed inset-0 z-50 bg-black/40" onClick={() => setMobileNavOpen(false)}>
-            <div className="bg-white w-72 h-full p-2 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-ent-panel w-72 h-full p-2 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between p-3">
-                <span className="font-semibold text-charcoal text-sm">{orgName}</span>
-                <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X className="w-5 h-5 text-medium-gray" /></button>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-ent-green flex items-center justify-center flex-shrink-0"><Sparkles className="w-4 h-4 text-ent-forest" /></div>
+                  <span className="font-semibold text-ent-ink text-sm truncate">{orgName}</span>
+                </div>
+                <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X className="w-5 h-5 text-ent-muted" /></button>
               </div>
-              {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
-                <button
-                  key={key} type="button" onClick={() => { setNav(key); setOpenPatient(null); setMobileNavOpen(false); }}
-                  className={`w-full flex items-center gap-2.5 px-4 py-3 text-sm text-left rounded-lg ${nav === key ? 'bg-warm-bronze/10 text-warm-bronze font-semibold' : 'text-charcoal'}`}
-                >
-                  <Icon className="w-4 h-4 flex-shrink-0" /> {label}
-                </button>
+              {NAV_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <div className="text-[9px] font-extrabold tracking-[0.16em] text-ent-muted uppercase px-3 pt-4 pb-1.5">{group.label}</div>
+                  {group.items.map((itemKey) => {
+                    const item = NAV_ITEMS.find((n) => n.key === itemKey);
+                    if (!item) return null;
+                    const Icon = item.icon;
+                    const isActive = nav === itemKey;
+                    return (
+                      <button
+                        key={itemKey} type="button" aria-current={isActive ? 'page' : undefined}
+                        onClick={() => { navigateTo(itemKey); setMobileNavOpen(false); }}
+                        className={`w-full flex items-center gap-2.5 px-3 py-3 text-sm text-left rounded-lg font-semibold ${isActive ? 'bg-ent-green-active text-ent-forest' : 'text-ent-text'}`}
+                      >
+                        <Icon className="w-4 h-4 flex-shrink-0" /> {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
               ))}
+              <div className="mt-2 pt-2 border-t border-ent-line px-3 py-2 flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">{initials}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-semibold text-ent-ink truncate">{fullName}</div>
+                  <div className="text-[11px] text-ent-muted truncate">Professional Caregiver</div>
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-ent-bg">
           {openPatient ? (
-            <div className="max-w-3xl mx-auto">
+            <div className="max-w-5xl mx-auto">
               <EnterpriseStaffPatientView
-                organizationId={orgId} patientId={openPatient} onBack={() => setOpenPatient(null)} staffRole="caregiver"
+                organizationId={orgId} patientId={openPatient} onBack={() => navigateTo(nav)} staffRole="caregiver"
                 onReady={(patient) => (
-                  <EnterprisePatientRecordTabs patientId={openPatient} patientHeader={patient} staffRole="caregiver" orgId={orgId} onBack={() => setOpenPatient(null)} />
+                  <EnterprisePatientRecordTabs patientId={openPatient} patientHeader={patient} staffRole="caregiver" orgId={orgId} onBack={() => navigateTo(nav)} />
                 )}
               />
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto space-y-5">
-              {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={setOpenPatient} onNavigate={setNav} />}
+            <div className="max-w-6xl mx-auto space-y-5">
+              {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id)} onNavigate={navigateTo} onPatientRegistered={() => { void load(); }} />}
               {(nav === 'patients' || nav === 'records') && (
-                <PatientsListView patients={patients} onOpenPatient={setOpenPatient} orgId={orgId} onChanged={() => { void load(); }} />
+                <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} orgId={orgId} onChanged={() => { void load(); }} />
               )}
               {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} />}
               {nav === 'visits' && <VisitsListView />}
@@ -190,13 +302,13 @@ export default function EnterpriseCaregiverDashboard() {
               {nav === 'notes' && (
                 <>
                   <MyDocumentationHistoryView />
-                  <PatientsListView patients={patients} onOpenPatient={setOpenPatient} title="Select a patient to view or add Care Notes & Observations" />
+                  <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view or add Care Notes & Observations" />
                 </>
               )}
-              {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={setOpenPatient} title="Select a patient to record or review Shift Handoffs" />}
+              {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to record or review Shift Handoffs" />}
               {nav === 'alerts' && <AlertsView patients={patients} orgId={orgId} />}
               {nav === 'careTeam' && <CareTeamView orgId={orgId} patients={patients} />}
-              {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={setOpenPatient} title="Select a patient to view their Documents" />}
+              {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view their Documents" />}
               {nav === 'organization' && <OrganizationView orgId={orgId} orgName={orgName} />}
               {nav === 'settings' && <SettingsView userName={state.currentUser?.firstName} onLogout={handleLogout} />}
             </div>
@@ -208,14 +320,37 @@ export default function EnterpriseCaregiverDashboard() {
 }
 
 function Card({ children }: { children: React.ReactNode }) {
-  return <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">{children}</div>;
+  return <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">{children}</div>;
+}
+
+function patientInitials(first: string, last: string): string {
+  return (`${first[0] || ''}${last[0] || ''}` || '?').toUpperCase();
+}
+
+interface AttentionItem {
+  id: string;
+  kind: 'help' | 'incident' | 'note';
+  patientName: string;
+  title: string;
+  detail: string;
+  at: string;
+  nav: NavItem;
 }
 
 // H01 (identity), H02 (today's overview), H03 (alerts), H04 (inbox),
 // H05 (assigned patients), H06/H07 (schedule/next visit) — real counts
 // from the data already loaded by the shell, each navigating to its
 // underlying authorized records per the locked requirement.
-function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patients: StaffPatient[]; orgId: string; onOpenPatient: (id: string) => void; onNavigate: (nav: NavItem) => void }) {
+//
+// APPROVED ENTERPRISE UI DIRECTIVE §3 — composition matches
+// MyMemoria_Enterprise_Caregiver_Dashboard_Preview.png: greeting +
+// Register a New Patient action, 4 summary cards (Assigned patients /
+// Visits today / Needs attention / Unread messages), then a
+// [Needs your attention + Your patients] / [Next scheduled visit +
+// Care communications] two-column layout. Every figure below comes
+// from the real queries this component already runs — nothing here is
+// a design-example placeholder value.
+function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRegistered }: { patients: StaffPatient[]; orgId: string; onOpenPatient: (id: string) => void; onNavigate: (nav: NavItem) => void; onPatientRegistered: () => void }) {
   const { state } = useApp();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
@@ -226,6 +361,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
   const [unacknowledgedHandoffs, setUnacknowledgedHandoffs] = useState(0);
   const [missingVisitNotes, setMissingVisitNotes] = useState(0);
   const [unfinishedCareLists, setUnfinishedCareLists] = useState(0);
+  const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([]);
   const [loadingExtra, setLoadingExtra] = useState(true);
 
   useEffect(() => {
@@ -233,7 +369,10 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
     (async () => {
       const [convos, myVisits] = await Promise.all([getMyConversations(), getMyVisits()]);
       const allIncidents = (await Promise.all(patients.map((p) => getPatientIncidentReports(p.patientId)))).flat();
-      const allHelp = (await Promise.all(patients.map(async (p) => (await getHelpActivationHistory(p.patientId)).entries))).flat();
+      const helpByPatient = await Promise.all(patients.map(async (p) => ({
+        patient: p, entries: (await getHelpActivationHistory(p.patientId)).entries,
+      })));
+      const allHelp = helpByPatient.flatMap((h) => h.entries);
 
       // H09 — "overnight observations, authorized patient/family shared
       // notes, condition changes... excluding Private Journal content."
@@ -290,6 +429,30 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
       setUnacknowledgedHandoffs(unackCount);
       setMissingVisitNotes(missingNotesCount);
       setUnfinishedCareLists(unfinishedCareListsCount);
+
+      // APPROVED ENTERPRISE UI DIRECTIVE §3 — "Needs Your Attention
+      // panel": a single real, time-ordered feed combining unacknowledged
+      // HELP activations, unresolved incidents and the most recent
+      // patient/family updates — every item links to the authorized
+      // record it came from, nothing here is a placeholder.
+      const helpItems: AttentionItem[] = helpByPatient.flatMap((h) =>
+        h.entries.filter((e) => e.acknowledgedCount === 0).map((e) => ({
+          id: `help-${e.id}`, kind: 'help' as const, patientName: h.patient.preferredName || h.patient.firstName,
+          title: 'HELP button activated', detail: e.phoneDialed ? `Call attempted to ${e.phoneDialed}.` : 'No caregiver phone number was reached.',
+          at: e.createdAt, nav: 'alerts' as NavItem,
+        })),
+      );
+      const incidentItems: AttentionItem[] = openIncidents.map((i) => ({
+        id: `incident-${i.id}`, kind: 'incident' as const,
+        patientName: patients.find((p) => p.patientId === i.patientId)?.preferredName || patients.find((p) => p.patientId === i.patientId)?.firstName || 'Patient',
+        title: `${i.incidentType.replace('_', ' ')} — ${i.severity}`, detail: i.description,
+        at: i.occurredAt, nav: 'alerts' as NavItem,
+      }));
+      const noteItems: AttentionItem[] = noteRows.slice(0, 5).map((n, idx) => ({
+        id: `note-${idx}`, kind: 'note' as const, patientName: n.patientName, title: `Update from ${n.patientName}`, detail: n.note, at: n.at, nav: 'notes' as NavItem,
+      }));
+      const combined = [...helpItems, ...incidentItems, ...noteItems].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+      setAttentionItems(combined.slice(0, 6));
       setLoadingExtra(false);
     })();
     return () => { active = false; };
@@ -317,80 +480,163 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
   const unreadCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
   const todayVisits = visits.filter((v) => v.scheduledStart && new Date(v.scheduledStart).toDateString() === new Date().toDateString());
   const nextVisit = todayVisits.find((v) => v.status === 'scheduled' || v.status === 'in_progress');
+  const nextVisitPatient = nextVisit ? patients.find((p) => p.patientId === nextVisit.patientId) : undefined;
+  const needsAttentionCount = incidents.length + helpCount + unacknowledgedHandoffs + missingVisitNotes + unfinishedCareLists;
+
+  const now = new Date();
+  const hour = now.getHours();
+  const timeOfDay = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+  const dateLabel = now.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase();
 
   return (
     <>
-      <Card>
-        <h1 className="text-xl font-bold text-charcoal">Welcome, {state.currentUser?.firstName || 'Caregiver'}</h1>
-        <p className="text-sm text-medium-gray">Signed in as an Enterprise caregiver — {orgId ? 'active organization confirmed' : ''}.</p>
-      </Card>
+      {/* Greeting + date + primary registration action. */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-bold tracking-[0.1em] text-ent-bronze">{dateLabel}</p>
+          <h1 className="text-2xl sm:text-[26px] font-bold text-ent-ink mt-0.5">Good {timeOfDay}, {state.currentUser?.firstName || 'Caregiver'}.</h1>
+          <p className="text-sm text-ent-muted mt-1">Here&apos;s what needs your attention across your assigned patients.</p>
+        </div>
+        <RegistrationAction orgId={orgId} onChanged={onPatientRegistered} compact />
+      </div>
 
-      {/* H02 — ROUND 6: each count now navigates to its underlying,
-          authorized record set ("Each count must navigate to its
-          underlying, authorized records"), not just the sidebar. */}
+      {/* H02 — the four approved summary cards; each count navigates to
+          its underlying authorized record set, not just the sidebar. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {([
-          { label: 'Assigned Patients', value: patients.length, nav: 'patients' as NavItem },
-          { label: "Today's Visits", value: todayVisits.length, nav: 'schedule' as NavItem },
-          { label: 'Unread Messages', value: unreadCount, nav: 'communications' as NavItem },
-          { label: 'Open Alerts', value: incidents.length + helpCount, nav: 'alerts' as NavItem },
+          { label: 'Assigned patients', sub: 'active', value: patients.length, nav: 'patients' as NavItem },
+          { label: 'Visits today', sub: 'scheduled', value: todayVisits.length, nav: 'schedule' as NavItem },
+          { label: 'Needs attention', sub: 'updates', value: needsAttentionCount, nav: 'alerts' as NavItem },
+          { label: 'Unread messages', sub: 'care team', value: unreadCount, nav: 'communications' as NavItem },
         ]).map((m) => (
           <button
             key={m.label} type="button" onClick={() => onNavigate(m.nav)}
-            className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-4 text-center hover:shadow-md hover:border-warm-bronze/40 transition-all"
+            className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-4 text-left hover:shadow-md hover:border-ent-forest/30 transition-all"
           >
-            <p className="text-2xl font-bold text-warm-bronze">{loadingExtra ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : m.value}</p>
-            <p className="text-xs text-medium-gray mt-1">{m.label}</p>
+            <p className="text-[11px] font-semibold text-ent-text">{m.label}</p>
+            <p className="text-2xl font-bold text-ent-ink mt-1">{loadingExtra ? <Loader2 className="w-5 h-5 animate-spin" /> : m.value}</p>
+            <p className="text-[11px] text-ent-muted">{m.sub}</p>
           </button>
         ))}
       </div>
 
-      {incidents.length > 0 && (
-        <Card>
-          <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-gentle-coral" /><h2 className="font-bold text-charcoal">Critical Alerts &amp; Incidents</h2></div>
-          <ul className="space-y-2">
-            {incidents.map((i) => (
-              <li key={i.id} className="p-3 bg-gentle-coral/5 border border-gentle-coral/30 rounded-xl">
-                <p className="text-sm font-medium text-charcoal capitalize">{i.incidentType.replace('_', ' ')} — {i.severity}</p>
-                <p className="text-xs text-medium-gray">{i.description}</p>
-                <p className="text-[11px] text-medium-gray mt-1">{new Date(i.occurredAt).toLocaleString()} · {i.resolutionStatus.replace('_', ' ')}</p>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+      {/* Two-column layout per the approved design: [Needs your
+          attention, Your patients] on the left; [Next scheduled visit,
+          Care communications] on the right. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5 items-start">
+        <div className="space-y-5">
+          <Card>
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-ent-ink">Needs your attention</h2>
+              {attentionItems.length > 0 && <span className="text-[11px] font-semibold text-ent-bronze bg-ent-amber px-2.5 py-1 rounded-full">{attentionItems.length} item{attentionItems.length === 1 ? '' : 's'}</span>}
+            </div>
+            {!loadingExtra && attentionItems.length === 0 ? (
+              <p className="text-sm text-ent-muted">Nothing needs your attention right now.</p>
+            ) : (
+              <ul className="space-y-2.5">
+                {attentionItems.map((item) => {
+                  const Icon = item.kind === 'help' ? Flag : item.kind === 'incident' ? ShieldAlert : Moon;
+                  const tone = item.kind === 'note' ? 'bg-ent-amber border-ent-amber' : 'bg-gentle-coral/5 border-gentle-coral/30';
+                  return (
+                    <li key={item.id} className={`p-3 rounded-xl border ${tone}`}>
+                      <div className="flex items-start gap-2">
+                        <Icon className="w-4 h-4 text-ent-rust flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-ent-ink">{item.title} · {item.patientName}</p>
+                          <p className="text-xs text-ent-text mt-0.5">{item.detail}</p>
+                          <div className="flex items-center justify-between mt-1.5">
+                            <button type="button" onClick={() => onNavigate(item.nav)} className="text-xs font-semibold text-ent-forest hover:underline">Review →</button>
+                            <span className="text-[11px] text-ent-muted">{new Date(item.at).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
 
-      {nextVisit && (
-        <Card>
-          <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Current / Next Visit</h2></div>
-          <p className="text-sm text-charcoal">{patients.find((p) => p.patientId === nextVisit.patientId)?.preferredName || 'Patient'} — {nextVisit.status === 'in_progress' ? 'In progress' : new Date(nextVisit.scheduledStart ?? '').toLocaleTimeString()}</p>
-        </Card>
-      )}
+          <Card>
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-ent-ink">Your patients</h2>
+              <button type="button" onClick={() => onNavigate('patients')} className="text-xs font-semibold text-ent-forest hover:underline">View all patients →</button>
+            </div>
+            {patients.length === 0 ? (
+              <p className="text-sm text-ent-muted">No patients are currently assigned to you. Your organization&apos;s director can assign you once a patient is covered.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {patients.slice(0, 4).map((p) => {
+                  const legalName = `${p.firstName} ${p.lastName}`;
+                  const displayName = p.preferredName || legalName;
+                  return (
+                    <button key={p.patientId} type="button" onClick={() => onOpenPatient(p.patientId)} className="flex items-center gap-3 p-4 bg-ent-pale rounded-2xl border border-ent-line hover:shadow-md transition-all text-left">
+                      <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">{patientInitials(p.firstName, p.lastName)}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold text-ent-ink truncate text-sm">{displayName}</span>
+                        {displayName !== legalName && <span className="block text-[11px] text-ent-muted truncate">{legalName}</span>}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-ent-muted flex-shrink-0" />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        </div>
 
-      <Card>
-        <div className="flex items-center gap-2"><Users className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Assigned Patients</h2></div>
-        {patients.length === 0 ? (
-          <p className="text-sm text-medium-gray">No patients are currently assigned to you. Your organization's director can assign you once a patient is covered.</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {patients.map((p) => (
-              <button key={p.patientId} type="button" onClick={() => onOpenPatient(p.patientId)} className="flex items-center justify-between gap-2 p-4 bg-warm-ivory rounded-2xl border border-soft-taupe hover:shadow-md transition-all text-left">
-                <span className="font-medium text-charcoal truncate">{p.preferredName || `${p.firstName} ${p.lastName}`}</span>
-                <ChevronRight className="w-4 h-4 text-warm-bronze flex-shrink-0" />
-              </button>
-            ))}
-          </div>
-        )}
-      </Card>
+        <div className="space-y-5">
+          <Card>
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-ent-ink">Next scheduled visit</h2>
+              {nextVisit && <span className="text-[11px] font-semibold text-ent-forest bg-ent-green-active px-2.5 py-1 rounded-full">Today</span>}
+            </div>
+            {!nextVisit ? (
+              <p className="text-sm text-ent-muted">No visit is scheduled for today.</p>
+            ) : (
+              <div className="flex items-start gap-3">
+                <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">
+                  {nextVisitPatient ? patientInitials(nextVisitPatient.firstName, nextVisitPatient.lastName) : '?'}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-ent-ink text-sm">{nextVisitPatient?.preferredName || nextVisitPatient?.firstName || 'Patient'}</p>
+                  <p className="text-xs text-ent-muted">{nextVisit.status === 'in_progress' ? 'In progress' : new Date(nextVisit.scheduledStart ?? '').toLocaleTimeString()}{nextVisit.scheduledEnd ? ` – ${new Date(nextVisit.scheduledEnd).toLocaleTimeString()}` : ''}</p>
+                  <button type="button" onClick={() => onNavigate('schedule')} className="text-xs font-semibold text-ent-forest hover:underline mt-2 inline-block">Open schedule →</button>
+                </div>
+              </div>
+            )}
+          </Card>
+
+          <Card>
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-ent-ink">Care communications</h2>
+            </div>
+            {conversations.length === 0 ? (
+              <p className="text-sm text-ent-muted">No conversations yet.</p>
+            ) : (
+              <ul className="divide-y divide-ent-line -mx-1">
+                {conversations.slice(0, 3).map((c) => (
+                  <li key={c.conversationId} className="px-1 py-2.5">
+                    <p className="text-sm font-semibold text-ent-ink truncate">{c.patientName}{c.subject ? ` · ${c.subject}` : ''}</p>
+                    <p className="text-xs text-ent-text truncate">{c.lastMessageBody || 'No messages yet'}</p>
+                    <p className="text-[11px] text-ent-muted">{c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleString() : ''}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button type="button" onClick={() => onNavigate('communications')} className="w-full text-center text-sm font-semibold text-ent-forest hover:underline pt-1">Open Care Communications →</button>
+          </Card>
+        </div>
+      </div>
 
       {recentUpdates.length > 0 && (
         <Card>
-          <div className="flex items-center gap-2"><FileText className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Recent Patient Updates</h2></div>
+          <div className="flex items-center gap-2"><FileText className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Recent Patient Updates</h2></div>
           <ul className="space-y-1.5">
             {recentUpdates.map((u, idx) => (
-              <li key={idx} className="p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
-                <span className="font-medium text-charcoal">{u.patientName}: </span>{u.note}
-                <span className="text-[11px] text-medium-gray block">{new Date(u.at).toLocaleString()}</span>
+              <li key={idx} className="p-2.5 bg-ent-pale rounded-xl border border-ent-line text-sm">
+                <span className="font-medium text-ent-ink">{u.patientName}: </span><span className="text-ent-text">{u.note}</span>
+                <span className="text-[11px] text-ent-muted block">{new Date(u.at).toLocaleString()}</span>
               </li>
             ))}
           </ul>
@@ -399,54 +645,54 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
 
       {medConcerns.length > 0 && (
         <Card>
-          <div className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-gentle-coral" /><h2 className="font-bold text-charcoal">Medication Reminders &amp; Concerns</h2></div>
+          <div className="flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-ent-rust" /><h2 className="font-bold text-ent-ink">Medication Reminders &amp; Concerns</h2></div>
           <ul className="space-y-1.5">
             {medConcerns.map((m, idx) => (
-              <li key={idx} className="p-2.5 bg-gentle-coral/5 border border-gentle-coral/30 rounded-xl text-sm">
-                <span className="font-medium text-charcoal">{m.patientName}</span> — {m.medName} <span className="capitalize text-gentle-coral font-semibold">{m.status}</span>
-                <span className="text-[11px] text-medium-gray block">{m.at}</span>
+              <li key={idx} className="p-2.5 bg-ent-amber border border-ent-amber rounded-xl text-sm">
+                <span className="font-medium text-ent-ink">{m.patientName}</span><span className="text-ent-text"> — {m.medName} </span><span className="capitalize text-ent-rust font-semibold">{m.status}</span>
+                <span className="text-[11px] text-ent-muted block">{m.at}</span>
               </li>
             ))}
           </ul>
-          <p className="text-[11px] text-medium-gray">A caregiver may document a missed/skipped dose only — administration remains within clinical authority.</p>
+          <p className="text-[11px] text-ent-muted">A caregiver may document a missed/skipped dose only — administration remains within clinical authority.</p>
         </Card>
       )}
 
       {(unacknowledgedHandoffs > 0 || missingVisitNotes > 0 || incidents.length > 0 || unfinishedCareLists > 0) && (
         <Card>
-          <div className="flex items-center gap-2"><ClipboardList className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Incomplete Documentation</h2></div>
+          <div className="flex items-center gap-2"><ClipboardList className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Incomplete Documentation</h2></div>
           {unfinishedCareLists > 0 && (
             <div className="flex items-center justify-between">
-              <p className="text-sm text-charcoal">{unfinishedCareLists} patient{unfinishedCareLists === 1 ? '' : 's'} with an unfinished care list.</p>
-              <button type="button" onClick={() => onNavigate('tasks')} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Review →</button>
+              <p className="text-sm text-ent-text">{unfinishedCareLists} patient{unfinishedCareLists === 1 ? '' : 's'} with an unfinished care list.</p>
+              <button type="button" onClick={() => onNavigate('tasks')} className="text-sm font-semibold text-ent-forest hover:underline flex-shrink-0">Review →</button>
             </div>
           )}
           {unacknowledgedHandoffs > 0 && (
             <div className="flex items-center justify-between">
-              <p className="text-sm text-charcoal">{unacknowledgedHandoffs} shift handoff{unacknowledgedHandoffs === 1 ? '' : 's'} not yet acknowledged.</p>
-              <button type="button" onClick={() => onNavigate('handoffs')} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Review →</button>
+              <p className="text-sm text-ent-text">{unacknowledgedHandoffs} shift handoff{unacknowledgedHandoffs === 1 ? '' : 's'} not yet acknowledged.</p>
+              <button type="button" onClick={() => onNavigate('handoffs')} className="text-sm font-semibold text-ent-forest hover:underline flex-shrink-0">Review →</button>
             </div>
           )}
           {missingVisitNotes > 0 && (
             <div className="flex items-center justify-between">
-              <p className="text-sm text-charcoal">{missingVisitNotes} completed visit{missingVisitNotes === 1 ? '' : 's'} missing visit notes.</p>
-              <button type="button" onClick={() => onNavigate('visits')} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Review →</button>
+              <p className="text-sm text-ent-text">{missingVisitNotes} completed visit{missingVisitNotes === 1 ? '' : 's'} missing visit notes.</p>
+              <button type="button" onClick={() => onNavigate('visits')} className="text-sm font-semibold text-ent-forest hover:underline flex-shrink-0">Review →</button>
             </div>
           )}
           {incidents.length > 0 && (
             <div className="flex items-center justify-between">
-              <p className="text-sm text-charcoal">{incidents.length} unresolved incident{incidents.length === 1 ? '' : 's'}.</p>
-              <button type="button" onClick={() => onNavigate('alerts')} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Review →</button>
+              <p className="text-sm text-ent-text">{incidents.length} unresolved incident{incidents.length === 1 ? '' : 's'}.</p>
+              <button type="button" onClick={() => onNavigate('alerts')} className="text-sm font-semibold text-ent-forest hover:underline flex-shrink-0">Review →</button>
             </div>
           )}
         </Card>
       )}
 
       <Card>
-        <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Connection &amp; Synchronization</h2></div>
-        <p className="text-sm text-charcoal">{isOnline ? 'Online' : 'Offline — changes may not be saved until reconnected'}</p>
-        <p className="text-[11px] text-medium-gray">Last successful sync: {lastSync ? new Date(lastSync).toLocaleString() : 'not yet recorded'}</p>
-        <p className="text-[11px] text-medium-gray">No locally queued offline drafts exist in this shell — nothing here is reported as sent unless it has actually reached the server.</p>
+        <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Connection &amp; Synchronization</h2></div>
+        <p className="text-sm text-ent-text">{isOnline ? 'Online' : 'Offline — changes may not be saved until reconnected'}</p>
+        <p className="text-[11px] text-ent-muted">Last successful sync: {lastSync ? new Date(lastSync).toLocaleString() : 'not yet recorded'}</p>
+        <p className="text-[11px] text-ent-muted">No locally queued offline drafts exist in this shell — nothing here is reported as sent unless it has actually reached the server.</p>
       </Card>
     </>
   );
@@ -511,7 +757,10 @@ function MyDocumentationHistoryView() {
 // organization's coverage + this caregiver's own staff assignment via
 // the same cover_patient_via_staff_registration() RPC the residential
 // "cover an existing patient" action already uses.
-function RegistrationAction({ orgId, onChanged }: { orgId: string; onChanged: () => void }) {
+// `compact`: the pill-style "+ Register a New Patient" trigger shown in
+// the Dashboard header row per the approved design, in place of the
+// full-width dashed card button used inside the My Patients list.
+function RegistrationAction({ orgId, onChanged, compact = false }: { orgId: string; onChanged: () => void; compact?: boolean }) {
   const [showForm, setShowForm] = useState(false);
   const [pending, setPending] = useState<PendingRegistrationSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -531,13 +780,30 @@ function RegistrationAction({ orgId, onChanged }: { orgId: string; onChanged: ()
   };
 
   if (showForm) {
-    return <RegisterPatientForm onRegistered={(id) => { void handleRegistered(id); }} onBack={() => setShowForm(false)} />;
+    return (
+      <div className={compact ? 'bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6' : undefined}>
+        <RegisterPatientForm onRegistered={(id) => { void handleRegistered(id); }} onBack={() => setShowForm(false)} />
+      </div>
+    );
+  }
+
+  if (compact) {
+    return (
+      <>
+        {!loading && pending.length > 0 && (
+          <div className="mb-3"><IncompleteRegistrations pending={pending} onResumed={() => { load(); onChanged(); }} /></div>
+        )}
+        <button type="button" onClick={() => setShowForm(true)} className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-ent-line bg-ent-panel text-ent-ink font-semibold text-sm hover:bg-ent-pale flex-shrink-0 whitespace-nowrap">
+          <Users className="w-4 h-4" /> Register a New Patient
+        </button>
+      </>
+    );
   }
 
   return (
     <>
       {!loading && pending.length > 0 && <IncompleteRegistrations pending={pending} onResumed={() => { load(); onChanged(); }} />}
-      <button type="button" onClick={() => setShowForm(true)} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 border-dashed border-warm-bronze/40 text-warm-bronze font-semibold text-sm hover:bg-warm-bronze/5">
+      <button type="button" onClick={() => setShowForm(true)} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 border-dashed border-ent-bronze/40 text-ent-bronze font-semibold text-sm hover:bg-ent-bronze/5">
         <Users className="w-4 h-4" /> Register a new patient
       </button>
     </>
@@ -547,17 +813,25 @@ function RegistrationAction({ orgId, onChanged }: { orgId: string; onChanged: ()
 function PatientsListView({ patients, onOpenPatient, title, orgId, onChanged }: { patients: StaffPatient[]; onOpenPatient: (id: string) => void; title?: string; orgId?: string; onChanged?: () => void }) {
   return (
     <Card>
-      <div className="flex items-center gap-2"><Users className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">{title || 'My Patients'}</h2></div>
+      <div className="flex items-center gap-2"><Users className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">{title || 'My Patients'}</h2></div>
       {patients.length === 0 ? (
-        <p className="text-sm text-medium-gray">No patients are currently assigned to you.</p>
+        <p className="text-sm text-ent-muted">No patients are currently assigned to you.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {patients.map((p) => (
-            <button key={p.patientId} type="button" onClick={() => onOpenPatient(p.patientId)} className="flex items-center justify-between gap-2 p-4 bg-warm-ivory rounded-2xl border border-soft-taupe hover:shadow-md transition-all text-left">
-              <span className="font-medium text-charcoal truncate">{p.preferredName || `${p.firstName} ${p.lastName}`}</span>
-              <ChevronRight className="w-4 h-4 text-warm-bronze flex-shrink-0" />
-            </button>
-          ))}
+          {patients.map((p) => {
+            const legalName = `${p.firstName} ${p.lastName}`;
+            const displayName = p.preferredName || legalName;
+            return (
+              <button key={p.patientId} type="button" onClick={() => onOpenPatient(p.patientId)} className="flex items-center gap-3 p-4 bg-ent-pale rounded-2xl border border-ent-line hover:shadow-md transition-all text-left">
+                <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">{patientInitials(p.firstName, p.lastName)}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold text-ent-ink truncate text-sm">{displayName}</span>
+                  {displayName !== legalName && <span className="block text-[11px] text-ent-muted truncate">{legalName}</span>}
+                </span>
+                <ChevronRight className="w-4 h-4 text-ent-muted flex-shrink-0" />
+              </button>
+            );
+          })}
         </div>
       )}
       {orgId && onChanged && <RegistrationAction orgId={orgId} onChanged={onChanged} />}
