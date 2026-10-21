@@ -198,3 +198,22 @@ export async function acknowledgeHelpActivation(helpActivationId: string): Promi
   const { error } = await supabase.rpc('acknowledge_help_activation', { p_help_activation_id: helpActivationId });
   return { error: error ? errMsg(error, 'Could not acknowledge this HELP activation.') : null };
 }
+
+// FIVE-OFFICE PLATFORM — Medical Professional "Medications & Orders".
+// Reads the same `medications` table the patient and residential
+// caregiver already use; migration 067 already grants assigned
+// Enterprise staff (staff_patient_assignments) SELECT access, so this
+// is real authorized data, not a new table or a new authorization path.
+export interface PatientMedication {
+  id: string; name: string; genericName: string | null; dosage: string; form: string | null;
+  instructions: string; prescribedBy: string | null; prescriptionDate: string | null; isActive: boolean;
+}
+
+export async function getPatientMedications(patientId: string): Promise<PatientMedication[]> {
+  const { data, error } = await supabase.from('medications').select('*').eq('patient_id', patientId).order('is_active', { ascending: false }).order('name', { ascending: true });
+  if (error || !data) return [];
+  return data.map((r) => ({
+    id: r.id, name: r.name, genericName: r.generic_name, dosage: r.dosage, form: r.form,
+    instructions: r.instructions, prescribedBy: r.prescribed_by, prescriptionDate: r.prescription_date, isActive: r.is_active,
+  }));
+}

@@ -20,7 +20,7 @@ import {
 import { toast } from 'sonner';
 import CaregiverPortal from '@/pages/caregiver/CaregiverPortal';
 import OrganizationDirectorDashboard, { CreateOrgCard } from './OrganizationDirectorDashboard';
-import StaffCaseloadDashboard from './StaffCaseloadDashboard';
+import ClinicalOfficeDashboard from './ClinicalOfficeDashboard';
 import ResidentialTherapistDashboard from './ResidentialTherapistDashboard';
 import EnterpriseCaregiverDashboard from './EnterpriseCaregiverDashboard';
 
@@ -192,7 +192,7 @@ export default function EnterpriseDashboardRouter({ businessWorkspace = false }:
       <div>
         <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
         {therapistBanner}
-        <StaffCaseloadDashboard roleLabel="Therapist" filterRole="therapist" />
+        <ClinicalOfficeDashboard filterRole="therapist" />
       </div>
     );
   }
@@ -202,7 +202,7 @@ export default function EnterpriseDashboardRouter({ businessWorkspace = false }:
       <div>
         <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
         {therapistBanner}
-        <StaffCaseloadDashboard roleLabel="Medical Professional" filterRole="medical_professional" />
+        <ClinicalOfficeDashboard filterRole="medical_professional" />
       </div>
     );
   }

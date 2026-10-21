@@ -94,6 +94,23 @@ function AppContent() {
   // recognized as the business route even when unauthenticated, landing
   // on BusinessLandingPage/LoginPage rather than the residential one.
   const isBusinessRoute = currentPath === '/business' || currentPath.startsWith('/business/');
+  // FIVE-OFFICE ENTERPRISE PLATFORM §3 — provisional, case-insensitive,
+  // pathname-normalized development-routing targets for the
+  // Admin/Director, Enterprise Caregiver, Medical Professional, and
+  // Therapist Professional offices. "DOMAIN DECISION NOT FINAL... Do
+  // not make domain ownership or DNS configuration a prerequisite for
+  // developing the five offices" — these are additional entry points
+  // into the SAME EnterpriseDashboardRouter resolver /business already
+  // uses, never a parallel routing/authorization system. The resolver
+  // reads the signed-in user's real organization_memberships row to
+  // decide which office renders, exactly as it already does for
+  // /business, so typing /Medical grants no one anything they did not
+  // already hold — "never allow users to grant themselves additional
+  // privileges by selecting a route." /Patient is deliberately NOT
+  // listed here: the existing patient experience already renders for
+  // any path once authenticated (via the role switch below) and needs
+  // no new special-casing, preserving it completely unchanged.
+  const isFiveOfficeRoute = /^\/(admin|caregiver|medical|therapy)(\/|$)/i.test(currentPath);
   // REMEDIATION B: ALSO handled by its own, separate, earlier early
   // return below — BEFORE checkingSession's render — so it never shows
   // the ordinary loading spinner either.
@@ -109,7 +126,7 @@ function AppContent() {
   // public routes, which still pass through the ordinary
   // checkingSession/renderContent path.
   const isPublicRoute =
-    isPublicPatientIntakeRoute || isPrivacyRoute || isAboutUsRoute || isBusinessRoute || isActivationRoute;
+    isPublicPatientIntakeRoute || isPrivacyRoute || isAboutUsRoute || isBusinessRoute || isFiveOfficeRoute || isActivationRoute;
 
   const restoreUser = useCallback((profile: Pick<Database['public']['Tables']['profiles']['Row'],
     'id' | 'email' | 'first_name' | 'last_name' | 'role' | 'phone' | 'created_at' | 'updated_at' | 'mfa_enabled'>) => {
@@ -636,7 +653,7 @@ function AppContent() {
     // state.currentView === 'login' signal the ordinary unauthenticated
     // branch below already uses) — otherwise BusinessLandingPage's own
     // "Caregiver Sign In" button would have nowhere to actually route to.
-    if (isBusinessRoute) {
+    if (isBusinessRoute || isFiveOfficeRoute) {
       if (state.isAuthenticated && state.selectedRole === 'caregiver') {
         // P1 OWNER-VISIBLE DASHBOARD DELIVERY — businessWorkspace=true
         // tells the router this is the explicit Business entry point,
@@ -646,6 +663,10 @@ function AppContent() {
         // authenticated-switch render of this same component further
         // below (reached from any other route) omits the prop, so
         // ordinary residential caregivers elsewhere are unaffected.
+        // /Admin, /Caregiver, /Medical and /Therapy all resolve through
+        // this exact same call — the router decides which office
+        // actually renders from the signed-in user's real organization
+        // role, never from which of these paths was typed.
         return <EnterpriseDashboardRouter businessWorkspace />;
       }
       if (!state.isAuthenticated && state.currentView === 'login') {

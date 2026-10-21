@@ -132,11 +132,13 @@ export default function EnterpriseStaffPatientView({
   organizationId: string; patientId: string; onBack: () => void; staffRole?: StaffRole;
   // ROUND 6: when provided, a verified-access "ready" state renders
   // this callback's result INSTEAD of this component's own flat body —
-  // used by EnterpriseCaregiverDashboard to delegate to the full
-  // tabbed EnterprisePatientRecordTabs (P01-P22) while reusing this
-  // component's already-reviewed staff_patient_assignments access
-  // check unchanged. StaffCaseloadDashboard's existing therapist/
-  // medical-professional callers omit this and keep the original body.
+  // used by EnterpriseCaregiverDashboard (Office B) and, since the
+  // five-office platform work, ClinicalOfficeDashboard (Offices C/D)
+  // to delegate to the full tabbed EnterprisePatientRecordTabs
+  // (P01-P22) while reusing this component's already-reviewed
+  // staff_patient_assignments access check unchanged. No current
+  // caller renders this component's own flat fallback body below
+  // anymore, but it is left in place rather than deleted speculatively.
   onReady?: (patient: PatientHeader) => React.ReactNode;
 }) {
   const [loadState, setLoadState] = useState<LoadState>('checking');

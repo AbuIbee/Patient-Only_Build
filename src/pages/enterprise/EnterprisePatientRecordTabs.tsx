@@ -36,7 +36,7 @@ import {
   type CaregiverVisit, type IncidentReport,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 
-type TabKey = 'overview' | 'medical' | 'medications' | 'tasks' | 'ag' | 'carePlan' | 'appointments' | 'documents' | 'safety' | 'communications' | 'timeline';
+export type TabKey = 'overview' | 'medical' | 'medications' | 'tasks' | 'ag' | 'carePlan' | 'appointments' | 'documents' | 'safety' | 'communications' | 'timeline';
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: 'Overview' }, { key: 'medical', label: 'Medical' }, { key: 'medications', label: 'Medications' },
   { key: 'tasks', label: 'Tasks' },
@@ -54,10 +54,10 @@ function SectionCard({ title, icon: Icon, children }: { title: string; icon: typ
   );
 }
 
-export default function EnterprisePatientRecordTabs({ patientId, patientHeader, staffRole, orgId, onBack }: {
-  patientId: string; patientHeader: PatientHeader; staffRole: StaffRole; orgId: string; onBack: () => void;
+export default function EnterprisePatientRecordTabs({ patientId, patientHeader, staffRole, orgId, onBack, initialTab }: {
+  patientId: string; patientHeader: PatientHeader; staffRole: StaffRole; orgId: string; onBack: () => void; initialTab?: TabKey;
 }) {
-  const [tab, setTab] = useState<TabKey>('overview');
+  const [tab, setTab] = useState<TabKey>(initialTab ?? 'overview');
   const displayName = patientHeader.preferredName || `${patientHeader.firstName} ${patientHeader.lastName}`;
 
   return (
