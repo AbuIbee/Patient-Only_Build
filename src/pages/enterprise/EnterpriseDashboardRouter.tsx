@@ -125,6 +125,42 @@ function PendingTherapistInvitesBanner({ invites, onResolved }: { invites: Pendi
   );
 }
 
+// FIVE-OFFICE ENTERPRISE PLATFORM §5.4/§12 — "If a user has multiple
+// legitimate offices, provide an office switcher... An unauthorized
+// office must not become accessible through a direct URL... Office
+// visibility and backend permissions must be enforced independently."
+// `orgs` (from getMyOrganizations) is the single source of truth for
+// which offices a user actually, currently holds — the switcher below
+// only ever lists roles present in that real, server-returned list; it
+// never grants a new one. Selecting a pill changes ONLY which already-
+// authorized dashboard renders in this browser tab (local component
+// state, not persisted) — every one of those dashboards performs its
+// own independent, unchanged authorization check regardless of how the
+// user arrived at it, so switching confers no new backend privilege.
+type OfficeKey = 'director' | 'therapist' | 'medical' | 'caregiver';
+const OFFICE_LABELS: Record<OfficeKey, string> = {
+  director: 'Admin / Director', therapist: 'Therapist', medical: 'Medical Professional', caregiver: 'Caregiver',
+};
+
+function OfficeSwitcher({ offices, selected, onSelect }: { offices: { key: OfficeKey; orgName: string }[]; selected: OfficeKey; onSelect: (key: OfficeKey) => void }) {
+  if (offices.length < 2) return null;
+  return (
+    <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2 flex-wrap">
+      <span className="text-xs font-semibold text-amber-900">You hold more than one office here — viewing:</span>
+      {offices.map((o) => (
+        <button
+          key={o.key} type="button" onClick={() => onSelect(o.key)}
+          className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+            selected === o.key ? 'bg-warm-bronze text-white' : 'bg-white text-charcoal border border-amber-300 hover:bg-amber-100'
+          }`}
+        >
+          {OFFICE_LABELS[o.key]} — {o.orgName}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // P1 OWNER-VISIBLE DASHBOARD DELIVERY — the approved Enterprise visual
 // shell must not depend on possessing an Enterprise organization
 // membership merely to render its non-sensitive navigation and layout.
@@ -146,6 +182,7 @@ export default function EnterpriseDashboardRouter({ businessWorkspace = false }:
   const [therapistPatients, setTherapistPatients] = useState<ResidentialTherapistPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateOrg, setShowCreateOrg] = useState(false);
+  const [selectedOffice, setSelectedOffice] = useState<OfficeKey | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -175,11 +212,28 @@ export default function EnterpriseDashboardRouter({ businessWorkspace = false }:
 
   const therapistBanner = <PendingTherapistInvitesBanner invites={therapistInvites} onResolved={() => { void refresh(); }} />;
 
+  // Every org role this real, authenticated user currently, actively
+  // holds — in this exact priority order (director > therapist >
+  // medical > caregiver), matching the fallback order below so the
+  // DEFAULT office is unchanged for everyone who holds only one.
+  const availableOffices: { key: OfficeKey; orgName: string }[] = [
+    ...(director ? [{ key: 'director' as const, orgName: director.organizationName }] : []),
+    ...(therapist ? [{ key: 'therapist' as const, orgName: therapist.organizationName }] : []),
+    ...(medical ? [{ key: 'medical' as const, orgName: medical.organizationName }] : []),
+    ...(hasCaregiverOrgRole ? [{ key: 'caregiver' as const, orgName: orgs.find((o) => o.orgRole === 'caregiver')!.organizationName }] : []),
+  ];
+  // A stale selection (e.g. the office was revoked since it was picked)
+  // never falls back to an unauthorized office — it simply stops being
+  // selectable and the normal priority order below takes over.
+  const effectiveOffice: OfficeKey | null = selectedOffice && availableOffices.some((o) => o.key === selectedOffice) ? selectedOffice : null;
+  const switcher = <OfficeSwitcher offices={availableOffices} selected={effectiveOffice ?? availableOffices[0]?.key} onSelect={setSelectedOffice} />;
+
   // Director takes priority when present — they manage the organization
   // itself, a superset of any other role they might also hold there.
-  if (director) {
+  if (director && (effectiveOffice === null || effectiveOffice === 'director')) {
     return (
       <div>
+        {switcher}
         <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
         {therapistBanner}
         <OrganizationDirectorDashboard organizationId={director.organizationId} />
@@ -187,9 +241,10 @@ export default function EnterpriseDashboardRouter({ businessWorkspace = false }:
     );
   }
 
-  if (therapist) {
+  if (therapist && (effectiveOffice === null || effectiveOffice === 'therapist')) {
     return (
       <div>
+        {switcher}
         <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
         {therapistBanner}
         <ClinicalOfficeDashboard filterRole="therapist" />
@@ -197,9 +252,10 @@ export default function EnterpriseDashboardRouter({ businessWorkspace = false }:
     );
   }
 
-  if (medical) {
+  if (medical && (effectiveOffice === null || effectiveOffice === 'medical')) {
     return (
       <div>
+        {switcher}
         <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
         {therapistBanner}
         <ClinicalOfficeDashboard filterRole="medical_professional" />
@@ -232,9 +288,10 @@ export default function EnterpriseDashboardRouter({ businessWorkspace = false }:
   // generic caregiver branch below the moment the caregiver org role
   // is ACTIVE (not merely invited — an outstanding invite still needs
   // CaregiverPortal's accept banner first).
-  if (hasCaregiverOrgRole) {
+  if (hasCaregiverOrgRole && (effectiveOffice === null || effectiveOffice === 'caregiver')) {
     return (
       <div>
+        {switcher}
         <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
         {therapistBanner}
         <EnterpriseCaregiverDashboard />
