@@ -38,7 +38,6 @@ import {
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import EnterprisePatientRecordTabs from './EnterprisePatientRecordTabs';
-import { CreateOrgCard } from './OrganizationDirectorDashboard';
 
 type NavItem =
   | 'dashboard' | 'patients' | 'schedule' | 'tasks' | 'records' | 'communications'
@@ -280,7 +279,7 @@ export default function EnterpriseCaregiverDashboard() {
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-ent-bg">
           {!hasOrganization ? (
             <div className="max-w-6xl mx-auto space-y-5">
-              <NoOrganizationPanel onChanged={() => { void load(); }} />
+              <NoOrganizationPanel />
             </div>
           ) : openPatient ? (
             <div className="max-w-5xl mx-auto">
@@ -333,15 +332,26 @@ function Card({ children }: { children: React.ReactNode }) {
 // legitimate self-service "Start an Organization" action
 // EnterpriseDashboardRouter's own residential fallback already offers,
 // reused here rather than reimplemented.
-function NoOrganizationPanel({ onChanged }: { onChanged: (orgId: string) => void }) {
+// OWNER CORRECTION — "Enterprise caregivers are operational users, not
+// organization founders by default." A caregiver reaching the Business
+// workspace with no active Enterprise organization membership sees an
+// honest "awaiting access" state here, never an invitation to found
+// one themselves — organization creation belongs exclusively to an
+// authorized Admin/Director onboarding workflow (unchanged, outside
+// this component). The backend enforces this independently of the UI:
+// create_organization() (migration 080) now rejects any caller who
+// already holds an active membership anywhere, so this is not merely a
+// hidden button. Any pending invitation is already shown above this
+// panel by EnterpriseDashboardRouter's own PendingInvitesBanner.
+function NoOrganizationPanel() {
   return (
     <Card>
-      <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">No Enterprise organization connected</h2></div>
+      <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Organization invitation required</h2></div>
       <p className="text-sm text-ent-text">
-        Your account is not currently a member of an Enterprise organization, so there is no organization-specific data to show here.
-        Start a new organization below, or ask an existing organization&apos;s director to add you as a staff member.
+        Your account is not currently connected to an Enterprise organization, so there is no organization-specific data to show here.
+        An organization&apos;s director adds staff members directly — ask your director to add you, and you&apos;ll see the invitation
+        above as soon as it&apos;s sent.
       </p>
-      <CreateOrgCard onCreated={onChanged} />
     </Card>
   );
 }

@@ -347,3 +347,26 @@ describe('SEC-06 — organization billing terms are director-only; operational c
     expect(coverageBody[0]?.status).toBe('active');
   });
 });
+
+describe('OWNER CORRECTION — Enterprise caregivers are operational users, not organization founders by default', () => {
+  it('an existing Enterprise caregiver cannot self-create a second organization via create_organization()', async () => {
+    const [status, body] = (await rpc('create_organization', { p_name: 'Rogue Org', p_package_type: 'integrated_care' }, tok.caregiverA)) as [number, { message?: string }];
+    // Before migration 080: create_organization() had no restriction
+    // beyond basic authentication — any authenticated caller, including
+    // one already actively staffing an existing organization, could
+    // found an unrelated second one.
+    expect(status).toBeGreaterThanOrEqual(400);
+    expect(body.message).toContain('already an active member');
+  });
+
+  it('a brand-new account with zero existing memberships can still self-bootstrap its own first organization (residential flow preserved)', async () => {
+    const email = `r7mc-brandnew-${stamp}@local.test`;
+    const id = await authSignUp(email, PW);
+    sql(`UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${id}';`);
+    const token = await login(email, PW);
+    const [status, body] = (await rpc('create_organization', { p_name: 'Brand New Residential Org', p_package_type: 'integrated_care' }, token)) as [number, { id?: string }];
+    expect(status).toBe(200);
+    if (body.id) sql(`DELETE FROM public.organizations WHERE id='${body.id}';`);
+    await authDeleteUser(id);
+  });
+});

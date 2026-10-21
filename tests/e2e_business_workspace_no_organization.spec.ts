@@ -11,11 +11,20 @@
 // workspace" from "the user is simply a caregiver-role account
 // elsewhere in the app." Fixed by a businessWorkspace prop threaded
 // from App.tsx's /business branch only, and EnterpriseCaregiverDashboard
-// itself now renders its own honest "No Enterprise organization
-// connected" state inside the full approved shell instead of blocking
-// entirely. Presentation access (the shell, navigation) is now
-// distinct from protected-data authorization (real organization/patient
-// data), per this directive's own required product behavior.
+// itself now renders its own honest no-organization state inside the
+// full approved shell instead of blocking entirely. Presentation access
+// (the shell, navigation) is distinct from protected-data authorization
+// (real organization/patient data).
+//
+// OWNER CORRECTION — ENTERPRISE ROLES, ONBOARDING AND NAVIGATION:
+// "Enterprise caregivers are operational users, not organization
+// founders by default." The no-organization state must NOT offer
+// self-service organization creation — only an "Organization
+// invitation required" explanation. Organization creation is reserved
+// for an authorized Admin/Director onboarding workflow, enforced at
+// the backend (migration 080: create_organization() now rejects any
+// caller who already holds an active membership anywhere), not merely
+// a hidden UI button.
 import { test, expect } from '@playwright/test';
 
 const ALL_14 = [
@@ -29,7 +38,7 @@ const ALL_14 = [
 const EMAIL = process.env.NOORG_TEST_EMAIL || 'noorg-caregiver@local.test';
 const PASSWORD = process.env.NOORG_TEST_PASSWORD || 'NoOrgVerify9!';
 
-test('a caregiver with no Enterprise organization still sees the approved shell, not the residential view', async ({ page }) => {
+test('a caregiver with no Enterprise organization sees the approved shell with an awaiting-access state, never a self-service organization-creation offer', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
 
@@ -40,7 +49,7 @@ test('a caregiver with no Enterprise organization still sees the approved shell,
   await page.getByPlaceholder('Your password').fill(PASSWORD);
   await page.getByRole('button', { name: /sign in/i }).click();
 
-  await expect(page.getByText('No Enterprise organization connected', { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('Organization invitation required', { exact: true })).toBeVisible({ timeout: 15000 });
 
   // The full approved shell renders regardless -- not the residential CaregiverPortal.
   await expect(page.getByText('WORKSPACE', { exact: true })).toBeVisible();
@@ -55,14 +64,15 @@ test('a caregiver with no Enterprise organization still sees the approved shell,
   await expect(page.getByText('Needs your attention', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Assigned patients', { exact: true })).toHaveCount(0);
 
-  // A legitimate onboarding action is present (not a dead end).
-  await expect(page.getByRole('button', { name: 'Create Organization', exact: true })).toBeVisible();
+  // OWNER CORRECTION — no self-service organization-creation offer anywhere on this screen.
+  await expect(page.getByRole('button', { name: 'Create Organization', exact: true })).toHaveCount(0);
+  await expect(page.getByPlaceholder('Riverside Home Care')).toHaveCount(0);
 
   // Every other destination shows the same honest state, not a crash
   // or a false-success render -- navigation itself still fully works.
   for (const label of ['My Schedule', 'Care Communications', 'My Organization', 'Settings & Account']) {
     await page.getByRole('button', { name: label, exact: true }).click();
-    await expect(page.getByText('No Enterprise organization connected', { exact: true })).toBeVisible();
+    await expect(page.getByText('Organization invitation required', { exact: true })).toBeVisible();
     expect(page.url()).toContain('/business/');
   }
 
