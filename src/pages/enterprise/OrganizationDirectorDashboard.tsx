@@ -8,8 +8,9 @@ import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
-  Building2, Users, LogOut, UserPlus, Trash2,
-  Loader2, CreditCard, ClipboardList, MessageSquare, Link2, Unlink,
+  Building2, Users, UserPlus, Trash2, LayoutDashboard, UserCog,
+  Loader2, CreditCard, ClipboardList, MessageSquare, Link2, Unlink, CalendarClock,
+  ClipboardCheck, ShieldAlert, BarChart3, Settings as SettingsIcon, ChevronRight, CheckCircle2,
 } from 'lucide-react';
 import {
   getMyOrganizations, getOrgMembers, getOrgLicense, getOrgCoveredPatients,
@@ -19,9 +20,14 @@ import {
   type OrgLicense, type OrgRole, type OrgMembershipRow, type OrgPackageType,
   type StaffPatientAssignment, type StaffRole, type OrgCommunicationsOverview,
 } from '@/services/organizationService';
+import {
+  getOrgVisits, getOrgIncidentReports, getOrgShiftHandoffs, resolveOrgIncidentReport,
+  type OrgVisit, type OrgIncidentReport, type OrgShiftHandoff, type IncidentResolutionStatus,
+} from '@/services/organizationDirectorOpsService';
 import OrganizationBillingPage from './OrganizationBillingPage';
+import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
 
-const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze border-soft-taupe bg-white';
+const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
 
 const ROLE_LABELS: Record<OrgRole, string> = {
   director: 'Director',
@@ -50,28 +56,28 @@ function CreateOrgCard({ onCreated }: { onCreated: (orgId: string) => void }) {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-6 space-y-4 max-w-md mx-auto">
+    <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 space-y-4 max-w-md mx-auto">
       <div className="flex items-center gap-2">
-        <Building2 className="w-5 h-5 text-warm-bronze" />
-        <h2 className="text-lg font-bold text-charcoal">Create Your Organization</h2>
+        <Building2 className="w-5 h-5 text-ent-bronze" />
+        <h2 className="text-lg font-bold text-ent-ink">Create Your Organization</h2>
       </div>
       <div className="space-y-1">
-        <label className="text-sm font-medium text-charcoal">Organization Name</label>
+        <label className="text-sm font-medium text-ent-ink">Organization Name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Riverside Home Care" className={inputCls} />
       </div>
       <div className="space-y-1">
-        <label className="text-sm font-medium text-charcoal">Business Package</label>
+        <label className="text-sm font-medium text-ent-ink">Business Package</label>
         <select value={packageType} onChange={(e) => setPackageType(e.target.value as 'therapist' | 'integrated_care')} className={inputCls}>
           <option value="integrated_care">Enterprise Integrated Care</option>
           <option value="therapist">Enterprise Therapist</option>
         </select>
-        <p className="text-xs text-medium-gray">Covered patients always receive the same Full Support experience regardless of package.</p>
+        <p className="text-xs text-ent-muted">Covered patients always receive the same Full Support experience regardless of package.</p>
       </div>
       <button
         type="button"
         onClick={() => { void handleCreate(); }}
         disabled={loading}
-        className="w-full py-3 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white font-semibold disabled:opacity-60 transition-colors"
+        className="w-full py-3 rounded-xl bg-ent-bronze hover:opacity-90 text-white font-semibold disabled:opacity-60 transition-colors"
       >
         {loading ? 'Creating…' : 'Create Organization'}
       </button>
@@ -111,50 +117,50 @@ function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: Or
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+    <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <CreditCard className="w-5 h-5 text-warm-bronze" />
-          <h2 className="font-bold text-charcoal">License &amp; Capacity</h2>
+          <CreditCard className="w-5 h-5 text-ent-bronze" />
+          <h2 className="font-bold text-ent-ink">License &amp; Capacity</h2>
         </div>
-        <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${license?.status === 'active' ? 'text-soft-sage bg-soft-sage/10' : 'text-amber-700 bg-amber-100'}`}>
+        <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${license?.status === 'active' ? 'text-ent-green bg-ent-green-active' : 'text-amber-700 bg-amber-100'}`}>
           {license?.status ?? 'proposed'}
         </span>
       </div>
-      <p className="text-xs text-medium-gray">
+      <p className="text-xs text-ent-muted">
         Seats, capacity and fee are proposed, configurable commercial terms — setting them here never activates the license or creates a charge. Only an admin can activate, expire, or cancel a license (a separate, staging-only mechanism for synthetic integration testing); this status also controls whether covered patients actually receive Full Support.
       </p>
       {editing ? (
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-charcoal">Licensed Staff Seats</label>
+              <label className="text-xs font-medium text-ent-ink">Licensed Staff Seats</label>
               <input type="number" min={0} value={seats} onChange={(e) => setSeats(e.target.value)} placeholder="e.g. 5" className={inputCls} />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-charcoal">Covered Patient Capacity</label>
+              <label className="text-xs font-medium text-ent-ink">Covered Patient Capacity</label>
               <input type="number" min={0} value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="e.g. 20" className={inputCls} />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-charcoal">Proposed Annual Fee ($)</label>
+              <label className="text-xs font-medium text-ent-ink">Proposed Annual Fee ($)</label>
               <input type="number" min={0} step="0.01" value={fee} onChange={(e) => setFee(e.target.value)} placeholder="e.g. 999.00" className={inputCls} />
             </div>
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={() => { void save(); }} disabled={saving} className="px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">
+            <button type="button" onClick={() => { void save(); }} disabled={saving} className="px-4 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
               {saving ? 'Saving…' : 'Save'}
             </button>
-            <button type="button" onClick={() => setEditing(false)} className="px-4 py-2 rounded-xl border border-soft-taupe text-charcoal text-sm font-semibold">Cancel</button>
+            <button type="button" onClick={() => setEditing(false)} className="px-4 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold">Cancel</button>
           </div>
         </div>
       ) : (
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="text-sm text-charcoal space-y-0.5">
+          <div className="text-sm text-ent-ink space-y-0.5">
             <p>Seats: <strong>{license?.licensedSeats ?? 'Not configured'}</strong></p>
             <p>Patient capacity: <strong>{license?.coveredPatientCapacity ?? 'Not configured'}</strong></p>
             <p>Proposed annual fee: <strong>{license?.annualLicenseFee != null ? `$${license.annualLicenseFee.toFixed(2)}` : 'Not configured'}</strong></p>
           </div>
-          <button type="button" onClick={() => setEditing(true)} className="px-3 py-2 rounded-lg border border-soft-taupe text-charcoal text-sm font-semibold hover:bg-soft-taupe/20">
+          <button type="button" onClick={() => setEditing(true)} className="px-3 py-2 rounded-lg border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">
             Configure
           </button>
         </div>
@@ -201,10 +207,10 @@ function StaffCard({ orgId, members, onChanged }: {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-4">
+    <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-4">
       <div className="flex items-center gap-2">
-        <Users className="w-5 h-5 text-warm-bronze" />
-        <h2 className="font-bold text-charcoal">Staff</h2>
+        <Users className="w-5 h-5 text-ent-bronze" />
+        <h2 className="font-bold text-ent-ink">Staff</h2>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-2">
@@ -215,29 +221,29 @@ function StaffCard({ orgId, members, onChanged }: {
           <option value="medical_professional">Medical Professional</option>
           <option value="billing_admin">Billing Administrator</option>
         </select>
-        <button type="button" onClick={() => { void invite(); }} disabled={inviting} className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60 whitespace-nowrap">
+        <button type="button" onClick={() => { void invite(); }} disabled={inviting} className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60 whitespace-nowrap">
           <UserPlus className="w-4 h-4" /> {inviting ? 'Inviting…' : 'Invite'}
         </button>
       </div>
-      <p className="text-xs text-medium-gray -mt-2">
+      <p className="text-xs text-ent-muted -mt-2">
         The invited person must already have a My Memoria Ally account with this email — no invitation email is sent; they will see it waiting when they next sign in.
       </p>
 
       {members.length === 0 ? (
-        <p className="text-sm text-medium-gray">No staff yet.</p>
+        <p className="text-sm text-ent-muted">No staff yet.</p>
       ) : (
         <ul className="space-y-2">
           {members.filter((m) => m.orgRole !== 'director').map((m) => (
-            <li key={m.id} className="flex items-center justify-between gap-3 p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
+            <li key={m.id} className="flex items-center justify-between gap-3 p-3 bg-ent-bg rounded-xl border border-ent-line">
               <div className="min-w-0">
-                <p className="text-sm font-medium text-charcoal truncate">{m.firstName} {m.lastName} <span className="text-xs text-medium-gray">({m.email})</span></p>
-                <p className="text-xs text-medium-gray">{ROLE_LABELS[m.orgRole]} — {m.status}</p>
+                <p className="text-sm font-medium text-ent-ink truncate">{m.firstName} {m.lastName} <span className="text-xs text-ent-muted">({m.email})</span></p>
+                <p className="text-xs text-ent-muted">{ROLE_LABELS[m.orgRole]} — {m.status}</p>
               </div>
               <button
                 type="button"
                 onClick={() => { void remove(m.userId, `${m.firstName} ${m.lastName}`); }}
                 disabled={removingId === m.userId}
-                className="flex-shrink-0 p-2 rounded-lg text-gentle-coral hover:bg-gentle-coral/10 disabled:opacity-60"
+                className="flex-shrink-0 p-2 rounded-lg text-ent-rust hover:bg-ent-rust/10 disabled:opacity-60"
                 aria-label="Remove staff member"
               >
                 {removingId === m.userId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
@@ -261,19 +267,19 @@ function CoveredPatientsCard({ orgId }: { orgId: string }) {
   }, [orgId]);
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+    <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
       <div className="flex items-center gap-2">
-        <ClipboardList className="w-5 h-5 text-warm-bronze" />
-        <h2 className="font-bold text-charcoal">Covered Patients ({patients.length})</h2>
+        <ClipboardList className="w-5 h-5 text-ent-bronze" />
+        <h2 className="font-bold text-ent-ink">Covered Patients ({patients.length})</h2>
       </div>
       {loading ? (
-        <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" />
+        <Loader2 className="w-5 h-5 animate-spin text-ent-bronze" />
       ) : patients.length === 0 ? (
-        <p className="text-sm text-medium-gray">No patients are currently covered by this organization. Caregiver staff register and automatically cover patients from their own dashboard.</p>
+        <p className="text-sm text-ent-muted">No patients are currently covered by this organization. Caregiver staff register and automatically cover patients from their own dashboard.</p>
       ) : (
         <ul className="space-y-2">
           {patients.map((p) => (
-            <li key={p.patientId} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm font-medium text-charcoal">
+            <li key={p.patientId} className="p-3 bg-ent-bg rounded-xl border border-ent-line text-sm font-medium text-ent-ink">
               {p.preferredName || `${p.firstName} ${p.lastName}`}
             </li>
           ))}
@@ -294,29 +300,29 @@ function CommunicationsOverviewCard({ orgId }: { orgId: string }) {
   }, [orgId]);
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+    <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
       <div className="flex items-center gap-2">
-        <MessageSquare className="w-5 h-5 text-warm-bronze" />
-        <h2 className="font-bold text-charcoal">Therapist Office Communications</h2>
+        <MessageSquare className="w-5 h-5 text-ent-bronze" />
+        <h2 className="font-bold text-ent-ink">Therapist Office Communications</h2>
       </div>
-      <p className="text-xs text-medium-gray">
+      <p className="text-xs text-ent-muted">
         Aggregate activity only — as a director you see volume and follow-up status, never message content from a conversation you were not personally added to.
       </p>
       {loading ? (
-        <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" />
+        <Loader2 className="w-5 h-5 animate-spin text-ent-bronze" />
       ) : (
         <div className="grid grid-cols-3 gap-3 text-center">
-          <div className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
-            <p className="text-2xl font-bold text-charcoal">{overview?.activeConversations ?? 0}</p>
-            <p className="text-[11px] text-medium-gray mt-0.5">Active conversations</p>
+          <div className="p-3 bg-ent-bg rounded-xl border border-ent-line">
+            <p className="text-2xl font-bold text-ent-ink">{overview?.activeConversations ?? 0}</p>
+            <p className="text-[11px] text-ent-muted mt-0.5">Active conversations</p>
           </div>
-          <div className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
-            <p className="text-2xl font-bold text-charcoal">{overview?.patientsWithConversations ?? 0}</p>
-            <p className="text-[11px] text-medium-gray mt-0.5">Patients discussed</p>
+          <div className="p-3 bg-ent-bg rounded-xl border border-ent-line">
+            <p className="text-2xl font-bold text-ent-ink">{overview?.patientsWithConversations ?? 0}</p>
+            <p className="text-[11px] text-ent-muted mt-0.5">Patients discussed</p>
           </div>
-          <div className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
-            <p className="text-2xl font-bold text-gentle-coral">{overview?.unresolvedFollowUps ?? 0}</p>
-            <p className="text-[11px] text-medium-gray mt-0.5">Unresolved follow-ups</p>
+          <div className="p-3 bg-ent-bg rounded-xl border border-ent-line">
+            <p className="text-2xl font-bold text-ent-rust">{overview?.unresolvedFollowUps ?? 0}</p>
+            <p className="text-[11px] text-ent-muted mt-0.5">Unresolved follow-ups</p>
           </div>
         </div>
       )}
@@ -373,10 +379,10 @@ function AssignmentsCard({ orgId, members }: {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-4">
+    <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-4">
       <div className="flex items-center gap-2">
-        <Link2 className="w-5 h-5 text-warm-bronze" />
-        <h2 className="font-bold text-charcoal">Staff-to-Patient Assignments</h2>
+        <Link2 className="w-5 h-5 text-ent-bronze" />
+        <h2 className="font-bold text-ent-ink">Staff-to-Patient Assignments</h2>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-2">
@@ -393,24 +399,24 @@ function AssignmentsCard({ orgId, members }: {
           <option value="therapist">Therapist</option>
           <option value="medical_professional">Medical Professional</option>
         </select>
-        <button type="button" onClick={() => { void assign(); }} disabled={saving} className="px-4 py-2.5 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60 whitespace-nowrap">
+        <button type="button" onClick={() => { void assign(); }} disabled={saving} className="px-4 py-2.5 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60 whitespace-nowrap">
           {saving ? 'Saving…' : 'Assign'}
         </button>
       </div>
-      <p className="text-xs text-medium-gray -mt-2">The staff member must already hold that role in this organization, and the patient must already be covered.</p>
+      <p className="text-xs text-ent-muted -mt-2">The staff member must already hold that role in this organization, and the patient must already be covered.</p>
 
       {loading ? (
-        <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" />
+        <Loader2 className="w-5 h-5 animate-spin text-ent-bronze" />
       ) : assignments.length === 0 ? (
-        <p className="text-sm text-medium-gray">No staff-to-patient assignments yet.</p>
+        <p className="text-sm text-ent-muted">No staff-to-patient assignments yet.</p>
       ) : (
         <ul className="space-y-2">
           {assignments.filter((a) => a.isActive).map((a) => (
-            <li key={`${a.userId}-${a.patientId}`} className="flex items-center justify-between gap-3 p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
-              <p className="text-sm text-charcoal min-w-0 truncate">
+            <li key={`${a.userId}-${a.patientId}`} className="flex items-center justify-between gap-3 p-3 bg-ent-bg rounded-xl border border-ent-line">
+              <p className="text-sm text-ent-ink min-w-0 truncate">
                 <strong>{a.firstName} {a.lastName}</strong> ({ROLE_LABELS[a.orgRole as OrgRole]}) → {a.patientPreferredName || `${a.patientFirstName} ${a.patientLastName}`}
               </p>
-              <button type="button" onClick={() => { void unassign(a.userId, a.patientId); }} className="flex-shrink-0 p-2 rounded-lg text-gentle-coral hover:bg-gentle-coral/10" aria-label="Remove assignment">
+              <button type="button" onClick={() => { void unassign(a.userId, a.patientId); }} className="flex-shrink-0 p-2 rounded-lg text-ent-rust hover:bg-ent-rust/10" aria-label="Remove assignment">
                 <Unlink className="w-4 h-4" />
               </button>
             </li>
@@ -421,28 +427,308 @@ function AssignmentsCard({ orgId, members }: {
   );
 }
 
+// FIVE-OFFICE ENTERPRISE PLATFORM §7 — Office A's required 12
+// destinations. Every destination below reuses an existing,
+// already-authorized card component or service rather than inventing
+// a new one; the three genuinely new destinations (Scheduling
+// Oversight, Care Operations, Incidents & Escalations) are backed by
+// organizationDirectorOpsService.ts's org-wide reads, which themselves
+// rely entirely on migration 068's pre-existing
+// `is_active_org_director()` RLS — no new authorization surface.
+type DirectorNavKey =
+  | 'dashboard' | 'overview' | 'staff' | 'patients' | 'assignments' | 'scheduling'
+  | 'operations' | 'incidents' | 'communications' | 'reports' | 'licensing' | 'settings';
+
+const DIRECTOR_NAV_ITEMS: OfficeNavItem<DirectorNavKey>[] = [
+  { key: 'dashboard', label: 'Director Dashboard', icon: LayoutDashboard },
+  { key: 'overview', label: 'Organization Overview', icon: Building2 },
+  { key: 'staff', label: 'Staff Management', icon: Users },
+  { key: 'patients', label: 'Patient Management', icon: UserCog },
+  { key: 'assignments', label: 'Assignments and Coverage', icon: Link2 },
+  { key: 'scheduling', label: 'Scheduling Oversight', icon: CalendarClock },
+  { key: 'operations', label: 'Care Operations', icon: ClipboardCheck },
+  { key: 'incidents', label: 'Incidents and Escalations', icon: ShieldAlert },
+  { key: 'communications', label: 'Care Communications', icon: MessageSquare },
+  { key: 'reports', label: 'Reports and Insights', icon: BarChart3 },
+  { key: 'licensing', label: 'Licensing and Entitlements', icon: CreditCard },
+  { key: 'settings', label: 'Organization Settings', icon: SettingsIcon },
+];
+const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
+  { label: 'ORGANIZATION', items: ['dashboard', 'overview', 'staff', 'patients'] },
+  { label: 'CARE OPERATIONS', items: ['assignments', 'scheduling', 'operations', 'incidents', 'communications'] },
+  { label: 'ADMINISTRATION', items: ['reports', 'licensing', 'settings'] },
+];
+
+function DashboardHome({ orgName, members, license, visits, incidents, handoffs, onNavigate }: {
+  orgName: string; members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
+  license: OrgLicense | null; visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
+  onNavigate: (key: DirectorNavKey) => void;
+}) {
+  const activeStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'active').length;
+  const openIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').length;
+  const scheduledVisits = visits.filter((v) => v.status === 'scheduled' || v.status === 'in_progress').length;
+  const recentHandoffs = handoffs.slice(0, 5);
+  const recentIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').slice(0, 5);
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-xl sm:text-2xl font-bold text-ent-ink">Director Dashboard</h1>
+        <p className="text-sm text-ent-muted mt-0.5">Organization-wide oversight for {orgName || 'your organization'}.</p>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MetricCard label="Care Team" value={String(activeStaff)} sub="active staff" />
+        <MetricCard label="Open Incidents" value={String(openIncidents)} sub="need review" />
+        <MetricCard label="Scheduled Visits" value={String(scheduledVisits)} sub="upcoming or in progress" />
+        <MetricCard label="License" value={license?.status ?? 'proposed'} sub="current status" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <OfficeCard>
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-ent-ink">Needs Your Attention</h2>
+            {recentIncidents.length > 0 && <span className="text-xs font-bold text-ent-rust">{recentIncidents.length}</span>}
+          </div>
+          {recentIncidents.length === 0 ? (
+            <p className="text-sm text-ent-text">No unresolved incidents across your organization right now.</p>
+          ) : (
+            <ul className="space-y-2">
+              {recentIncidents.map((i) => (
+                <li key={i.id} className="p-2.5 bg-ent-bg rounded-xl border border-ent-line text-sm">
+                  <p className="font-semibold text-ent-ink capitalize">{i.incidentType.replace('_', ' ')} — {i.patientName}</p>
+                  <p className="text-xs text-ent-muted">{new Date(i.occurredAt).toLocaleString()} · {i.severity}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button type="button" onClick={() => onNavigate('incidents')} className="text-sm font-semibold text-ent-bronze hover:underline">View all incidents →</button>
+        </OfficeCard>
+
+        <OfficeCard>
+          <h2 className="font-bold text-ent-ink">Recent Staff Activity</h2>
+          {recentHandoffs.length === 0 ? (
+            <p className="text-sm text-ent-text">No shift handoffs recorded yet across your organization.</p>
+          ) : (
+            <ul className="space-y-2">
+              {recentHandoffs.map((h) => (
+                <li key={h.id} className="p-2.5 bg-ent-bg rounded-xl border border-ent-line text-sm">
+                  <p className="font-semibold text-ent-ink">{h.authorName} — {h.patientName}</p>
+                  <p className="text-xs text-ent-muted line-clamp-2">{h.summary}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button type="button" onClick={() => onNavigate('operations')} className="text-sm font-semibold text-ent-bronze hover:underline">View care operations →</button>
+        </OfficeCard>
+      </div>
+    </div>
+  );
+}
+
+function MetricCard({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return (
+    <div className="bg-ent-panel rounded-2xl border border-ent-line p-4">
+      <p className="text-xs font-semibold text-ent-muted capitalize">{label}</p>
+      <p className="text-2xl font-bold text-ent-ink mt-1 capitalize">{value}</p>
+      <p className="text-[11px] text-ent-muted">{sub}</p>
+    </div>
+  );
+}
+
+function OrganizationOverviewView({ orgName, packageType, members, coveredCount }: {
+  orgName: string; packageType: OrgPackageType; members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[]; coveredCount: number;
+}) {
+  const activeStaff = members.filter((m) => m.status === 'active');
+  return (
+    <OfficeCard>
+      <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Organization Overview</h2></div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-ent-ink">
+        <p><span className="text-ent-muted">Organization name:</span> {orgName || 'Not set'}</p>
+        <p><span className="text-ent-muted">Business package:</span> {packageType === 'integrated_care' ? 'Enterprise Integrated Care' : 'Enterprise Therapist'}</p>
+        <p><span className="text-ent-muted">Active members:</span> {activeStaff.length}</p>
+        <p><span className="text-ent-muted">Covered patients:</span> {coveredCount}</p>
+      </div>
+    </OfficeCard>
+  );
+}
+
+function SchedulingOversightView({ visits }: { visits: OrgVisit[] }) {
+  return (
+    <OfficeCard>
+      <div className="flex items-center gap-2"><CalendarClock className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Scheduling Oversight</h2></div>
+      {visits.length === 0 ? (
+        <p className="text-sm text-ent-text">No visits have been scheduled yet across your organization.</p>
+      ) : (
+        <ul className="space-y-2">
+          {visits.map((v) => (
+            <li key={v.id} className="p-3 bg-ent-bg rounded-xl border border-ent-line flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-ent-ink truncate">{v.caregiverName} → {v.patientName}</p>
+                <p className="text-xs text-ent-muted">{v.scheduledStart ? new Date(v.scheduledStart).toLocaleString() : 'No time set'}</p>
+              </div>
+              <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-ent-pale text-ent-ink capitalize flex-shrink-0">{v.status.replace('_', ' ')}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </OfficeCard>
+  );
+}
+
+function CareOperationsView({ handoffs }: { handoffs: OrgShiftHandoff[] }) {
+  return (
+    <OfficeCard>
+      <div className="flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Care Operations</h2></div>
+      <p className="text-sm text-ent-text">Recent shift handoffs across your organization.</p>
+      {handoffs.length === 0 ? (
+        <p className="text-sm text-ent-text">No shift handoffs recorded yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {handoffs.map((h) => (
+            <li key={h.id} className="p-3 bg-ent-bg rounded-xl border border-ent-line text-sm">
+              <p className="font-semibold text-ent-ink">{h.authorName} — {h.patientName}</p>
+              <p className="text-ent-text">{h.summary}</p>
+              {h.pendingTasks && <p className="text-xs text-ent-muted mt-1">Pending: {h.pendingTasks}</p>}
+              {h.concerns && <p className="text-xs text-ent-rust mt-1">Concerns: {h.concerns}</p>}
+              <p className="text-[11px] text-ent-muted mt-1">{new Date(h.createdAt).toLocaleString()}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </OfficeCard>
+  );
+}
+
+function IncidentsView({ incidents, onResolved }: { incidents: OrgIncidentReport[]; onResolved: () => void }) {
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+
+  const resolve = async (id: string, status: IncidentResolutionStatus) => {
+    setResolvingId(id);
+    try {
+      const { error } = await resolveOrgIncidentReport(id, status);
+      if (error) { toast.error(error); return; }
+      toast.success('Incident updated.');
+      onResolved();
+    } finally {
+      setResolvingId(null);
+    }
+  };
+
+  return (
+    <OfficeCard>
+      <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Incidents and Escalations</h2></div>
+      {incidents.length === 0 ? (
+        <p className="text-sm text-ent-text">No incidents have been reported across your organization.</p>
+      ) : (
+        <ul className="space-y-2">
+          {incidents.map((i) => (
+            <li key={i.id} className="p-3 bg-ent-bg rounded-xl border border-ent-line space-y-1.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="font-semibold text-ent-ink capitalize">{i.incidentType.replace('_', ' ')} — {i.patientName}</p>
+                <span className={`text-[11px] font-bold px-2 py-1 rounded-full capitalize ${
+                  i.severity === 'critical' || i.severity === 'high' ? 'bg-ent-rust/15 text-ent-rust' : 'bg-ent-amber/20 text-ent-amber'
+                }`}>{i.severity}</span>
+              </div>
+              <p className="text-sm text-ent-text">{i.description}</p>
+              <p className="text-[11px] text-ent-muted">Reported by {i.reportedByName} · {new Date(i.occurredAt).toLocaleString()}</p>
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-ent-pale text-ent-ink capitalize">{i.resolutionStatus.replace('_', ' ')}</span>
+                {i.resolutionStatus !== 'resolved' && (
+                  <button
+                    type="button" onClick={() => { void resolve(i.id, 'resolved'); }} disabled={resolvingId === i.id}
+                    className="flex items-center gap-1 text-xs font-semibold text-ent-bronze hover:underline disabled:opacity-60"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Mark resolved
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </OfficeCard>
+  );
+}
+
+function ReportsInsightsView({ members, visits, incidents, license }: {
+  members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
+  visits: OrgVisit[]; incidents: OrgIncidentReport[]; license: OrgLicense | null;
+}) {
+  const completedVisits = visits.filter((v) => v.status === 'completed').length;
+  const unresolvedIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').length;
+  return (
+    <OfficeCard>
+      <div className="flex items-center gap-2"><BarChart3 className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Reports and Insights</h2></div>
+      <p className="text-sm text-ent-text">A current-state operational summary drawn from live authorized records.</p>
+      <ul className="text-sm text-ent-ink space-y-1.5">
+        <li>• {members.filter((m) => m.status === 'active').length} active organization member{members.length === 1 ? '' : 's'}</li>
+        <li>• {completedVisits} completed visit{completedVisits === 1 ? '' : 's'} on file</li>
+        <li>• {unresolvedIncidents} unresolved incident{unresolvedIncidents === 1 ? '' : 's'}</li>
+        <li>• License status: {license?.status ?? 'proposed'}{license?.coveredPatientCapacity != null ? ` · capacity ${license.coveredPatientCapacity}` : ''}</li>
+      </ul>
+      <p className="text-xs text-ent-muted pt-2 border-t border-ent-line">
+        Trend analysis and staffing forecasts are not yet built on the backend — this view will not display estimated or
+        invented figures for those until that data exists.
+      </p>
+    </OfficeCard>
+  );
+}
+
+function OrganizationSettingsView({ orgName, packageType, onOpenBilling }: { orgName: string; packageType: OrgPackageType; onOpenBilling: () => void }) {
+  return (
+    <OfficeCard>
+      <div className="flex items-center gap-2"><SettingsIcon className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Organization Settings</h2></div>
+      <div className="text-sm text-ent-ink space-y-1">
+        <p><span className="text-ent-muted">Organization name:</span> {orgName || 'Not set'}</p>
+        <p><span className="text-ent-muted">Business package:</span> {packageType === 'integrated_care' ? 'Enterprise Integrated Care' : 'Enterprise Therapist'}</p>
+      </div>
+      <p className="text-sm text-ent-text pt-2 border-t border-ent-line">
+        License seats, capacity and billing add-ons are configured from Licensing &amp; Entitlements. Staff roles and patient
+        assignments are configured from Staff Management and Assignments and Coverage.
+      </p>
+      <button type="button" onClick={onOpenBilling} className="flex items-center gap-1.5 text-sm font-semibold text-ent-bronze hover:underline">
+        Open Billing &amp; Add-Ons <ChevronRight className="w-3.5 h-3.5" />
+      </button>
+    </OfficeCard>
+  );
+}
+
 export default function OrganizationDirectorDashboard({ organizationId }: { organizationId: string }) {
-  const { dispatch } = useApp();
-  const [tab, setTab] = useState<'overview' | 'billing'>('overview');
+  const { state, dispatch } = useApp();
   const [license, setLicense] = useState<OrgLicense | null>(null);
   const [members, setMembers] = useState<(OrgMembershipRow & { firstName: string; lastName: string; email: string })[]>([]);
   const [orgName, setOrgName] = useState('');
   const [packageType, setPackageType] = useState<OrgPackageType>('integrated_care');
+  const [coveredCount, setCoveredCount] = useState(0);
+  const [visits, setVisits] = useState<OrgVisit[]>([]);
+  const [incidents, setIncidents] = useState<OrgIncidentReport[]>([]);
+  const [handoffs, setHandoffs] = useState<OrgShiftHandoff[]>([]);
   const [loading, setLoading] = useState(true);
+  const [nav, setNav] = useState<DirectorNavKey>('dashboard');
+  const [billingOpen, setBillingOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [lic, mem, orgs] = await Promise.all([
+      const [lic, mem, orgs, covered, v, inc, hoffs] = await Promise.all([
         getOrgLicense(organizationId),
         getOrgMembers(organizationId),
         getMyOrganizations(),
+        getOrgCoveredPatients(organizationId),
+        getOrgVisits(organizationId),
+        getOrgIncidentReports(organizationId),
+        getOrgShiftHandoffs(organizationId),
       ]);
       const org = orgs.find((o) => o.organizationId === organizationId);
       setLicense(lic);
       setMembers(mem);
       setOrgName(org?.organizationName ?? '');
       setPackageType(org?.packageType ?? 'integrated_care');
+      setCoveredCount(covered.length);
+      setVisits(v);
+      setIncidents(inc);
+      setHandoffs(hoffs);
     } finally {
       setLoading(false);
     }
@@ -456,51 +742,57 @@ export default function OrganizationDirectorDashboard({ organizationId }: { orga
     toast('You have been logged out');
   };
 
-  if (loading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-warm-bronze" /></div>;
-  }
+  const fullName = state.currentUser?.firstName ? `${state.currentUser.firstName} ${state.currentUser.lastName ?? ''}`.trim() : 'Director';
+  const initials = (state.currentUser?.firstName?.[0] ?? 'D').toUpperCase();
+
+  const navigate = (key: DirectorNavKey) => { setBillingOpen(false); setNav(key); };
 
   return (
-    <div className="min-h-screen bg-warm-ivory">
-      <header className="bg-white border-b border-soft-taupe px-4 py-3">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-8 h-8 rounded-lg object-cover" />
-            <div>
-              <div className="font-semibold text-charcoal">{orgName || 'Organization'}</div>
-              <div className="text-xs text-medium-gray">Director Dashboard</div>
-            </div>
+    <EnterpriseOfficeShell
+      officeBadge="ADMIN OFFICE" orgLabel={orgName || 'Organization'} roleLabel="Director" fullName={fullName} initials={initials}
+      navItems={DIRECTOR_NAV_ITEMS} navGroups={DIRECTOR_NAV_GROUPS} activeNav={nav} onNavigate={navigate}
+      onLogout={() => { void handleLogout(); }}
+    >
+      {loading ? (
+        <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
+      ) : nav === 'dashboard' ? (
+        <DashboardHome orgName={orgName} members={members} license={license} visits={visits} incidents={incidents} handoffs={handoffs} onNavigate={navigate} />
+      ) : nav === 'overview' ? (
+        <OrganizationOverviewView orgName={orgName} packageType={packageType} members={members} coveredCount={coveredCount} />
+      ) : nav === 'staff' ? (
+        <StaffCard orgId={organizationId} members={members} onChanged={() => { void refresh(); }} />
+      ) : nav === 'patients' ? (
+        <CoveredPatientsCard orgId={organizationId} />
+      ) : nav === 'assignments' ? (
+        <AssignmentsCard orgId={organizationId} members={members} />
+      ) : nav === 'scheduling' ? (
+        <SchedulingOversightView visits={visits} />
+      ) : nav === 'operations' ? (
+        <CareOperationsView handoffs={handoffs} />
+      ) : nav === 'incidents' ? (
+        <IncidentsView incidents={incidents} onResolved={() => { void refresh(); }} />
+      ) : nav === 'communications' ? (
+        <CommunicationsOverviewCard orgId={organizationId} />
+      ) : nav === 'reports' ? (
+        <ReportsInsightsView members={members} visits={visits} incidents={incidents} license={license} />
+      ) : nav === 'licensing' ? (
+        billingOpen ? (
+          <div className="space-y-4">
+            <button type="button" onClick={() => setBillingOpen(false)} className="text-sm font-semibold text-ent-bronze hover:underline">← Back to Licensing</button>
+            <OrganizationBillingPage organizationId={organizationId} orgName={orgName || 'Organization'} packageType={packageType} />
           </div>
-          <button type="button" onClick={() => { void handleLogout(); }} className="flex items-center gap-1.5 text-sm text-medium-gray hover:text-charcoal px-3 py-2 rounded-lg hover:bg-soft-taupe/30 transition-colors">
-            <LogOut className="w-4 h-4" /> Logout
-          </button>
-        </div>
-        <div className="max-w-3xl mx-auto flex gap-1 mt-3">
-          {([['overview', 'Overview'], ['billing', 'Billing & Add-Ons']] as const).map(([id, label]) => (
-            <button
-              key={id} type="button" onClick={() => setTab(id)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${tab === id ? 'bg-warm-bronze text-white' : 'text-medium-gray hover:bg-soft-taupe/30'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </header>
-
-      <main className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
-        {tab === 'overview' ? (
-          <>
-            <LicenseCard orgId={organizationId} license={license} onUpdated={() => { void refresh(); }} />
-            <StaffCard orgId={organizationId} members={members} onChanged={() => { void refresh(); }} />
-            <CoveredPatientsCard orgId={organizationId} />
-            <AssignmentsCard orgId={organizationId} members={members} />
-            <CommunicationsOverviewCard orgId={organizationId} />
-          </>
         ) : (
-          <OrganizationBillingPage organizationId={organizationId} orgName={orgName || 'Organization'} packageType={packageType} />
-        )}
-      </main>
-    </div>
+          <div className="space-y-4">
+            <LicenseCard orgId={organizationId} license={license} onUpdated={() => { void refresh(); }} />
+            <button type="button" onClick={() => setBillingOpen(true)} className="flex items-center gap-1.5 text-sm font-semibold text-ent-bronze hover:underline">
+              Open Billing &amp; Add-Ons <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )
+      ) : nav === 'settings' ? (
+        <OrganizationSettingsView orgName={orgName} packageType={packageType} onOpenBilling={() => { setNav('licensing'); setBillingOpen(true); }} />
+      ) : null}
+    </EnterpriseOfficeShell>
   );
 }
 
