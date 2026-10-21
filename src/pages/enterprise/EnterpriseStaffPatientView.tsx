@@ -116,6 +116,10 @@ export interface PatientHeader {
   emergencyContactName: string | null; emergencyContactRelationship: string | null;
   emergencyContactPhone: string | null; emergencyContactEmail: string | null;
   coverageStatus: 'covered' | 'not_covered' | 'coverage_ended' | 'license_inactive';
+  // ROUND 7 CORRECTIVE (migration 075): P01/P16.
+  communicationNeeds: string | null;
+  preferredHospital: string | null; safetyResponseInstructions: string | null;
+  codeStatus: 'unknown' | 'full_code' | 'dnr'; codeStatusSource: string;
 }
 interface MedicationRow { id: string; name: string; dosage: string; instructions: string }
 interface MoodRow { id: string; mood: string; intensity: number; timestamp: string }
@@ -140,6 +144,12 @@ export default function EnterpriseStaffPatientView({
   const [medications, setMedications] = useState<MedicationRow[]>([]);
   const [moods, setMoods] = useState<MoodRow[]>([]);
   const [notes, setNotes] = useState<{ category: string; note: string }[]>([]);
+  // ROUND 7 CORRECTIVE — P11: pagination instead of a hard 10-entry
+  // cap. Re-queries with a larger limit rather than true offset
+  // pagination — simpler, and the mood_entries RLS/query cost here is
+  // already small per patient.
+  const [moodLimit, setMoodLimit] = useState(10);
+  const [moodHasMore, setMoodHasMore] = useState(false);
 
   const load = useCallback(async () => {
     setLoadState('checking');
@@ -155,9 +165,9 @@ export default function EnterpriseStaffPatientView({
     setLoadState('loading');
     try {
       const [{ data: patientRow }, { data: medRows }, { data: moodRows }, { data: noteRows }, { data: coverageRow }, { data: licenseRow }] = await Promise.all([
-        supabase.from('patients').select('first_name, last_name, preferred_name, date_of_birth, dementia_stage, location, address, photo_url, preferences_language, emergency_contact_name, emergency_contact_relationship, emergency_contact_phone, emergency_contact_email').eq('id', patientId).maybeSingle(),
+        supabase.from('patients').select('first_name, last_name, preferred_name, date_of_birth, dementia_stage, location, address, photo_url, preferences_language, emergency_contact_name, emergency_contact_relationship, emergency_contact_phone, emergency_contact_email, communication_needs, preferred_hospital, safety_response_instructions, code_status, code_status_source').eq('id', patientId).maybeSingle(),
         supabase.from('medications').select('id, name, dosage, instructions').eq('patient_id', patientId).eq('is_active', true).limit(50),
-        supabase.from('mood_entries').select('id, mood, intensity, timestamp').eq('patient_id', patientId).order('timestamp', { ascending: false }).limit(10),
+        supabase.from('mood_entries').select('id, mood, intensity, timestamp').eq('patient_id', patientId).order('timestamp', { ascending: false }).limit(moodLimit + 1),
         supabase.from('care_partner_notes').select('category, note').eq('patient_id', patientId),
         supabase.from('covered_patient_memberships').select('status').eq('organization_id', organizationId).eq('patient_id', patientId).maybeSingle(),
         supabase.from('organization_licenses').select('status').eq('organization_id', organizationId).maybeSingle(),
@@ -175,15 +185,20 @@ export default function EnterpriseStaffPatientView({
         emergencyContactName: patientRow.emergency_contact_name, emergencyContactRelationship: patientRow.emergency_contact_relationship,
         emergencyContactPhone: patientRow.emergency_contact_phone, emergencyContactEmail: patientRow.emergency_contact_email,
         coverageStatus,
+        communicationNeeds: patientRow.communication_needs,
+        preferredHospital: patientRow.preferred_hospital, safetyResponseInstructions: patientRow.safety_response_instructions,
+        codeStatus: patientRow.code_status as PatientHeader['codeStatus'], codeStatusSource: patientRow.code_status_source,
       });
       setMedications(medRows ?? []);
-      setMoods(moodRows ?? []);
+      const allMoods = moodRows ?? [];
+      setMoodHasMore(allMoods.length > moodLimit);
+      setMoods(allMoods.slice(0, moodLimit));
       setNotes((noteRows ?? []).filter((n) => n.note?.trim()));
       setLoadState('ready');
     } catch {
       setLoadState('error');
     }
-  }, [organizationId, patientId]);
+  }, [organizationId, patientId, moodLimit]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -259,6 +274,9 @@ export default function EnterpriseStaffPatientView({
               </li>
             ))}
           </ul>
+        )}
+        {moodHasMore && (
+          <button type="button" onClick={() => setMoodLimit((n) => n + 10)} className="text-sm font-semibold text-warm-bronze hover:underline">Load more</button>
         )}
       </div>
 

@@ -224,6 +224,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
   const [recentUpdates, setRecentUpdates] = useState<{ patientName: string; note: string; at: string }[]>([]);
   const [medConcerns, setMedConcerns] = useState<{ patientName: string; medName: string; status: string; at: string }[]>([]);
   const [unacknowledgedHandoffs, setUnacknowledgedHandoffs] = useState(0);
+  const [missingVisitNotes, setMissingVisitNotes] = useState(0);
   const [loadingExtra, setLoadingExtra] = useState(true);
 
   useEffect(() => {
@@ -259,15 +260,26 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
       // H14 — unacknowledged shift handoffs across assigned patients.
       const handoffCounts = await Promise.all(patients.map((p) => getPatientShiftHandoffs(orgId, p.patientId)));
       const unackCount = handoffCounts.flat().filter((h) => h.acknowledgedCount === 0).length;
+      // ROUND 7 CORRECTIVE — H14's other two clearly-defined categories:
+      // completed visits with no visit notes, and unresolved incidents
+      // (the same `incidents` data this dashboard already fetches for
+      // H03/the Open Alerts metric — not a second query). "Unfinished
+      // care lists" (tasks with no due-date concept in this schema) is
+      // deliberately NOT included here — see 34_ROUND7_CORRECTIVE_
+      // 30ITEM_VALIDATION.md's own disclosure for why that specific
+      // sub-category needs a due-date concept this schema doesn't have.
+      const missingNotesCount = myVisits.filter((v) => v.status === 'completed' && !v.visitNotes).length;
 
       if (!active) return;
       setConversations(convos);
       setVisits(myVisits);
-      setIncidents(allIncidents.filter((i) => i.resolutionStatus !== 'resolved'));
+      const openIncidents = allIncidents.filter((i) => i.resolutionStatus !== 'resolved');
+      setIncidents(openIncidents);
       setHelpCount(allHelp.length);
       setRecentUpdates(noteRows.slice(0, 8));
       setMedConcerns(medRows.slice(0, 8));
       setUnacknowledgedHandoffs(unackCount);
+      setMissingVisitNotes(missingNotesCount);
       setLoadingExtra(false);
     })();
     return () => { active = false; };
@@ -390,11 +402,27 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
         </Card>
       )}
 
-      {unacknowledgedHandoffs > 0 && (
+      {(unacknowledgedHandoffs > 0 || missingVisitNotes > 0 || incidents.length > 0) && (
         <Card>
           <div className="flex items-center gap-2"><ClipboardList className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Incomplete Documentation</h2></div>
-          <p className="text-sm text-charcoal">{unacknowledgedHandoffs} shift handoff{unacknowledgedHandoffs === 1 ? '' : 's'} not yet acknowledged.</p>
-          <button type="button" onClick={() => onNavigate('handoffs')} className="text-sm font-semibold text-warm-bronze hover:underline">Review Shift Handoffs →</button>
+          {unacknowledgedHandoffs > 0 && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-charcoal">{unacknowledgedHandoffs} shift handoff{unacknowledgedHandoffs === 1 ? '' : 's'} not yet acknowledged.</p>
+              <button type="button" onClick={() => onNavigate('handoffs')} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Review →</button>
+            </div>
+          )}
+          {missingVisitNotes > 0 && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-charcoal">{missingVisitNotes} completed visit{missingVisitNotes === 1 ? '' : 's'} missing visit notes.</p>
+              <button type="button" onClick={() => onNavigate('visits')} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Review →</button>
+            </div>
+          )}
+          {incidents.length > 0 && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-charcoal">{incidents.length} unresolved incident{incidents.length === 1 ? '' : 's'}.</p>
+              <button type="button" onClick={() => onNavigate('alerts')} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Review →</button>
+            </div>
+          )}
         </Card>
       )}
 
@@ -524,6 +552,16 @@ function PatientsListView({ patients, onOpenPatient, title, orgId, onChanged }: 
 // W01/H06/H07/H13 — schedule a visit (director-equivalent action,
 // re-verified server-side against the caller's own active assignment
 // by the RPC), start/end it.
+// H06 — ROUND 7 CORRECTIVE: compares against the VIEWER's own local
+// time (not a naive UTC date-string match), so a visit scheduled near
+// midnight is classified correctly for the caregiver's actual day.
+function isToday(isoTimestamp: string | null): boolean {
+  if (!isoTimestamp) return false;
+  const d = new Date(isoTimestamp);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
 function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatient[] }) {
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -531,9 +569,11 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [saving, setSaving] = useState(false);
+  const [todayOnly, setTodayOnly] = useState(true);
 
   const load = useCallback(async () => { setVisits(await getMyVisits()); setLoading(false); }, []);
   useEffect(() => { void load(); }, [load]);
+  const visibleVisits = todayOnly ? visits.filter((v) => isToday(v.scheduledStart)) : visits;
 
   const schedule = async () => {
     if (!selectedPatient || !start || !end) return;
@@ -568,11 +608,14 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
       <button type="button" onClick={() => { void schedule(); }} disabled={saving || !selectedPatient || !start || !end} className="px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">
         {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Schedule Visit'}
       </button>
-      {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : visits.length === 0 ? (
-        <p className="text-sm text-medium-gray">No visits scheduled yet.</p>
+      <label className="flex items-center gap-2 text-xs font-semibold text-medium-gray">
+        <input type="checkbox" checked={todayOnly} onChange={(e) => setTodayOnly(e.target.checked)} /> Today only
+      </label>
+      {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : visibleVisits.length === 0 ? (
+        <p className="text-sm text-medium-gray">{todayOnly ? 'No visits scheduled for today.' : 'No visits scheduled yet.'}</p>
       ) : (
         <ul className="space-y-2">
-          {visits.map((v) => (
+          {visibleVisits.map((v) => (
             <li key={v.id} className="flex items-center justify-between p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
               <div>
                 <p className="text-sm font-medium text-charcoal">{patients.find((p) => p.patientId === v.patientId)?.preferredName || 'Patient'} — <span className="capitalize">{v.status.replace('_', ' ')}</span></p>
@@ -685,27 +728,59 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
   );
 }
 
+// H04/C01/N06 — ROUND 7 CORRECTIVE: urgent/follow-up/routine
+// separation, using the data already fetched by getMyConversations()
+// (lastMessageUrgent, unreadCount) — no new backend. C06: a simple
+// client-side search filter over the already-authorized, already-
+// loaded list (filtering a correctly-scoped list is presentational
+// only; the authorization boundary is unchanged).
+function ConversationGroup({ title, conversations }: { title: string; conversations: ConversationSummary[] }) {
+  if (conversations.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-medium-gray uppercase tracking-wide">{title}</p>
+      <ul className="space-y-2">
+        {conversations.map((c) => (
+          <li key={c.conversationId} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-charcoal">{c.patientName}{c.subject ? ` — ${c.subject}` : ''}</p>
+              {c.unreadCount > 0 && <span className="text-[11px] bg-warm-bronze text-white rounded-full px-2 py-0.5">{c.unreadCount}</span>}
+            </div>
+            {c.lastMessageBody && <p className="text-xs text-medium-gray mt-1 truncate">{c.lastMessageBody}</p>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function CommunicationsView() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
   useEffect(() => { void getMyConversations().then((c) => { setConversations(c); setLoading(false); }); }, []);
+
+  const filtered = conversations.filter((c) => {
+    if (!search.trim()) return true;
+    const term = search.toLowerCase();
+    return c.patientName.toLowerCase().includes(term) || (c.subject ?? '').toLowerCase().includes(term) || (c.lastMessageBody ?? '').toLowerCase().includes(term);
+  });
+  const urgent = filtered.filter((c) => c.lastMessageUrgent);
+  const followUp = filtered.filter((c) => !c.lastMessageUrgent && c.unreadCount > 0);
+  const routine = filtered.filter((c) => !c.lastMessageUrgent && c.unreadCount === 0);
+
   return (
     <Card>
       <div className="flex items-center gap-2"><MessageSquare className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Care Communications</h2></div>
-      {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : conversations.length === 0 ? (
-        <p className="text-sm text-medium-gray">No conversations yet. Open a patient's record to start one.</p>
+      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by patient, subject, or message…" className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+      {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : filtered.length === 0 ? (
+        <p className="text-sm text-medium-gray">{conversations.length === 0 ? "No conversations yet. Open a patient's record to start one." : 'No conversations match this search.'}</p>
       ) : (
-        <ul className="space-y-2">
-          {conversations.map((c) => (
-            <li key={c.conversationId} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-charcoal">{c.patientName}{c.subject ? ` — ${c.subject}` : ''}</p>
-                {c.unreadCount > 0 && <span className="text-[11px] bg-warm-bronze text-white rounded-full px-2 py-0.5">{c.unreadCount}</span>}
-              </div>
-              {c.lastMessageBody && <p className="text-xs text-medium-gray mt-1 truncate">{c.lastMessageBody}</p>}
-            </li>
-          ))}
-        </ul>
+        <>
+          <ConversationGroup title="Urgent" conversations={urgent} />
+          <ConversationGroup title="Needs a response" conversations={followUp} />
+          <ConversationGroup title="Routine" conversations={routine} />
+        </>
       )}
     </Card>
   );
@@ -912,10 +987,20 @@ function CareTeamView({ orgId, patients }: { orgId: string; patients: StaffPatie
 // any organization is readable directly — no new backend needed.
 function MyInvitationsCard() {
   const [rows, setRows] = useState<{ id: string; org_role: string; status: string; created_at: string; organizations: { name: string } | null }[]>([]);
+  const [sentTherapistInvites, setSentTherapistInvites] = useState<{ id: string; status: string; relationship_type: string; created_at: string; responded_at: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    void supabase.from('organization_memberships').select('id, org_role, status, created_at, organizations(name)').order('created_at', { ascending: false })
-      .then(({ data }) => { setRows((data ?? []) as unknown as typeof rows); setLoading(false); });
+    void Promise.all([
+      supabase.from('organization_memberships').select('id, org_role, status, created_at, organizations(name)').order('created_at', { ascending: false }),
+      // ROUND 7 CORRECTIVE — O05: the caregiver's own SENT therapist
+      // invitations (W10), now readable via migration 075's new
+      // self-row SELECT policy on pending_therapist_connections.
+      supabase.from('pending_therapist_connections').select('id, status, relationship_type, created_at, responded_at').order('created_at', { ascending: false }),
+    ]).then(([m, t]) => {
+      setRows((m.data ?? []) as unknown as typeof rows);
+      setSentTherapistInvites((t.data ?? []) as typeof sentTherapistInvites);
+      setLoading(false);
+    });
   }, []);
   if (loading) return null;
   return (
@@ -930,6 +1015,19 @@ function MyInvitationsCard() {
             </li>
           ))}
         </ul>
+      )}
+      {sentTherapistInvites.length > 0 && (
+        <div className="pt-2 border-t border-soft-taupe space-y-1.5">
+          <p className="text-xs font-semibold text-medium-gray">Therapist invitations you've sent</p>
+          <ul className="space-y-1.5">
+            {sentTherapistInvites.map((t) => (
+              <li key={t.id} className="flex items-center justify-between p-2 bg-warm-ivory rounded-lg border border-soft-taupe text-xs">
+                <span className="text-charcoal capitalize">{t.relationship_type}</span>
+                <span className="font-semibold capitalize text-medium-gray">{t.status}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </Card>
   );
@@ -963,6 +1061,35 @@ function MyActivityCard() {
         <div className="p-2 bg-warm-ivory rounded-xl border border-soft-taupe"><p className="text-lg font-bold text-charcoal">{taskUpdates.length}</p><p className="text-[11px] text-medium-gray">Tasks updated</p></div>
         <div className="p-2 bg-warm-ivory rounded-xl border border-soft-taupe"><p className="text-lg font-bold text-charcoal">{noteCount}</p><p className="text-[11px] text-medium-gray">Notes authored</p></div>
       </div>
+      {/* ROUND 7 CORRECTIVE — O07: "appropriate time/audit records"
+          means an itemized list, not only counts; renders the same
+          arrays already fetched above for the counts. */}
+      {taskUpdates.length > 0 && (
+        <div className="pt-2 border-t border-soft-taupe space-y-1.5">
+          <p className="text-xs font-semibold text-medium-gray">Recent task updates</p>
+          <ul className="space-y-1">
+            {taskUpdates.slice(0, 5).map((t) => (
+              <li key={t.id} className="flex items-center justify-between p-2 bg-warm-ivory rounded-lg border border-soft-taupe text-xs">
+                <span className="text-charcoal">{t.title}</span>
+                <span className="text-medium-gray">{t.status_updated_at ? new Date(t.status_updated_at).toLocaleString() : ''}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {visits.length > 0 && (
+        <div className="pt-2 border-t border-soft-taupe space-y-1.5">
+          <p className="text-xs font-semibold text-medium-gray">Recent visits</p>
+          <ul className="space-y-1">
+            {visits.slice(0, 5).map((v) => (
+              <li key={v.id} className="flex items-center justify-between p-2 bg-warm-ivory rounded-lg border border-soft-taupe text-xs">
+                <span className="text-charcoal capitalize">{v.status.replace('_', ' ')}</span>
+                <span className="text-medium-gray">{v.scheduledStart ? new Date(v.scheduledStart).toLocaleString() : ''}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Card>
   );
 }
@@ -1013,6 +1140,25 @@ function NotificationsCard() {
   );
 }
 
+// ROUND 7 CORRECTIVE — O09's discovered bug: the 'enterprise-high-
+// contrast' class was being toggled on <html> with NO corresponding
+// CSS rule anywhere in the app, so the control did nothing visible
+// despite looking functional. Injects the one real stylesheet rule
+// this toggle needs, once, directly — not a Tailwind class (Tailwind's
+// build-time purge cannot see a className computed at runtime).
+const HIGH_CONTRAST_STYLE_ID = 'enterprise-high-contrast-style';
+function ensureHighContrastStylesheet() {
+  if (document.getElementById(HIGH_CONTRAST_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = HIGH_CONTRAST_STYLE_ID;
+  style.textContent = `
+    .enterprise-high-contrast { filter: contrast(1.35) saturate(1.1); }
+    .enterprise-high-contrast .text-medium-gray { color: #1a1a1a !important; }
+    .enterprise-high-contrast .border-soft-taupe { border-color: #4a4a4a !important; }
+  `;
+  document.head.appendChild(style);
+}
+
 // O09 — genuinely implemented text-sizing and high-contrast; language
 // selection and speech support are not built this round (disclosed,
 // not silently hidden behind a non-functional control).
@@ -1025,6 +1171,7 @@ function AccessibilityCard() {
     try { localStorage.setItem('enterprise_font_scale', fontScale); } catch { /* best-effort */ }
   }, [fontScale]);
   useEffect(() => {
+    ensureHighContrastStylesheet();
     document.documentElement.classList.toggle('enterprise-high-contrast', highContrast);
     try { localStorage.setItem('enterprise_high_contrast', String(highContrast)); } catch { /* best-effort */ }
   }, [highContrast]);
@@ -1046,6 +1193,39 @@ function AccessibilityCard() {
   );
 }
 
+// O03 — ROUND 7 CORRECTIVE: a distinct "My Assignments" view —
+// staff_patient_assignments' own self-row SELECT policy (migration 035)
+// has no is_active filter, so a caregiver's past (is_active=false)
+// assignments are already readable, just never shown separately from
+// "My Patients" until now.
+function MyAssignmentsCard({ orgId }: { orgId: string }) {
+  const { state } = useApp();
+  const [rows, setRows] = useState<{ id: string; patient_id: string; is_active: boolean; created_at: string; updated_at: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const myId = state.currentUser?.id;
+    if (!myId) { setLoading(false); return; }
+    void supabase.from('staff_patient_assignments').select('id, patient_id, is_active, created_at, updated_at').eq('organization_id', orgId).eq('user_id', myId).order('created_at', { ascending: false })
+      .then(({ data }) => { setRows(data ?? []); setLoading(false); });
+  }, [orgId, state.currentUser?.id]);
+  if (loading) return null;
+  return (
+    <Card>
+      <div className="flex items-center gap-2"><Users className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Assignments</h2></div>
+      {rows.length === 0 ? <p className="text-sm text-medium-gray">No patient assignments on file.</p> : (
+        <ul className="space-y-1.5">
+          {rows.map((r) => (
+            <li key={r.id} className="flex items-center justify-between p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+              <span className="text-charcoal">Assigned {new Date(r.created_at).toLocaleDateString()}</span>
+              <span className={`text-xs font-semibold ${r.is_active ? 'text-soft-sage' : 'text-medium-gray'}`}>{r.is_active ? 'Active' : `Ended ${new Date(r.updated_at).toLocaleDateString()}`}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 function OrganizationView({ orgId, orgName }: { orgId: string; orgName: string }) {
   const { state } = useApp();
   const [credentials, setCredentials] = useState<CaregiverCredential[]>([]);
@@ -1058,11 +1238,18 @@ function OrganizationView({ orgId, orgName }: { orgId: string; orgName: string }
         <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Organization</h2></div>
         <div className="space-y-1 text-sm">
           <p className="text-charcoal font-medium">{orgName}</p>
-          <p className="text-medium-gray">Role: Caregiver</p>
+          {/* ROUND 7 CORRECTIVE — O02: combines the role label with the
+              caregiver's own live credentials summary rather than a
+              bare static string (credentials themselves are still the
+              authoritative detail view, below). */}
+          <p className="text-medium-gray">
+            Role: Caregiver{!loadingCreds && credentials.length > 0 ? ` · ${credentials.length} credential${credentials.length === 1 ? '' : 's'} on file` : ''}
+          </p>
           <p className="text-medium-gray">Signed in as {state.currentUser?.firstName} {state.currentUser?.lastName}</p>
         </div>
         <p className="text-xs text-medium-gray">Organization id: {orgId}</p>
       </Card>
+      <MyAssignmentsCard orgId={orgId} />
       {/* H17/O06 — Credentials & Training. Recorded by a director only
           (admin_set_role-style gate — a caregiver cannot self-certify);
           shown here read-only. */}
@@ -1091,6 +1278,45 @@ function OrganizationView({ orgId, orgName }: { orgId: string; orgName: string }
   );
 }
 
+// O10/N14 — ROUND 7 CORRECTIVE: in-session password change.
+// supabase.auth.updateUser({ password }) requires zero backend change
+// and no new infrastructure — it operates on the caller's own current
+// session only. An authorized alternative (email-based reset) already
+// exists app-wide; this adds the additional in-session path.
+function PasswordChangeForm() {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const change = async () => {
+    setError('');
+    if (newPassword.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    if (newPassword !== confirm) { setError('Passwords do not match.'); return; }
+    setSaving(true);
+    try {
+      const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateErr) { setError(updateErr.message); return; }
+      setNewPassword(''); setConfirm('');
+      toast.success('Password changed.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2 pt-3 border-t border-soft-taupe">
+      <p className="text-xs font-semibold text-medium-gray">Change password</p>
+      <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password" className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+      <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Confirm new password" className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+      {error && <p className="text-xs text-gentle-coral">{error}</p>}
+      <button type="button" onClick={() => { void change(); }} disabled={saving || !newPassword || !confirm} className="px-3 py-1.5 rounded-lg bg-warm-bronze hover:bg-deep-bronze text-white text-xs font-semibold disabled:opacity-60">
+        {saving ? 'Saving…' : 'Change Password'}
+      </button>
+    </div>
+  );
+}
+
 function SettingsView({ userName, onLogout }: { userName?: string; onLogout: () => Promise<void> }) {
   return (
     <Card>
@@ -1099,6 +1325,8 @@ function SettingsView({ userName, onLogout }: { userName?: string; onLogout: () 
       <button type="button" onClick={() => { void onLogout(); }} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-soft-taupe text-charcoal text-sm font-semibold hover:bg-warm-ivory">
         <LogOut className="w-4 h-4" /> Secure Logout
       </button>
+      <PasswordChangeForm />
+      <p className="text-[11px] text-medium-gray">MFA and an active-sessions list are not yet available in this shell (see 34_ROUND7_CORRECTIVE_30ITEM_VALIDATION.md for the owner decision needed before building them). A password reset is also always available via the sign-in page's email link.</p>
     </Card>
   );
 }

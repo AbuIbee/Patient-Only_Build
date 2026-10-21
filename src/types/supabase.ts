@@ -198,6 +198,18 @@ export interface Database {
           preferences_audio_enabled: boolean
           preferences_notifications_enabled: boolean
           preferences_tone: 'gentle' | 'professional' | 'friendly'
+          // ROUND 7 CORRECTIVE (migration 075): P01 communication
+          // needs, P16 safety plan / code status — code_status/
+          // code_status_source are NOT NULL with a real DEFAULT
+          // 'unknown', never a specific code by default.
+          communication_needs: string | null
+          communication_needs_source: string | null
+          communication_needs_updated_by: string | null
+          preferred_hospital: string | null
+          safety_response_instructions: string | null
+          code_status: string
+          code_status_source: string
+          code_status_updated_by: string | null
           created_at: string
           updated_at: string
         }
@@ -235,6 +247,14 @@ export interface Database {
           preferences_audio_enabled?: boolean
           preferences_notifications_enabled?: boolean
           preferences_tone?: 'gentle' | 'professional' | 'friendly'
+          communication_needs?: string | null
+          communication_needs_source?: string | null
+          communication_needs_updated_by?: string | null
+          preferred_hospital?: string | null
+          safety_response_instructions?: string | null
+          code_status?: string
+          code_status_source?: string
+          code_status_updated_by?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -266,6 +286,14 @@ export interface Database {
           preferences_audio_enabled?: boolean
           preferences_notifications_enabled?: boolean
           preferences_tone?: 'gentle' | 'professional' | 'friendly'
+          communication_needs?: string | null
+          communication_needs_source?: string | null
+          communication_needs_updated_by?: string | null
+          preferred_hospital?: string | null
+          safety_response_instructions?: string | null
+          code_status?: string
+          code_status_source?: string
+          code_status_updated_by?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -1542,6 +1570,12 @@ export interface Database {
           message_id: string | null
           caregiver_count_at_time: number
           notification_status: string
+          // ROUND 7 CORRECTIVE (migration 075): P13 — a narrow
+          // staff-facing acknowledgment, separate from and never
+          // touching record_help_activation()'s own atomicity/
+          // notification_status logic (migration 050).
+          staff_acknowledged_by: string | null
+          staff_acknowledged_at: string | null
           created_at: string
         }
         Insert: {
@@ -1552,6 +1586,8 @@ export interface Database {
           message_id?: string | null
           caregiver_count_at_time?: number
           notification_status?: string
+          staff_acknowledged_by?: string | null
+          staff_acknowledged_at?: string | null
           created_at?: string
         }
         Update: {
@@ -1562,6 +1598,8 @@ export interface Database {
           message_id?: string | null
           caregiver_count_at_time?: number
           notification_status?: string
+          staff_acknowledged_by?: string | null
+          staff_acknowledged_at?: string | null
           created_at?: string
         }
         Relationships: [
@@ -1588,6 +1626,11 @@ export interface Database {
           author_id: string
           note: string
           note_type: NoteType
+          // ROUND 7 CORRECTIVE (migration 075): W14 note amendments —
+          // NULL means an original note; set means this row IS the
+          // amendment, referencing the original it corrects. The
+          // original row is never updated or deleted.
+          amends_note_id: string | null
           created_at: string
           updated_at: string
         }
@@ -1597,6 +1640,7 @@ export interface Database {
           author_id: string
           note: string
           note_type?: NoteType
+          amends_note_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -1606,6 +1650,7 @@ export interface Database {
           author_id?: string
           note?: string
           note_type?: NoteType
+          amends_note_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -3483,6 +3528,87 @@ export interface Database {
         SetofOptions: {
           from: "*"
           to: "patient_therapy_goals"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      record_communication_needs: {
+        Args: {
+          p_communication_needs: string
+          p_patient_id: string
+          p_source?: string
+        }
+        Returns: {
+          id: string
+          communication_needs: string | null
+          communication_needs_source: string | null
+          communication_needs_updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patients"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      record_patient_safety_plan: {
+        Args: {
+          p_code_status?: string
+          p_code_status_source?: string
+          p_patient_id: string
+          p_preferred_hospital?: string
+          p_safety_response_instructions?: string
+        }
+        Returns: {
+          id: string
+          preferred_hospital: string | null
+          safety_response_instructions: string | null
+          code_status: string
+          code_status_source: string
+          code_status_updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patients"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      record_note_amendment: {
+        Args: {
+          p_corrected_note: string
+          p_original_note_id: string
+        }
+        Returns: {
+          id: string
+          patient_id: string
+          author_id: string
+          note: string
+          note_type: string
+          amends_note_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_notes"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      acknowledge_help_activation: {
+        Args: {
+          p_help_activation_id: string
+        }
+        Returns: {
+          id: string
+          patient_id: string
+          staff_acknowledged_by: string | null
+          staff_acknowledged_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "help_activations"
           isOneToOne: true
           isSetofReturn: false
         }

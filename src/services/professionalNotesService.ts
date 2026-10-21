@@ -13,6 +13,10 @@ export interface ProfessionalNote {
   note: string;
   createdAt: string;
   updatedAt: string;
+  // ROUND 7 CORRECTIVE (W14, migration 075): null for an original note;
+  // set when THIS row is an amendment, naming the original it corrects.
+  // The original is never updated or deleted.
+  amendsNoteId: string | null;
 }
 
 export async function getProfessionalNotes(
@@ -20,12 +24,12 @@ export async function getProfessionalNotes(
 ): Promise<ProfessionalNote[]> {
   const { data, error } = await supabase
     .from('patient_notes')
-    .select('id, note, created_at, updated_at')
+    .select('id, note, created_at, updated_at, amends_note_id')
     .eq('patient_id', patientId)
     .eq('note_type', noteType)
     .order('created_at', { ascending: false });
   if (error || !data) return [];
-  return data.map((r) => ({ id: r.id, note: r.note, createdAt: r.created_at, updatedAt: r.updated_at }));
+  return data.map((r) => ({ id: r.id, note: r.note, createdAt: r.created_at, updatedAt: r.updated_at, amendsNoteId: r.amends_note_id }));
 }
 
 export async function addProfessionalNote(

@@ -14,11 +14,11 @@ import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import {
-  ArrowLeft, Loader2, ClipboardList, Calendar, MapPin, Stethoscope, Send,
-  ShieldAlert, FileText, Pill, Heart, Activity, Target, Clock, Globe,
+  ArrowLeft, Loader2, ClipboardList, ClipboardCheck, Calendar, MapPin, Stethoscope, Send,
+  ShieldAlert, FileText, Pill, Heart, Activity, Target, Clock, Globe, Upload, Download, AlertTriangle, PencilLine,
 } from 'lucide-react';
 import type { StaffRole } from '@/services/organizationService';
-import type { MoodType } from '@/types/supabase';
+import type { MoodType, TaskStatus } from '@/types/supabase';
 import { CoverageBanner, type PatientHeader } from './EnterpriseStaffPatientView';
 import { getProfessionalNotes, addProfessionalNote, type ProfessionalNote } from '@/services/professionalNotesService';
 import CareConversations from '@/components/communications/CareConversations';
@@ -28,6 +28,7 @@ import {
   getPatientCarePlans, recordPatientCarePlan, getPatientVitals, recordPatientVitals,
   getTherapyGoals, recordTherapyGoal, getCarePreferences, recordCarePreference,
   getPatientProviders, recordPatientProvider,
+  recordCommunicationNeeds, recordPatientSafetyPlan, recordNoteAmendment, acknowledgeHelpActivation,
   type PatientDiagnosis, type PatientAllergy, type PatientCarePlan, type PatientVitals, type TherapyGoal, type CarePreference, type PatientCareProvider,
 } from '@/services/patientClinicalRecordService';
 import {
@@ -35,9 +36,10 @@ import {
   type CaregiverVisit, type IncidentReport,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 
-type TabKey = 'overview' | 'medical' | 'medications' | 'ag' | 'carePlan' | 'appointments' | 'documents' | 'safety' | 'communications' | 'timeline';
+type TabKey = 'overview' | 'medical' | 'medications' | 'tasks' | 'ag' | 'carePlan' | 'appointments' | 'documents' | 'safety' | 'communications' | 'timeline';
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: 'Overview' }, { key: 'medical', label: 'Medical' }, { key: 'medications', label: 'Medications' },
+  { key: 'tasks', label: 'Tasks' },
   { key: 'ag', label: 'A–G' }, { key: 'carePlan', label: 'Care Plan' }, { key: 'appointments', label: 'Appointments' },
   { key: 'documents', label: 'Documents' }, { key: 'safety', label: 'Safety' }, { key: 'communications', label: 'Communications' },
   { key: 'timeline', label: 'Timeline' },
@@ -87,6 +89,7 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         {tab === 'overview' && <OverviewTab patientId={patientId} patientHeader={patientHeader} />}
         {tab === 'medical' && <MedicalTab patientId={patientId} staffRole={staffRole} />}
         {tab === 'medications' && <MedicationsTab patientId={patientId} />}
+        {tab === 'tasks' && <TasksTab patientId={patientId} />}
         {tab === 'ag' && <AGTab patientId={patientId} />}
         {tab === 'carePlan' && <CarePlanTab patientId={patientId} orgId={orgId} />}
         {tab === 'appointments' && <AppointmentsTab patientId={patientId} orgId={orgId} />}
@@ -170,21 +173,44 @@ function QuickObservationForm({ patientId }: { patientId: string }) {
 
 // P07 — read-only intake summary, admin-reviewed data surfaced to
 // authorized staff for the first time this round (migration 072).
+// ROUND 7 CORRECTIVE — P07: surfaces the complete care-relevant
+// as-submitted intake record (previously only 4 of its ~20 fields),
+// still read-only — intake remains admin-reviewed/editable only. No
+// backend change: the RLS SELECT already covers every column.
+interface IntakeRow {
+  patient_dementia_stage: string | null; patient_diagnosis_date: string | null;
+  patient_street_address: string | null; patient_city: string | null; patient_state: string | null; patient_zip_code: string | null;
+  patient_phone: string | null; patient_email: string | null;
+  preferred_hospital: string | null; doctor_therapist_name: string | null; doctor_therapist_phone: string | null;
+  caregiver_name: string | null; caregiver_relationship: string | null; caregiver_phone: string | null;
+  medications_and_dosage: string | null;
+  emergency_contact_full_name: string | null; emergency_contact_phone: string | null; emergency_contact_email: string | null; emergency_contact_relationship: string | null;
+  created_at: string | null;
+}
 function IntakeSummaryCard({ patientId }: { patientId: string }) {
-  const [intake, setIntake] = useState<{ doctor_therapist_name: string | null; doctor_therapist_phone: string | null; preferred_hospital: string | null; medications_and_dosage: string | null } | null>(null);
+  const [intake, setIntake] = useState<IntakeRow | null>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    void supabase.from('patient_intake').select('doctor_therapist_name, doctor_therapist_phone, preferred_hospital, medications_and_dosage').eq('patient_profile_id', patientId).maybeSingle()
+    void supabase.from('patient_intake').select(
+      'patient_dementia_stage, patient_diagnosis_date, patient_street_address, patient_city, patient_state, patient_zip_code, patient_phone, patient_email, preferred_hospital, doctor_therapist_name, doctor_therapist_phone, caregiver_name, caregiver_relationship, caregiver_phone, medications_and_dosage, emergency_contact_full_name, emergency_contact_phone, emergency_contact_email, emergency_contact_relationship, created_at'
+    ).eq('patient_profile_id', patientId).maybeSingle()
       .then(({ data }) => { setIntake(data ?? null); setLoading(false); });
   }, [patientId]);
   if (loading) return null;
   if (!intake) return null;
+  const address = [intake.patient_street_address, intake.patient_city, intake.patient_state, intake.patient_zip_code].filter(Boolean).join(', ');
   return (
     <SectionCard title="Patient Intake Information" icon={ClipboardList}>
       <div className="text-sm text-charcoal space-y-1">
-        {intake.doctor_therapist_name && <p>Doctor/Therapist: {intake.doctor_therapist_name}{intake.doctor_therapist_phone ? ` · ${intake.doctor_therapist_phone}` : ''}</p>}
+        {intake.patient_dementia_stage && <p>Stage at intake: {intake.patient_dementia_stage}{intake.patient_diagnosis_date ? ` · diagnosed ${intake.patient_diagnosis_date}` : ''}</p>}
+        {address && <p>Address at intake: {address}</p>}
+        {(intake.patient_phone || intake.patient_email) && <p>Contact at intake: {[intake.patient_phone, intake.patient_email].filter(Boolean).join(' · ')}</p>}
         {intake.preferred_hospital && <p>Preferred hospital: {intake.preferred_hospital}</p>}
+        {intake.doctor_therapist_name && <p>Doctor/Therapist: {intake.doctor_therapist_name}{intake.doctor_therapist_phone ? ` · ${intake.doctor_therapist_phone}` : ''}</p>}
+        {intake.caregiver_name && <p>Primary caregiver at intake: {intake.caregiver_name}{intake.caregiver_relationship ? ` (${intake.caregiver_relationship})` : ''}{intake.caregiver_phone ? ` · ${intake.caregiver_phone}` : ''}</p>}
         {intake.medications_and_dosage && <p>Intake-reported medications: {intake.medications_and_dosage}</p>}
+        {intake.emergency_contact_full_name && <p>Emergency contact at intake: {intake.emergency_contact_full_name}{intake.emergency_contact_relationship ? ` (${intake.emergency_contact_relationship})` : ''}{intake.emergency_contact_phone ? ` · ${intake.emergency_contact_phone}` : ''}</p>}
+        {intake.created_at && <p className="text-[11px] text-medium-gray">Submitted {new Date(intake.created_at).toLocaleDateString()}</p>}
       </div>
     </SectionCard>
   );
@@ -197,6 +223,12 @@ function OverviewTab({ patientId, patientHeader }: { patientId: string; patientH
   const [loading, setLoading] = useState(true);
   const [newPrefCategory, setNewPrefCategory] = useState('routine');
   const [newPrefDescription, setNewPrefDescription] = useState('');
+  // ROUND 7 CORRECTIVE — P01 communication needs. patientHeader is
+  // loaded once by the parent (EnterpriseStaffPatientView); this tab
+  // keeps its own override so an edit shows immediately without
+  // requiring the whole access-check flow to re-run.
+  const [communicationNeeds, setCommunicationNeeds] = useState(patientHeader.communicationNeeds ?? '');
+  const [savingNeeds, setSavingNeeds] = useState(false);
 
   const load = useCallback(() => void Promise.all([getCarePreferences(patientId), getPatientCarePlans(patientId)]).then(([p, cp]) => { setPreferences(p); setCarePlans(cp); setLoading(false); }), [patientId]);
   useEffect(() => { load(); }, [load]);
@@ -209,6 +241,17 @@ function OverviewTab({ patientId, patientHeader }: { patientId: string; patientH
     setNewPrefDescription(''); load();
   };
 
+  const saveCommunicationNeeds = async () => {
+    setSavingNeeds(true);
+    try {
+      const { error } = await recordCommunicationNeeds(patientId, communicationNeeds.trim());
+      if (error) { toast.error(error); return; }
+      toast.success('Communication needs saved.');
+    } finally {
+      setSavingNeeds(false);
+    }
+  };
+
   return (
     <>
       <SectionCard title="Identity & Profile" icon={ClipboardList}>
@@ -219,6 +262,11 @@ function OverviewTab({ patientId, patientHeader }: { patientId: string; patientH
           {patientHeader.location && <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-warm-bronze" /> {patientHeader.location}</div>}
           {patientHeader.address && <div className="flex items-center gap-2 sm:col-span-2"><MapPin className="w-4 h-4 text-warm-bronze" /> {patientHeader.address}</div>}
           {patientHeader.language && <div className="flex items-center gap-2"><Globe className="w-4 h-4 text-warm-bronze" /> {patientHeader.language}</div>}
+        </div>
+        <div className="pt-2 border-t border-soft-taupe space-y-2">
+          <label className="text-xs font-semibold text-medium-gray">Communication needs</label>
+          <textarea value={communicationNeeds} onChange={(e) => setCommunicationNeeds(e.target.value)} rows={2} placeholder="e.g. hard of hearing in left ear, prefers face-to-face…" className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm resize-none" />
+          <button type="button" onClick={() => { void saveCommunicationNeeds(); }} disabled={savingNeeds} className="px-3 py-1.5 rounded-lg bg-warm-bronze hover:bg-deep-bronze text-white text-xs font-semibold disabled:opacity-60">Save</button>
         </div>
       </SectionCard>
 
@@ -458,6 +506,63 @@ function MedicationsTab({ patientId }: { patientId: string }) {
   );
 }
 
+// P09 — Daily Care Activities, integrated into the record tabs
+// themselves (previously only reachable as a standalone nav view) —
+// reuses the exact tasks table query/update shape already proven in
+// EnterpriseCaregiverDashboard.tsx's TasksView (H08/W02, migration 071),
+// scoped to this one open patient.
+interface TaskRow { id: string; title: string; status: TaskStatus; refusal_reason: string | null }
+function TasksTab({ patientId }: { patientId: string }) {
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(() => {
+    void supabase.from('tasks').select('id, title, status, refusal_reason').eq('patient_id', patientId).eq('is_active', true)
+      .then(({ data }) => { setTasks((data ?? []) as TaskRow[]); setLoading(false); });
+  }, [patientId]);
+  useEffect(() => { load(); }, [load]);
+
+  const markStatus = async (taskId: string, status: TaskStatus) => {
+    let refusalReason: string | null = null;
+    if (status === 'skipped' || status === 'not_applicable') {
+      refusalReason = window.prompt(status === 'skipped' ? 'Reason the patient declined (optional):' : 'Reason this task is not applicable (optional):') || null;
+    }
+    const { data: userData } = await supabase.auth.getUser();
+    const { error } = await supabase.from('tasks').update({
+      status, refusal_reason: refusalReason,
+      status_updated_by: userData?.user?.id ?? null, status_updated_at: new Date().toISOString(),
+    }).eq('id', taskId).select('id');
+    if (error) { toast.error(error.message); return; }
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status, refusal_reason: refusalReason } : t)));
+  };
+
+  const statusLabel: Record<TaskStatus, string> = { pending: 'Not Completed', completed: 'Completed', skipped: 'Declined', not_applicable: 'Not Applicable' };
+
+  if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
+  return (
+    <SectionCard title="Daily Care Activities" icon={ClipboardCheck}>
+      {tasks.length === 0 ? <p className="text-sm text-medium-gray">No assigned tasks found for this patient.</p> : (
+        <ul className="space-y-2">
+          {tasks.map((t) => (
+            <li key={t.id} className="flex items-center justify-between gap-2 p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
+              <div>
+                <p className="text-sm font-medium text-charcoal">{t.title}</p>
+                <p className="text-xs text-medium-gray">{statusLabel[t.status]}</p>
+                {t.refusal_reason && <p className="text-xs text-medium-gray italic">&quot;{t.refusal_reason}&quot;</p>}
+              </div>
+              <div className="flex gap-1.5 flex-shrink-0">
+                <button type="button" title="Completed" onClick={() => { void markStatus(t.id, 'completed'); }} className="px-2 py-1 rounded-lg bg-soft-sage/20 text-soft-sage text-xs font-semibold">Done</button>
+                <button type="button" title="Declined" onClick={() => { void markStatus(t.id, 'skipped'); }} className="px-2 py-1 rounded-lg bg-gentle-coral/20 text-gentle-coral text-xs font-semibold">Declined</button>
+                <button type="button" title="Not Applicable" onClick={() => { void markStatus(t.id, 'not_applicable'); }} className="px-2 py-1 rounded-lg bg-medium-gray/20 text-medium-gray text-xs font-bold">N/A</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SectionCard>
+  );
+}
+
 // P12 — the actual 7 named A-G domains, from BOTH care_partner_notes
 // (current summary) and care_partner_checkins (historical structured
 // check-ins), per "expose authorized current and historical check-ins
@@ -676,28 +781,136 @@ function AppointmentsTab({ patientId, orgId }: { patientId: string; orgId: strin
   );
 }
 
+// P15/W12 — ROUND 7 CORRECTIVE: real upload + secure signed-URL
+// download. The 'patient-documents' storage bucket's own
+// storage.objects RLS (migration 075) now recognizes
+// staff_patient_assignments, mirroring the exact caregiver_patients
+// policy already proven for the residential flow (migration 007);
+// the upload path convention and orphan-cleanup-on-db-failure pattern
+// are copied verbatim from the already-working
+// src/pages/patient/PatientDocuments.tsx.
+const DOC_BUCKET = 'patient-documents';
+const MAX_DOC_SIZE = 5 * 1024 * 1024;
+
 function DocumentsTab({ patientId }: { patientId: string }) {
-  const [docs, setDocs] = useState<{ id: string; file_name: string; section: string; note_text: string | null; uploaded_at: string | null }[]>([]);
+  const [docs, setDocs] = useState<{ id: string; file_name: string; section: string; note_text: string | null; uploaded_at: string | null; storage_path: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const load = useCallback(() => void supabase.from('patient_document_uploads').select('id, file_name, section, note_text, uploaded_at').eq('patient_id', patientId).order('uploaded_at', { ascending: false })
+  const [uploading, setUploading] = useState(false);
+  const [section, setSection] = useState<'medical_docs' | 'medical_bills'>('medical_docs');
+  const [error, setError] = useState('');
+
+  const load = useCallback(() => void supabase.from('patient_document_uploads').select('id, file_name, section, note_text, uploaded_at, storage_path').eq('patient_id', patientId).order('uploaded_at', { ascending: false })
     .then(({ data }) => { setDocs(data ?? []); setLoading(false); }), [patientId]);
   useEffect(() => { load(); }, [load]);
+
+  const upload = async (file: File) => {
+    if (file.size > MAX_DOC_SIZE) { setError('File is too large (max 5 MB).'); return; }
+    setError(''); setUploading(true);
+    try {
+      const storagePath = `${patientId}/${section}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const { error: upErr } = await supabase.storage.from(DOC_BUCKET).upload(storagePath, file, { upsert: false, contentType: file.type });
+      if (upErr) { setError(upErr.message); return; }
+      const { error: dbErr } = await supabase.from('patient_document_uploads').insert({
+        patient_id: patientId, section, file_name: file.name, file_type: file.type, storage_path: storagePath, note_text: '',
+      });
+      if (dbErr) {
+        const { error: cleanupErr } = await supabase.storage.from(DOC_BUCKET).remove([storagePath]);
+        if (cleanupErr) console.error('Orphaned document storage object could not be cleaned up:', storagePath, cleanupErr.message);
+        setError(dbErr.message);
+        return;
+      }
+      toast.success('Document uploaded.');
+      load();
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const download = async (storagePath: string, fileName: string) => {
+    const { data, error: signErr } = await supabase.storage.from(DOC_BUCKET).createSignedUrl(storagePath, 3600);
+    if (signErr || !data) { toast.error(signErr?.message || 'Could not generate a secure download link.'); return; }
+    const a = document.createElement('a');
+    a.href = data.signedUrl; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    a.click();
+    void fileName;
+  };
 
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
   return (
     <SectionCard title="Medical Documents" icon={FileText}>
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={section} onChange={(e) => setSection(e.target.value as typeof section)} className="px-2 py-2 rounded-xl border border-soft-taupe text-sm">
+          <option value="medical_docs">Medical document</option>
+          <option value="medical_bills">Medical bill</option>
+        </select>
+        <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold cursor-pointer">
+          <Upload className="w-4 h-4" /> {uploading ? 'Uploading…' : 'Upload a file'}
+          <input type="file" className="hidden" disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ''; }} />
+        </label>
+      </div>
+      {error && <p className="text-xs text-gentle-coral">{error}</p>}
       {docs.length === 0 ? <p className="text-sm text-medium-gray">No documents on file for this patient.</p> : (
         <ul className="space-y-2">
           {docs.map((d) => (
-            <li key={d.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
-              <p className="font-medium text-charcoal">{d.file_name}</p>
-              <p className="text-xs text-medium-gray capitalize">{d.section.replace('_', ' ')}{d.uploaded_at ? ` · ${new Date(d.uploaded_at).toLocaleDateString()}` : ''}</p>
-              {d.note_text && <p className="text-xs text-charcoal mt-1">{d.note_text}</p>}
+            <li key={d.id} className="flex items-center justify-between gap-2 p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+              <div>
+                <p className="font-medium text-charcoal">{d.file_name}</p>
+                <p className="text-xs text-medium-gray capitalize">{d.section.replace('_', ' ')}{d.uploaded_at ? ` · ${new Date(d.uploaded_at).toLocaleDateString()}` : ''}</p>
+                {d.note_text && <p className="text-xs text-charcoal mt-1">{d.note_text}</p>}
+              </div>
+              <button type="button" onClick={() => { void download(d.storage_path, d.file_name); }} className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-warm-bronze/10 text-warm-bronze text-xs font-semibold hover:bg-warm-bronze/20">
+                <Download className="w-3.5 h-3.5" /> Download
+              </button>
             </li>
           ))}
         </ul>
       )}
-      <p className="text-[11px] text-medium-gray">Secure signed-URL download and upload for Enterprise staff are not yet wired into this view.</p>
+      <p className="text-[11px] text-medium-gray">Max 5 MB per file. Downloads use a time-limited secure link, never a public URL.</p>
+    </SectionCard>
+  );
+}
+
+// P17 — ROUND 7 CORRECTIVE: a dedicated HELP Activation History
+// section with full per-event detail (notification status, staff
+// acknowledgment) instead of one undifferentiated Timeline line. Reads
+// help_activations directly (already staff-scoped RLS, confirmed —
+// "Assigned org staff can view HELP activation history for their
+// patients") rather than through get_patient_help_activation_history(),
+// specifically so this round's new staff_acknowledged_by/at columns
+// (migration 075) don't require touching that RPC again — it is
+// explicitly a protected, previously P0-hardened function (migrations
+// 048/050/053/071) this engagement does not re-touch without cause.
+interface HelpRow { id: string; created_at: string; phone_dialed: string | null; notification_status: string; staff_acknowledged_by: string | null; staff_acknowledged_at: string | null }
+function HelpHistorySection({ patientId }: { patientId: string }) {
+  const [rows, setRows] = useState<HelpRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(() => void supabase.from('help_activations').select('id, created_at, phone_dialed, notification_status, staff_acknowledged_by, staff_acknowledged_at').eq('patient_id', patientId).order('created_at', { ascending: false })
+    .then(({ data }) => { setRows((data ?? []) as HelpRow[]); setLoading(false); }), [patientId]);
+  useEffect(() => { load(); }, [load]);
+
+  const ack = async (id: string) => {
+    const { error } = await acknowledgeHelpActivation(id);
+    if (error) { toast.error(error); return; }
+    load();
+  };
+
+  if (loading) return null;
+  return (
+    <SectionCard title="HELP Activation History" icon={AlertTriangle}>
+      {rows.length === 0 ? <p className="text-sm text-medium-gray">No HELP activations recorded.</p> : (
+        <ul className="space-y-1.5">
+          {rows.map((r) => (
+            <li key={r.id} className="p-2.5 bg-gentle-coral/5 border border-gentle-coral/30 rounded-xl text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-charcoal">{new Date(r.created_at).toLocaleString()}</span>
+                {!r.staff_acknowledged_at && <button type="button" onClick={() => { void ack(r.id); }} className="px-2 py-1 rounded-lg bg-warm-bronze hover:bg-deep-bronze text-white text-xs font-semibold">Acknowledge</button>}
+              </div>
+              <p className="text-xs text-medium-gray capitalize">Notification: {r.notification_status.replace('_', ' ')}{r.phone_dialed ? ` · called ${r.phone_dialed}` : ''}</p>
+              {r.staff_acknowledged_at && <p className="text-xs text-soft-sage font-semibold">Acknowledged {new Date(r.staff_acknowledged_at).toLocaleString()}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
     </SectionCard>
   );
 }
@@ -708,6 +921,9 @@ function SafetyTab({ patientId, patientHeader }: { patientId: string; patientHea
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [newAllergen, setNewAllergen] = useState('');
+  const [preferredHospital, setPreferredHospital] = useState(patientHeader.preferredHospital ?? '');
+  const [safetyInstructions, setSafetyInstructions] = useState(patientHeader.safetyResponseInstructions ?? '');
+  const [savingSafety, setSavingSafety] = useState(false);
 
   const load = useCallback(async () => {
     const [a, i] = await Promise.all([getPatientAllergies(patientId), getPatientIncidentReports(patientId)]);
@@ -720,6 +936,17 @@ function SafetyTab({ patientId, patientHeader }: { patientId: string; patientHea
     const { error } = await recordPatientAllergy(patientId, newAllergen.trim());
     if (error) { toast.error(error); return; }
     setNewAllergen(''); await load();
+  };
+
+  const saveSafetyPlan = async () => {
+    setSavingSafety(true);
+    try {
+      const { error } = await recordPatientSafetyPlan(patientId, { preferredHospital: preferredHospital.trim() || undefined, safetyResponseInstructions: safetyInstructions.trim() || undefined });
+      if (error) { toast.error(error); return; }
+      toast.success('Safety plan saved.');
+    } finally {
+      setSavingSafety(false);
+    }
   };
 
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
@@ -753,7 +980,29 @@ function SafetyTab({ patientId, patientHeader }: { patientId: string; patientHea
             {patientHeader.emergencyContactEmail && <p className="text-medium-gray">{patientHeader.emergencyContactEmail}</p>}
           </div>
         ) : <p className="text-sm text-medium-gray">No emergency contact on file.</p>}
+
+        {/* ROUND 7 CORRECTIVE — P16. code_status defaults to and stays
+            'unknown' until explicitly set — never a specific code by
+            default, so this warning is never a false negative. */}
+        {patientHeader.codeStatus === 'unknown' ? (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gentle-coral/15 border border-gentle-coral text-sm font-semibold text-charcoal">
+            <AlertTriangle className="w-4 h-4 text-gentle-coral flex-shrink-0" /> Code status: Unknown — confirm with an authoritative source before relying on this.
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-soft-sage/20 border border-soft-sage text-sm font-semibold text-charcoal">
+            Code status: {patientHeader.codeStatus === 'dnr' ? 'DNR' : 'Full Code'} <span className="text-[11px] font-normal text-medium-gray capitalize">({patientHeader.codeStatusSource.replace('_', ' ')})</span>
+          </div>
+        )}
+
+        <div className="pt-2 border-t border-soft-taupe space-y-2">
+          <input value={preferredHospital} onChange={(e) => setPreferredHospital(e.target.value)} placeholder="Preferred hospital…" className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+          <textarea value={safetyInstructions} onChange={(e) => setSafetyInstructions(e.target.value)} placeholder="Safety / emergency response instructions…" rows={2} className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm resize-none" />
+          <button type="button" onClick={() => { void saveSafetyPlan(); }} disabled={savingSafety} className="px-3 py-1.5 rounded-lg bg-warm-bronze hover:bg-deep-bronze text-white text-xs font-semibold disabled:opacity-60">Save safety plan</button>
+          <p className="text-[11px] text-medium-gray">Setting a verified code status requires an assigned therapist or medical professional — not set here.</p>
+        </div>
       </SectionCard>
+
+      <HelpHistorySection patientId={patientId} />
 
       <SectionCard title="Incident History" icon={ShieldAlert}>
         {incidents.length === 0 ? <p className="text-sm text-medium-gray">No incidents recorded.</p> : (
@@ -829,14 +1078,16 @@ function ProfessionalNotesSectionStandalone({ patientId, staffRole }: { patientI
   const [notes, setNotes] = useState<ProfessionalNote[]>([]);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
+  const [amendingId, setAmendingId] = useState<string | null>(null);
+  const [amendDraft, setAmendDraft] = useState('');
 
   const load = useCallback(async () => {
     if (staffRole === 'medical_professional' || staffRole === 'therapist') {
       const noteType = staffRole === 'medical_professional' ? 'clinical_observation' : 'therapist_session';
       setNotes(await getProfessionalNotes(patientId, noteType));
     } else {
-      const { data } = await supabase.from('patient_notes').select('id, note, created_at, updated_at').eq('patient_id', patientId).eq('note_type', 'general').order('created_at', { ascending: false });
-      setNotes((data ?? []).map((r) => ({ id: r.id, note: r.note, createdAt: r.created_at, updatedAt: r.updated_at ?? r.created_at })));
+      const { data } = await supabase.from('patient_notes').select('id, note, created_at, updated_at, amends_note_id').eq('patient_id', patientId).eq('note_type', 'general').order('created_at', { ascending: false });
+      setNotes((data ?? []).map((r) => ({ id: r.id, note: r.note, createdAt: r.created_at, updatedAt: r.updated_at ?? r.created_at, amendsNoteId: r.amends_note_id })));
     }
     setLoading(false);
   }, [patientId, staffRole]);
@@ -857,6 +1108,18 @@ function ProfessionalNotesSectionStandalone({ patientId, staffRole }: { patientI
     }
     setDraft(''); void load();
   };
+
+  // W14 — ROUND 7 CORRECTIVE: append-only amendment. Never edits the
+  // original row; record_note_amendment() inserts a new row that
+  // references it, re-verifying the same authorship/professional-tier
+  // gate the original note type requires.
+  const submitAmendment = async (originalId: string) => {
+    if (!amendDraft.trim()) return;
+    const { error } = await recordNoteAmendment(originalId, amendDraft.trim());
+    if (error) { toast.error(error); return; }
+    setAmendingId(null); setAmendDraft(''); void load();
+  };
+
   return (
     <SectionCard title={staffRole === 'caregiver' ? 'Care Notes & Observations' : staffRole === 'medical_professional' ? 'Clinical Observations' : 'Session Notes & Care Goals'} icon={Stethoscope}>
       <div className="flex gap-2">
@@ -866,9 +1129,21 @@ function ProfessionalNotesSectionStandalone({ patientId, staffRole }: { patientI
       {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : notes.length === 0 ? <p className="text-sm text-medium-gray">No entries yet.</p> : (
         <ul className="space-y-2">
           {notes.map((n) => (
-            <li key={n.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
+            <li key={n.id} className={`p-3 rounded-xl border text-sm ${n.amendsNoteId ? 'bg-warm-bronze/5 border-warm-bronze/30' : 'bg-warm-ivory border-soft-taupe'}`}>
+              {n.amendsNoteId && <p className="text-[11px] font-semibold text-warm-bronze uppercase tracking-wide">Correction</p>}
               <p className="text-sm text-charcoal whitespace-pre-wrap">{n.note}</p>
-              <p className="text-[11px] text-medium-gray mt-1">{new Date(n.createdAt).toLocaleString()}</p>
+              <div className="flex items-center justify-between mt-1">
+                <p className="text-[11px] text-medium-gray">{new Date(n.createdAt).toLocaleString()}</p>
+                {!n.amendsNoteId && amendingId !== n.id && (
+                  <button type="button" onClick={() => { setAmendingId(n.id); setAmendDraft(''); }} className="flex items-center gap-1 text-[11px] font-semibold text-warm-bronze hover:underline"><PencilLine className="w-3 h-3" /> Amend</button>
+                )}
+              </div>
+              {amendingId === n.id && (
+                <div className="flex gap-2 mt-2">
+                  <textarea value={amendDraft} onChange={(e) => setAmendDraft(e.target.value)} rows={2} placeholder="Corrected note…" className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm resize-none" />
+                  <button type="button" onClick={() => { void submitAmendment(n.id); }} disabled={!amendDraft.trim()} className="px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold self-start disabled:opacity-60">Save</button>
+                </div>
+              )}
             </li>
           ))}
         </ul>

@@ -168,3 +168,33 @@ export async function recordCarePreference(patientId: string, category: string, 
   const { error } = await supabase.rpc('record_care_preference', { p_patient_id: patientId, p_category: category, p_description: description, p_reported_by: reportedBy });
   return { error: error ? errMsg(error, 'Could not record this care preference.') : null };
 }
+
+// ROUND 7 CORRECTIVE — P01 communication needs, P16 safety plan/code
+// status, W14 note amendments, P13 overnight HELP acknowledgment
+// (migration 075).
+export async function recordCommunicationNeeds(patientId: string, communicationNeeds: string, source: ProvenanceSource = 'caregiver_report'): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('record_communication_needs', { p_patient_id: patientId, p_communication_needs: communicationNeeds, p_source: source });
+  return { error: error ? errMsg(error, 'Could not record communication needs.') : null };
+}
+
+export type CodeStatus = 'unknown' | 'full_code' | 'dnr';
+
+export async function recordPatientSafetyPlan(patientId: string, fields: {
+  preferredHospital?: string; safetyResponseInstructions?: string; codeStatus?: CodeStatus; codeStatusSource?: ProvenanceSource;
+}): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('record_patient_safety_plan', {
+    p_patient_id: patientId, p_preferred_hospital: fields.preferredHospital, p_safety_response_instructions: fields.safetyResponseInstructions,
+    p_code_status: fields.codeStatus, p_code_status_source: fields.codeStatusSource ?? 'caregiver_report',
+  });
+  return { error: error ? errMsg(error, 'Could not record the safety plan.') : null };
+}
+
+export async function recordNoteAmendment(originalNoteId: string, correctedNote: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('record_note_amendment', { p_original_note_id: originalNoteId, p_corrected_note: correctedNote });
+  return { error: error ? errMsg(error, 'Could not record this amendment.') : null };
+}
+
+export async function acknowledgeHelpActivation(helpActivationId: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('acknowledge_help_activation', { p_help_activation_id: helpActivationId });
+  return { error: error ? errMsg(error, 'Could not acknowledge this HELP activation.') : null };
+}
