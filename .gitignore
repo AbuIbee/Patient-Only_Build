@@ -27,3 +27,4 @@ codex_round7_independent_audit/ephemeral_local_config.json
 codex_round7_independent_audit/__pycache__/
 codex_master_9023_acceptance/ephemeral_local_config.json
 codex_master_9023_acceptance/__pycache__/
+codex_master_9023_acceptance/optimized-build/

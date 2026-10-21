@@ -125,7 +125,21 @@ function PendingTherapistInvitesBanner({ invites, onResolved }: { invites: Pendi
   );
 }
 
-export default function EnterpriseDashboardRouter() {
+// P1 OWNER-VISIBLE DASHBOARD DELIVERY — the approved Enterprise visual
+// shell must not depend on possessing an Enterprise organization
+// membership merely to render its non-sensitive navigation and layout.
+// `businessWorkspace` is true only when this router was reached via
+// the dedicated /business entry point (never the generic authenticated
+// fallback every other role/route also uses) — it distinguishes
+// "the user explicitly entered the Business workspace" from "the user
+// is simply a caregiver-role account, wherever they happen to be."
+// When true, a plain caregiver with no Enterprise organization still
+// sees the approved shell (EnterpriseCaregiverDashboard renders its own
+// honest "no organization connected" state) instead of being silently
+// dropped into the residential CaregiverPortal. The ordinary,
+// non-/business authenticated path is completely unchanged — residential
+// caregivers keep their existing experience exactly as before.
+export default function EnterpriseDashboardRouter({ businessWorkspace = false }: { businessWorkspace?: boolean } = {}) {
   const [orgs, setOrgs] = useState<MyOrganization[]>([]);
   const [invites, setInvites] = useState<PendingOrgInvite[]>([]);
   const [therapistInvites, setTherapistInvites] = useState<PendingTherapistInvite[]>([]);
@@ -228,9 +242,25 @@ export default function EnterpriseDashboardRouter() {
     );
   }
 
+  // Reached via /business with no Enterprise organization membership at
+  // all: show the approved Enterprise shell itself, not the residential
+  // CaregiverPortal — EnterpriseCaregiverDashboard renders its own
+  // honest "no organization connected" state (with the same legitimate
+  // Start-an-Organization action) rather than falsely implying
+  // Enterprise access or silently redirecting to a different product.
+  if (businessWorkspace) {
+    return (
+      <div>
+        <PendingInvitesBanner invites={invites} onResolved={() => { void refresh(); }} />
+        {therapistBanner}
+        <EnterpriseCaregiverDashboard />
+      </div>
+    );
+  }
+
   // Ordinary residential caregiver, or one with an outstanding org
   // invite not yet accepted — unchanged, byte-for-byte residential
-  // experience.
+  // experience. Only reached outside /business.
   if (invites.length > 0 || !showCreateOrg) {
     return (
       <div>

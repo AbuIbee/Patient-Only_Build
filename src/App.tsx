@@ -638,7 +638,15 @@ function AppContent() {
     // "Caregiver Sign In" button would have nowhere to actually route to.
     if (isBusinessRoute) {
       if (state.isAuthenticated && state.selectedRole === 'caregiver') {
-        return <EnterpriseDashboardRouter />;
+        // P1 OWNER-VISIBLE DASHBOARD DELIVERY — businessWorkspace=true
+        // tells the router this is the explicit Business entry point,
+        // so a caregiver with no Enterprise organization still sees the
+        // approved Enterprise shell (its own honest no-organization
+        // state), never the residential CaregiverPortal. The generic
+        // authenticated-switch render of this same component further
+        // below (reached from any other route) omits the prop, so
+        // ordinary residential caregivers elsewhere are unaffected.
+        return <EnterpriseDashboardRouter businessWorkspace />;
       }
       if (!state.isAuthenticated && state.currentView === 'login') {
         return <LoginPage />;

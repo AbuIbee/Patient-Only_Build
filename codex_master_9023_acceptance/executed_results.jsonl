@@ -36,3 +36,5 @@
 {"id": "FUNC04-AUTHORIZED-OLD", "assertion_met": true, "evidence": {"http": 200, "result": [{"conversation_id": "159ce082-7f79-47b0-a4c1-1ee69e565f4d"}]}}
 {"id": "FUNC04-CROSS-TENANT", "assertion_met": true, "evidence": {"http": 200, "result": []}}
 {"id": "FUNC03-FOLLOWUP", "assertion_met": true, "evidence": {"http": 200, "rows": [{"subject": "AUDIT Routine Thread", "followup": false, "unread": 0, "urgent": false}, {"subject": "AUDIT Unread Thread", "followup": false, "unread": 1, "urgent": false}, {"subject": "AUDIT Followup Thread", "followup": true, "unread": 0, "urgent": false}, {"subject": "AUDIT Urgent Thread", "followup": false, "unread": 1, "urgent": true}]}}
+{"id": "SEC01-ACCEPT-REVOKE-RACE", "assertion_met": true, "evidence": {"revoke_http": 200, "wait_seconds": 2.95, "final_state": "revoked|false"}}
+{"id": "SEC01-RACE-WRITE-DENIED", "assertion_met": true, "evidence": {"http": 403, "persisted_rows": "1"}}

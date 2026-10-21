@@ -1,0 +1,8 @@
+[
+  {
+    "migration": "001_initial_schema.sql",
+    "exit": 3,
+    "stdout": "SET\nCREATE EXTENSION\n",
+    "stderr": "ERROR:  schema \"auth\" does not exist\n"
+  }
+]

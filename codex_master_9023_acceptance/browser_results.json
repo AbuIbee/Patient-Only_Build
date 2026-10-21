@@ -1,0 +1,96 @@
+[
+  {
+    "id": "REAL-AUTH-OPTIMIZED-LOGIN",
+    "assertion_met": true,
+    "evidence": {
+      "head": "9023e90c",
+      "realAuth": true
+    }
+  },
+  {
+    "id": "H14-PENDING-CARE-LIST",
+    "assertion_met": true,
+    "evidence": {
+      "text": "Incomplete Documentation\n\n1 patient with an unfinished care list.\n\nReview →\n\n2 completed visits missing visit notes.\n\nReview →"
+    }
+  },
+  {
+    "id": "H06-DETAIL-LOCAL-DATE",
+    "assertion_met": false,
+    "evidence": {
+      "today": 0,
+      "all": 7,
+      "localDate": "2026-10-21T17:38:46.316Z",
+      "text": "My Schedule\nSelect patient…\nAlphaPatient\nSchedule Visit\nToday only"
+    }
+  },
+  {
+    "id": "FUNC01-UI-COMPLETION",
+    "assertion_met": false,
+    "evidence": {
+      "error": "Visit notes are required to complete this visit",
+      "notesInputAvailable": 2
+    }
+  },
+  {
+    "id": "FUNC03-MIXED",
+    "assertion_met": true,
+    "evidence": {
+      "text": "Care Communications\n\nURGENT\n\nAlphaPatient — AUDIT Urgent Thread\n\n1\n\nAUDIT urgent latest\n\nNEEDS A RESPONSE\n\nAlphaPatient — AUDIT Followup Thread\n\nAUDIT follow-up read latest\n\nROUTINE\n\nAlphaPatient — AUDIT Routine Thread\n\nAUDIT routine latest\n\nAlphaPatient — AUDIT Unread Thread\n\n1\n\nAUDIT unread latest"
+    }
+  },
+  {
+    "id": "FUNC03",
+    "assertion_met": false,
+    "evidence": {
+      "harnessError": "locator.waitFor: Timeout 12000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByText('AUDIT Routine Thread', { exact: true }) to be visible\u001b[22m\n"
+    }
+  },
+  {
+    "id": "P07-POPULATED",
+    "assertion_met": true,
+    "evidence": {
+      "text": "Patient Intake Information\n\nStage at intake: moderate · diagnosed 2025-05-01\n\nAddress at intake: 100 Intake Lane, FixtureCity, NY, 10000\n\nContact at intake: 555-0100 · intake@audit.invalid\n\nPreferred hospital: AUDIT Intake Hospital\n\nDoctor/Therapist: AUDIT Dr Provider · 555-0101\n\nPrimary caregiver at intake: AUDIT Intake Caregiver (daughter) · 555-0102\n\nIntake-reported medications: AUDIT medication 5mg daily\n\nEmergency contact at intake: AUDIT Emergency Person (son) · 555-0103\n\nSubmitted 10/21/2026",
+      "emergencyEmailShown": false
+    }
+  },
+  {
+    "id": "FUNC02-REACHABLE-PAGING",
+    "assertion_met": true,
+    "evidence": {
+      "before": 10,
+      "after": 15,
+      "rendered": [
+        "calm (5/10)10/21/2026, 7:31:09 AM",
+        "calm (5/10)10/21/2026, 6:31:09 AM",
+        "calm (5/10)10/21/2026, 5:31:09 AM",
+        "calm (5/10)10/21/2026, 4:31:09 AM",
+        "calm (5/10)10/21/2026, 3:31:09 AM",
+        "calm (5/10)10/21/2026, 2:31:09 AM",
+        "calm (5/10)10/21/2026, 1:31:09 AM",
+        "calm (5/10)10/21/2026, 12:31:09 AM",
+        "calm (5/10)10/20/2026, 11:31:09 PM",
+        "calm (5/10)10/20/2026, 10:31:09 PM",
+        "calm (5/10)10/20/2026, 9:31:09 PM",
+        "calm (5/10)10/20/2026, 8:31:09 PM",
+        "calm (5/10)10/20/2026, 7:31:09 PM",
+        "calm (5/10)10/20/2026, 6:31:09 PM",
+        "calm (5/10)10/20/2026, 5:31:09 PM"
+      ]
+    }
+  },
+  {
+    "id": "FUNC02",
+    "assertion_met": false,
+    "evidence": {
+      "harnessError": "locator.click: Timeout 12000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'Medical', exact: true })\u001b[22m\n"
+    }
+  },
+  {
+    "id": "O07",
+    "assertion_met": false,
+    "evidence": {
+      "harnessError": "locator.click: Timeout 12000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'My Organization', exact: true }).first()\u001b[22m\n"
+    }
+  }
+]

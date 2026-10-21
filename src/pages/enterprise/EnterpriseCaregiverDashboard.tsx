@@ -38,6 +38,7 @@ import {
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import EnterprisePatientRecordTabs from './EnterprisePatientRecordTabs';
+import { CreateOrgCard } from './OrganizationDirectorDashboard';
 
 type NavItem =
   | 'dashboard' | 'patients' | 'schedule' | 'tasks' | 'records' | 'communications'
@@ -146,18 +147,15 @@ export default function EnterpriseCaregiverDashboard() {
     return <div className="min-h-screen flex items-center justify-center bg-warm-ivory"><Loader2 className="w-8 h-8 animate-spin text-warm-bronze" /></div>;
   }
 
-  if (!orgId) {
-    // No active organization-caregiver membership could be confirmed —
-    // never a fabricated dashboard. This should be unreachable from
-    // EnterpriseDashboardRouter (which only renders this component when
-    // hasCaregiverOrgRole is true), but is handled explicitly rather
-    // than crashing on a null org id.
-    return (
-      <div className="min-h-screen bg-warm-ivory flex items-center justify-center p-4">
-        <p className="text-sm text-medium-gray">Your organization membership could not be confirmed. Please sign in again.</p>
-      </div>
-    );
-  }
+  // P1 OWNER-VISIBLE DASHBOARD DELIVERY — presentation access is
+  // distinct from protected-data authorization: this shell (sidebar,
+  // header, all 14 destinations) renders for ANY authenticated
+  // caregiver reaching the Business workspace, whether or not they
+  // currently belong to an Enterprise organization. No real
+  // organization name, patient, or count is ever fabricated for a
+  // no-organization account — every data-bearing panel is replaced by
+  // an honest NoOrganizationPanel instead.
+  const hasOrganization = !!orgId;
 
   const firstName = state.currentUser?.firstName || 'Caregiver';
   const lastName = state.currentUser?.lastName || '';
@@ -226,7 +224,7 @@ export default function EnterpriseCaregiverDashboard() {
               <Menu className="w-5 h-5" />
             </button>
             <div className="text-[12.5px] sm:text-[13px] font-semibold truncate">
-              <span className="text-ent-ink">{orgName}</span>
+              <span className="text-ent-ink">{hasOrganization ? orgName : 'No organization connected'}</span>
               <span className="text-ent-muted"> / Caregiver Workspace</span>
             </div>
           </div>
@@ -244,7 +242,7 @@ export default function EnterpriseCaregiverDashboard() {
               <div className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="w-8 h-8 rounded-lg bg-ent-green flex items-center justify-center flex-shrink-0"><Sparkles className="w-4 h-4 text-ent-forest" /></div>
-                  <span className="font-semibold text-ent-ink text-sm truncate">{orgName}</span>
+                  <span className="font-semibold text-ent-ink text-sm truncate">{hasOrganization ? orgName : 'No organization connected'}</span>
                 </div>
                 <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X className="w-5 h-5 text-ent-muted" /></button>
               </div>
@@ -280,7 +278,11 @@ export default function EnterpriseCaregiverDashboard() {
         )}
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-ent-bg">
-          {openPatient ? (
+          {!hasOrganization ? (
+            <div className="max-w-6xl mx-auto space-y-5">
+              <NoOrganizationPanel onChanged={() => { void load(); }} />
+            </div>
+          ) : openPatient ? (
             <div className="max-w-5xl mx-auto">
               <EnterpriseStaffPatientView
                 organizationId={orgId} patientId={openPatient} onBack={() => navigateTo(nav)} staffRole="caregiver"
@@ -321,6 +323,27 @@ export default function EnterpriseCaregiverDashboard() {
 
 function Card({ children }: { children: React.ReactNode }) {
   return <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">{children}</div>;
+}
+
+// P1 OWNER-VISIBLE DASHBOARD DELIVERY — presentation access is distinct
+// from protected-data authorization. Shown in place of every
+// navigation destination's real content when the signed-in caregiver
+// has no active Enterprise organization membership: no fabricated
+// organization, patient, or count — just an honest state and the same
+// legitimate self-service "Start an Organization" action
+// EnterpriseDashboardRouter's own residential fallback already offers,
+// reused here rather than reimplemented.
+function NoOrganizationPanel({ onChanged }: { onChanged: (orgId: string) => void }) {
+  return (
+    <Card>
+      <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">No Enterprise organization connected</h2></div>
+      <p className="text-sm text-ent-text">
+        Your account is not currently a member of an Enterprise organization, so there is no organization-specific data to show here.
+        Start a new organization below, or ask an existing organization&apos;s director to add you as a staff member.
+      </p>
+      <CreateOrgCard onCreated={onChanged} />
+    </Card>
+  );
 }
 
 function patientInitials(first: string, last: string): string {
@@ -860,6 +883,16 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
   const [end, setEnd] = useState('');
   const [saving, setSaving] = useState(false);
   const [todayOnly, setTodayOnly] = useState(true);
+  // APPROVED ENTERPRISE UI DIRECTIVE follow-up — CONFIRMED DEFECT
+  // (FUNC01-UI-COMPLETION, codex_master_9023_acceptance/browser_verify.mjs):
+  // end_caregiver_visit() has required non-empty visit notes since
+  // migration 076 (FUNC-01), but this "End" button never collected or
+  // sent any — every click failed with "Visit notes are required to
+  // complete this visit," making visit completion impossible from the
+  // real UI. Fixed by requiring an inline notes entry before the RPC
+  // call, rather than reverting the backend requirement.
+  const [endingVisitId, setEndingVisitId] = useState<string | null>(null);
+  const [endNotesDraft, setEndNotesDraft] = useState('');
 
   const load = useCallback(async () => { setVisits(await getMyVisits()); setLoading(false); }, []);
   useEffect(() => { void load(); }, [load]);
@@ -878,10 +911,23 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
     }
   };
 
-  const act = async (visitId: string, action: 'start' | 'end') => {
-    const { error } = action === 'start' ? await startCaregiverVisit(visitId) : await endCaregiverVisit(visitId);
+  const startVisit = async (visitId: string) => {
+    const { error } = await startCaregiverVisit(visitId);
     if (error) { toast.error(error); return; }
     await load();
+  };
+
+  const completeVisit = async (visitId: string) => {
+    if (!endNotesDraft.trim()) { toast.error('Visit notes are required to complete this visit.'); return; }
+    setSaving(true);
+    try {
+      const { error } = await endCaregiverVisit(visitId, endNotesDraft.trim());
+      if (error) { toast.error(error); return; }
+      setEndingVisitId(null); setEndNotesDraft('');
+      await load();
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -915,8 +961,8 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
               : null;
             const facility = visitPatient?.address || visitPatient?.location;
             return (
-            <li key={v.id} className="flex items-center justify-between p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
-              <div>
+            <li key={v.id} className="flex items-start justify-between gap-3 p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-charcoal">{visitPatient?.preferredName || 'Patient'} — <span className="capitalize">{v.status.replace('_', ' ')}</span></p>
                 <p className="text-xs text-medium-gray">
                   {v.scheduledStart ? new Date(v.scheduledStart).toLocaleString() : 'No time set'}
@@ -924,9 +970,27 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
                   {tzLabel && <> ({tzLabel})</>}
                 </p>
                 {facility && <p className="text-xs text-medium-gray">{facility}</p>}
+                {v.status === 'in_progress' && endingVisitId === v.id && (
+                  <div className="mt-2 space-y-1.5 w-full">
+                    <textarea
+                      value={endNotesDraft} onChange={(e) => setEndNotesDraft(e.target.value)} autoFocus
+                      placeholder="Visit notes (required to complete this visit)…"
+                      className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm"
+                      rows={2}
+                    />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => { void completeVisit(v.id); }} disabled={saving || !endNotesDraft.trim()} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gentle-coral text-white text-xs font-semibold disabled:opacity-60">
+                        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />} Complete Visit
+                      </button>
+                      <button type="button" onClick={() => { setEndingVisitId(null); setEndNotesDraft(''); }} className="px-3 py-1.5 rounded-lg border border-soft-taupe text-charcoal text-xs font-semibold">Cancel</button>
+                    </div>
+                  </div>
+                )}
               </div>
-              {v.status === 'scheduled' && <button type="button" onClick={() => { void act(v.id, 'start'); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-soft-sage text-white text-xs font-semibold"><PlayCircle className="w-3.5 h-3.5" /> Start</button>}
-              {v.status === 'in_progress' && <button type="button" onClick={() => { void act(v.id, 'end'); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gentle-coral text-white text-xs font-semibold"><StopCircle className="w-3.5 h-3.5" /> End</button>}
+              {v.status === 'scheduled' && <button type="button" onClick={() => { void startVisit(v.id); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-soft-sage text-white text-xs font-semibold flex-shrink-0"><PlayCircle className="w-3.5 h-3.5" /> Start</button>}
+              {v.status === 'in_progress' && endingVisitId !== v.id && (
+                <button type="button" onClick={() => { setEndingVisitId(v.id); setEndNotesDraft(''); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gentle-coral text-white text-xs font-semibold flex-shrink-0"><StopCircle className="w-3.5 h-3.5" /> End</button>
+              )}
             </li>
             );
           })}
