@@ -29,12 +29,30 @@ import {
   getTherapyGoals, recordTherapyGoal, getCarePreferences, recordCarePreference,
   getPatientProviders, recordPatientProvider,
   recordCommunicationNeeds, recordPatientSafetyPlan, recordNoteAmendment, acknowledgeHelpActivation,
-  type PatientDiagnosis, type PatientAllergy, type PatientCarePlan, type PatientVitals, type TherapyGoal, type CarePreference, type PatientCareProvider,
+  type PatientDiagnosis, type PatientAllergy, type PatientCarePlan, type PatientVitals, type TherapyGoal, type CarePreference, type PatientCareProvider, type ProvenanceSource,
 } from '@/services/patientClinicalRecordService';
 import {
   getMyVisits, getPatientShiftHandoffs, getPatientIncidentReports, reportScopeConcern,
   type CaregiverVisit, type IncidentReport,
 } from '@/services/enterpriseCaregiverWorkToolsService';
+
+// FIVE-OFFICE PLATFORM — CONFIRMED PROVENANCE DEFECT, newly reachable by this
+// round's Medical/Therapist offices (previously these forms were only ever
+// reached by a caregiver, via EnterpriseCaregiverDashboard, so the hardcoded
+// default never mislabeled anyone): recordPatientDiagnosis/recordPatientVitals/
+// recordPatientAllergy all default their `source` parameter to
+// 'caregiver_report' when the caller omits it, and every call site in this
+// file omitted it unconditionally — a medical professional's own diagnosis,
+// vitals, or allergy entry was recorded as if a caregiver had merely reported
+// it, not as the professional's own observation. Section 16's "clinical
+// provenance" / "verified-source provenance" protections are exactly what
+// this mislabels. Fixed by deriving the correct source from the real,
+// server-trusted staffRole already passed into this component (never from
+// anything the client could spoof) rather than the service layer's generic
+// default.
+function professionalSourceFor(staffRole: StaffRole): ProvenanceSource {
+  return staffRole === 'medical_professional' || staffRole === 'therapist' ? 'professional_observation' : 'caregiver_report';
+}
 
 export type TabKey = 'overview' | 'medical' | 'medications' | 'tasks' | 'ag' | 'carePlan' | 'appointments' | 'documents' | 'safety' | 'communications' | 'timeline';
 const TABS: { key: TabKey; label: string }[] = [
@@ -94,7 +112,7 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         {tab === 'carePlan' && <CarePlanTab patientId={patientId} orgId={orgId} />}
         {tab === 'appointments' && <AppointmentsTab patientId={patientId} orgId={orgId} />}
         {tab === 'documents' && <DocumentsTab patientId={patientId} />}
-        {tab === 'safety' && <SafetyTab patientId={patientId} patientHeader={patientHeader} />}
+        {tab === 'safety' && <SafetyTab patientId={patientId} patientHeader={patientHeader} staffRole={staffRole} />}
         {tab === 'communications' && <CareConversations patientId={patientId} patientName={displayName} />}
         {tab === 'timeline' && <TimelineTab patientId={patientId} orgId={orgId} />}
       </div>
@@ -307,7 +325,7 @@ function OverviewTab({ patientId, patientHeader }: { patientId: string; patientH
 }
 
 // P02/P06/P07/P10/P19 — diagnoses, providers, intake, vitals, therapy goals.
-function VitalsForm({ patientId, onRecorded }: { patientId: string; onRecorded: () => void }) {
+function VitalsForm({ patientId, staffRole, onRecorded }: { patientId: string; staffRole: StaffRole; onRecorded: () => void }) {
   const [bp, setBp] = useState(''); const [pulse, setPulse] = useState(''); const [temp, setTemp] = useState('');
   const [saving, setSaving] = useState(false);
   const submit = async () => {
@@ -316,6 +334,7 @@ function VitalsForm({ patientId, onRecorded }: { patientId: string; onRecorded: 
     try {
       const { error } = await recordPatientVitals(patientId, {
         bloodPressure: bp.trim() || undefined, pulseBpm: pulse.trim() ? Number(pulse) : undefined, temperatureF: temp.trim() ? Number(temp) : undefined,
+        source: professionalSourceFor(staffRole),
       });
       if (error) { toast.error(error); return; }
       setBp(''); setPulse(''); setTemp(''); onRecorded();
@@ -371,7 +390,7 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
 
   const addDiagnosis = async () => {
     if (!newDiagnosis.trim()) return;
-    const { error } = await recordPatientDiagnosis(patientId, newDiagnosis.trim());
+    const { error } = await recordPatientDiagnosis(patientId, newDiagnosis.trim(), undefined, undefined, professionalSourceFor(staffRole));
     if (error) { toast.error(error); return; }
     setNewDiagnosis(''); await load();
   };
@@ -444,7 +463,7 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
       </SectionCard>
 
       <SectionCard title="Vital Signs & Health Observations" icon={Activity}>
-        <VitalsForm patientId={patientId} onRecorded={load} />
+        <VitalsForm patientId={patientId} staffRole={staffRole} onRecorded={load} />
         {vitals.length === 0 ? <p className="text-sm text-medium-gray">No vitals recorded.</p> : (
           <ul className="space-y-1.5">
             {vitals.slice(0, 10).map((v) => (
@@ -951,7 +970,7 @@ function HelpHistorySection({ patientId }: { patientId: string }) {
 }
 
 // P03/P16/P18 — allergies, emergency contacts/safety plan, incidents.
-function SafetyTab({ patientId, patientHeader }: { patientId: string; patientHeader: PatientHeader }) {
+function SafetyTab({ patientId, patientHeader, staffRole }: { patientId: string; patientHeader: PatientHeader; staffRole: StaffRole }) {
   const [allergies, setAllergies] = useState<PatientAllergy[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -968,7 +987,7 @@ function SafetyTab({ patientId, patientHeader }: { patientId: string; patientHea
 
   const addAllergy = async () => {
     if (!newAllergen.trim()) return;
-    const { error } = await recordPatientAllergy(patientId, newAllergen.trim());
+    const { error } = await recordPatientAllergy(patientId, newAllergen.trim(), undefined, 'unknown', undefined, professionalSourceFor(staffRole));
     if (error) { toast.error(error); return; }
     setNewAllergen(''); await load();
   };
