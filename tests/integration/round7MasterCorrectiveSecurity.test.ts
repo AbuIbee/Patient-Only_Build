@@ -262,6 +262,74 @@ describe('FUNC-04 — searching finds a match anywhere in a conversation’s mes
   });
 });
 
+describe('MASTER CORRECTIVE 2 — SEC-03 follow-up: verified_source is gated identically to professional_observation, in the RPCs themselves (not only table RLS)', () => {
+  it.each([
+    ['record_patient_diagnosis', { p_condition_name: 'forged verified' }, 'patient_diagnoses'],
+    ['record_patient_allergy', { p_allergen: 'forged verified' }, 'patient_allergies'],
+    ['record_patient_vitals', { p_pulse_bpm: 71 }, 'patient_vitals'],
+  ] as const)('%s denies an ordinary caregiver claiming verified_source, and persists nothing', async (rpcName, extraArgs, table) => {
+    const [status, body] = (await rpc(rpcName, { ...extraArgs, p_patient_id: ids.patientA, p_source: 'verified_source' }, tok.caregiverA)) as [number, { id?: string }];
+    // Before migration 079: these RPCs only checked p_source ===
+    // 'professional_observation', never 'verified_source' — status
+    // 200, persisted (SEC03-RPC-record_patient_diagnosis/allergy/vitals).
+    expect(status).toBeGreaterThanOrEqual(400);
+    if (body?.id) {
+      const count = sql(`SELECT count(*) FROM public.${table} WHERE id='${body.id}';`);
+      expect(count).toBe('0');
+    }
+  });
+
+  it('a direct patients.communication_needs_source write to verified_source by the patient themself is denied', async () => {
+    const [status] = await http('PATCH', `/rest/v1/patients?id=eq.${ids.patientA}`, { communication_needs_source: 'verified_source' }, tok.patientA);
+    // Before migration 079: the trigger only checked 'professional_observation', never 'verified_source' (DEFECT SEC03-COMM-VERIFIED).
+    expect(status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('content already attributed to a professional source cannot be silently overwritten by a non-professional who leaves the source column untouched', async () => {
+    const [proStatus] = await rpc('record_communication_needs', { p_patient_id: ids.patientA, p_communication_needs: 'legitimate professional note', p_source: 'professional_observation' }, tok.medicalA);
+    expect(proStatus).toBe(200);
+
+    const [patchStatus] = await http('PATCH', `/rest/v1/patients?id=eq.${ids.patientA}`, { communication_needs: 'forged replacement text' }, tok.patientA);
+    const state = sql(`SELECT communication_needs||'|'||communication_needs_source FROM public.patients WHERE id='${ids.patientA}';`);
+    // Before migration 079: the trigger only re-validated when the
+    // SOURCE column itself changed — a content-only PATCH slipped
+    // through and the forged text displayed with a stale, false
+    // 'professional_observation' attribution (DEFECT SEC03-UNCHANGED-SOURCE-CONTENT).
+    expect(patchStatus).toBeGreaterThanOrEqual(400);
+    expect(state).toBe('legitimate professional note|professional_observation');
+  });
+});
+
+describe('MASTER CORRECTIVE 2 — FUNC-04 follow-up: revoked membership loses future conversation search/list access', () => {
+  it('a caregiver whose assignment was revoked no longer sees or can search a patient\'s conversation', async () => {
+    const [convStatus, conv] = (await rpc(
+      'create_conversation',
+      { p_patient_id: ids.patientA, p_recipient_user_ids: [ids.medicalA], p_subject: 'MC2 FUNC-04 revoked test' },
+      tok.caregiverA,
+    )) as [number, { id: string }];
+    expect(convStatus).toBe(200);
+    await rpc('send_message', { p_conversation_id: conv.id, p_body: 'revocation-needle message', p_is_urgent: false, p_reply_to_message_id: null, p_message_type: 'message' }, tok.caregiverA);
+
+    sql(`UPDATE public.staff_patient_assignments SET is_active=false WHERE user_id='${ids.caregiverA}' AND patient_id='${ids.patientA}';`);
+
+    const [searchStatus, searchResults] = (await rpc('search_my_conversations', { p_search_term: 'revocation-needle' }, tok.caregiverA)) as [number, Array<{ conversation_id: string }>];
+    const [listStatus, listResults] = (await rpc('get_my_conversations', { p_patient_id: ids.patientA }, tok.caregiverA)) as [number, unknown[]];
+    // Before migration 079: both still returned the conversation after
+    // revocation — conversation_participants rows are never cleaned up
+    // on revocation, and neither RPC re-checked current authorization
+    // (DEFECT FUNC04-REVOKED-SEARCH / FUNC04-REVOKED-LIST).
+    expect(searchStatus).toBe(200);
+    expect(searchResults.find((r) => r.conversation_id === conv.id)).toBeUndefined();
+    expect(listStatus).toBe(200);
+    expect(listResults).toEqual([]);
+
+    sql(`UPDATE public.staff_patient_assignments SET is_active=true WHERE user_id='${ids.caregiverA}' AND patient_id='${ids.patientA}';`);
+    const [resumedStatus, resumedResults] = (await rpc('search_my_conversations', { p_search_term: 'revocation-needle' }, tok.caregiverA)) as [number, Array<{ conversation_id: string }>];
+    expect(resumedStatus).toBe(200);
+    expect(resumedResults.find((r) => r.conversation_id === conv.id)).toBeDefined();
+  });
+});
+
 describe('SEC-06 — organization billing terms are director-only; operational coverage status stays available to any member', () => {
   it('denies an ordinary caregiver direct read, allows a director, and keeps the narrow RPC working for the caregiver', async () => {
     const [caregiverReadStatus, caregiverReadBody] = await http('GET', `/rest/v1/organization_licenses?organization_id=eq.${ORG}`, undefined, tok.caregiverA);

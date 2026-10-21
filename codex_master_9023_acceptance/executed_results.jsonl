@@ -1,0 +1,38 @@
+{"id": "CROSS-patients", "assertion_met": true, "evidence": {"http": 200, "result": []}}
+{"id": "CROSS-patient_intake", "assertion_met": true, "evidence": {"http": 200, "result": []}}
+{"id": "CROSS-mood_entries", "assertion_met": true, "evidence": {"http": 200, "result": []}}
+{"id": "CROSS-patient_notes", "assertion_met": true, "evidence": {"http": 200, "result": []}}
+{"id": "HELP-anon", "assertion_met": true, "evidence": {"http": 401, "result": {"code": "42501", "details": null, "hint": null, "message": "permission denied for function get_patient_help_activation_history"}}}
+{"id": "HELP-caregiverB", "assertion_met": true, "evidence": {"http": 400, "result": {"code": "P0001", "details": null, "hint": null, "message": "Not authorized for this patient's HELP activation history"}}}
+{"id": "HELP-caregiverA", "assertion_met": true, "evidence": {"http": 200, "result": []}}
+{"id": "SEC03-DIRECT-patient_diagnoses-professional_observation", "assertion_met": true, "evidence": {"http": 403, "result": {"code": "42501", "details": null, "hint": null, "message": "new row violates row-level security policy \"Only professional staff may claim a verified or professional_ob\" for table \"patient_diagnoses\""}}}
+{"id": "SEC03-DIRECT-patient_diagnoses-verified_source", "assertion_met": true, "evidence": {"http": 403, "result": {"code": "42501", "details": null, "hint": null, "message": "new row violates row-level security policy \"Only professional staff may claim a verified or professional_ob\" for table \"patient_diagnoses\""}}}
+{"id": "SEC03-DIRECT-patient_allergies-professional_observation", "assertion_met": true, "evidence": {"http": 403, "result": {"code": "42501", "details": null, "hint": null, "message": "new row violates row-level security policy \"Only professional staff may claim a verified or professional_ob\" for table \"patient_allergies\""}}}
+{"id": "SEC03-DIRECT-patient_allergies-verified_source", "assertion_met": true, "evidence": {"http": 403, "result": {"code": "42501", "details": null, "hint": null, "message": "new row violates row-level security policy \"Only professional staff may claim a verified or professional_ob\" for table \"patient_allergies\""}}}
+{"id": "SEC03-DIRECT-patient_vitals-professional_observation", "assertion_met": true, "evidence": {"http": 403, "result": {"code": "42501", "details": null, "hint": null, "message": "new row violates row-level security policy \"Only professional staff may claim a verified or professional_ob\" for table \"patient_vitals\""}}}
+{"id": "SEC03-DIRECT-patient_vitals-verified_source", "assertion_met": true, "evidence": {"http": 403, "result": {"code": "42501", "details": null, "hint": null, "message": "new row violates row-level security policy \"Only professional staff may claim a verified or professional_ob\" for table \"patient_vitals\""}}}
+{"id": "SEC03-RPC-record_patient_diagnosis", "assertion_met": false, "evidence": {"http": 200, "persisted": "1", "result": {"id": "012cd525-3d74-4c0c-8754-1fa0858bba49", "patient_id": "26207d22-ad0f-494c-ba67-1fd838782273", "condition_name": "9023 RPC forged", "diagnosed_date": null, "notes": null, "source": "verified_source", "author_id": "d083b4a5-921b-48df-9898-57cd116b107b", "is_active": true, "created_at": "2026-10-21T17:21:01.310348+00:00", "updated_at": "2026-10-21T17:21:01.310348+00:00"}}}
+{"id": "SEC03-RPC-record_patient_allergy", "assertion_met": false, "evidence": {"http": 200, "persisted": "1", "result": {"id": "27406ee8-bab9-4dff-a5dd-b38249987898", "patient_id": "26207d22-ad0f-494c-ba67-1fd838782273", "allergen": "9023 RPC forged", "reaction": null, "severity": "unknown", "notes": null, "source": "verified_source", "author_id": "d083b4a5-921b-48df-9898-57cd116b107b", "created_at": "2026-10-21T17:21:01.495077+00:00"}}}
+{"id": "SEC03-RPC-record_patient_vitals", "assertion_met": false, "evidence": {"http": 200, "persisted": "1", "result": {"id": "be8b3a57-5dae-4bed-92fa-dc61847398ae", "patient_id": "26207d22-ad0f-494c-ba67-1fd838782273", "measured_at": "2026-10-21T17:21:01.674891+00:00", "blood_pressure": null, "pulse_bpm": 73, "temperature_f": null, "oxygen_saturation": null, "weight_lbs": null, "pain_level": null, "notes": null, "source": "verified_source", "author_id": "d083b4a5-921b-48df-9898-57cd116b107b", "created_at": "2026-10-21T17:21:01.674891+00:00"}}}
+{"id": "SEC03-CODE-STATUS", "assertion_met": true, "evidence": {"http": 400, "result": {"code": "P0001", "details": null, "hint": null, "message": "Only an assigned therapist or medical professional may verify a code status"}, "state": "unknown|unknown"}}
+{"id": "SEC03-PRO-POSITIVE", "assertion_met": true, "evidence": {"http": 200}}
+{"id": "SEC03-UNCHANGED-SOURCE-CONTENT", "assertion_met": false, "evidence": {"http": 200, "state": "9023 PATIENT REPLACED PROFESSIONAL TEXT|professional_observation"}}
+{"id": "SEC03-COMM-VERIFIED", "assertion_met": false, "evidence": {"http": 200, "state": "verified_source"}}
+{"id": "SEC04-CAREPLAN", "assertion_met": true, "evidence": {"http": 400, "approved_plan_unchanged": true}}
+{"id": "SEC05-ACTOR", "assertion_met": true, "evidence": {"http": 200, "persisted_actor": "d083b4a5-921b-48df-9898-57cd116b107b", "expected": "d083b4a5-921b-48df-9898-57cd116b107b"}}
+{"id": "SEC05-ACTOR-NO-STATUS", "assertion_met": true, "evidence": {"http": 200}}
+{"id": "SEC06-caregiverA", "assertion_met": true, "evidence": {"http": 200, "rows": 0}}
+{"id": "SEC06-directorA", "assertion_met": true, "evidence": {"http": 200, "rows": 1}}
+{"id": "SEC06-caregiverB", "assertion_met": true, "evidence": {"http": 200, "rows": 0}}
+{"id": "SEC06-COVERAGE", "assertion_met": true, "evidence": {"http": 200, "result": [{"status": "active", "covered_patient_capacity": 20}]}}
+{"id": "SEC02-AMEND", "assertion_met": true, "evidence": {"http": 400, "result": {"code": "P0001", "details": null, "hint": null, "message": "Your authorization for this patient has ended"}}}
+{"id": "SEC02-START", "assertion_met": true, "evidence": {"http": 400, "result": {"code": "P0001", "details": null, "hint": null, "message": "Your authorization for this patient has ended"}}}
+{"id": "SEC02-END", "assertion_met": true, "evidence": {"http": 400, "result": {"code": "P0001", "details": null, "hint": null, "message": "Your authorization for this patient has ended"}}}
+{"id": "FUNC04-REVOKED-SEARCH", "assertion_met": false, "evidence": {"http": 200, "result": [{"conversation_id": "159ce082-7f79-47b0-a4c1-1ee69e565f4d"}]}}
+{"id": "FUNC04-REVOKED-LIST", "assertion_met": false, "evidence": {"http": 200, "rows": 4}}
+{"id": "FUNC01-omitted", "assertion_met": true, "evidence": {"http": 400, "state": "in_progress"}}
+{"id": "FUNC01-blank", "assertion_met": true, "evidence": {"http": 400, "state": "in_progress"}}
+{"id": "FUNC01-valid", "assertion_met": true, "evidence": {"http": 200, "state": "completed"}}
+{"id": "FUNC04-AUTHORIZED-OLD", "assertion_met": true, "evidence": {"http": 200, "result": [{"conversation_id": "159ce082-7f79-47b0-a4c1-1ee69e565f4d"}]}}
+{"id": "FUNC04-CROSS-TENANT", "assertion_met": true, "evidence": {"http": 200, "result": []}}
+{"id": "FUNC03-FOLLOWUP", "assertion_met": true, "evidence": {"http": 200, "rows": [{"subject": "AUDIT Routine Thread", "followup": false, "unread": 0, "urgent": false}, {"subject": "AUDIT Unread Thread", "followup": false, "unread": 1, "urgent": false}, {"subject": "AUDIT Followup Thread", "followup": true, "unread": 0, "urgent": false}, {"subject": "AUDIT Urgent Thread", "followup": false, "unread": 1, "urgent": true}]}}
