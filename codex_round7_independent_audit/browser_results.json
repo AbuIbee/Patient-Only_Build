@@ -1,0 +1,110 @@
+[
+  {
+    "id": "UI-REAL-LOGIN",
+    "assertion_met": true,
+    "evidence": {
+      "org": "Alpha",
+      "realAuth": true,
+      "optimized": true
+    }
+  },
+  {
+    "id": "UI-H14-CATEGORIES",
+    "assertion_met": true,
+    "evidence": {
+      "text": "Incomplete Documentation\n\n1 shift handoff not yet acknowledged.\n\nReview →\n\n2 completed visits missing visit notes.\n\nReview →\n\n1 unresolved incident.\n\nReview →",
+      "missingUnfinishedCategory": true
+    }
+  },
+  {
+    "id": "UI-H06-DATE-FILTER",
+    "assertion_met": true,
+    "evidence": {
+      "todayCount": 2,
+      "allCount": 6,
+      "timezone": "America/New_York",
+      "includesUtcNextDayBoundary": true
+    }
+  },
+  {
+    "id": "UI-H06-ADDRESS-MISSING",
+    "assertion_met": true,
+    "evidence": {
+      "addressVisible": false,
+      "endOrTimezoneLabelsVisible": false
+    }
+  },
+  {
+    "id": "UI-INBOX-READ-FOLLOWUP-MISCLASSIFIED",
+    "assertion_met": true,
+    "evidence": {
+      "routineText": "ROUTINE\n\nAlphaPatient — AUDIT Routine Thread\n\nAUDIT routine latest\n\nAlphaPatient — AUDIT Followup Thread\n\nAUDIT follow-up read latest",
+      "unresolvedReadFollowup": "AUDIT Followup Thread"
+    }
+  },
+  {
+    "id": "UI-C06-LATEST-SEARCH",
+    "assertion_met": true,
+    "evidence": {
+      "rows": 1
+    }
+  },
+  {
+    "id": "UI-C06-HISTORICAL-SEARCH-MISSING",
+    "assertion_met": true,
+    "evidence": {
+      "historicalMessageExists": true,
+      "searchResult": "no matches"
+    }
+  },
+  {
+    "id": "UI-O02-ROLE-CREDENTIAL",
+    "assertion_met": true,
+    "evidence": {
+      "credential": "AUDIT Dementia Care Certificate",
+      "role": "Caregiver"
+    }
+  },
+  {
+    "id": "UI-O07-ACTIVITY",
+    "assertion_met": true,
+    "evidence": {
+      "taskList": "Recent task updates\n\nAUDIT unfinished care list\n10/21/2026, 8:31:09 AM\nAUDIT completed task\n10/21/2026, 7:31:09 AM",
+      "recentVisitsVisible": true,
+      "notesAreCountOnly": true
+    }
+  },
+  {
+    "id": "UI-O09-EFFECTIVE-CONTRAST",
+    "assertion_met": true,
+    "evidence": {
+      "before": "rgb(107, 107, 107)",
+      "after": "rgb(26, 26, 26)",
+      "filter": "contrast(1.35) saturate(1.1)"
+    }
+  },
+  {
+    "id": "UI-P07-POPULATED-INTAKE",
+    "assertion_met": true,
+    "evidence": {
+      "text": "Patient Intake Information\n\nStage at intake: moderate · diagnosed 2025-05-01\n\nAddress at intake: 100 Intake Lane, FixtureCity, NY, 10000\n\nContact at intake: 555-0100 · intake@audit.invalid\n\nPreferred hospital: AUDIT Intake Hospital\n\nDoctor/Therapist: AUDIT Dr Provider · 555-0101\n\nPrimary caregiver at intake: AUDIT Intake Caregiver (daughter) · 555-0102\n\nIntake-reported medications: AUDIT medication 5mg daily\n\nEmergency contact at intake: AUDIT Emergency Person (son) · 555-0103\n\nSubmitted 10/21/2026",
+      "emergencyEmailRendered": false
+    }
+  },
+  {
+    "id": "UI-P11-MOOD-HISTORY-UNREACHABLE",
+    "assertion_met": true,
+    "evidence": {
+      "seededMoods": 15,
+      "moodHistoryVisible": false,
+      "loadMoreButtons": 0
+    }
+  },
+  {
+    "id": "UI-HARNESS-STOP",
+    "assertion_met": false,
+    "evidence": {
+      "message": "locator.waitFor: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByText('Password changed.', { exact: true }) to be visible\u001b[22m\n"
+    }
+  }
+]

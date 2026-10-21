@@ -1,0 +1,6 @@
+ set_config 
+------------
+ 
+(1 row)
+
+ERROR:  role "supabase_functions_admin" does not exist

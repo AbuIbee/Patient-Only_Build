@@ -1,0 +1,42 @@
+{"id": "CROSS-patients", "assertion_met": true, "evidence": {"status": 200, "rows": 0}}
+{"id": "CROSS-tasks", "assertion_met": true, "evidence": {"status": 200, "rows": 0}}
+{"id": "CROSS-patient_intake", "assertion_met": true, "evidence": {"status": 200, "rows": 0}}
+{"id": "CROSS-mood_entries", "assertion_met": true, "evidence": {"status": 200, "rows": 0}}
+{"id": "CROSS-patient_notes", "assertion_met": true, "evidence": {"status": 200, "rows": 0}}
+{"id": "HELP-ANON", "assertion_met": true, "evidence": {"status": 401, "result": {"code": "42501", "details": null, "hint": null, "message": "permission denied for function get_patient_help_activation_history"}}}
+{"id": "HELP-CROSS", "assertion_met": true, "evidence": {"status": 400, "result": {"code": "P0001", "details": null, "hint": null, "message": "Not authorized for this patient's HELP activation history"}}}
+{"id": "HELP-ASSIGNED", "assertion_met": true, "evidence": {"status": 200, "rows": 0}}
+{"id": "DEL-PRIV-caregiver_authorize_destructive_deletion", "assertion_met": true, "evidence": {"status": 403, "result": {"code": "42501", "details": null, "hint": null, "message": "permission denied for function caregiver_authorize_destructive_deletion"}}}
+{"id": "DEL-PRIV-caregiver_record_deletion_outcome", "assertion_met": true, "evidence": {"status": 403, "result": {"code": "42501", "details": null, "hint": null, "message": "permission denied for function caregiver_record_deletion_outcome"}}}
+{"id": "DEL-PRIV-caregiver_finish_registration_deletion", "assertion_met": true, "evidence": {"status": 403, "result": {"code": "42501", "details": null, "hint": null, "message": "permission denied for function caregiver_finish_registration_deletion"}}}
+{"id": "THER-CAREGIVER-DENIED", "assertion_met": true, "evidence": {"status": 400, "result": {"code": "P0001", "details": null, "hint": null, "message": "This account has not been verified as a therapist and is not eligible to be invited in that capacity"}}}
+{"id": "THER-INVITE", "assertion_met": true, "evidence": {"status": 200, "id": "03f142c5-6da6-41fc-b40a-21a62af7fcf2"}}
+{"id": "THER-WRONG-RECIPIENT", "assertion_met": true, "evidence": {"status": 400, "result": {"code": "P0001", "details": null, "hint": null, "message": "This invitation is not addressed to you"}}}
+{"id": "THER-ACCEPT", "assertion_met": true, "evidence": {"status": 200, "result": "accepted"}}
+{"id": "NOTE-PROFESSIONAL-ALLOWED", "assertion_met": true, "evidence": {"status": 201}}
+{"id": "NOTE-PATIENT-FORGERY-DENIED", "assertion_met": true, "evidence": {"status": 403, "result": {"code": "42501", "details": null, "hint": null, "message": "new row violates row-level security policy for table \"patient_notes\""}}}
+{"id": "THER-REVOKE", "assertion_met": true, "evidence": {"status": 200}}
+{"id": "NOTE-REVOKED-READ-DENIED", "assertion_met": true, "evidence": {"status": 200, "rows": []}}
+{"id": "NOTE-REVOKED-WRITE-DENIED", "assertion_met": true, "evidence": {"status": 403}}
+{"id": "THER-DIRECT-INSERT-DENIED", "assertion_met": true, "evidence": {"status": 403}}
+{"id": "INVITATION-UNRELATED-INVISIBLE", "assertion_met": true, "evidence": {"status": 200, "rows": []}}
+{"id": "TASK-REVOKED-STATE-UNCHANGED", "assertion_met": true, "evidence": {"status": 200, "rows": [], "database_pending": true}}
+{"id": "DEFECT-AMENDMENT-AFTER-REVOCATION", "assertion_met": true, "evidence": {"status": 200, "new_row_persisted": true}}
+{"id": "DEFECT-VISIT-START-AFTER-REVOCATION", "assertion_met": true, "evidence": {"status": 200, "persisted": "in_progress"}}
+{"id": "DEFECT-VISIT-END-AFTER-REVOCATION", "assertion_met": true, "evidence": {"status": 200, "persisted": "completed"}}
+{"id": "SAFETY-RPC-VERIFICATION-DENIED", "assertion_met": true, "evidence": {"status": 400, "result": {"code": "P0001", "details": null, "hint": null, "message": "Only an assigned therapist or medical professional may verify a code status"}}}
+{"id": "DEFECT-DIRECT-VERIFIED-CODE-STATUS", "assertion_met": true, "evidence": {"status": 200, "persisted_verified_dnr": true}}
+{"id": "DEFECT-CAREGIVER-SCHEDULE-CTA-DENIED", "assertion_met": true, "evidence": {"status": 400, "result": {"code": "P0001", "details": null, "hint": null, "message": "Only an organization director may schedule a visit"}}}
+{"id": "VISIT-DIRECTOR-SCHEDULE", "assertion_met": true, "evidence": {"status": 200}}
+{"id": "VISIT-START", "assertion_met": true, "evidence": {"status": 200}}
+{"id": "DEFECT-VISIT-NOTES-NOT-REQUIRED", "assertion_met": true, "evidence": {"status": 200, "database": "completed|true"}}
+{"id": "DEFECT-THER-ACCEPT-REVOKE-RACE", "assertion_met": true, "evidence": {"revoke_http": 200, "wait_seconds": 2.97, "final_state": "revoked|true"}}
+{"id": "DEFECT-THER-RACE-RETAINS-WRITE", "assertion_met": true, "evidence": {"http": 201, "persisted_rows": "1"}}
+{"id": "CLINICAL-RPC-GATE", "assertion_met": true, "evidence": {"status": 400}}
+{"id": "DEFECT-DIRECT-PROFESSIONAL-patient_diagnoses", "assertion_met": true, "evidence": {"status": 201, "persisted_rows": "1"}}
+{"id": "DEFECT-DIRECT-PROFESSIONAL-patient_allergies", "assertion_met": true, "evidence": {"status": 201, "persisted_rows": "1"}}
+{"id": "DEFECT-DIRECT-PROFESSIONAL-patient_vitals", "assertion_met": true, "evidence": {"status": 201, "persisted_rows": "1"}}
+{"id": "DEFECT-ORDINARY-CAREGIVER-SUPERSEDES-CAREPLAN", "assertion_met": true, "evidence": {"status": 200, "previous_plan_current": "f", "new_author": "d083b4a5-921b-48df-9898-57cd116b107b"}}
+{"id": "DEFECT-TASK-AUDIT-IDENTITY-FORGERY", "assertion_met": true, "evidence": {"status": 200, "forged_other_user_persisted": true}}
+{"id": "DEFECT-CAREGIVER-BILLING-READ", "assertion_met": true, "evidence": {"status": 200, "returned": [{"annual_license_fee": 1234.5, "licensed_seats": 20, "covered_patient_capacity": 20, "status": "active"}]}}
+{"id": "H14-RESOLUTION-PERSISTED", "assertion_met": true, "evidence": {"open_incidents": "0", "handoff_ack_rows": "2"}}

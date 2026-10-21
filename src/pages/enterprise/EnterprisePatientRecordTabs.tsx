@@ -344,10 +344,29 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
   const [newProviderName, setNewProviderName] = useState('');
   const [newProviderRole, setNewProviderRole] = useState('');
 
+  // FUNC-02 — CONFIRMED DEFECT: mood-history pagination was built
+  // (Round 7 Corrective, P11) inside EnterpriseStaffPatientView's own
+  // default render branch, which is dead code whenever a caller
+  // supplies `onReady` -- and EnterpriseCaregiverDashboard always
+  // does, rendering THIS component (EnterprisePatientRecordTabs)
+  // instead. A real caregiver could never reach the feature at all.
+  // Moved here, into the actual reachable "Medical" tab, with its own
+  // query and pagination.
+  const [moods, setMoods] = useState<{ id: string; mood: string; intensity: number; timestamp: string }[]>([]);
+  const [moodLimit, setMoodLimit] = useState(10);
+  const [moodHasMore, setMoodHasMore] = useState(false);
+
   const load = useCallback(async () => {
-    const [d, v, g, p] = await Promise.all([getPatientDiagnoses(patientId), getPatientVitals(patientId), getTherapyGoals(patientId), getPatientProviders(patientId)]);
-    setDiagnoses(d); setVitals(v); setGoals(g); setProviders(p); setLoading(false);
-  }, [patientId]);
+    const [d, v, g, p, moodResult] = await Promise.all([
+      getPatientDiagnoses(patientId), getPatientVitals(patientId), getTherapyGoals(patientId), getPatientProviders(patientId),
+      supabase.from('mood_entries').select('id, mood, intensity, timestamp').eq('patient_id', patientId).order('timestamp', { ascending: false }).limit(moodLimit + 1),
+    ]);
+    setDiagnoses(d); setVitals(v); setGoals(g); setProviders(p);
+    const allMoods = moodResult.data ?? [];
+    setMoodHasMore(allMoods.length > moodLimit);
+    setMoods(allMoods.slice(0, moodLimit));
+    setLoading(false);
+  }, [patientId, moodLimit]);
   useEffect(() => { void load(); }, [load]);
 
   const addDiagnosis = async () => {
@@ -387,6 +406,22 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
               </li>
             ))}
           </ul>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Mood History" icon={Heart}>
+        {moods.length === 0 ? <p className="text-sm text-medium-gray">No mood entries recorded.</p> : (
+          <ul className="space-y-1.5">
+            {moods.map((m) => (
+              <li key={m.id} className="flex items-center justify-between p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+                <span className="text-charcoal font-medium capitalize">{m.mood} ({m.intensity}/10)</span>
+                <span className="text-xs text-medium-gray">{new Date(m.timestamp).toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {moodHasMore && (
+          <button type="button" onClick={() => setMoodLimit((n) => n + 10)} className="text-sm font-semibold text-warm-bronze hover:underline">Load more</button>
         )}
       </SectionCard>
 

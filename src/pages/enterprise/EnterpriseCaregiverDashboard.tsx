@@ -27,7 +27,7 @@ import {
 } from '@/services/organizationService';
 import { getMyPendingRegistrations, type PendingRegistrationSummary } from '@/services/caregiverRegistrationService';
 import { RegisterPatientForm, IncompleteRegistrations } from '@/pages/caregiver/CaregiverPortal';
-import { getMyConversations, createConversation, type ConversationSummary } from '@/services/communicationsService';
+import { getMyConversations, createConversation, searchMyConversations, type ConversationSummary } from '@/services/communicationsService';
 import { inviteTherapist } from '@/services/therapistConnectionService';
 import { getHelpActivationHistory } from '@/services/helpActivationService';
 import {
@@ -225,6 +225,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
   const [medConcerns, setMedConcerns] = useState<{ patientName: string; medName: string; status: string; at: string }[]>([]);
   const [unacknowledgedHandoffs, setUnacknowledgedHandoffs] = useState(0);
   const [missingVisitNotes, setMissingVisitNotes] = useState(0);
+  const [unfinishedCareLists, setUnfinishedCareLists] = useState(0);
   const [loadingExtra, setLoadingExtra] = useState(true);
 
   useEffect(() => {
@@ -260,15 +261,23 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
       // H14 — unacknowledged shift handoffs across assigned patients.
       const handoffCounts = await Promise.all(patients.map((p) => getPatientShiftHandoffs(orgId, p.patientId)));
       const unackCount = handoffCounts.flat().filter((h) => h.acknowledgedCount === 0).length;
-      // ROUND 7 CORRECTIVE — H14's other two clearly-defined categories:
-      // completed visits with no visit notes, and unresolved incidents
-      // (the same `incidents` data this dashboard already fetches for
-      // H03/the Open Alerts metric — not a second query). "Unfinished
-      // care lists" (tasks with no due-date concept in this schema) is
-      // deliberately NOT included here — see 34_ROUND7_CORRECTIVE_
-      // 30ITEM_VALIDATION.md's own disclosure for why that specific
-      // sub-category needs a due-date concept this schema doesn't have.
+      // H14's other three categories: completed visits with no visit
+      // notes; unresolved incidents (the same `incidents` data this
+      // dashboard already fetches for H03/Open Alerts — not a second
+      // query); and unfinished care lists.
+      //
+      // MASTER CORRECTIVE SPEC-01/FUNC-05: "unfinished care lists" was
+      // previously left out, reasoned (incorrectly) to require a
+      // due-date concept tasks.status doesn't carry. Re-reading the
+      // locked requirement text, the plain meaning of "unfinished" is
+      // simply a care checklist with at least one task still pending —
+      // already fully knowable from tasks.status='pending' alone.
       const missingNotesCount = myVisits.filter((v) => v.status === 'completed' && !v.visitNotes).length;
+      const pendingTaskCounts = await Promise.all(patients.map(async (p) => {
+        const { count } = await supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('patient_id', p.patientId).eq('status', 'pending').eq('is_active', true);
+        return count ?? 0;
+      }));
+      const unfinishedCareListsCount = pendingTaskCounts.filter((c) => c > 0).length;
 
       if (!active) return;
       setConversations(convos);
@@ -280,6 +289,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
       setMedConcerns(medRows.slice(0, 8));
       setUnacknowledgedHandoffs(unackCount);
       setMissingVisitNotes(missingNotesCount);
+      setUnfinishedCareLists(unfinishedCareListsCount);
       setLoadingExtra(false);
     })();
     return () => { active = false; };
@@ -402,9 +412,15 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate }: { patient
         </Card>
       )}
 
-      {(unacknowledgedHandoffs > 0 || missingVisitNotes > 0 || incidents.length > 0) && (
+      {(unacknowledgedHandoffs > 0 || missingVisitNotes > 0 || incidents.length > 0 || unfinishedCareLists > 0) && (
         <Card>
           <div className="flex items-center gap-2"><ClipboardList className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Incomplete Documentation</h2></div>
+          {unfinishedCareLists > 0 && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-charcoal">{unfinishedCareLists} patient{unfinishedCareLists === 1 ? '' : 's'} with an unfinished care list.</p>
+              <button type="button" onClick={() => onNavigate('tasks')} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Review →</button>
+            </div>
+          )}
           {unacknowledgedHandoffs > 0 && (
             <div className="flex items-center justify-between">
               <p className="text-sm text-charcoal">{unacknowledgedHandoffs} shift handoff{unacknowledgedHandoffs === 1 ? '' : 's'} not yet acknowledged.</p>
@@ -615,16 +631,31 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
         <p className="text-sm text-medium-gray">{todayOnly ? 'No visits scheduled for today.' : 'No visits scheduled yet.'}</p>
       ) : (
         <ul className="space-y-2">
-          {visibleVisits.map((v) => (
+          {visibleVisits.map((v) => {
+            const visitPatient = patients.find((p) => p.patientId === v.patientId);
+            // MASTER CORRECTIVE SPEC-01/H06 — "scheduled start/end, and
+            // authorized address/facility, with timezone and status":
+            // previously only a start timestamp and status were shown.
+            const tzLabel = v.scheduledStart
+              ? new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(new Date(v.scheduledStart)).find((p) => p.type === 'timeZoneName')?.value
+              : null;
+            const facility = visitPatient?.address || visitPatient?.location;
+            return (
             <li key={v.id} className="flex items-center justify-between p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
               <div>
-                <p className="text-sm font-medium text-charcoal">{patients.find((p) => p.patientId === v.patientId)?.preferredName || 'Patient'} — <span className="capitalize">{v.status.replace('_', ' ')}</span></p>
-                <p className="text-xs text-medium-gray">{v.scheduledStart ? new Date(v.scheduledStart).toLocaleString() : 'No time set'}</p>
+                <p className="text-sm font-medium text-charcoal">{visitPatient?.preferredName || 'Patient'} — <span className="capitalize">{v.status.replace('_', ' ')}</span></p>
+                <p className="text-xs text-medium-gray">
+                  {v.scheduledStart ? new Date(v.scheduledStart).toLocaleString() : 'No time set'}
+                  {v.scheduledEnd && <> – {new Date(v.scheduledEnd).toLocaleTimeString()}</>}
+                  {tzLabel && <> ({tzLabel})</>}
+                </p>
+                {facility && <p className="text-xs text-medium-gray">{facility}</p>}
               </div>
               {v.status === 'scheduled' && <button type="button" onClick={() => { void act(v.id, 'start'); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-soft-sage text-white text-xs font-semibold"><PlayCircle className="w-3.5 h-3.5" /> Start</button>}
               {v.status === 'in_progress' && <button type="button" onClick={() => { void act(v.id, 'end'); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gentle-coral text-white text-xs font-semibold"><StopCircle className="w-3.5 h-3.5" /> End</button>}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </Card>
@@ -758,16 +789,29 @@ function CommunicationsView() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // MASTER CORRECTIVE FUNC-04: ids whose full message HISTORY (not
+  // just the latest message) matches the current search term.
+  const [historicalMatchIds, setHistoricalMatchIds] = useState<Set<string>>(new Set());
   useEffect(() => { void getMyConversations().then((c) => { setConversations(c); setLoading(false); }); }, []);
+  useEffect(() => {
+    const term = search.trim();
+    if (!term) { setHistoricalMatchIds(new Set()); return; }
+    const handle = setTimeout(() => { void searchMyConversations(term).then(setHistoricalMatchIds); }, 250);
+    return () => clearTimeout(handle);
+  }, [search]);
 
   const filtered = conversations.filter((c) => {
     if (!search.trim()) return true;
     const term = search.toLowerCase();
-    return c.patientName.toLowerCase().includes(term) || (c.subject ?? '').toLowerCase().includes(term) || (c.lastMessageBody ?? '').toLowerCase().includes(term);
+    const instantMatch = c.patientName.toLowerCase().includes(term) || (c.subject ?? '').toLowerCase().includes(term) || (c.lastMessageBody ?? '').toLowerCase().includes(term);
+    return instantMatch || historicalMatchIds.has(c.conversationId);
   });
   const urgent = filtered.filter((c) => c.lastMessageUrgent);
-  const followUp = filtered.filter((c) => !c.lastMessageUrgent && c.unreadCount > 0);
-  const routine = filtered.filter((c) => !c.lastMessageUrgent && c.unreadCount === 0);
+  // MASTER CORRECTIVE FUNC-03: classify on the real open-follow-up
+  // signal, not on unreadCount — a read message can still need a
+  // response, and an unread one might not.
+  const followUp = filtered.filter((c) => !c.lastMessageUrgent && c.hasOpenFollowUp);
+  const routine = filtered.filter((c) => !c.lastMessageUrgent && !c.hasOpenFollowUp);
 
   return (
     <Card>

@@ -16,3 +16,12 @@ Patient-Only_Build/
 
 # Keep android web assets
 !android/app/src/main/assets/public
+
+# Codex independent-audit directory: keep the scripts/evidence, exclude the
+# bulky build-output copy (no audit logic, just a duplicate of dist/) and a
+# config file that holds real db_password/jwt_secret/session-token values
+# for the audit's disposable container -- secrets, even if the container
+# itself is throwaway and local-only.
+codex_round7_independent_audit/optimized-build/
+codex_round7_independent_audit/ephemeral_local_config.json
+codex_round7_independent_audit/__pycache__/

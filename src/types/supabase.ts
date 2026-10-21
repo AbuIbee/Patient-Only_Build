@@ -3551,6 +3551,21 @@ export interface Database {
           isSetofReturn: false
         }
       }
+      get_organization_coverage_status: {
+        Args: {
+          p_org_id: string
+        }
+        Returns: {
+          status: string
+          covered_patient_capacity: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "organization_licenses"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       record_patient_safety_plan: {
         Args: {
           p_code_status?: string
@@ -4185,6 +4200,8 @@ export interface Database {
           last_name: string
           preferred_name: string | null
           org_role: string
+          address: string | null
+          location: string | null
         }[]
       }
       is_my_enterprise_coverage_active: {
@@ -4244,6 +4261,14 @@ export interface Database {
           last_message_at: string | null
           last_message_urgent: boolean | null
           unread_count: number
+          has_open_follow_up: boolean | null
+        }[]
+      }
+      // migration 077
+      search_my_conversations: {
+        Args: { p_search_term: string }
+        Returns: {
+          conversation_id: string
         }[]
       }
       // migration 037

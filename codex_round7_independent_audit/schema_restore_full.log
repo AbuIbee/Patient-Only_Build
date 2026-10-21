@@ -1,0 +1,8 @@
+ set_config 
+------------
+ 
+(1 row)
+
+ERROR:  schema "public" does not exist
+LINE 1: CREATE TABLE public.help_activations (
+                     ^

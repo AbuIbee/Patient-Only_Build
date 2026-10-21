@@ -32,6 +32,11 @@ export interface StaffPatient {
   lastName: string;
   preferredName: string | null;
   orgRole: StaffRole;
+  // MASTER CORRECTIVE SPEC-01/H06: "scheduled start/end, and
+  // authorized address/facility, with timezone and status" — the
+  // schedule view needs this to render the patient's address/facility.
+  address: string | null;
+  location: string | null;
 }
 
 export interface OrgMembershipRow {
@@ -113,6 +118,8 @@ export async function getMyStaffPatients(): Promise<StaffPatient[]> {
     lastName: r.last_name,
     preferredName: r.preferred_name,
     orgRole: r.org_role as StaffRole,
+    address: r.address,
+    location: r.location,
   }));
 }
 

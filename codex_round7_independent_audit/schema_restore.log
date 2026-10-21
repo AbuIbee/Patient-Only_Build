@@ -1,0 +1,563 @@
+ set_config 
+------------
+ 
+(1 row)
+
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  type "public.subscriptions" does not exist
+ERROR:  function public.admin_set_subscription(uuid, text, text, text, text, timestamp with time zone, timestamp with time zone, timestamp with time zone) does not exist
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  type "public.patients" does not exist
+ERROR:  type "public.patients" does not exist
+ERROR:  function public.create_patient_with_caregiver(uuid, text, date, date, text, text, text, text, text, text, text, text, text) does not exist
+ERROR:  type "public.subscriptions" does not exist
+ERROR:  function public.provision_free_subscription() does not exist
+ERROR:  type "public.patients" does not exist
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  type "public.patient_notes" does not exist
+ERROR:  type "public.patients" does not exist
+ERROR:  type "public.subscriptions" does not exist
+ERROR:  function public.redeem_promo_code(text) does not exist
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  relation "public.caregiver_patients" does not exist
+LINE 11:    FROM (public.caregiver_patients cp
+                  ^
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  function extensions.uuid_generate_v4() does not exist
+LINE 2:     id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+                            ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.audio_stories" does not exist
+ERROR:  relation "public.calm_tracks" does not exist
+ERROR:  relation "public.care_partner_checkins" does not exist
+ERROR:  relation "public.care_partner_logs" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.media_uploads" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medication_schedules" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patient_calendar_notes" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.patient_emergency_contacts" does not exist
+ERROR:  relation "public.patient_home_photos" does not exist
+ERROR:  relation "public.patient_loved_one_photos" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_routine_items" does not exist
+ERROR:  relation "public.patient_task_items" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.promo_redemptions" does not exist
+ERROR:  relation "public.promo_redemptions" does not exist
+ERROR:  relation "public.reminders" does not exist
+ERROR:  relation "public.subscriptions" does not exist
+ERROR:  relation "public.subscriptions" does not exist
+ERROR:  relation "public.subscriptions" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.trial_registrations" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.care_partner_logs" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.media_uploads" does not exist
+ERROR:  relation "public.media_uploads" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medication_schedules" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patient_calendar_notes" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.patient_emergency_contacts" does not exist
+ERROR:  relation "public.patient_home_photos" does not exist
+ERROR:  relation "public.patient_loved_one_photos" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_routine_items" does not exist
+ERROR:  relation "public.patient_task_items" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.promo_redemptions" does not exist
+ERROR:  relation "public.reminders" does not exist
+ERROR:  relation "public.reminders" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.subscriptions" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.trial_registrations" does not exist
+ERROR:  relation "public.subscriptions" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.care_partner_checkins" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medication_schedules" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.care_partner_checkins" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.care_partner_checkins" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.reminders" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medication_schedules" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.reminders" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.patient_emergency_contacts" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.care_partner_checkins" does not exist
+ERROR:  relation "public.care_partner_checkins" does not exist
+ERROR:  relation "public.media_uploads" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.care_partner_checkins" does not exist
+ERROR:  relation "public.media_uploads" does not exist
+ERROR:  relation "public.media_uploads" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.media_uploads" does not exist
+ERROR:  relation "public.care_partner_logs" does not exist
+ERROR:  relation "public.care_partner_logs" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.reminders" does not exist
+ERROR:  relation "public.care_partner_logs" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.care_partner_logs" does not exist
+ERROR:  relation "public.care_partner_checkins" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.reminders" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.patient_calendar_notes" does not exist
+ERROR:  relation "public.patient_emergency_contacts" does not exist
+ERROR:  relation "public.patient_home_photos" does not exist
+ERROR:  relation "public.patient_loved_one_photos" does not exist
+ERROR:  relation "public.patient_routine_items" does not exist
+ERROR:  relation "public.patient_task_items" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.subscriptions" does not exist
+ERROR:  relation "public.trial_registrations" does not exist
+ERROR:  relation "public.trial_registrations" does not exist
+ERROR:  relation "public.calm_tracks" does not exist
+ERROR:  relation "public.audio_stories" does not exist
+ERROR:  relation "public.calm_tracks" does not exist
+ERROR:  relation "public.audio_stories" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.audio_stories" does not exist
+ERROR:  relation "public.calm_tracks" does not exist
+ERROR:  relation "public.care_partner_checkins" does not exist
+ERROR:  relation "public.care_partner_logs" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.media_uploads" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medication_schedules" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patient_calendar_notes" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.patient_emergency_contacts" does not exist
+ERROR:  relation "public.patient_home_photos" does not exist
+ERROR:  relation "public.patient_loved_one_photos" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_routine_items" does not exist
+ERROR:  relation "public.patient_task_items" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.promo_redemptions" does not exist
+ERROR:  relation "public.reminders" does not exist
+ERROR:  relation "public.subscriptions" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.trial_registrations" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.subscriptions" does not exist
+ERROR:  relation "public.subscriptions" does not exist
+ERROR:  relation "public.subscriptions" does not exist
+ERROR:  function public.admin_set_subscription(uuid, text, text, text, text, timestamp with time zone, timestamp with time zone, timestamp with time zone) does not exist
+ERROR:  function public.admin_set_subscription(uuid, text, text, text, text, timestamp with time zone, timestamp with time zone, timestamp with time zone) does not exist
+ERROR:  function public.admin_set_subscription(uuid, text, text, text, text, timestamp with time zone, timestamp with time zone, timestamp with time zone) does not exist
+ERROR:  function public.admin_set_subscription(uuid, text, text, text, text, timestamp with time zone, timestamp with time zone, timestamp with time zone) does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  relation "public.patients" does not exist
+ERROR:  function public.caregiver_claim_new_patient(uuid, uuid, uuid) does not exist
+ERROR:  function public.caregiver_claim_new_patient(uuid, uuid, uuid) does not exist
+ERROR:  function public.caregiver_claim_new_patient(uuid, uuid, uuid) does not exist
+ERROR:  function public.caregiver_claim_new_patient(uuid, uuid, uuid) does not exist
+ERROR:  function public.create_patient_with_caregiver(uuid, text, date, date, text, text, text, text, text, text, text, text, text) does not exist
+ERROR:  function public.create_patient_with_caregiver(uuid, text, date, date, text, text, text, text, text, text, text, text, text) does not exist
+ERROR:  function public.create_patient_with_caregiver(uuid, text, date, date, text, text, text, text, text, text, text, text, text) does not exist
+ERROR:  function public.create_patient_with_caregiver(uuid, text, date, date, text, text, text, text, text, text, text, text, text) does not exist
+ERROR:  function public.provision_free_subscription() does not exist
+ERROR:  function public.provision_free_subscription() does not exist
+ERROR:  function public.provision_free_subscription() does not exist
+ERROR:  function public.provision_free_subscription() does not exist
+ERROR:  function public.record_communication_needs(uuid, text, text) does not exist
+ERROR:  function public.record_communication_needs(uuid, text, text) does not exist
+ERROR:  function public.record_communication_needs(uuid, text, text) does not exist
+ERROR:  function public.record_communication_needs(uuid, text, text) does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  relation "public.patient_notes" does not exist
+ERROR:  function public.record_note_amendment(uuid, text) does not exist
+ERROR:  function public.record_note_amendment(uuid, text) does not exist
+ERROR:  function public.record_note_amendment(uuid, text) does not exist
+ERROR:  function public.record_note_amendment(uuid, text) does not exist
+ERROR:  function public.record_patient_safety_plan(uuid, text, text, text, text) does not exist
+ERROR:  function public.record_patient_safety_plan(uuid, text, text, text, text) does not exist
+ERROR:  function public.record_patient_safety_plan(uuid, text, text, text, text) does not exist
+ERROR:  function public.record_patient_safety_plan(uuid, text, text, text, text) does not exist
+ERROR:  function public.redeem_promo_code(text) does not exist
+ERROR:  function public.redeem_promo_code(text) does not exist
+ERROR:  function public.redeem_promo_code(text) does not exist
+ERROR:  function public.redeem_promo_code(text) does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.appointments" does not exist
+ERROR:  relation "public.audio_stories" does not exist
+ERROR:  relation "public.audio_stories" does not exist
+ERROR:  relation "public.audio_stories" does not exist
+ERROR:  relation "public.calm_tracks" does not exist
+ERROR:  relation "public.calm_tracks" does not exist
+ERROR:  relation "public.calm_tracks" does not exist
+ERROR:  relation "public.care_partner_checkins" does not exist
+ERROR:  relation "public.care_partner_checkins" does not exist
+ERROR:  relation "public.care_partner_checkins" does not exist
+ERROR:  relation "public.care_partner_logs" does not exist
+ERROR:  relation "public.care_partner_logs" does not exist
+ERROR:  relation "public.care_partner_logs" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.care_team_members" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patients" does not exist
+ERROR:  relation "public.caregiver_patient_list" does not exist
+ERROR:  relation "public.caregiver_patient_list" does not exist
+ERROR:  relation "public.media_uploads" does not exist
+ERROR:  relation "public.media_uploads" does not exist
+ERROR:  relation "public.media_uploads" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medication_logs" does not exist
+ERROR:  relation "public.medication_schedules" does not exist
+ERROR:  relation "public.medication_schedules" does not exist
+ERROR:  relation "public.medication_schedules" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.medications" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.memories" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.mood_entries" does not exist
+ERROR:  relation "public.patient_calendar_notes" does not exist
+ERROR:  relation "public.patient_calendar_notes" does not exist
+ERROR:  relation "public.patient_calendar_notes" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.patient_document_uploads" does not exist
+ERROR:  relation "public.patient_emergency_contacts" does not exist
+ERROR:  relation "public.patient_emergency_contacts" does not exist
+ERROR:  relation "public.patient_emergency_contacts" does not exist
+ERROR:  relation "public.patient_home_photos" does not exist
+ERROR:  relation "public.patient_home_photos" does not exist
+ERROR:  relation "public.patient_home_photos" does not exist
+ERROR:  relation "public.patient_loved_one_photos" does not exist
+ERROR:  relation "public.patient_loved_one_photos" does not exist
+ERROR:  relation "public.patient_loved_one_photos" does not exist
+ERROR:  relation "public.patient_routine_items" does not exist
+ERROR:  relation "public.patient_routine_items" does not exist
+ERROR:  relation "public.patient_routine_items" does not exist
+ERROR:  relation "public.patient_task_items" does not exist
+ERROR:  relation "public.patient_task_items" does not exist
+ERROR:  relation "public.patient_task_items" does not exist
+ERROR:  relation "public.promo_redemptions" does not exist
+ERROR:  relation "public.promo_redemptions" does not exist
+ERROR:  relation "public.promo_redemptions" does not exist
+ERROR:  relation "public.reminders" does not exist
+ERROR:  relation "public.reminders" does not exist
+ERROR:  relation "public.reminders" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.tasks" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.therapist_relationships" does not exist
+ERROR:  relation "public.trial_registrations" does not exist
+ERROR:  relation "public.trial_registrations" does not exist
+ERROR:  relation "public.trial_registrations" does not exist

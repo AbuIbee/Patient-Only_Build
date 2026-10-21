@@ -22,6 +22,10 @@ export interface ConversationSummary {
   lastMessageAt: string | null;
   lastMessageUrgent: boolean;
   unreadCount: number;
+  // MASTER CORRECTIVE FUNC-03: a real unresolved follow-up request
+  // exists somewhere in this conversation. Independent of unreadCount
+  // — a message can be read but still need a response.
+  hasOpenFollowUp: boolean;
 }
 
 export interface ConversationParticipant {
@@ -100,7 +104,18 @@ export async function getMyConversations(patientId?: string): Promise<Conversati
     lastMessageAt: r.last_message_at,
     lastMessageUrgent: !!r.last_message_urgent,
     unreadCount: Number(r.unread_count ?? 0),
+    hasOpenFollowUp: !!r.has_open_follow_up,
   }));
+}
+
+// MASTER CORRECTIVE FUNC-04: get_my_conversations() only ever carries
+// each conversation's latest message — a search needs to reach every
+// message in the caller's own conversations, not only the newest one.
+export async function searchMyConversations(searchTerm: string): Promise<Set<string>> {
+  if (!searchTerm.trim()) return new Set();
+  const { data, error } = await supabase.rpc('search_my_conversations', { p_search_term: searchTerm.trim() });
+  if (error || !data) return new Set();
+  return new Set(data.map((r) => r.conversation_id));
 }
 
 // create_conversation(): recipientUserIds must be people the caller has
