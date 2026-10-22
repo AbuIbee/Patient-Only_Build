@@ -21,7 +21,7 @@ import {
   type StaffPatientAssignment, type StaffRole, type OrgCommunicationsOverview,
 } from '@/services/organizationService';
 import {
-  directorApproveApplication, requestApplicationCorrections, rejectApplication,
+  directorApproveApplication, requestApplicationCorrections, rejectApplication, recordCredentialVerification,
   getApplicationDocuments, getSignedDocumentUrl,
 } from '@/services/professionalApplicationService';
 import {
@@ -624,6 +624,9 @@ function ApplicationDetail({ app, onBack, onChanged }: { app: ProfessionalApplic
     else toast.error('Could not open this document.');
   };
 
+  const [evidenceText, setEvidenceText] = useState('');
+  const isCredentialVerified = app.credential_verification_status === 'independently_verified';
+
   const approve = async () => {
     setBusy(true);
     try {
@@ -631,6 +634,23 @@ function ApplicationDetail({ app, onBack, onChanged }: { app: ProfessionalApplic
       if (error) { toast.error(error); return; }
       toast.success('Application approved.');
       onChanged(); onBack();
+    } finally { setBusy(false); }
+  };
+  // MASTER ENTERPRISE COMPLETION DIRECTIVE §1.C — a distinct act from
+  // approve(): confirms the credential itself was checked, separate
+  // from the administrative decision to approve. The server refuses
+  // approve() entirely until this has run and recorded
+  // 'independently_verified' — this button is not merely a UI nicety,
+  // it is the only path to satisfying that server-side gate.
+  const verifyCredential = async (decision: 'independently_verified' | 'insufficient') => {
+    if (!evidenceText.trim()) { toast.error('Describe what you checked to reach this decision.'); return; }
+    setBusy(true);
+    try {
+      const { error } = await recordCredentialVerification(app.id, decision, evidenceText.trim());
+      if (error) { toast.error(error); return; }
+      toast.success(decision === 'independently_verified' ? 'Credential marked independently verified.' : 'Credential marked insufficient.');
+      setEvidenceText('');
+      onChanged();
     } finally { setBusy(false); }
   };
   const requestCorrections = async () => {
@@ -701,7 +721,22 @@ function ApplicationDetail({ app, onBack, onChanged }: { app: ProfessionalApplic
       )}
       {canAct && (
         <div className="space-y-3 pt-2 border-t border-ent-line">
-          <button type="button" onClick={() => { void approve(); }} disabled={busy} className="w-full py-2.5 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
+          {!isCredentialVerified && (
+            <div className="bg-ent-amber/10 border border-ent-amber/30 rounded-xl p-3 space-y-2">
+              <p className="text-sm font-semibold text-ent-ink">Credential verification required before approval</p>
+              <p className="text-xs text-ent-muted">Describe what you independently checked (e.g. a licensing-board lookup, a document review) — this is a separate, audited decision from approving the application itself.</p>
+              <input value={evidenceText} onChange={(e) => setEvidenceText(e.target.value)} placeholder="What did you check, and what did you find?" className={`${inputCls} w-full`} />
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { void verifyCredential('independently_verified'); }} disabled={busy} className="px-3 py-2 rounded-xl bg-ent-forest hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
+                  Mark Independently Verified
+                </button>
+                <button type="button" onClick={() => { void verifyCredential('insufficient'); }} disabled={busy} className="px-3 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">
+                  Mark Insufficient
+                </button>
+              </div>
+            </div>
+          )}
+          <button type="button" onClick={() => { void approve(); }} disabled={busy || !isCredentialVerified} title={isCredentialVerified ? undefined : 'The credential must be independently verified first'} className="w-full py-2.5 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
             Approve Application
           </button>
           <div className="flex gap-2">

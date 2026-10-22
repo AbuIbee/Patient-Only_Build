@@ -156,6 +156,21 @@ export async function directorApproveApplication(applicationId: string): Promise
   return { error: error ? errMsg(error, 'Could not approve this application.') : null };
 }
 
+// MASTER ENTERPRISE COMPLETION DIRECTIVE §1.C — a distinct act from
+// directorApproveApplication(): records whether the credential itself
+// has been independently checked, separate from the administrative
+// decision to approve the application. director_approve_application()
+// now refuses to run at all until this has been recorded as
+// 'independently_verified'.
+export async function recordCredentialVerification(
+  applicationId: string, decision: CredentialVerificationStatus, evidenceReference: string,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('record_credential_verification', {
+    p_application_id: applicationId, p_decision: decision, p_evidence_reference: evidenceReference,
+  });
+  return { error: error ? errMsg(error, 'Could not record this credential verification decision.') : null };
+}
+
 export async function platformOwnerApproveDirectorApplication(applicationId: string): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('platform_owner_approve_director_application', { p_application_id: applicationId });
   return { error: error ? errMsg(error, 'Could not approve this Director application.') : null };
