@@ -191,6 +191,25 @@ function AppContent() {
 
         if (!session?.user) return;
 
+        // Codex MMA-CODEX-01 — fail closed when a restored session's own
+        // assurance level is insufficient for an account that has since
+        // enrolled a verified MFA factor. A session established BEFORE
+        // enrollment (or restored from storage after some other
+        // inconsistency) could otherwise persist at AAL1 indefinitely —
+        // this app's only MFA-aware check (LoginPage.tsx's SignInForm)
+        // only ever runs once, at the moment of a fresh sign-in. This
+        // does not make MFA mandatory for anyone (an account with no
+        // enrolled factor is completely unaffected — nextLevel stays
+        // 'aal1' and this check is a no-op), per the explicit
+        // instruction not to enable a mandatory cohort policy without
+        // owner approval.
+        const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aal && aal.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
+          console.warn('Restored session is below the required MFA assurance level for this account — signing out rather than restoring.');
+          await supabase.auth.signOut();
+          return;
+        }
+
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select(PROFILE_COLUMNS)
