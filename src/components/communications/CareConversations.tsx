@@ -30,6 +30,7 @@ function roleLabel(role: string): string {
     case 'caregiver': return 'Caregiver';
     case 'therapist': return 'Therapist';
     case 'medical_professional': return 'Medical Professional';
+    case 'director': return 'Director';
     default: return role;
   }
 }

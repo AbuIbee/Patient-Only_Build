@@ -8,7 +8,7 @@
 // consulted server-side, at the moment someone is added as a participant).
 import { supabase } from '@/lib/supabase';
 
-export type ParticipantRole = 'patient' | 'caregiver' | 'therapist' | 'medical_professional';
+export type ParticipantRole = 'patient' | 'caregiver' | 'therapist' | 'medical_professional' | 'director';
 
 export interface ConversationSummary {
   conversationId: string;

@@ -1,50 +1,38 @@
 // MASTER ENTERPRISE COMPLETION DIRECTIVE, Wave B — the cross-office
 // (5 x 5 office) communication authorization matrix.
 //
-// CONFIRMED FINDING while building this matrix (DEFECT-DIRECTOR-NOT-A-
-// PATIENT-CONVERSATION-PARTICIPANT, see the closure register): the
-// Admin/Director office has NO schema-level path to become authorized
-// for an individual patient's conversations at all.
-// staff_patient_assignments_org_role_check restricts that table's
-// org_role to ('caregiver','therapist','medical_professional') —
-// 'director' is not a legal value, and assign_staff_to_patient() enforces
-// the identical restriction in the RPC itself. is_authorized_for_patient()
-// (migration 040) grants access only via self / caregiver_patients /
-// staff_patient_assignments / therapist_relationships — there is no
-// organization_memberships-based branch, so a director is never
-// authorized for a specific patient purely by virtue of directing the
-// org that covers them. This is confirmed live below (negative test),
-// and it means W09's shipped "Message supervisor" feature
-// (EnterpriseCaregiverDashboard.tsx messageSupervisor()) silently fails
-// server-side for every real director, not just the already-disclosed
-// "caregiver has zero assigned patients" edge case — the historical
-// traceability CSV's W09/N11 PASS evidence only confirmed the button
-// renders and calls createConversation(), never that a real send with
-// a real director recipient succeeds. This is NOT fixed unilaterally
-// here: a prior round's own adversarial test (C02, in
-// 28_ENTERPRISE_CAREGIVER_TRACEABILITY_MATRIX.csv) deliberately verified
-// and praised "the org DIRECTOR was correctly rejected as a
-// recipient... confirming least-privilege" as a GOOD security property.
-// Reversing that to make W09 functional would be a real security-policy
-// trade-off (loosen least-privilege for this one escalation path vs.
-// leave the feature non-functional vs. redesign it outside the
-// patient-scoped conversation system) — an owner decision, not a
-// defect with one obvious correct fix. See closure register §4 item 6.
+// HISTORY (see the closure register §2b and §1.A for the full account):
+// this file originally found DEFECT-DIRECTOR-NOT-A-PATIENT-
+// CONVERSATION-PARTICIPANT — the Admin/Director office had no schema
+// path to become authorized for an individual patient's conversations
+// at all, confirmed live, and left unfixed pending an explicit owner
+// decision (a prior round's own test had deliberately verified
+// rejecting an unassigned director as a GOOD least-privilege property,
+// so loosening it was a real security-policy trade-off, not a bug with
+// one obvious fix).
 //
-// So this test matrix is honest about what the schema actually
-// supports: a true 4x4 grid across the 4 offices that DO have a real
-// per-patient authorization path (Caregiver, Medical, Therapist,
-// Patient), each tested in both directions including same-office
-// diagonal pairs, PLUS explicit negative coverage proving Director is
-// excluded in every direction and that admitting the matrix does not
-// also admit an org-unrelated outsider regardless of claimed office.
+// That owner decision has now been made (MY MEMORIA ALLY — FINAL
+// ENGINEERING CLOSURE directive §1.A): implement a narrow, auditable
+// Director-to-patient conversation mechanism. Migration 087 adds
+// is_org_director_for_patient() — true ONLY for an active director of
+// the SPECIFIC organization that ACTIVELY covers the SPECIFIC patient,
+// re-checked live on every call, never cached. This is deliberately
+// narrower than is_authorized_for_patient(): it does not touch that
+// function, so every other caller (clinical reads/writes) is
+// unaffected, and a director of an unrelated org — or any outsider —
+// is still rejected exactly as before. This file now tests the REAL,
+// true 5x5 grid: Director is reachable (within its own org's covered
+// patients only), and the negative tests that used to prove Director's
+// exclusion now prove its NARROWNESS instead — an unrelated-org
+// director, and a director whose org's coverage has ended, are both
+// still rejected.
 //
-// Grid: Caregiver, Medical, Therapist each get TWO distinct accounts
-// (so same-office diagonal pairs — e.g. Caregiver-to-Caregiver — are a
-// real two-party test, not a vacuous self-pair). Patient has exactly
-// one real identity in this schema, so the Patient-to-Patient diagonal
-// is not a constructible two-party scenario; it is reported as N/A with
-// this justification, not silently skipped.
+// Grid: Director, Caregiver, Medical, Therapist each get TWO distinct
+// accounts (so same-office diagonal pairs — e.g. Caregiver-to-Caregiver
+// — are a real two-party test, not a vacuous self-pair). Patient has
+// exactly one real identity in this schema, so the Patient-to-Patient
+// diagonal is not a constructible two-party scenario; it is reported
+// as N/A with this justification, not silently skipped.
 //
 // Requires the local Docker Supabase stack. Run with
 // `npm run test:integration`. Creates and fully tears down its own
@@ -65,7 +53,7 @@ const ORG = 'c3333333-3333-4333-8333-333333333333';
 // this file's own first real run (not shipped).
 let PATIENT_ID: string;
 
-type ReachableOffice = 'caregiver' | 'medical' | 'therapist' | 'patient';
+type ReachableOffice = 'director' | 'caregiver' | 'medical' | 'therapist' | 'patient';
 
 const emails = {
   director1: `xom-director1-${stamp}@local.test`,
@@ -82,11 +70,9 @@ const ids: Record<string, string> = {};
 const tok: Record<string, string> = {};
 
 // Two accounts per staff office (so the diagonal is a real pair), plus
-// the single patient identity. 'director' is intentionally NOT part of
-// the matrix grid — see the file header: it has no schema path to
-// per-patient authorization, and is covered by its own negative test
-// instead of a fabricated matrix cell.
+// the single patient identity.
 const officeAccounts: Record<ReachableOffice, [string, string?]> = {
+  director: ['director1', 'director2'],
   caregiver: ['caregiver1', 'caregiver2'],
   medical: ['medical1', 'medical2'],
   therapist: ['therapist1', 'therapist2'],
@@ -152,9 +138,9 @@ afterAll(async () => {
   for (const id of Object.values(ids)) await authDeleteUser(id);
 });
 
-const REACHABLE_OFFICES: ReachableOffice[] = ['caregiver', 'medical', 'therapist', 'patient'];
+const REACHABLE_OFFICES: ReachableOffice[] = ['director', 'caregiver', 'medical', 'therapist', 'patient'];
 
-describe('Wave B — cross-office communication authorization matrix (4x4 of the 5 named offices; Director is schema-unreachable, see negative tests below)', () => {
+describe('Wave B — cross-office communication authorization matrix (true 5x5: Director now reachable via is_org_director_for_patient(), migration 087)', () => {
   const results: string[] = [];
 
   for (const senderOffice of REACHABLE_OFFICES) {
@@ -194,35 +180,78 @@ describe('Wave B — cross-office communication authorization matrix (4x4 of the
     }
   }
 
-  it('records all 16 reachable-office-pair outcomes (15 executed, 1 structurally N/A) for the closure register', () => {
-    expect(results.length).toBeGreaterThanOrEqual(15);
+  it('records all 25 office-pair outcomes (24 executed, 1 structurally N/A) for the closure register', () => {
+    expect(results.length).toBeGreaterThanOrEqual(24);
   });
 });
 
-describe('Wave B — negative: Director (the 5th office) has no schema path to patient-conversation participation', () => {
-  it('an active org director cannot be added as a conversation recipient for a patient they are not individually assigned to (least-privilege preserved — see DEFECT-DIRECTOR-NOT-A-PATIENT-CONVERSATION-PARTICIPANT in the closure register)', async () => {
+describe('Wave B — Director conversation participation is NARROW, not universal (migration 087, directive §1.A requirement #4)', () => {
+  it('a director of a DIFFERENT, unrelated organization is still rejected as a recipient for this patient', async () => {
+    const otherOrg = 'c9999999-3333-4333-8333-333333333399';
+    const otherDirectorEmail = `xom-other-director-${stamp}@local.test`;
+    const otherDirectorId = await authSignUp(otherDirectorEmail, PW);
+    sql(`
+      UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${otherDirectorId}';
+      INSERT INTO organizations(id,name,package_type,created_by) VALUES('${otherOrg}','XOM Unrelated Org','integrated_care','${otherDirectorId}');
+      INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${otherOrg}','${otherDirectorId}','director','active');
+    `);
+    const otherDirectorTok = await login(otherDirectorEmail, PW);
+
     const [status, body] = (await rpc(
       'create_conversation',
-      { p_patient_id: PATIENT_ID, p_recipient_user_ids: [ids.director1], p_subject: 'XOM director recipient probe' },
+      { p_patient_id: PATIENT_ID, p_recipient_user_ids: [otherDirectorId], p_subject: 'XOM unrelated-org director probe' },
       tok.caregiver1,
     )) as [number, { message?: string }];
     expect(status).toBeGreaterThanOrEqual(400);
     expect(body.message).toContain('not authorized');
+
+    const [readStatus, readBody] = (await rpc('get_my_conversations', { p_patient_id: PATIENT_ID }, otherDirectorTok)) as [number, unknown[]];
+    expect(readStatus).toBe(200);
+    expect(readBody).toEqual([]);
+
+    sql(`DELETE FROM organization_memberships WHERE organization_id='${otherOrg}'; DELETE FROM organizations WHERE id='${otherOrg}';`);
+    await authDeleteUser(otherDirectorId);
   });
 
-  it('that same director cannot read the conversation either (never added as a participant)', async () => {
-    const [status, body] = (await rpc('get_my_conversations', { p_patient_id: PATIENT_ID }, tok.director1)) as [number, unknown[]];
-    expect(status).toBe(200);
-    expect(body).toEqual([]);
+  it('a director whose OWN org\'s coverage of this patient has since ended loses access, even to a conversation they already joined', async () => {
+    const [createStatus, conv] = (await rpc(
+      'create_conversation',
+      { p_patient_id: PATIENT_ID, p_recipient_user_ids: [ids.director1], p_subject: 'XOM coverage-ends probe' },
+      tok.caregiver1,
+    )) as [number, { id: string }];
+    expect(createStatus).toBe(200);
+    // Confirmed reachable while coverage is active.
+    const [beforeStatus, beforeBody] = (await rpc('get_my_conversations', { p_patient_id: PATIENT_ID }, tok.director1)) as [number, Array<{ conversation_id: string }>];
+    expect(beforeStatus).toBe(200);
+    expect(beforeBody.some((c) => c.conversation_id === conv.id)).toBe(true);
+
+    sql(`UPDATE covered_patient_memberships SET status='ended', ended_at=now() WHERE organization_id='${ORG}' AND patient_id='${PATIENT_ID}';`);
+    const [afterStatus, afterBody] = (await rpc('get_my_conversations', { p_patient_id: PATIENT_ID }, tok.director1)) as [number, Array<{ conversation_id: string }>];
+    expect(afterStatus).toBe(200);
+    expect(afterBody.some((c) => c.conversation_id === conv.id)).toBe(false);
+    // Send is re-validated the same way, not merely read.
+    const [sendStatus] = await rpc('send_message', { p_conversation_id: conv.id, p_body: 'should be rejected', p_is_urgent: false, p_reply_to_message_id: null }, tok.director1);
+    expect(sendStatus).toBeGreaterThanOrEqual(400);
+
+    sql(`UPDATE covered_patient_memberships SET status='active', ended_at=NULL WHERE organization_id='${ORG}' AND patient_id='${PATIENT_ID}';`);
+    const [restoredStatus, restoredBody] = (await rpc('get_my_conversations', { p_patient_id: PATIENT_ID }, tok.director1)) as [number, Array<{ conversation_id: string }>];
+    expect(restoredStatus).toBe(200);
+    expect(restoredBody.some((c) => c.conversation_id === conv.id)).toBe(true);
   });
 
-  it('the director cannot self-authorize by directly INSERTing into staff_patient_assignments with org_role=director either (table CHECK constraint, not merely RPC-level)', async () => {
+  it('the director cannot self-authorize by directly INSERTing into staff_patient_assignments with org_role=director either (that table CHECK constraint is unrelated and still excludes director — this mechanism is entirely conversation-scoped, not a backdoor into staff_patient_assignments)', async () => {
     expect(() => sql(`INSERT INTO staff_patient_assignments(organization_id,user_id,patient_id,org_role,is_active,assigned_by) VALUES('${ORG}','${ids.director1}','${PATIENT_ID}','director',true,'${ids.director1}');`)).toThrow();
+  });
+
+  it('get_patient_care_circle() (the generic "Select recipients" picker) now surfaces the covering org\'s active director, but not an unrelated-org director', async () => {
+    const [status, body] = (await rpc('get_patient_care_circle', { p_patient_id: PATIENT_ID }, tok.caregiver1)) as [number, Array<{ user_id: string; participant_role: string }>];
+    expect(status).toBe(200);
+    expect(body.some((m) => m.user_id === ids.director1 && m.participant_role === 'director')).toBe(true);
   });
 });
 
 describe('Wave B — negative: an account unauthorized for this patient is rejected in every direction, regardless of its own office/role', () => {
-  it('the outsider cannot be added as a recipient by any of the 4 reachable offices', async () => {
+  it('the outsider cannot be added as a recipient by any of the 5 offices', async () => {
     for (const office of REACHABLE_OFFICES) {
       const senderName = officeAccounts[office][0]!;
       const [status, body] = (await rpc(
