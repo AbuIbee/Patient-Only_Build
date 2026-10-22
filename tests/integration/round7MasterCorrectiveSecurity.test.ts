@@ -17,7 +17,7 @@
 // Creates and fully tears down its own synthetic fixture; never reads
 // or writes any pre-existing data.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authDeleteUser, authSignUp, http, login, rpc, runConcurrentAcceptHoldingLock, sql } from './_runtime';
+import { ANON, authDeleteUser, authSignUp, http, login, rpc, runConcurrentAcceptHoldingLock, sql } from './_runtime';
 
 const PW = 'MasterCorrective9!';
 const stamp = Date.now();
@@ -470,5 +470,40 @@ describe('CLOSURE REGISTER — remove_org_member() now writes an auditable accou
     `);
     await authDeleteUser(staffId);
     await authDeleteUser(secondStaffId);
+  });
+});
+
+// MASTER ENTERPRISE COMPLETION DIRECTIVE, Wave B — full RPC authorization
+// audit. DEFECT-ANON-EXECUTE-GRANT (CONFIRMED, fixed by migration 085):
+// every SECURITY DEFINER function in this schema granted EXECUTE to the
+// `anon` role directly (a separate grant from `PUBLIC`, which the
+// REVOKE-FROM-PUBLIC pattern every migration already used never
+// touched), so a genuinely unauthenticated request (apikey=anon,
+// Authorization=anon, no real user session) could reach every RPC's
+// own body at all. No exploitable data exposure resulted (every
+// function's own authorization logic depends on auth.uid(), which is
+// NULL for such a caller and fails every equality/lookup check closed),
+// but the intended "cannot even call this" boundary never existed.
+// Migration 085 revokes anon's EXECUTE grant project-wide and sets
+// ALTER DEFAULT PRIVILEGES so the gap cannot silently recur on a future
+// migration that repeats the same (shown-insufficient) pattern.
+describe('CLOSURE REGISTER — anon (unauthenticated) callers are rejected at the database privilege layer, not merely by in-function logic (migration 085)', () => {
+  it('a request bearing only the anon key, with no user session, is denied permission before reaching the function body', async () => {
+    const [orgsStatus, orgsBody] = (await rpc('get_my_organizations', {}, ANON)) as [number, { code?: string }];
+    expect(orgsStatus).toBe(401);
+    expect(orgsBody.code).toBe('42501');
+
+    const [adminStatus, adminBody] = (await rpc('admin_set_role', { p_user_id: ids.caregiverA, p_role: 'admin' }, ANON)) as [number, { code?: string }];
+    expect(adminStatus).toBe(401);
+    expect(adminBody.code).toBe('42501');
+
+    const [removeStatus] = (await rpc('remove_org_member', { p_org_id: ORG, p_user_id: ids.caregiverA }, ANON)) as [number, { code?: string }];
+    expect(removeStatus).toBe(401);
+
+    // Regression guard: a real, logged-in caller is completely unaffected
+    // by the anon revoke (different database role, untouched grant).
+    const [realStatus, realBody] = (await rpc('get_my_organizations', {}, tok.directorA)) as [number, unknown[]];
+    expect(realStatus).toBe(200);
+    expect(Array.isArray(realBody)).toBe(true);
   });
 });
