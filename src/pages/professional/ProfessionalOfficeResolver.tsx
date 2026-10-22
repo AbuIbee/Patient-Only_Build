@@ -16,10 +16,12 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { Loader2, ShieldAlert, LogOut, Sparkles } from 'lucide-react';
 import { getMyOrganizations, type MyOrganization } from '@/services/organizationService';
+import { getMyApplication, type ProfessionalApplication } from '@/services/professionalApplicationService';
 import OrganizationDirectorDashboard from '@/pages/enterprise/OrganizationDirectorDashboard';
 import EnterpriseCaregiverDashboard from '@/pages/enterprise/EnterpriseCaregiverDashboard';
 import ClinicalOfficeDashboard from '@/pages/enterprise/ClinicalOfficeDashboard';
 import EnterprisePatientDashboard from '@/pages/patient/EnterprisePatientDashboard';
+import ApplicationStatusPage from './ApplicationStatusPage';
 
 export type ProfessionalOfficeKey = 'admin' | 'caregiver' | 'medical' | 'therapy' | 'patient';
 
@@ -123,17 +125,18 @@ export default function ProfessionalOfficeResolver() {
   const [patientCovered, setPatientCovered] = useState(false);
   const [requestedOffice, setRequestedOffice] = useState<ProfessionalOfficeKey | null>(() => parseRequestedOffice());
   const [manualSelection, setManualSelection] = useState<ProfessionalOfficeKey | null>(null);
+  const [myApplication, setMyApplication] = useState<ProfessionalApplication | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    void Promise.all([getMyOrganizations(), supabase.rpc('is_my_enterprise_coverage_active')]).then(([o, coverageResult]) => {
-      if (cancelled) return;
-      setOrgs(o);
-      setPatientCovered(coverageResult.data === true);
-      setLoading(false);
-    });
-    return () => { cancelled = true; };
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    const [o, coverageResult, app] = await Promise.all([getMyOrganizations(), supabase.rpc('is_my_enterprise_coverage_active'), getMyApplication()]);
+    setOrgs(o);
+    setPatientCovered(coverageResult.data === true);
+    setMyApplication(app);
+    setLoading(false);
   }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
 
   useEffect(() => {
     const onPopState = () => setRequestedOffice(parseRequestedOffice());
@@ -172,6 +175,16 @@ export default function ProfessionalOfficeResolver() {
   ];
 
   if (availableOffices.length === 0) {
+    // §12 — "If the account remains Pending Review, show an
+    // application-status page... If Additional Information Required...
+    // If Rejected..." Takes priority over the generic "Access required"
+    // state whenever a real application exists in one of these states.
+    // A withdrawn/approved/suspended/revoked application falls through
+    // to the generic state instead (approved-but-zero-offices can only
+    // mean the resulting membership was since revoked).
+    if (myApplication && ['pending_review', 'info_required', 'resubmitted', 'rejected'].includes(myApplication.status)) {
+      return <ApplicationStatusPage application={myApplication} onRefresh={() => { void refresh(); }} />;
+    }
     return <AccessRequiredState onLogout={() => { void handleLogout(); }} />;
   }
 

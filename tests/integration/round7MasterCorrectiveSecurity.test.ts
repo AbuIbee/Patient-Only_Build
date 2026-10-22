@@ -359,14 +359,64 @@ describe('OWNER CORRECTION — Enterprise caregivers are operational users, not 
     expect(body.message).toContain('already an active member');
   });
 
-  it('a brand-new account with zero existing memberships can still self-bootstrap its own first organization (residential flow preserved)', async () => {
+  // MASTER ENTERPRISE IDENTITY DIRECTIVE §7 — superseded this round:
+  // create_organization() no longer activates an organization at all
+  // (migration 083 closed that self-approval bootstrap — "the applicant
+  // must not become Director merely because they initiated an
+  // organization registration"). A brand-new user calling it now gets a
+  // PENDING Director application, never an active organization or
+  // membership — asserted explicitly below, not just a 200 status,
+  // since a passing status alone would have silently hidden exactly
+  // this behavior change (confirmed live: the previous version of this
+  // test only checked status===200 and tried to clean up body.id as an
+  // organizations row, which no longer exists — it would have passed
+  // while asserting nothing true about the new behavior).
+  it('a brand-new account submitting create_organization() gets a PENDING application, never an active organization (self-approval bootstrap closed)', async () => {
     const email = `r7mc-brandnew-${stamp}@local.test`;
     const id = await authSignUp(email, PW);
     sql(`UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${id}';`);
     const token = await login(email, PW);
-    const [status, body] = (await rpc('create_organization', { p_name: 'Brand New Residential Org', p_package_type: 'integrated_care' }, token)) as [number, { id?: string }];
+    const [status, body] = (await rpc('create_organization', { p_name: 'Brand New Pending Org', p_package_type: 'integrated_care' }, token)) as [number, { id?: string; status?: string; requested_office?: string; platform_owner_approval_required?: boolean }];
     expect(status).toBe(200);
-    if (body.id) sql(`DELETE FROM public.organizations WHERE id='${body.id}';`);
+    expect(body.status).toBe('pending_review');
+    expect(body.requested_office).toBe('director');
+    expect(body.platform_owner_approval_required).toBe(true);
+
+    const orgCount = sql(`SELECT count(*) FROM public.organizations WHERE name='Brand New Pending Org';`);
+    expect(orgCount).toBe('0');
+    const membershipCount = sql(`SELECT count(*) FROM public.organization_memberships WHERE user_id='${id}';`);
+    expect(membershipCount).toBe('0');
+
+    if (body.id) sql(`DELETE FROM public.professional_application_events WHERE application_id='${body.id}'; DELETE FROM public.professional_applications WHERE id='${body.id}';`);
     await authDeleteUser(id);
+  });
+
+  it('Platform Owner approval of that same application creates the organization and activates the Director — the ONLY path to activation', async () => {
+    const email = `r7mc-brandnew2-${stamp}@local.test`;
+    const id = await authSignUp(email, PW);
+    sql(`UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${id}';`);
+    const token = await login(email, PW);
+    const [, app] = (await rpc('create_organization', { p_name: 'Brand New Approved Org', p_package_type: 'integrated_care' }, token)) as [number, { id: string }];
+
+    // SEC-15-1: the applicant themselves is never the Platform Owner —
+    // confirmed rejected before the real owner acts.
+    const [selfApproveStatus] = await rpc('platform_owner_approve_director_application', { p_application_id: app.id }, token);
+    expect(selfApproveStatus).toBeGreaterThanOrEqual(400);
+
+    const ownerEmail = `r7mc-owner-${stamp}@local.test`;
+    const ownerId = await authSignUp(ownerEmail, PW);
+    sql(`UPDATE profiles SET must_change_password=false, provisioning_status='complete', role='admin' WHERE id='${ownerId}';`);
+    const ownerToken = await login(ownerEmail, PW);
+
+    const [ownerStatus, org] = (await rpc('platform_owner_approve_director_application', { p_application_id: app.id }, ownerToken)) as [number, { id?: string; name?: string }];
+    expect(ownerStatus).toBe(200);
+    expect(org.name).toBe('Brand New Approved Org');
+
+    const membership = sql(`SELECT org_role, status FROM public.organization_memberships WHERE user_id='${id}' AND organization_id='${org.id}';`);
+    expect(membership).toBe('director|active');
+
+    if (org.id) sql(`DELETE FROM public.organization_memberships WHERE organization_id='${org.id}'; DELETE FROM public.organization_licenses WHERE organization_id='${org.id}'; DELETE FROM public.professional_application_events WHERE application_id='${app.id}'; DELETE FROM public.professional_applications WHERE id='${app.id}'; DELETE FROM public.organizations WHERE id='${org.id}';`);
+    await authDeleteUser(id);
+    await authDeleteUser(ownerId);
   });
 });

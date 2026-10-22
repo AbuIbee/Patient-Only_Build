@@ -123,10 +123,18 @@ export async function getMyStaffPatients(): Promise<StaffPatient[]> {
   }));
 }
 
-export async function createOrganization(name: string, packageType: OrgPackageType): Promise<{ organizationId: string | null; error: string | null }> {
+// MASTER ENTERPRISE IDENTITY DIRECTIVE §7 — create_organization() no
+// longer creates an organization or grants Director status directly
+// (migration 083 closed that self-approval bootstrap). It now submits a
+// pending Director application — the RPC's own return shape changed
+// from an `organizations` row to a `professional_applications` row, so
+// this wrapper's return shape changes to match: there is no
+// organizationId to hand back anymore, only confirmation that a
+// pending application now exists, awaiting Platform Owner review.
+export async function createOrganization(name: string, packageType: OrgPackageType): Promise<{ applicationId: string | null; error: string | null }> {
   const { data, error } = await supabase.rpc('create_organization', { p_name: name.trim(), p_package_type: packageType });
-  if (error || !data) return { organizationId: null, error: errMsg(error, 'Could not create the organization.') };
-  return { organizationId: data.id, error: null };
+  if (error || !data) return { applicationId: null, error: errMsg(error, 'Could not submit your organization application.') };
+  return { applicationId: data.id, error: null };
 }
 
 export async function orgConfigureLicense(

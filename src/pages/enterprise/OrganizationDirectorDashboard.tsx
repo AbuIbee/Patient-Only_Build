@@ -21,6 +21,10 @@ import {
   type StaffPatientAssignment, type StaffRole, type OrgCommunicationsOverview,
 } from '@/services/organizationService';
 import {
+  directorApproveApplication, requestApplicationCorrections, rejectApplication,
+  getApplicationDocuments, getSignedDocumentUrl,
+} from '@/services/professionalApplicationService';
+import {
   getOrgVisits, getOrgIncidentReports, getOrgShiftHandoffs, resolveOrgIncidentReport,
   type OrgVisit, type OrgIncidentReport, type OrgShiftHandoff, type IncidentResolutionStatus,
 } from '@/services/organizationDirectorOpsService';
@@ -30,6 +34,18 @@ import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
 const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
 
+// Raw snake_case row shape as RLS returns it directly from
+// professional_applications — the Director review UI below reads this
+// table directly (RLS already scopes it to is_active_org_director(),
+// confirmed by migration 083) rather than going through the
+// camelCase-mapping service wrapper, since this view needs the full row.
+interface ProfessionalApplicationRow {
+  id: string; requested_office: string; status: string; legal_name: string; preferred_name: string | null;
+  contact_email: string; contact_phone: string | null; professional_title: string | null; profession_category: string | null;
+  application_details: Record<string, unknown>; credential_verification_status: string;
+  correction_request: string | null; rejection_reason: string | null; created_at: string;
+}
+
 const ROLE_LABELS: Record<OrgRole, string> = {
   director: 'Director',
   caregiver: 'Caregiver',
@@ -38,30 +54,55 @@ const ROLE_LABELS: Record<OrgRole, string> = {
   billing_admin: 'Billing Administrator',
 };
 
-function CreateOrgCard({ onCreated }: { onCreated: (orgId: string) => void }) {
+// MASTER ENTERPRISE IDENTITY DIRECTIVE §7.1 — "the applicant must not
+// become Director merely because they initiated an organization
+// registration." Submitting this form now creates a PENDING
+// professional_applications row, not an active organization — the copy
+// and post-submit state are honest about that, matching §6.1's "do not
+// claim completion... until a Platform Owner approves."
+function CreateOrgCard({ onCreated }: { onCreated: () => void }) {
   const [name, setName] = useState('');
   const [packageType, setPackageType] = useState<'therapist' | 'integrated_care'>('integrated_care');
   const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const handleCreate = async () => {
     if (!name.trim()) { toast.error('Organization name is required.'); return; }
     setLoading(true);
     try {
-      const { organizationId, error } = await createOrganization(name, packageType);
-      if (error || !organizationId) { toast.error(error || 'Could not create the organization.'); return; }
-      toast.success(`${name} has been created.`);
-      onCreated(organizationId);
+      const { applicationId, error } = await createOrganization(name, packageType);
+      if (error || !applicationId) { toast.error(error || 'Could not submit your organization application.'); return; }
+      toast.success('Your Director application has been submitted for review.');
+      setSubmitted(true);
+      onCreated();
     } finally {
       setLoading(false);
     }
   };
 
+  if (submitted) {
+    return (
+      <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 space-y-3 max-w-md mx-auto text-center">
+        <Building2 className="w-8 h-8 text-ent-forest mx-auto" />
+        <h2 className="text-lg font-bold text-ent-ink">Application submitted</h2>
+        <p className="text-sm text-ent-text">
+          Your Director application for &quot;{name}&quot; is now pending Platform Owner review. You can sign back in at any
+          time to see its status; your organization is created only once it is approved.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 space-y-4 max-w-md mx-auto">
       <div className="flex items-center gap-2">
         <Building2 className="w-5 h-5 text-ent-bronze" />
-        <h2 className="text-lg font-bold text-ent-ink">Create Your Organization</h2>
+        <h2 className="text-lg font-bold text-ent-ink">Apply to Start Your Organization</h2>
       </div>
+      <p className="text-xs text-ent-muted">
+        A Platform Owner reviews and approves every new organization before it is created. Submitting this form does not
+        grant Director access by itself.
+      </p>
       <div className="space-y-1">
         <label className="text-sm font-medium text-ent-ink">Organization Name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Riverside Home Care" className={inputCls} />
@@ -80,7 +121,7 @@ function CreateOrgCard({ onCreated }: { onCreated: (orgId: string) => void }) {
         disabled={loading}
         className="w-full py-3 rounded-xl bg-ent-bronze hover:opacity-90 text-white font-semibold disabled:opacity-60 transition-colors"
       >
-        {loading ? 'Creating…' : 'Create Organization'}
+        {loading ? 'Submitting…' : 'Submit for Review'}
       </button>
     </div>
   );
@@ -437,12 +478,13 @@ function AssignmentsCard({ orgId, members }: {
 // rely entirely on migration 068's pre-existing
 // `is_active_org_director()` RLS — no new authorization surface.
 type DirectorNavKey =
-  | 'dashboard' | 'overview' | 'staff' | 'patients' | 'assignments' | 'scheduling'
+  | 'dashboard' | 'overview' | 'applications' | 'staff' | 'patients' | 'assignments' | 'scheduling'
   | 'operations' | 'incidents' | 'communications' | 'reports' | 'licensing' | 'settings';
 
 const DIRECTOR_NAV_ITEMS: OfficeNavItem<DirectorNavKey>[] = [
   { key: 'dashboard', label: 'Director Dashboard', icon: LayoutDashboard },
   { key: 'overview', label: 'Organization Overview', icon: Building2 },
+  { key: 'applications', label: 'Professional Applications & Approvals', icon: ClipboardList },
   { key: 'staff', label: 'Staff Management', icon: Users },
   { key: 'patients', label: 'Patient Management', icon: UserCog },
   { key: 'assignments', label: 'Assignments and Coverage', icon: Link2 },
@@ -455,7 +497,7 @@ const DIRECTOR_NAV_ITEMS: OfficeNavItem<DirectorNavKey>[] = [
   { key: 'settings', label: 'Organization Settings', icon: SettingsIcon },
 ];
 const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
-  { label: 'ORGANIZATION', items: ['dashboard', 'overview', 'staff', 'patients'] },
+  { label: 'ORGANIZATION', items: ['dashboard', 'overview', 'applications', 'staff', 'patients'] },
   { label: 'CARE OPERATIONS', items: ['assignments', 'scheduling', 'operations', 'incidents', 'communications'] },
   { label: 'ADMINISTRATION', items: ['reports', 'licensing', 'settings'] },
 ];
@@ -550,6 +592,184 @@ function OrganizationOverviewView({ orgName, packageType, members, coveredCount 
         <p><span className="text-ent-muted">Active members:</span> {activeStaff.length}</p>
         <p><span className="text-ent-muted">Covered patients:</span> {coveredCount}</p>
       </div>
+    </OfficeCard>
+  );
+}
+
+// MASTER ENTERPRISE IDENTITY DIRECTIVE §8 — "Professional Applications
+// & Approvals." A Director reviews every Caregiver/Medical/Therapist
+// application that targets THEIR OWN organization (RLS already scopes
+// getOrgApplications() to is_active_org_director(organization_id) —
+// confirmed by migration 083's own policy, not re-asserted here).
+// Director applications (new organizations) never appear here — they
+// are Platform-Owner-only, by the backend's own design, not a frontend
+// filter.
+const OFFICE_LABEL: Record<string, string> = { caregiver: 'Enterprise Caregiver', medical_professional: 'Medical Professional', therapist: 'Therapist Professional', director: 'Admin / Director' };
+const STATUS_BADGE: Record<string, string> = {
+  pending_review: 'bg-ent-amber/20 text-ent-amber', resubmitted: 'bg-ent-amber/20 text-ent-amber', info_required: 'bg-ent-pale text-ent-ink',
+  approved: 'bg-ent-green-active text-ent-forest', rejected: 'bg-ent-rust/15 text-ent-rust', withdrawn: 'bg-ent-pale text-ent-muted',
+};
+
+function ApplicationDetail({ app, onBack, onChanged }: { app: ProfessionalApplicationRow; onBack: () => void; onChanged: () => void }) {
+  const [correctionText, setCorrectionText] = useState('');
+  const [rejectionText, setRejectionText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [documents, setDocuments] = useState<{ id: string; fileName: string; documentType: string; storagePath: string }[]>([]);
+
+  useEffect(() => { void getApplicationDocuments(app.id).then(setDocuments); }, [app.id]);
+
+  const openDocument = async (storagePath: string) => {
+    const url = await getSignedDocumentUrl(storagePath);
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    else toast.error('Could not open this document.');
+  };
+
+  const approve = async () => {
+    setBusy(true);
+    try {
+      const { error } = await directorApproveApplication(app.id);
+      if (error) { toast.error(error); return; }
+      toast.success('Application approved.');
+      onChanged(); onBack();
+    } finally { setBusy(false); }
+  };
+  const requestCorrections = async () => {
+    if (!correctionText.trim()) { toast.error('Describe what needs to be corrected.'); return; }
+    setBusy(true);
+    try {
+      const { error } = await requestApplicationCorrections(app.id, correctionText.trim(), {});
+      if (error) { toast.error(error); return; }
+      toast.success('Correction request sent to the applicant.');
+      onChanged(); onBack();
+    } finally { setBusy(false); }
+  };
+  const reject = async () => {
+    if (!rejectionText.trim()) { toast.error('Provide a reason for rejection.'); return; }
+    setBusy(true);
+    try {
+      const { error } = await rejectApplication(app.id, rejectionText.trim());
+      if (error) { toast.error(error); return; }
+      toast.success('Application rejected.');
+      onChanged(); onBack();
+    } finally { setBusy(false); }
+  };
+
+  const details = app.application_details || {};
+  const canAct = app.status === 'pending_review' || app.status === 'resubmitted';
+
+  return (
+    <OfficeCard>
+      <button type="button" onClick={onBack} className="text-xs font-semibold text-ent-bronze hover:underline">← Back to applications</button>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="font-bold text-ent-ink">{app.legal_name} — {OFFICE_LABEL[app.requested_office] ?? app.requested_office}</h2>
+        <span className={`text-[11px] font-bold px-2 py-1 rounded-full capitalize ${STATUS_BADGE[app.status] ?? 'bg-ent-pale text-ent-ink'}`}>{app.status.replace('_', ' ')}</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-ent-ink">
+        <p><span className="text-ent-muted">Preferred name:</span> {app.preferred_name || '—'}</p>
+        <p><span className="text-ent-muted">Email:</span> {app.contact_email}</p>
+        <p><span className="text-ent-muted">Phone:</span> {app.contact_phone || '—'}</p>
+        <p><span className="text-ent-muted">Title:</span> {app.professional_title || '—'}</p>
+        <p><span className="text-ent-muted">Category:</span> {app.profession_category || '—'}</p>
+        <p><span className="text-ent-muted">Credential status:</span> {app.credential_verification_status.replace('_', ' ')}</p>
+      </div>
+      {Object.keys(details).length > 0 && (
+        <div className="bg-ent-bg rounded-xl border border-ent-line p-3 text-sm text-ent-ink space-y-1">
+          {Object.entries(details).map(([k, v]) => v ? <p key={k}><span className="text-ent-muted capitalize">{k.replace(/_/g, ' ')}:</span> {String(v)}</p> : null)}
+        </div>
+      )}
+      <div>
+        <p className="text-sm font-semibold text-ent-ink mb-1">Submitted documents</p>
+        {documents.length === 0 ? <p className="text-sm text-ent-text">No documents submitted.</p> : (
+          <ul className="space-y-1">
+            {documents.map((d) => (
+              <li key={d.id}>
+                <button type="button" onClick={() => { void openDocument(d.storagePath); }} className="text-sm text-ent-bronze hover:underline">{d.fileName} ({d.documentType})</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {app.correction_request && (
+        <div className="bg-ent-amber/10 border border-ent-amber/30 rounded-xl p-3 text-sm text-ent-ink">
+          <span className="font-semibold">Last correction request:</span> {app.correction_request}
+        </div>
+      )}
+      {app.rejection_reason && (
+        <div className="bg-ent-rust/10 border border-ent-rust/30 rounded-xl p-3 text-sm text-ent-ink">
+          <span className="font-semibold">Rejection reason:</span> {app.rejection_reason}
+        </div>
+      )}
+      {canAct && (
+        <div className="space-y-3 pt-2 border-t border-ent-line">
+          <button type="button" onClick={() => { void approve(); }} disabled={busy} className="w-full py-2.5 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
+            Approve Application
+          </button>
+          <div className="flex gap-2">
+            <input value={correctionText} onChange={(e) => setCorrectionText(e.target.value)} placeholder="Describe what the applicant needs to correct…" className={`${inputCls} flex-1`} />
+            <button type="button" onClick={() => { void requestCorrections(); }} disabled={busy} className="px-3 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale whitespace-nowrap">Request Corrections</button>
+          </div>
+          <div className="flex gap-2">
+            <input value={rejectionText} onChange={(e) => setRejectionText(e.target.value)} placeholder="Reason for rejection…" className={`${inputCls} flex-1`} />
+            <button type="button" onClick={() => { void reject(); }} disabled={busy} className="px-3 py-2 rounded-xl border border-ent-rust text-ent-rust text-sm font-semibold hover:bg-ent-rust/10 whitespace-nowrap">Reject</button>
+          </div>
+        </div>
+      )}
+    </OfficeCard>
+  );
+}
+
+function ApplicationsReviewView({ organizationId }: { organizationId: string }) {
+  const [apps, setApps] = useState<ProfessionalApplicationRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [openAppId, setOpenAppId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [officeFilter, setOfficeFilter] = useState('');
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.from('professional_applications').select('*').eq('target_organization_id', organizationId).order('created_at', { ascending: false });
+    setApps((data ?? []) as unknown as ProfessionalApplicationRow[]);
+    setLoading(false);
+  }, [organizationId]);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const openApp = apps.find((a) => a.id === openAppId);
+  const filtered = apps.filter((a) =>
+    (!officeFilter || a.requested_office === officeFilter) &&
+    (!search.trim() || a.legal_name.toLowerCase().includes(search.toLowerCase()) || a.contact_email.toLowerCase().includes(search.toLowerCase())));
+
+  if (loading) return <Loader2 className="w-6 h-6 animate-spin text-ent-forest mx-auto" />;
+  if (openApp) return <ApplicationDetail app={openApp} onBack={() => setOpenAppId(null)} onChanged={() => { void refresh(); }} />;
+
+  return (
+    <OfficeCard>
+      <h2 className="font-bold text-ent-ink">Professional Applications &amp; Approvals</h2>
+      <div className="flex flex-wrap gap-2">
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name or email…" className={`${inputCls} flex-1 min-w-[180px]`} />
+        <select value={officeFilter} onChange={(e) => setOfficeFilter(e.target.value)} className={inputCls + ' sm:w-56'}>
+          <option value="">All offices</option>
+          <option value="caregiver">Enterprise Caregiver</option>
+          <option value="medical_professional">Medical Professional</option>
+          <option value="therapist">Therapist Professional</option>
+        </select>
+      </div>
+      {filtered.length === 0 ? (
+        <p className="text-sm text-ent-text">No applications match. New applications to your organization will appear here.</p>
+      ) : (
+        <ul className="space-y-2">
+          {filtered.map((a) => (
+            <li key={a.id}>
+              <button type="button" onClick={() => setOpenAppId(a.id)} className="w-full flex items-center justify-between gap-3 p-3 bg-ent-bg rounded-xl border border-ent-line hover:shadow-sm transition-all text-left">
+                <div className="min-w-0">
+                  <p className="font-semibold text-ent-ink truncate">{a.legal_name} <span className="text-ent-muted font-normal">— {OFFICE_LABEL[a.requested_office] ?? a.requested_office}</span></p>
+                  <p className="text-xs text-ent-muted truncate">{a.contact_email} · submitted {new Date(a.created_at).toLocaleDateString()}</p>
+                </div>
+                <span className={`text-[11px] font-bold px-2 py-1 rounded-full capitalize flex-shrink-0 ${STATUS_BADGE[a.status] ?? 'bg-ent-pale text-ent-ink'}`}>{a.status.replace('_', ' ')}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </OfficeCard>
   );
 }
@@ -767,6 +987,8 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
         <DashboardHome orgName={orgName} members={members} license={license} visits={visits} incidents={incidents} handoffs={handoffs} onNavigate={navigate} />
       ) : nav === 'overview' ? (
         <OrganizationOverviewView orgName={orgName} packageType={packageType} members={members} coveredCount={coveredCount} />
+      ) : nav === 'applications' ? (
+        <ApplicationsReviewView organizationId={organizationId} />
       ) : nav === 'staff' ? (
         <StaffCard orgId={organizationId} members={members} onChanged={() => { void refresh(); }} />
       ) : nav === 'patients' ? (

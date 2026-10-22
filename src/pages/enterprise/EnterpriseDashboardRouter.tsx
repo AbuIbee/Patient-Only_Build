@@ -334,7 +334,7 @@ export default function EnterpriseDashboardRouter({ businessWorkspace = false }:
         <Building2 className="w-6 h-6" />
         <h1 className="text-xl font-bold text-charcoal">Start an Organization</h1>
       </div>
-      <CreateOrgCard onCreated={() => { setShowCreateOrg(false); void refresh(); }} />
+      <CreateOrgCard onCreated={() => { void refresh(); }} />
       <button type="button" onClick={() => setShowCreateOrg(false)} className="text-sm text-medium-gray hover:text-charcoal underline">
         Back to my dashboard
       </button>
