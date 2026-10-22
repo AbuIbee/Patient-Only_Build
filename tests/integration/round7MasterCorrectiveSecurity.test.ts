@@ -507,3 +507,40 @@ describe('CLOSURE REGISTER — anon (unauthenticated) callers are rejected at th
     expect(Array.isArray(realBody)).toBe(true);
   });
 });
+
+// MASTER ENTERPRISE COMPLETION DIRECTIVE, Wave C — Therapist end-to-end
+// journey. DEFECT-THERAPIST-INVITED-PATIENT-MISSING-FROM-THERAPY-OFFICE
+// (CONFIRMED, fixed by migration 086): a therapist who accepted a real
+// caregiver_invite_therapist()/respond_to_therapist_invite() connection
+// (therapist_relationships) saw ZERO patients via get_my_staff_patients()
+// — the exact RPC the new /Professional/Therapy dashboard's "My Therapy
+// Patients" list reads — because that RPC only ever read
+// staff_patient_assignments, a separate, director-populated mechanism.
+describe('CLOSURE REGISTER — a therapist who accepted a direct patient-connection invitation now appears in get_my_staff_patients() (migration 086)', () => {
+  it('therapist with an accepted therapist_relationships row (no staff_patient_assignments row at all) sees that patient', async () => {
+    sql(`INSERT INTO therapist_relationships(therapist_id,patient_id,caregiver_id,relationship_type,is_active) VALUES('${ids.therapistT}','${ids.patientA}','${ids.caregiverA}','primary',true);`);
+    const [status, body] = (await rpc('get_my_staff_patients', {}, tok.therapistT)) as [number, Array<{ patient_id: string; organization_id: string | null; org_role: string }>];
+    expect(status).toBe(200);
+    const row = body.find((r) => r.patient_id === ids.patientA);
+    expect(row).toBeTruthy();
+    expect(row?.organization_id).toBeNull();
+    expect(row?.org_role).toBe('therapist');
+    sql(`DELETE FROM therapist_relationships WHERE therapist_id='${ids.therapistT}' AND patient_id='${ids.patientA}';`);
+  });
+
+  it('an org-assigned therapist (staff_patient_assignments) is unaffected and still wins over a duplicate therapist_relationships row for the same patient', async () => {
+    sql(`
+      INSERT INTO staff_patient_assignments(organization_id,user_id,patient_id,org_role,is_active,assigned_by) VALUES('${ORG}','${ids.therapistT}','${ids.patientA}','therapist',true,'${ids.directorA}');
+      INSERT INTO therapist_relationships(therapist_id,patient_id,caregiver_id,relationship_type,is_active) VALUES('${ids.therapistT}','${ids.patientA}','${ids.caregiverA}','primary',true);
+    `);
+    const [status, body] = (await rpc('get_my_staff_patients', {}, tok.therapistT)) as [number, Array<{ patient_id: string; organization_id: string | null }>];
+    expect(status).toBe(200);
+    const rows = body.filter((r) => r.patient_id === ids.patientA);
+    expect(rows).toHaveLength(1); // deduped, not two rows for the same patient
+    expect(rows[0].organization_id).toBe(ORG); // the org-scoped source won
+    sql(`
+      DELETE FROM staff_patient_assignments WHERE organization_id='${ORG}' AND user_id='${ids.therapistT}' AND patient_id='${ids.patientA}';
+      DELETE FROM therapist_relationships WHERE therapist_id='${ids.therapistT}' AND patient_id='${ids.patientA}';
+    `);
+  });
+});
