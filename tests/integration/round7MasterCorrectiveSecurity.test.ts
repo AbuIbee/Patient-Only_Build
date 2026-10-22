@@ -549,7 +549,17 @@ describe('CLOSURE REGISTER — a therapist who accepted a direct patient-connect
     sql(`DELETE FROM therapist_relationships WHERE therapist_id='${ids.therapistT}' AND patient_id='${ids.patientA}';`);
   });
 
-  it('an org-assigned therapist (staff_patient_assignments) is unaffected and still wins over a duplicate therapist_relationships row for the same patient', async () => {
+  // Codex MMA-CODEX-17 — "do not deduplicate distinct authorization
+  // relationships by patient ID alone." A prior version of this test
+  // (and of the RPC itself, migration 086) collapsed this exact case
+  // to one row, preferring the org-scoped source — silently correct
+  // for this specific pairing but, as Codex's broader finding showed,
+  // the wrong general rule (it would also have collapsed the SAME
+  // user's two separate org-assignment rows for the same patient under
+  // two DIFFERENT organizations, which are not redundant at all).
+  // Migration 094 stops deduplicating by patient_id; both legitimate,
+  // structurally distinct relationships now appear.
+  it('an org-assigned therapist (staff_patient_assignments) AND a direct therapist_relationships connection for the SAME patient are BOTH preserved, not collapsed to one (migration 094)', async () => {
     sql(`
       INSERT INTO staff_patient_assignments(organization_id,user_id,patient_id,org_role,is_active,assigned_by) VALUES('${ORG}','${ids.therapistT}','${ids.patientA}','therapist',true,'${ids.directorA}');
       INSERT INTO therapist_relationships(therapist_id,patient_id,caregiver_id,relationship_type,is_active) VALUES('${ids.therapistT}','${ids.patientA}','${ids.caregiverA}','primary',true);
@@ -557,8 +567,9 @@ describe('CLOSURE REGISTER — a therapist who accepted a direct patient-connect
     const [status, body] = (await rpc('get_my_staff_patients', {}, tok.therapistT)) as [number, Array<{ patient_id: string; organization_id: string | null }>];
     expect(status).toBe(200);
     const rows = body.filter((r) => r.patient_id === ids.patientA);
-    expect(rows).toHaveLength(1); // deduped, not two rows for the same patient
-    expect(rows[0].organization_id).toBe(ORG); // the org-scoped source won
+    expect(rows).toHaveLength(2);
+    expect(rows.some((r) => r.organization_id === ORG)).toBe(true);
+    expect(rows.some((r) => r.organization_id === null)).toBe(true);
     sql(`
       DELETE FROM staff_patient_assignments WHERE organization_id='${ORG}' AND user_id='${ids.therapistT}' AND patient_id='${ids.patientA}';
       DELETE FROM therapist_relationships WHERE therapist_id='${ids.therapistT}' AND patient_id='${ids.patientA}';
