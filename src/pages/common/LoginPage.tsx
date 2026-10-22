@@ -150,6 +150,77 @@ export function SignInForm({
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showForgot, setShowForgot] = useState(false);
+  // O10 — MASTER ENTERPRISE COMPLETION DIRECTIVE §4: TOTP MFA via
+  // Supabase Auth's built-in factors API. No vendor/factor-choice policy
+  // decision was needed to build this — TOTP is a self-contained,
+  // standard, no-third-party-data-sharing option, unlike SMS/email
+  // factors (which the historical owner-decision register's §O10 item
+  // correctly left open). A password-only sign-in that reaches AAL1
+  // while the account has a verified TOTP factor is NOT complete; the
+  // session is held here, unexposed to the rest of the app, until a
+  // real second-factor challenge is verified.
+  const [mfaChallenge, setMfaChallenge] = useState<{ factorId: string; challengeId: string } | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+
+  const completeLogin = async (userId: string, fallbackEmail: string) => {
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('first_name, last_name, role, phone, created_at, updated_at, must_change_password')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error('Profile lookup error:', profileError);
+      toast.error('Signed in, but your profile could not be loaded.');
+      return;
+    }
+
+    if (profile?.must_change_password) {
+      toast.success('Signed in — you need to set a new password first.');
+      window.location.reload();
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const { data: userData } = await supabase.auth.getUser();
+
+    dispatch({
+      type: 'SET_USER',
+      payload: {
+        id: userId,
+        email: userData.user?.email ?? fallbackEmail,
+        firstName: String(profile?.first_name ?? ''),
+        lastName: String(profile?.last_name ?? ''),
+        role: (profile?.role ?? 'patient') as UserRole,
+        phone: profile?.phone || undefined,
+        createdAt: profile?.created_at ?? now,
+        updatedAt: profile?.updated_at ?? now,
+      },
+    });
+    dispatch({ type: 'SET_ROLE', payload: (profile?.role ?? 'patient') as UserRole });
+    dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+    toast.success(profile?.first_name ? `Welcome back, ${profile.first_name}!` : 'Signed in successfully.');
+    onSuccess();
+  };
+
+  const verifyMfaCode = async () => {
+    if (!mfaChallenge) return;
+    if (!/^\d{6}$/.test(mfaCode.trim())) { toast.error('Enter the 6-digit code from your authenticator app.'); return; }
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.mfa.verify({
+        factorId: mfaChallenge.factorId, challengeId: mfaChallenge.challengeId, code: mfaCode.trim(),
+      });
+      if (error) { toast.error(error.message || 'Incorrect code.'); return; }
+      const userId = data.user?.id;
+      if (!userId) { toast.error('Verification succeeded but no session was returned.'); return; }
+      setMfaChallenge(null);
+      setMfaCode('');
+      await completeLogin(userId, email.trim().toLowerCase());
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -190,59 +261,29 @@ export function SignInForm({
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('first_name, last_name, role, phone, created_at, updated_at, must_change_password')
-        .eq('id', data.user.id)
-        .maybeSingle();
-
-      if (profileError) {
-        console.error('Profile lookup error:', profileError);
-        toast.error('Signed in, but your profile could not be loaded.');
+      // O10: if the account has an enrolled, verified TOTP factor, the
+      // password alone only reaches AAL1 — a real second-factor
+      // challenge is required before any profile/session data is ever
+      // dispatched into the app's state.
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aal && aal.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
+        const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
+        const totpFactor = factors?.totp?.find((f) => f.status === 'verified');
+        if (factorsError || !totpFactor) {
+          toast.error('This account requires two-factor verification, but no usable factor was found. Contact support.');
+          return;
+        }
+        const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: totpFactor.id });
+        if (challengeError || !challenge) {
+          toast.error(challengeError?.message || 'Could not start a two-factor challenge.');
+          return;
+        }
+        setMfaChallenge({ factorId: totpFactor.id, challengeId: challenge.id });
         return;
       }
 
-      // F01 remediation: this component previously dispatched SET_USER /
-      // SET_AUTHENTICATED directly on every successful sign-in, regardless
-      // of must_change_password — completely bypassing the forced-password
-      // gate App.tsx's restoreSession implements (that effect only runs
-      // from its own mount-time getSession() check and its onAuthStateChange
-      // handler doesn't listen for SIGNED_IN, so it never saw this login at
-      // all). Rather than duplicate the gate's logic here, a forced account
-      // reloads so App.tsx's existing, already-correct restoreSession path
-      // is the one that decides and renders the forced-change screen.
-      if (profile?.must_change_password) {
-        toast.success('Signed in — you need to set a new password first.');
-        window.location.reload();
-        return;
-      }
-
-      const now = new Date().toISOString();
-
-      dispatch({
-        type: 'SET_USER',
-        payload: {
-          id: data.user.id,
-          email: data.user.email ?? email.trim().toLowerCase(),
-          firstName: String(profile?.first_name ?? data.user.user_metadata?.first_name ?? ''),
-          lastName: String(profile?.last_name ?? data.user.user_metadata?.last_name ?? ''),
-          role: (profile?.role ?? 'patient') as UserRole,
-          phone: profile?.phone || undefined,
-          createdAt: profile?.created_at ?? data.user.created_at ?? now,
-          updatedAt: profile?.updated_at ?? now,
-        },
-      });
-
-      dispatch({ type: 'SET_ROLE', payload: (profile?.role ?? 'patient') as UserRole });
-      dispatch({ type: 'SET_AUTHENTICATED', payload: true });
-
-      toast.success(
-        profile?.first_name
-          ? `Welcome back, ${profile.first_name}!`
-          : 'Signed in successfully.',
-      );
-
-      onSuccess();
+      await completeLogin(data.user.id, email.trim().toLowerCase());
+      return;
     } catch (err) {
       console.error('Login error:', err);
       toast.error('Something went wrong while signing in.');
@@ -253,6 +294,38 @@ export function SignInForm({
 
   if (showForgot) {
     return <ForgotPasswordForm onBack={() => setShowForgot(false)} />;
+  }
+
+  if (mfaChallenge) {
+    return (
+      <div className="space-y-5">
+        <div className="text-center space-y-1">
+          <h2 className="text-2xl font-bold text-charcoal">Two-Factor Verification</h2>
+          <p className="text-medium-gray text-sm">Enter the 6-digit code from your authenticator app.</p>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); void verifyMfaCode(); }} className="space-y-5">
+          <Field label="Authentication Code" required>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
+              className={inp()}
+              autoFocus
+            />
+          </Field>
+          <button type="submit" disabled={loading} className="w-full py-3 bg-warm-bronze hover:bg-deep-bronze text-white rounded-xl font-semibold disabled:opacity-60 transition-colors">
+            {loading ? 'Verifying…' : 'Verify and Sign In'}
+          </button>
+        </form>
+        <p className="text-center text-sm text-medium-gray">
+          <button type="button" onClick={() => { setMfaChallenge(null); setMfaCode(''); }} className="text-warm-bronze font-semibold hover:text-deep-bronze">
+            ← Back to sign in
+          </button>
+        </p>
+      </div>
+    );
   }
 
   return (

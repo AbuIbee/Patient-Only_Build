@@ -282,9 +282,22 @@ auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
+# MASTER ENTERPRISE COMPLETION DIRECTIVE §4 (O10): enabled so the TOTP
+# MFA enrollment/challenge/verify flow built in LoginPage.tsx and
+# EnterpriseCaregiverDashboard.tsx's MfaSettingsPanel actually functions
+# locally. This repo file only configures the LOCAL dev stack (`supabase
+# start`) — it does not, by itself, change the hosted/production
+# project's configuration. Applying it there requires either the
+# Supabase dashboard or `supabase config push` with that project
+# linked, neither of which this session has access to or has done; see
+# the closure register's Wave D section. The line above this block
+# ("Multi-factor-authentication is available to Supabase Pro plan")
+# is itself an unresolved environmental dependency: before enabling
+# this on the hosted project, confirm that project's plan actually
+# supports MFA.
 [auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+enroll_enabled = true
+verify_enabled = true
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]

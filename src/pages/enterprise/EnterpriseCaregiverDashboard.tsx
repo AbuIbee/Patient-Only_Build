@@ -1780,6 +1780,99 @@ function AccountDeletionRequestPanel() {
   );
 }
 
+// O10 — MASTER ENTERPRISE COMPLETION DIRECTIVE §4: TOTP MFA
+// enrollment/unenrollment via Supabase Auth's built-in factors API. No
+// owner decision was needed for TOTP specifically (unlike SMS/email,
+// which stay correctly deferred, see the panel's own disclosure below)
+// — it requires no third-party vendor and no PII leaves this app.
+function MfaSettingsPanel() {
+  const [factors, setFactors] = useState<Array<{ id: string; status: string }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [enrolling, setEnrolling] = useState<{ factorId: string; qrCode: string; secret: string } | null>(null);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.auth.mfa.listFactors();
+    setFactors((data?.totp ?? []).map((f) => ({ id: f.id, status: f.status })));
+    setLoading(false);
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const startEnroll = async () => {
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' });
+      if (error || !data) { toast.error(error?.message || 'Could not start enrollment.'); return; }
+      setEnrolling({ factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret });
+    } finally { setBusy(false); }
+  };
+
+  const confirmEnroll = async () => {
+    if (!enrolling) return;
+    if (!/^\d{6}$/.test(code.trim())) { toast.error('Enter the 6-digit code from your authenticator app.'); return; }
+    setBusy(true);
+    try {
+      const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: enrolling.factorId });
+      if (challengeError || !challenge) { toast.error(challengeError?.message || 'Could not verify this code.'); return; }
+      const { error: verifyError } = await supabase.auth.mfa.verify({ factorId: enrolling.factorId, challengeId: challenge.id, code: code.trim() });
+      if (verifyError) { toast.error(verifyError.message); return; }
+      toast.success('Two-factor authentication is now enabled.');
+      setEnrolling(null);
+      setCode('');
+      void refresh();
+    } finally { setBusy(false); }
+  };
+
+  const unenroll = async (factorId: string) => {
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.mfa.unenroll({ factorId });
+      if (error) { toast.error(error.message); return; }
+      toast('Two-factor authentication disabled.');
+      void refresh();
+    } finally { setBusy(false); }
+  };
+
+  if (loading) return null;
+  const verified = factors.find((f) => f.status === 'verified');
+
+  return (
+    <div className="space-y-2 pt-3 border-t border-soft-taupe">
+      <p className="text-xs font-semibold text-medium-gray">Two-factor authentication</p>
+      {verified ? (
+        <div className="p-3 bg-soft-sage/10 rounded-xl border border-soft-sage/30 space-y-2">
+          <p className="text-sm text-charcoal">Enabled — an authenticator app code is required at every sign-in.</p>
+          <button type="button" onClick={() => { void unenroll(verified.id); }} disabled={busy} className="px-3 py-1.5 rounded-lg border border-soft-taupe text-charcoal text-xs font-semibold hover:bg-warm-ivory disabled:opacity-60">
+            Disable two-factor authentication
+          </button>
+        </div>
+      ) : enrolling ? (
+        <div className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe space-y-2">
+          <p className="text-xs text-charcoal">Scan this QR code with an authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code it shows.</p>
+          <img src={enrolling.qrCode} alt="Two-factor authentication QR code" className="w-40 h-40" />
+          <p className="text-[11px] text-medium-gray font-mono break-all">Manual entry key: {enrolling.secret}</p>
+          <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+          <div className="flex gap-2">
+            <button type="button" onClick={() => { void confirmEnroll(); }} disabled={busy} className="px-3 py-1.5 rounded-lg bg-warm-bronze hover:bg-deep-bronze text-white text-xs font-semibold disabled:opacity-60">
+              Confirm and enable
+            </button>
+            <button type="button" onClick={() => { setEnrolling(null); setCode(''); }} className="px-3 py-1.5 rounded-lg border border-soft-taupe text-charcoal text-xs font-semibold hover:bg-warm-ivory">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => { void startEnroll(); }} disabled={busy} className="px-3 py-1.5 rounded-lg border border-soft-taupe text-charcoal text-xs font-semibold hover:bg-warm-ivory disabled:opacity-60">
+          Enable two-factor authentication
+        </button>
+      )}
+      <p className="text-[11px] text-medium-gray">SMS and email-code factors remain deferred pending an owner decision (which factor, which vendor, and whether that vendor's data-handling terms are acceptable for a patient-identifying context) — see 34_ROUND7_CORRECTIVE_30ITEM_VALIDATION.md. An authenticator-app (TOTP) factor requires no third party and is available now.</p>
+    </div>
+  );
+}
+
 function SettingsView({ userName, onLogout }: { userName?: string; onLogout: () => Promise<void> }) {
   return (
     <Card>
@@ -1789,8 +1882,9 @@ function SettingsView({ userName, onLogout }: { userName?: string; onLogout: () 
         <LogOut className="w-4 h-4" /> Secure Logout
       </button>
       <PasswordChangeForm />
+      <MfaSettingsPanel />
       <AccountDeletionRequestPanel />
-      <p className="text-[11px] text-medium-gray">MFA and an active-sessions list are not yet available in this shell (see 34_ROUND7_CORRECTIVE_30ITEM_VALIDATION.md for the owner decision needed before building them). A password reset is also always available via the sign-in page's email link.</p>
+      <p className="text-[11px] text-medium-gray">An active-sessions list is not yet available in this shell. A password reset is also always available via the sign-in page's email link.</p>
     </Card>
   );
 }
