@@ -565,3 +565,67 @@ describe('CLOSURE REGISTER — a therapist who accepted a direct patient-connect
     `);
   });
 });
+
+// Codex MMA-CODEX-07 — HELP acknowledgment. CONFIRMED DEFECT (fixed,
+// migration 092): acknowledge_help_activation() gated on
+// has_patient_access(), whose self-branch (p_patient_id = auth.uid())
+// let a patient acknowledge their OWN HELP activation as if they were
+// staff. Now requires genuine current staff/professional/director
+// standing and explicitly rejects the patient themselves; also
+// idempotent (a second acknowledgment attempt never overwrites who
+// actually responded first).
+describe('CLOSURE REGISTER — HELP acknowledgment requires a genuine staff responder, never the patient themselves (migration 092)', () => {
+  it('the patient cannot acknowledge their own HELP activation', async () => {
+    const [createStatus] = await rpc('record_help_activation', { p_phone_dialed: '911' }, tok.patientA);
+    expect(createStatus).toBe(200);
+    const helpId = sql(`SELECT id FROM help_activations WHERE patient_id='${ids.patientA}' ORDER BY created_at DESC LIMIT 1;`);
+
+    const [status, body] = (await rpc('acknowledge_help_activation', { p_help_activation_id: helpId }, tok.patientA)) as [number, { message?: string }];
+    expect(status).toBeGreaterThanOrEqual(400);
+    expect(body.message).toContain('cannot acknowledge their own');
+
+    const ackState = sql(`SELECT staff_acknowledged_by IS NULL FROM help_activations WHERE id='${helpId}';`);
+    expect(ackState).toBe('t');
+
+    sql(`DELETE FROM help_activations WHERE id='${helpId}';`);
+  });
+
+  it('an entirely unrelated account cannot acknowledge it either', async () => {
+    const outsiderEmail = `r7mc-helpoutsider-${stamp}@local.test`;
+    const outsiderId = await authSignUp(outsiderEmail, PW);
+    sql(`UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${outsiderId}';`);
+    const outsiderTok = await login(outsiderEmail, PW);
+
+    const [, help] = (await rpc('record_help_activation', { p_phone_dialed: '911' }, tok.patientA)) as [number, { id: string }];
+    const [status, body] = (await rpc('acknowledge_help_activation', { p_help_activation_id: help.id }, outsiderTok)) as [number, { message?: string }];
+    expect(status).toBeGreaterThanOrEqual(400);
+    expect(body.message).toContain('Not authorized');
+
+    sql(`DELETE FROM help_activations WHERE id='${help.id}';`);
+    await authDeleteUser(outsiderId);
+  });
+
+  it('a genuine assigned caregiver CAN acknowledge, and a second acknowledgment attempt is an idempotent no-op that does not overwrite the first responder', async () => {
+    const [, help] = (await rpc('record_help_activation', { p_phone_dialed: '911' }, tok.patientA)) as [number, { id: string }];
+
+    const [firstStatus, firstBody] = (await rpc('acknowledge_help_activation', { p_help_activation_id: help.id }, tok.caregiverA)) as [number, { staff_acknowledged_by: string }];
+    expect(firstStatus).toBe(200);
+    expect(firstBody.staff_acknowledged_by).toBe(ids.caregiverA);
+
+    // A second, different legitimate responder (medicalA) calling it
+    // again must not steal attribution from the real first responder.
+    const [secondStatus, secondBody] = (await rpc('acknowledge_help_activation', { p_help_activation_id: help.id }, tok.medicalA)) as [number, { staff_acknowledged_by: string }];
+    expect(secondStatus).toBe(200);
+    expect(secondBody.staff_acknowledged_by).toBe(ids.caregiverA);
+
+    sql(`DELETE FROM help_activations WHERE id='${help.id}';`);
+  });
+
+  it('an active org director (narrowly, via is_org_director_for_patient) can also acknowledge', async () => {
+    const [, help] = (await rpc('record_help_activation', { p_phone_dialed: '911' }, tok.patientA)) as [number, { id: string }];
+    const [status, body] = (await rpc('acknowledge_help_activation', { p_help_activation_id: help.id }, tok.directorA)) as [number, { staff_acknowledged_by: string }];
+    expect(status).toBe(200);
+    expect(body.staff_acknowledged_by).toBe(ids.directorA);
+    sql(`DELETE FROM help_activations WHERE id='${help.id}';`);
+  });
+});
