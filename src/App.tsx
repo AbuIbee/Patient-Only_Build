@@ -9,7 +9,7 @@ import AboutUsPage from '@/pages/common/AboutUsPage';
 import BusinessLandingPage from '@/pages/common/BusinessLandingPage';
 import PrivacyPage from '@/pages/privacy/PrivacyPage';
 import { Toaster } from '@/components/ui/sonner';
-import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/types/supabase';
 import { cancelAllReminderNotifications } from '@/lib/reminderScheduler';
@@ -30,6 +30,7 @@ const PatientLayout = lazy(() => import('@/pages/patient/PatientLayout'));
 const EnterprisePatientRouter = lazy(() => import('@/pages/patient/EnterprisePatientRouter'));
 const AdminLayout = lazy(() => import('@/pages/admin/AdminLayout'));
 const EnterpriseDashboardRouter = lazy(() => import('@/pages/enterprise/EnterpriseDashboardRouter'));
+const ProfessionalEntryRouter = lazy(() => import('@/pages/professional/ProfessionalEntryRouter'));
 import './App.css';
 
 const PROFILE_COLUMNS =
@@ -95,23 +96,33 @@ function AppContent() {
   // recognized as the business route even when unauthenticated, landing
   // on BusinessLandingPage/LoginPage rather than the residential one.
   const isBusinessRoute = currentPath === '/business' || currentPath.startsWith('/business/');
-  // FIVE-OFFICE ENTERPRISE PLATFORM §3 — provisional, case-insensitive,
-  // pathname-normalized development-routing targets for the
-  // Admin/Director, Enterprise Caregiver, Medical Professional, and
-  // Therapist Professional offices. "DOMAIN DECISION NOT FINAL... Do
-  // not make domain ownership or DNS configuration a prerequisite for
-  // developing the five offices" — these are additional entry points
-  // into the SAME EnterpriseDashboardRouter resolver /business already
-  // uses, never a parallel routing/authorization system. The resolver
-  // reads the signed-in user's real organization_memberships row to
-  // decide which office renders, exactly as it already does for
-  // /business, so typing /Medical grants no one anything they did not
-  // already hold — "never allow users to grant themselves additional
-  // privileges by selecting a route." /Patient is deliberately NOT
-  // listed here: the existing patient experience already renders for
-  // any path once authenticated (via the role switch below) and needs
-  // no new special-casing, preserving it completely unchanged.
-  const isFiveOfficeRoute = /^\/(admin|caregiver|medical|therapy)(\/|$)/i.test(currentPath);
+  // P1 CORRECTIVE ORDER — "the owner has selected one centralized
+  // authentication entrance: /Professional." Supersedes the prior
+  // round's provisional per-office top-level paths, which all shared
+  // BusinessLandingPage as their unauthenticated pre-login experience —
+  // confirmed root cause of the reported "/admin, /caregiver, /medical,
+  // /therapy all show the same public caregiver registration page"
+  // defect: it was not a routing bug, it was the deliberate (now
+  // superseded) design decision to reuse that one marketing page as the
+  // shared pre-login screen for all four. /Professional/* now has its
+  // own dedicated sign-in page (ProfessionalLoginPage) and its own
+  // authorization resolver (ProfessionalOfficeResolver) that independently
+  // re-derives office access from real organization_memberships /
+  // Enterprise-patient-coverage data — never from the URL.
+  const isProfessionalRoute = /^\/Professional(\/|$)/i.test(currentPath);
+  // Backward compatibility (§9: "use appropriate compatibility redirects
+  // for prior office routes where safe") — the four OLD top-level paths
+  // now redirect to their /Professional/<Office> equivalent instead of
+  // rendering BusinessLandingPage. /Patient (singular, old top-level) is
+  // deliberately EXCLUDED here: it remains its own separate, unchanged
+  // entry point (EnterprisePatientRouter, reached via the ordinary
+  // residential/patient sign-in) — "do not redirect existing patient
+  // application users into an unrelated professional workspace."
+  // /Professional/Patient is a distinct, additional entry for the same
+  // underlying EnterprisePatientDashboard, reached only through the new
+  // centralized professional login.
+  const legacyOfficeAlias = currentPath.match(/^\/(admin|caregiver|medical|therapy)(\/|$)/i)?.[1]?.toLowerCase() ?? null;
+  const isLegacyOfficeRoute = legacyOfficeAlias !== null;
   // REMEDIATION B: ALSO handled by its own, separate, earlier early
   // return below — BEFORE checkingSession's render — so it never shows
   // the ordinary loading spinner either.
@@ -127,7 +138,22 @@ function AppContent() {
   // public routes, which still pass through the ordinary
   // checkingSession/renderContent path.
   const isPublicRoute =
-    isPublicPatientIntakeRoute || isPrivacyRoute || isAboutUsRoute || isBusinessRoute || isFiveOfficeRoute || isActivationRoute;
+    isPublicPatientIntakeRoute || isPrivacyRoute || isAboutUsRoute || isBusinessRoute || isProfessionalRoute || isLegacyOfficeRoute || isActivationRoute;
+
+  // Canonicalize a legacy office alias (/admin, /caregiver, /medical,
+  // /therapy) to its /Professional/<Office> equivalent BEFORE paint —
+  // useLayoutEffect, not useEffect, so ProfessionalOfficeResolver's own
+  // mount-time URL parse (a child rendered in the same commit) reads the
+  // canonical path, not the stale alias. A bookmarked old link still
+  // works; the address bar now reflects where the owner wants it to.
+  useLayoutEffect(() => {
+    if (!legacyOfficeAlias) return;
+    const officeSegment = { admin: 'Admin', caregiver: 'Caregiver', medical: 'Medical', therapy: 'Therapy' }[legacyOfficeAlias];
+    if (!officeSegment) return;
+    const rest = currentPath.slice(`/${legacyOfficeAlias}`.length); // preserve any nested sub-path
+    window.history.replaceState({}, '', `/Professional/${officeSegment}${rest}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const restoreUser = useCallback((profile: Pick<Database['public']['Tables']['profiles']['Row'],
     'id' | 'email' | 'first_name' | 'last_name' | 'role' | 'phone' | 'created_at' | 'updated_at' | 'mfa_enabled'>) => {
@@ -647,6 +673,18 @@ function AppContent() {
       return <PublicPatientIntakePage />;
     }
 
+    // P1 CORRECTIVE ORDER — the one centralized professional entrance.
+    // ProfessionalEntryRouter self-gates on auth state (its own dedicated
+    // sign-in page when unauthenticated, ProfessionalOfficeResolver once
+    // signed in) — nothing here decides office access. Legacy office
+    // aliases (/admin, /caregiver, /medical, /therapy) are canonicalized
+    // to /Professional/<Office> by the useLayoutEffect above BEFORE this
+    // renders, so by the time this check runs the address bar already
+    // reads /Professional/... for both entry forms.
+    if (isProfessionalRoute || isLegacyOfficeRoute) {
+      return <ProfessionalEntryRouter />;
+    }
+
     // Phase C item 5: an already-signed-in caregiver landing on /business
     // routes straight to /caregiver — every other visitor (unauthenticated,
     // or signed in as a different role) sees the marketing page itself,
@@ -654,7 +692,12 @@ function AppContent() {
     // state.currentView === 'login' signal the ordinary unauthenticated
     // branch below already uses) — otherwise BusinessLandingPage's own
     // "Caregiver Sign In" button would have nowhere to actually route to.
-    if (isBusinessRoute || isFiveOfficeRoute) {
+    // Unchanged by the P1 Corrective Order — /business keeps its own
+    // established residential/no-org fallback behavior exactly as before
+    // ("provided this does not break working residential or
+    // organizational flows" — redirecting it was judged not safe to do
+    // this round; see the delivery report).
+    if (isBusinessRoute) {
       if (state.isAuthenticated && state.selectedRole === 'caregiver') {
         // P1 OWNER-VISIBLE DASHBOARD DELIVERY — businessWorkspace=true
         // tells the router this is the explicit Business entry point,
@@ -664,10 +707,6 @@ function AppContent() {
         // authenticated-switch render of this same component further
         // below (reached from any other route) omits the prop, so
         // ordinary residential caregivers elsewhere are unaffected.
-        // /Admin, /Caregiver, /Medical and /Therapy all resolve through
-        // this exact same call — the router decides which office
-        // actually renders from the signed-in user's real organization
-        // role, never from which of these paths was typed.
         return <EnterpriseDashboardRouter businessWorkspace />;
       }
       if (!state.isAuthenticated && state.currentView === 'login') {

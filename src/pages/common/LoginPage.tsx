@@ -131,7 +131,12 @@ function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
   );
 }
 
-function SignInForm({
+// FIVE-OFFICE ENTERPRISE PLATFORM — exported so ProfessionalLoginPage.tsx can
+// reuse this exact, already-proven sign-in flow (including the
+// must_change_password reload gate and SET_USER dispatch) rather than
+// duplicating Supabase Auth integration code — "do not build new credential
+// storage... use the existing supported Supabase Auth integration."
+export function SignInForm({
   onBack,
   onSuccess,
 }: {

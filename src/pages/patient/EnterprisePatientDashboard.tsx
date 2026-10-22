@@ -25,6 +25,7 @@ import {
   Users, FileText, Settings as SettingsIcon, SlidersHorizontal, Loader2, CheckCircle2,
 } from 'lucide-react';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from '@/pages/enterprise/EnterpriseOfficeShell';
+import { useOfficeUrlSync } from '@/pages/professional/useOfficeUrlSync';
 import {
   getMyEnterpriseOrganization, getMyEnterpriseCareTeam, getMyAppointments, getMyVisits,
   type MyEnterpriseOrganization, type MyEnterpriseCareTeamMember, type MyAppointment, type MyVisit,
@@ -67,7 +68,14 @@ function greeting(): string {
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
 }
 
-export default function EnterprisePatientDashboard() {
+const PATIENT_NAV_KEYS = NAV_ITEMS.map((n) => n.key) as PatientNavKey[];
+
+// basePath defaults to null (no URL sync) so the existing /Patient entry
+// (EnterprisePatientRouter) keeps its exact established behavior
+// unchanged — only an explicit basePath (passed by
+// ProfessionalOfficeResolver.tsx under /Professional/Patient) turns on
+// nested-route URL sync (P1 CORRECTIVE ORDER §7).
+export default function EnterprisePatientDashboard({ basePath = null }: { basePath?: string | null } = {}) {
   const { state, dispatch } = useApp();
   // CONFIRMED DEFECT, found during live verification: `state.patient` is
   // only ever populated by PatientLayout's own mount-time fetch — a
@@ -88,7 +96,7 @@ export default function EnterprisePatientDashboard() {
   const [carePlans, setCarePlans] = useState<PatientCarePlan[]>([]);
   const [tasks, setTasks] = useState<{ id: string; title: string; status: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [nav, setNav] = useState<PatientNavKey>('dashboard');
+  const [nav, setNav] = useOfficeUrlSync<PatientNavKey>(basePath, PATIENT_NAV_KEYS, 'dashboard');
 
   const refresh = useCallback(async () => {
     setLoading(true);

@@ -43,6 +43,7 @@ import { getMyCredentials, type CaregiverCredential } from '@/services/enterpris
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
+import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
 type ClinicalRole = Extract<StaffRole, 'medical_professional' | 'therapist'>;
 
@@ -105,20 +106,27 @@ const PATIENT_PICKER_DESTINATIONS: ClinicalNavKey[] = [
   'patients', 'schedule', 'assessments', 'diagnoses', 'medications', 'careplan', 'documentation', 'goals', 'documents',
 ];
 
-export default function ClinicalOfficeDashboard({ filterRole }: { filterRole: ClinicalRole }) {
+// basePath defaults to null (no URL sync) so every EXISTING caller
+// (/business, the old top-level /Medical and /Therapy) keeps its exact
+// established behavior unchanged — only an explicit basePath (passed by
+// ProfessionalOfficeResolver.tsx under /Professional/Medical or
+// /Professional/Therapy) turns on nested-route URL sync (P1 CORRECTIVE
+// ORDER §7).
+export default function ClinicalOfficeDashboard({ filterRole, basePath = null }: { filterRole: ClinicalRole; basePath?: string | null }) {
   const { state, dispatch } = useApp();
   const isTherapy = filterRole === 'therapist';
   const navItems = isTherapy ? THERAPY_NAV_ITEMS : MEDICAL_NAV_ITEMS;
   const navGroups = isTherapy ? THERAPY_NAV_GROUPS : MEDICAL_NAV_GROUPS;
   const officeBadge = isTherapy ? 'THERAPY OFFICE' : 'CLINICAL OFFICE';
   const roleLabel = isTherapy ? 'Therapist' : 'Medical Professional';
+  const navKeys = navItems.map((n) => n.key) as ClinicalNavKey[];
 
   const [myOrg, setMyOrg] = useState<MyOrganization | null>(null);
   const [patients, setPatients] = useState<StaffPatient[]>([]);
   const [credentials, setCredentials] = useState<CaregiverCredential[]>([]);
   const [commsOverview, setCommsOverview] = useState<OrgCommunicationsOverview | null>(null);
   const [loading, setLoading] = useState(true);
-  const [nav, setNav] = useState<ClinicalNavKey>('dashboard');
+  const [nav, setNav] = useOfficeUrlSync<ClinicalNavKey>(basePath, navKeys, 'dashboard');
   const [openPatient, setOpenPatient] = useState<{ orgId: string; patientId: string; tab?: TabKey } | null>(null);
 
   const refresh = useCallback(async () => {

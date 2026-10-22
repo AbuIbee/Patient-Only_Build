@@ -75,52 +75,57 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 // history.pushState (this app's existing manual-routing convention —
 // see CLAUDE.md), so a reload or a shared deep link lands on the same
 // screen instead of always resetting to the dashboard.
-function parseEnterprisePath(): { nav: NavItem; openPatient: string | null } {
-  const segments = window.location.pathname.split('/').filter(Boolean); // e.g. ['business','patients','<id>']
-  const sub = segments[1];
-  const sub2 = segments[2];
+// P1 CORRECTIVE ORDER §7 — `root` defaults to '/business' (byte-for-byte
+// the prior hardcoded behavior) so every EXISTING caller is completely
+// unaffected; ProfessionalOfficeResolver.tsx passes '/Professional/Caregiver'
+// so nested routes resolve/sync under the new centralized entry instead.
+function parseEnterprisePath(root: string): { nav: NavItem; openPatient: string | null } {
+  const rootSegments = root.split('/').filter(Boolean).length; // '/business' -> 1, '/Professional/Caregiver' -> 2
+  const segments = window.location.pathname.split('/').filter(Boolean);
+  const sub = segments[rootSegments];
+  const sub2 = segments[rootSegments + 1];
   if (sub === 'patients' && sub2) return { nav: 'patients', openPatient: sub2 };
   if (sub && NAV_ITEMS.some((n) => n.key === sub)) return { nav: sub as NavItem, openPatient: null };
   return { nav: 'dashboard', openPatient: null };
 }
 
-export default function EnterpriseCaregiverDashboard() {
+export default function EnterpriseCaregiverDashboard({ basePath = '/business' }: { basePath?: string } = {}) {
   const { state, dispatch } = useApp();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string>('');
   const [patients, setPatients] = useState<StaffPatient[]>([]);
   const [loading, setLoading] = useState(true);
-  const [nav, setNav] = useState<NavItem>(() => parseEnterprisePath().nav);
+  const [nav, setNav] = useState<NavItem>(() => parseEnterprisePath(basePath).nav);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [openPatient, setOpenPatient] = useState<string | null>(() => parseEnterprisePath().openPatient);
+  const [openPatient, setOpenPatient] = useState<string | null>(() => parseEnterprisePath(basePath).openPatient);
 
   // Keeps the URL in sync so reload/back/forward/shared links land on
   // the same screen, instead of defaulting back to the dashboard.
   const navigateTo = useCallback((nextNav: NavItem, patientId: string | null = null) => {
-    const path = patientId ? `/business/patients/${patientId}` : `/business/${nextNav}`;
+    const path = patientId ? `${basePath}/patients/${patientId}` : `${basePath}/${nextNav}`;
     if (window.location.pathname !== path) window.history.pushState({}, '', path);
     setNav(nextNav);
     setOpenPatient(patientId);
-  }, []);
+  }, [basePath]);
 
   useEffect(() => {
     const onPopState = () => {
-      const parsed = parseEnterprisePath();
+      const parsed = parseEnterprisePath(basePath);
       setNav(parsed.nav);
       setOpenPatient(parsed.openPatient);
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, []);
+  }, [basePath]);
 
-  // Canonicalize a bare /business (no sub-path) to /business/dashboard
+  // Canonicalize a bare basePath (no sub-path) to `${basePath}/dashboard`
   // without adding an extra back-stack entry, so the URL always
   // reflects a real nav destination once the shell has mounted.
   useEffect(() => {
-    if (window.location.pathname === '/business') {
-      window.history.replaceState({}, '', '/business/dashboard');
+    if (window.location.pathname.toLowerCase() === basePath.toLowerCase()) {
+      window.history.replaceState({}, '', `${basePath}/dashboard`);
     }
-  }, []);
+  }, [basePath]);
 
   const load = useCallback(async () => {
     setLoading(true);

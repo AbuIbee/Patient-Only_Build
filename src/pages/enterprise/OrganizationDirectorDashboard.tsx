@@ -26,6 +26,7 @@ import {
 } from '@/services/organizationDirectorOpsService';
 import OrganizationBillingPage from './OrganizationBillingPage';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
+import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
 const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
 
@@ -694,7 +695,14 @@ function OrganizationSettingsView({ orgName, packageType, onOpenBilling }: { org
   );
 }
 
-export default function OrganizationDirectorDashboard({ organizationId }: { organizationId: string }) {
+const DIRECTOR_NAV_KEYS = DIRECTOR_NAV_ITEMS.map((n) => n.key) as DirectorNavKey[];
+
+// basePath defaults to null (no URL sync) so every EXISTING caller
+// (/business, the old top-level /Admin) keeps its exact established
+// behavior unchanged — only an explicit basePath (passed by
+// ProfessionalOfficeResolver.tsx under /Professional/Admin) turns on
+// nested-route URL sync (P1 CORRECTIVE ORDER §7).
+export default function OrganizationDirectorDashboard({ organizationId, basePath = null }: { organizationId: string; basePath?: string | null }) {
   const { state, dispatch } = useApp();
   const [license, setLicense] = useState<OrgLicense | null>(null);
   const [members, setMembers] = useState<(OrgMembershipRow & { firstName: string; lastName: string; email: string })[]>([]);
@@ -705,7 +713,7 @@ export default function OrganizationDirectorDashboard({ organizationId }: { orga
   const [incidents, setIncidents] = useState<OrgIncidentReport[]>([]);
   const [handoffs, setHandoffs] = useState<OrgShiftHandoff[]>([]);
   const [loading, setLoading] = useState(true);
-  const [nav, setNav] = useState<DirectorNavKey>('dashboard');
+  const [nav, setNav] = useOfficeUrlSync<DirectorNavKey>(basePath, DIRECTOR_NAV_KEYS, 'dashboard');
   const [billingOpen, setBillingOpen] = useState(false);
 
   const refresh = useCallback(async () => {
