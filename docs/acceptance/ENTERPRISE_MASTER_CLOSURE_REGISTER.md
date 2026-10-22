@@ -145,7 +145,7 @@ All findings in `44_MASTERCORRECTIVE2_FINDING_REGISTER.md` (SEC-03 follow-ups ×
 |---|---|---|
 | 1 | `9063602e88a211505aeb9905a7dc862f988f0b80` | Register opened; migration 084 (`remove_org_member` audit logging) + regression test |
 | 2 | `393f5aed` | §2a migration/RLS/RPC audit + migration 085 (anon-execute revoke) + regression test; §2b cross-office communication matrix test suite (`crossOfficeCommunicationMatrix.test.ts`, 23 tests) + W09/N11 downgrade; §3 scope-correction disclosure; owner decision items 5–6 |
-| 3 | *(this update)* | §2c five-office navigation E2E (`e2e_five_office_navigation_acceptance.spec.ts`, 4 self-contained specs, 60/60 destinations now "renders without crashing"-verified); §2d account-deletion finding recorded |
+| 3 | `49d0c6e4` | §2c five-office navigation E2E (`e2e_five_office_navigation_acceptance.spec.ts`, 4 self-contained specs, 60/60 destinations now "renders without crashing"-verified); §2d account-deletion finding recorded |
 
 ## 9. Final status for this register (this checkpoint only)
 
