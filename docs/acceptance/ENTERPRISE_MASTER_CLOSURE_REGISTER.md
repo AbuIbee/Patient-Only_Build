@@ -1,6 +1,6 @@
 # Enterprise Master Closure Register
 
-Status date: 2026-10-22. Branch `remediation/mymemoria-functional-001`. This register was opened at HEAD `0195489bb29985f8ea9ec1e76ce43b26e92c49b0` and reports its first checkpoint at commit `9063602e88a211505aeb9905a7dc862f988f0b80` (pushed). This update continues from that checkpoint under the same register — no restart, no re-discovery, no recreated reports.
+Status date: 2026-10-22. Branch `remediation/mymemoria-functional-001`. This register was opened at HEAD `0195489bb29985f8ea9ec1e76ce43b26e92c49b0` and has reported 9 checkpoints (see §8), most recently `d448c079` (pushed), continuing under the FINAL ENGINEERING CLOSURE AND ACCEPTANCE PACKAGE directive with baseline `10966dcf`. No restart, no re-discovery, no recreated reports at any point.
 
 ## 0. Provenance and methodology (read this before any row below)
 
@@ -79,6 +79,75 @@ Searched `supabase/functions/` and `src/services/` for any account-deletion mech
 
 **Enterprise Patient coverage-revocation journey — verified by inspection, not re-tested**: `is_my_enterprise_coverage_active()` (the gate `ProfessionalOfficeResolver` uses to decide whether `/Professional/Patient` is offered at all) is a pure, zero-logic delegation to `is_patient_enterprise_covered()` (`SELECT public.is_patient_enterprise_covered(auth.uid())`, migration 050) — the same authoritative entitlement function the historical F01 row's `tests/e2e_round7_f01_coverage_states.spec.ts` already live-tested across every coverage-state transition (covered → ended → license-inactive). Since this checkpoint introduced no new logic between the gate and that already-exhaustively-tested function, re-running that journey would re-confirm existing, unregressed behavior rather than test anything new — correctly categorized here as historical non-regression, not freshly executed evidence, per the mandatory distinction.
 
+## 2f. Director conversation participation — RESOLVED (FINAL ENGINEERING CLOSURE §1.A)
+
+Owner decision item 6 (as it stood at checkpoint 4) asked whether Director should be admitted to the communication matrix at all. The FINAL ENGINEERING CLOSURE directive answered this explicitly: implement it narrowly. Migration `087_r14_director_conversation_participation.sql` adds `is_org_director_for_patient()` — true only for an active director of the SPECIFIC org ACTIVELY covering the SPECIFIC patient, re-checked live on every call. `is_authorized_for_patient()` itself is untouched, so every other caller (clinical reads/writes) is unaffected and the least-privilege property the historical C02 test praised is preserved for everything except this one, narrowly-scoped messaging path.
+
+Also fixed in the same migration: `send_message()` never re-validated CURRENT authorization at send time (only historical `conversation_participants` row existence) — a participant of ANY type whose authorization had since been revoked could still send new messages into an old conversation. Now re-validated exactly like the read paths.
+
+`get_patient_care_circle()` (the generic "Select recipients" picker) extended to surface the covering org's active director too, so the generic composer — not just W09's dedicated button — can address one.
+
+**Verified live**: the cross-office matrix (§2b) is now a true 5x5 grid — 24 of 25 cells executed and passing (Patient-Patient diagonal remains structurally N/A), including the Director diagonal (director-to-director, two distinct accounts). Two new negative tests prove the mechanism's narrowness, not just its existence: a director of an unrelated org is still rejected (both as recipient and reader), and a director loses access the instant their org's coverage of the patient ends — re-tested on read AND send, and confirmed restored when coverage resumes. W09/N11 are restored from PARTIAL back toward PASS for the mechanism itself (see the W09-specific caveat in §2b's history — the underlying RPC now succeeds for a real supervisor-contact send; a fresh browser click-through of the W09 button specifically was not separately re-run this checkpoint, so the UI-level restoration is inferred from the now-passing RPC call it makes, not independently re-screenshotted).
+
+Integration suite: 59/59 (crossOfficeCommunicationMatrix.test.ts grew from 23 to 29 tests). Commit `4c387c8c`.
+
+## 2g. Account deletion and lifecycle — RESOLVED, with one sub-question still explicitly open (FINAL ENGINEERING CLOSURE §1.B)
+
+No account-deletion, deactivation, or retention requirement existed anywhere in the codebase or historical record before this checkpoint (confirmed again by searching `supabase/functions/` and `src/services/`). Per the directive's own explicit instruction to implement only safe independent prerequisites where policy is undecided, migration `088_r15_account_deletion_lifecycle.sql` adds a full request → review → safe-deactivation lifecycle:
+
+- `account_deletion_requests` (RLS enabled, zero client write policies — RPC-only, same pattern as `professional_applications`).
+- `request_account_deletion()` is self-service only — there is no parameter naming a different target, which structurally prevents cross-tenant/unauthorized deletion at the function signature level, not merely by a role check.
+- `platform_owner_review_account_deletion()` on approval performs a SAFE, REVERSIBLE deactivation: every active organization membership, staff-patient assignment, and therapist relationship is revoked and individually audited into `account_management_audit`. It never deletes `auth.users`, `profiles`, or any clinical record the account authored — verified live: an authored `patient_notes` row survives deactivation byte-for-byte.
+- Required negative tests all pass: unauthorized/cross-tenant deletion (structurally impossible), privilege escalation (non-owner review attempt rejected), duplicate requests (rejected while one is open), re-deciding an already-decided request (rejected), wrong-user cancellation (rejected), post-deactivation access (functionally revoked — `get_my_staff_patients()` returns empty for the deactivated account, not merely a status flag).
+
+Self-service UI in the Caregiver office's Settings & Account (the reference implementation — not yet replicated to the other 4 offices' Settings views, disclosed as remaining UI work, not claimed done everywhere); Platform Owner review queue in `PlatformOwnerAdminPage.tsx`.
+
+**Explicitly still open (owner decision item 7, new)**: whether this application should ever perform irreversible erasure (hard-deleting `auth.users`/`profiles`, or truly anonymizing authored clinical records), and whether a service-role Edge Function should be built to also disable sign-in outright (a plain SQL RPC cannot call the Supabase Auth Admin API). Not guessed; not built.
+
+Integration suite: `tests/integration/accountDeletionLifecycle.test.ts`, 9/9. No real user account was deleted by any of this — every account in the test suite is a disposable fixture. Commit `d117b20c`.
+
+## 2h. Professional credential verification — technical gate RESOLVED; substantive standard remains explicitly BLOCKED (FINAL ENGINEERING CLOSURE §1.C)
+
+**CONFIRMED FINDING — DEFECT-CREDENTIAL-VERIFICATION-STATUS-NEVER-ENFORCED (fixed, migration 089).** `professional_applications.credential_verification_status` existed since migration 083 with a rich 8-value CHECK constraint, but no RPC anywhere ever read, wrote, or gated on it — an application could reach `status='approved'` (full active membership, full privileges) while its credential sat at the default `'submitted'` value forever, genuinely unverified.
+
+Migration `089_r16_credential_verification_gate.sql` separates the four phases the directive names, where only two existed: (1) document submission and (2) administrative review were already real; (3) independently verified authenticity is new — `record_credential_verification()` is a distinct, separately-audited decision (reviewer identity, timestamp, and a mandatory evidence description all preserved in new `credential_verified_by`/`credential_verified_at`/`credential_verification_evidence` columns) answering "is the credential itself genuine," not "is this application complete"; (4) final authorization (`director_approve_application()`) now REFUSES to run at all for the three clinical/caregiver offices until (3) has recorded `'independently_verified'`. An unverified professional cannot become an active member at all, and therefore cannot exercise any privilege of that office — verified live: approval attempted before verification is rejected and grants zero membership; after `record_credential_verification('independently_verified', <evidence>)`, the identical approval call succeeds.
+
+Director applications are explicitly exempted (no clinical credential to verify; a different, Platform-Owner-only approval path already exists) — `record_credential_verification()` refuses to apply to one, verified live.
+
+**Not invented, and remaining explicitly BLOCKED (owner decision item 5, narrowed)**: WHAT constitutes sufficient evidence for "independently verified" — a licensing-board lookup, a document review, a third-party verification service — is a substantive standard this migration does not prescribe. `p_evidence_reference` is free text a human reviewer supplies describing what they actually did; the technical control guarantees something was recorded by an identified reviewer at an identified time, never that it meets any particular regulatory bar. Per the directive's own acceptance criteria for this item: the technical control is now a real PASS; the substantive standard remains BLOCKED, not resolved, and is not conflated with the technical PASS above it.
+
+Wired into the Director review center: a credential-verification control gates the Approve button (disabled with an explanatory tooltip until a decision is recorded). Integration suite: `tests/integration/credentialVerificationGate.test.ts`, 7/7. Commit `cd3e6349`.
+
+## 2i. Supabase authorization re-audit through migration 090 (FINAL ENGINEERING CLOSURE §2)
+
+Re-running the anon-execute scan from §2a against the schema as it now stands (through migration 089) found **7 more residual anon-executable functions**: `caller_is_expired_companion`, `caller_is_temp_user_program`, `handle_new_user`, `sync_profile_email_from_auth`, `enforce_patient_safety_plan_provenance`, `enforce_task_status_actor`, `sync_phone_normalized`. Root cause, confirmed by inspecting each one's actual ACL: none of these ever had `anon`'s own separate grant to revoke — migration 085's per-function `REVOKE ... FROM anon` was a no-op for them, because they were inheriting EXECUTE through the un-revoked `PUBLIC` pseudo-role grant instead (their own original migrations never included a `REVOKE FROM PUBLIC` line at all).
+
+Impact, confirmed live: 5 of the 7 are `RETURNS TRIGGER` functions — PostgREST structurally refuses to expose a trigger-return function as a callable RPC at all (confirmed: a direct POST to `/rest/v1/rpc/handle_new_user` returns `404 PGRST202`, "could not find the function"). These were never reachable regardless of the ACL. The remaining 2 (`caller_is_expired_companion`, `caller_is_temp_user_program`) are boolean helpers, confirmed live to return `false` harmlessly for an anon caller — no exploitable exposure found, same low-risk profile as §2a's original findings, closed anyway for the same defense-in-depth reasoning (never rely on "happens to return false today" as a substitute for the grant not existing).
+
+Migration `090_r17_closure_register_remaining_anon_grants.sql` closes all 7. A **third, exhaustive re-sweep** after applying it found zero remaining anon-executable functions anywhere in the `public` schema. The fixed-name regression test from §2a (migration 085) is replaced with a permanent, exhaustive SQL-level guard — `count(*) FROM pg_proc ... WHERE has_function_privilege('anon', p.oid, 'EXECUTE')` asserted `0` — so a *future* migration that forgets `REVOKE FROM PUBLIC` is caught automatically on the next test run, not only by another manual re-sweep.
+
+Other items under this directive's §2 explicit checklist:
+- **Atomic membership revocation and audit writes**: re-confirmed — `remove_org_member()` (migration 084) and `platform_owner_review_account_deletion()` (migration 088) both perform their membership/assignment updates and their audit INSERTs inside the same implicit function transaction; a raised exception anywhere in either rolls back the whole thing. No new finding.
+- **Default privileges for all relevant function-creating roles**: `ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM anon` (migration 085) confirmed still in effect — every function created by migrations 086 through 090 inherited the correction automatically; none needed a manual per-function anon revoke (migrations 087-090 DO still include explicit `REVOKE EXECUTE ... FROM anon` lines per-function as defense-in-depth/documentation, but the default-privilege fix means this is now belt-and-suspenders, not the only thing standing between a new function and an anon grant).
+- **Legitimate RPC/application workflows after permission tightening**: confirmed via the full existing + new test suites (76 integration, 377 unit) and a `tsc`/lint/build pass after every migration in this checkpoint — zero regressions.
+- **New Therapist relationship authorization**: covered in §2e (migration 086) and reconfirmed passing.
+- **Cross-tenant isolation and negative access cases**: reconfirmed via §2b/§2f's matrix tests (unrelated-org outsider and unrelated-org director both still rejected in every direction) and §2g/§2h's new negative tests.
+- **Migration upgrade compatibility with the actual applied database state**: every migration this checkpoint (084 through 090) is a pure addition — no existing migration file was edited, consistent with "do not rewrite applied migrations." A full fresh-install replay of migrations 001→090 from an empty database was **not independently re-executed this checkpoint** (the local stack reflects sequential incremental application, matching how every migration was built and verified originally) — this is disclosed as not done, not claimed as a fresh-install PASS.
+
+Integration: 76/76. Unit: 377/377. `tsc`/lint clean. Commits `6d386ca3` (unrelated O10 work landed between 089 and 090) and `d448c079`.
+
+## 2j. O10 — TOTP multi-factor authentication (FINAL ENGINEERING CLOSURE §4)
+
+The directive required not omitting O09/O10 merely because an earlier abbreviated table excluded them. O10 names two distinct capabilities: MFA, and an active-sessions list. MFA's sub-question — "which factor, which vendor" — has one answer that needs no vendor decision at all: TOTP (RFC 6238, Google Authenticator/Authy-compatible) is self-contained, open-standard, and no patient-identifying data ever leaves this app, unlike SMS/email factors (which stay correctly deferred — those genuinely do need an owner's vendor/data-handling decision).
+
+Implemented using Supabase Auth's built-in TOTP factors API — no new backend RPC needed, no regulatory/vendor decision guessed: `MfaSettingsPanel` (Caregiver Settings, the reference implementation) for enroll (QR + manual key) → confirm (real challenge/verify round trip) → unenroll; `LoginPage.tsx`'s `SignInForm` checks the authenticator assurance level after password sign-in and holds the session at an unexposed code-entry screen (no profile/session data dispatched into app state) until a real second-factor challenge is verified via `supabase.auth.mfa.challenge`/`verify`.
+
+**Root-caused why this didn't work at all against the local stack**: `supabase/config.toml` ships with `auth.mfa.totp.enroll_enabled`/`verify_enabled = false` by default (confirmed via a live GoTrue call returning `error_code: "mfa_totp_enroll_not_enabled"`). Flipped both to `true` in the repo's config file. **This only configures the LOCAL dev stack.** Enabling MFA on the actual hosted/production Supabase project requires a separate action (the Supabase dashboard, or `supabase config push` with that project linked) this session has no access to — and, before that, confirming the project's plan actually supports MFA at all (the config file's own comment: *"Multi-factor-authentication is available to Supabase Pro plan"*). Both are recorded as explicit environmental dependencies in §9, not resolved here. A full local live round-trip (enroll → real TOTP code computed from the returned secret → challenge → verify → re-login requiring the code → wrong-code rejection) was attempted against the live GoTrue API directly and reproduced the exact `mfa_totp_enroll_not_enabled` block — confirming the only blocker is this config flag, not the application code, but the config flag could not be hot-reloaded into the already-running local auth container without a stack restart this session judged too risky to attempt blind (multiple unrelated Supabase stacks share this machine; `supabase status`/`supabase start` are themselves blocked by an unrelated, pre-existing `.env.local` parsing error not touched here).
+
+Active-sessions list (O10's other half) remains unbuilt — this is undone engineering work, not a policy question, and is not conflated with the part that is done.
+
+`tsc`/lint/build clean. Existing suite (76 integration + 377 unit) unaffected. Commit `6d386ca3`.
+
 ## 3. Professional governance system (Round 2) against the Round 3 directive's lifecycle requirements
 
 Migration `083_r10_professional_application_approval_system.sql` implements all 9 named lifecycle states (`draft, submitted→pending_review, info_required, resubmitted, approved, rejected, withdrawn, suspended, revoked` — `draft`/`submitted` collapse to one `pending_review` entry state since the form has no separate client-side draft-save step; this is a disclosed simplification, not a missing state, since nothing in the directive requires a distinct persisted draft row before submission).
@@ -108,14 +177,15 @@ Migration `083_r10_professional_application_approval_system.sql` implements all 
 
 ## 4. Owner decision register (carried forward + one addition)
 
-Unchanged from `41_MASTERCORRECTIVE_OWNER_DECISION_REGISTER.md` — no new evidence this round changes items 1–4:
+Items 1–3 unchanged from `41_MASTERCORRECTIVE_OWNER_DECISION_REGISTER.md` — no new evidence this checkpoint changes them. Item 4 (O10) is now partially resolved by engineering (see §2j) rather than purely owner-blocked.
 
 1. **W13 — Offline Drafting.** Full analysis on record at `35_ROUND7_CORRECTIVE_W13_DECISION.md`. Still OPEN pending the owner's answer on scope/key-management/idempotency. Not built this round either — building any part of it without that answer would repeat the exact risk that document warns against.
 2. **H13 — EVV.** No concrete payer/state EVV requirement exists on record. Current state (visit start/end + optional lat/long, no certification claim) remains the correct final state absent a named requirement.
-3. **O09 — Language selection / speech support.** Unchanged; high-contrast/text-sizing already shipped.
-4. **O10 — MFA / active-sessions list.** Unchanged; password change already shipped and browser-verified end to end.
-5. **NEW — Professional credential-validation standard** (see §3). Needed before case 8's suspension path and before any claim that `credential_verification_status` is meaningfully enforced rather than cosmetic.
-6. **NEW — Director as a communication-matrix participant** (see §2b). Should an active Director be able to receive/send patient-scoped messages for patients their organization covers but to whom they hold no individual assignment (requires loosening the least-privilege property a prior round deliberately verified), or should W09/N11 be redesigned around a different mechanism (e.g., an org-level escalation/ticket channel outside the patient-scoped conversation system) that doesn't require Director to pass `is_authorized_for_patient()` at all? Either answer is a legitimate design; engineering should not pick one unilaterally since it reverses a previously-verified security property either way (loosen it, or leave a shipped button non-functional).
+3. **O09 — Language selection / speech support.** Unchanged; high-contrast/text-sizing already shipped. Both halves (which languages, and whether synthesizing patient-identifying speech via a TTS vendor is an acceptable data-handling risk) remain genuinely undecided — unlike O10's MFA half, there is no vendor-free technical option here, so nothing was built this checkpoint.
+4. **O10 — MFA / active-sessions list — PARTIALLY RESOLVED (§2j).** MFA via TOTP is now built and code-complete (blocked only by a local-config/hosted-environment dependency, see §9). SMS/email factors remain correctly deferred (genuine vendor/data-handling decision). The active-sessions list is unbuilt — undone engineering work, not a policy question.
+5. **Professional credential-validation SUBSTANTIVE standard — narrowed, still OPEN** (see §2h). The technical gate (an application cannot be approved until a reviewer explicitly records an `independently_verified` decision) is now built and enforced — that part is no longer open. What remains open: WHAT evidence is sufficient to justify that decision (a licensing-board lookup? a document review? a required third-party verification service, and if so which one, for which professions?). Not guessed; `record_credential_verification()`'s evidence field accepts free text from the human reviewer either way.
+6. **RESOLVED — Director as a communication-matrix participant** (see §2f). The FINAL ENGINEERING CLOSURE directive directed implementation of a narrow mechanism (`is_org_director_for_patient()`); built, tested, and live-verified not to create universal patient-message access merely from holding the Director role. No longer open.
+7. **NEW — Account deletion: irreversible erasure policy** (see §2g). The safe, reversible prerequisite (request/review/deactivation) is built. Open: should this application ever perform irreversible erasure (hard-deleting `auth.users`/`profiles`, or anonymizing authored clinical records), and should a service-role Edge Function be built to also disable sign-in outright? Not guessed; not built.
 
 ## 5. Codex / prior-audit findings disposition
 
@@ -125,46 +195,65 @@ All findings in `44_MASTERCORRECTIVE2_FINDING_REGISTER.md` (SEC-03 follow-ups ×
 
 | Workstream | Status | Notes |
 |---|---|---|
-| Wave A — Therapist invitation/authorization lifecycle re-verification against this round's adversarial list | PARTIAL | SEC-01 (accept/revoke race) and THER-01/02 staleness checks already covered and passing (47/47). Concurrency under this round's *specific* named edge cases (stale-session replay, double-accept) not freshly re-run this checkpoint. |
-| Wave A — Director/professional escalation prevention | PASS (technical verification only, see §3 scope correction) | Covered by migration 083 governance system; credential truth not established. |
+| §1.A — Director conversation participation | RESOLVED (§2f) | Migration 087; true 5x5 matrix now 24/25 cells passing; narrowness proven via 2 new negative tests. |
+| §1.B — Account deletion and lifecycle | RESOLVED, 1 sub-question open (§2g) | Migration 088; safe reversible deactivation built and tested; irreversible-erasure policy is owner item 7. |
+| §1.C — Professional credential verification | RESOLVED (technical gate); substantive standard still BLOCKED (§2h) | Migration 089; owner item 5 narrowed to the evidence standard only. |
+| Wave A — Therapist invitation/authorization lifecycle re-verification against this round's adversarial list | PARTIAL | SEC-01 (accept/revoke race) and THER-01/02 staleness checks already covered and passing (76/76). Concurrency under this round's *specific* named edge cases (stale-session replay, double-accept) not freshly re-run this checkpoint. |
+| Wave A — Director/professional escalation prevention | PASS (technical verification only, see §3 scope correction) | Covered by migration 083 governance system; credential truth not established except where §2h's gate now applies. |
 | Wave A — Clinical provenance integrity | PASS (carried from §1, SEC-03/SEC-04 rows, reconfirmed non-regressed) | No regression since those fixes. |
-| Wave A — Account access/deletion auditing | PARTIAL | Staff removal/revocation now audited (migration 084, §3 case 8). Account **deletion** (destroying the `auth.users`/`profiles` row itself) still has no dedicated RPC or audit path located. |
-| Wave B — Migration/RLS/RPC integrity audit through migration 085 | DONE THIS CHECKPOINT (§2a) | Full table/policy/function-ACL inventory run; one confirmed, fixed finding (DEFECT-ANON-EXECUTE-GRANT, migration 085); three legacy zero-policy tables audited and confirmed non-issues. |
-| Wave B — Cross-office 25-combination communication matrix | DONE THIS CHECKPOINT, 16/25 PASS + 9/25 BLOCKED (§2b) | `tests/integration/crossOfficeCommunicationMatrix.test.ts`. Director's row/column (9 cells) is schema-unreachable — a real finding (DEFECT-DIRECTOR-NOT-A-PATIENT-CONVERSATION-PARTICIPANT), not a fabricated pass. W09/N11 downgraded from historical PASS to PARTIAL as a result. |
-| Wave B — Professional governance 12-case completion | 12/12 technical PASS (see §3 scope correction — NOT a credential-truth claim) | |
-| Wave B — Five-office 60/60 functional completion | PARTIAL, improved this checkpoint (§2c) | All 60 destinations across all 5 offices now have browser-level "renders without a runtime error" coverage (Caregiver's 14 pre-existing; Admin 13/Medical 12/Therapy 11/Patient 10 new, `tests/e2e_five_office_navigation_acceptance.spec.ts`). This is NOT per-destination feature-depth verification (the much larger task the Caregiver office's 92-row CSV took multiple rounds to reach) — it narrows the gap, it does not close it. |
-| Wave C — Therapist E2E journey | DONE THIS CHECKPOINT (§2e) | One confirmed, fixed defect (DEFECT-THERAPIST-INVITED-PATIENT-MISSING-FROM-THERAPY-OFFICE, migration 086). |
-| Wave C — Enterprise Patient coverage-revocation journey | Verified by inspection (§2e) | Gate is a zero-logic delegation to an already-exhaustively-tested function; no new evidence needed or fabricated. |
-| Wave C — H13/EVV, W13/offline | Unchanged, owner-blocked (§4) | |
-| Wave D — Production-equivalent verification + Vercel Preview evidence | NOT DONE THIS CHECKPOINT | |
-| Wave E — 15-document final acceptance package | NOT STARTED | This register is the first of the 15; `docs/acceptance/final/` created empty. |
+| Wave A — Account access/deletion auditing | RESOLVED for access; deletion is §1.B above | Staff removal/revocation audited (migration 084). Request/review/safe-deactivation audited (migration 088). |
+| Wave B — Migration/RLS/RPC integrity audit through migration 090 | DONE (§2a, §2i) | Full table/policy/function-ACL inventory, twice; 14 total anon-execute findings across two passes, all closed; permanent exhaustive regression guard added (not a fixed-name list). |
+| Wave B — Cross-office 25-combination communication matrix | 24/25 PASS, 1 N/A (§2b, §2f) | `tests/integration/crossOfficeCommunicationMatrix.test.ts`, 29 tests. Director reachable (narrowly); Patient-Patient diagonal structurally N/A. |
+| Wave B — Professional governance 12-case completion | 12/12 technical PASS + credential-verification gate added (§2h) | Substantive credential-truth standard remains owner item 5. |
+| Wave B — Five-office 60/60 functional completion | PARTIAL (§2c) | All 60 destinations "renders without a runtime error"-verified. Per-destination feature-depth verification is NOT done — see §9/§10 for the realistic scope of what remains. |
+| Wave C — Therapist E2E journey | DONE (§2e) | DEFECT-THERAPIST-INVITED-PATIENT-MISSING-FROM-THERAPY-OFFICE, fixed (migration 086). |
+| Wave C — Enterprise Patient coverage-revocation journey | Verified by inspection (§2e) | Gate is a zero-logic delegation to an already-exhaustively-tested function. |
+| Wave C — O10 MFA (TOTP) | Code-complete, environment-blocked (§2j) | Local config fixed in repo; hosted enablement is an environmental dependency (§9). Active-sessions list unbuilt. |
+| Wave C — O09, W13, H13 | Unchanged, owner-blocked (§4) | |
+| Wave D — Production-equivalent verification + Vercel Preview evidence | NOT DONE THIS CHECKPOINT | See §10. |
+| Wave E — 15-document final acceptance package | NOT STARTED | See §10. |
 
 ## 7. Rollup
 
-- 92-item Enterprise Caregiver matrix: statuses unchanged from the authoritative CSV with ONE correction this checkpoint — W09/N11 downgraded from historical PASS to PARTIAL (§2b). All other rows reconciled and confirmed non-regressed, not freshly re-executed end to end.
-- Navigation destinations: 60 actual (not the directive's unverified 59), preserved as reported at the prior checkpoint; functional verification per-destination outside the Caregiver office is still outstanding. No 59/59 or 60/60 PASS is claimed.
-- Professional governance: 12/12 cases are technical state-transition/authorization-boundary PASSes only; credential-truth verification does not exist (§3 scope correction, owner decision item 5).
-- Migration/RLS/RPC authorization audit: completed through migration 085. One confirmed defense-in-depth defect found and fixed (DEFECT-ANON-EXECUTE-GRANT).
-- Cross-office communication matrix: 16/25 cells real and PASS, 9/25 cells (Director) confirmed schema-unreachable — a genuine finding, escalated as owner decision item 6, not papered over.
-- No claim of full completion on any Wave is made. Two owner decisions were added this checkpoint (items 5 and 6); none were resolved unilaterally by engineering, per instruction.
+- 92-item Enterprise Caregiver matrix: statuses unchanged from the authoritative CSV with one correction — W09/N11, downgraded to PARTIAL at checkpoint 2, are now effectively restored by §2f's fix (the underlying RPC succeeds again), though a fresh browser click-through of the W09 button specifically was not independently re-run this checkpoint.
+- Navigation destinations: 60 actual (not the directive's unverified 59). All 60 have "renders without a runtime error" evidence. Per-destination feature-depth verification remains the largest outstanding Wave B gap — see §10.
+- Professional governance: 12/12 technical PASSes, now WITH a real, enforced credential-verification gate (§2h) — the substantive evidence standard behind it remains owner item 5.
+- Migration/RLS/RPC authorization audit: completed through migration 090, twice over, with a permanent exhaustive regression guard rather than a one-time fixed-name check.
+- Cross-office communication matrix: 24/25 cells real and PASS (Director now included, narrowly — §2f); 1 cell (Patient-Patient diagonal) structurally N/A.
+- Three P1 items explicitly assigned this round (§1.A/B/C) are all RESOLVED at the technical-control level; two retain a narrower, explicitly-named owner sub-question each (items 5 and 7) rather than being fully closed end-to-end — this is disclosed, not obscured.
+- Five confirmed, fixed defects this engagement-phase, none fabricated: DEFECT-ANON-EXECUTE-GRANT (×2 passes), DEFECT-DIRECTOR-NOT-A-PATIENT-CONVERSATION-PARTICIPANT, DEFECT-THERAPIST-INVITED-PATIENT-MISSING-FROM-THERAPY-OFFICE, DEFECT-CREDENTIAL-VERIFICATION-STATUS-NEVER-ENFORCED, DEFECT-SEND-MESSAGE-NO-REVALIDATION.
+- No claim of full completion on any Wave is made. Owner decision item 6 was resolved by explicit directive instruction (not guessed by engineering); items 5 and 7 remain genuinely open and are not conflated with the technical controls now built around them.
 
 ## 8. Checkpoint commit history
 
 | Checkpoint | Commit | What it added |
 |---|---|---|
-| 1 | `9063602e88a211505aeb9905a7dc862f988f0b80` | Register opened; migration 084 (`remove_org_member` audit logging) + regression test |
-| 2 | `393f5aed` | §2a migration/RLS/RPC audit + migration 085 (anon-execute revoke) + regression test; §2b cross-office communication matrix test suite (`crossOfficeCommunicationMatrix.test.ts`, 23 tests) + W09/N11 downgrade; §3 scope-correction disclosure; owner decision items 5–6 |
-| 3 | `49d0c6e4` | §2c five-office navigation E2E (`e2e_five_office_navigation_acceptance.spec.ts`, 4 self-contained specs, 60/60 destinations now "renders without crashing"-verified); §2d account-deletion finding recorded |
-| 4 | `9c1d163e` | §2e Wave C Therapist journey: migration 086 (`get_my_staff_patients()` unions `therapist_relationships`) + 2 regression tests fixing DEFECT-THERAPIST-INVITED-PATIENT-MISSING-FROM-THERAPY-OFFICE; Enterprise Patient coverage-revocation journey verified by inspection |
+| 1 | `9063602e` | Register opened; migration 084 (`remove_org_member` audit logging) + regression test |
+| 2 | `393f5aed` | §2a migration/RLS/RPC audit + migration 085 (anon-execute revoke); §2b cross-office matrix (4x4, Director found unreachable); W09/N11 downgrade; owner items 5–6 opened |
+| 3 | `49d0c6e4` | §2c five-office navigation E2E (60/60 "renders without crashing"); §2d account-deletion gap recorded |
+| 4 | `9c1d163e` | §2e Therapist journey: migration 086 fixing DEFECT-THERAPIST-INVITED-PATIENT-MISSING-FROM-THERAPY-OFFICE |
+| 5 | `4c387c8c` | §1.A/§2f: migration 087, Director conversation participation (narrow, tested); matrix now true 5x5 (24/25); owner item 6 RESOLVED |
+| 6 | `d117b20c` | §1.B/§2g: migration 088, account deletion request/review/safe-deactivation lifecycle; owner item 7 opened |
+| 7 | `cd3e6349` | §1.C/§2h: migration 089, credential-verification gate enforced before approval; owner item 5 narrowed to the evidence standard |
+| 8 | `6d386ca3` | §2j: O10 TOTP MFA (enroll/challenge/verify), root-caused and fixed the local config block |
+| 9 | `d448c079` | §2i: migration 090, 7 more anon-execute residuals closed; permanent exhaustive guard replaces the fixed-name test |
 
-## 9. Final status for this register (this checkpoint only)
+## 9. Environmental dependencies (things engineering cannot close from inside this session)
+
+1. **Hosted Supabase project MFA support/enablement** (§2j). Requires confirming the project's plan supports MFA, then enabling it via the Supabase dashboard or a linked `supabase config push` — neither available here.
+2. **Local Supabase CLI (`supabase status`/`start`/`stop`)** is blocked by a pre-existing, unrelated `.env.local` parsing error ("unexpected character '»' in variable name"), not touched or diagnosed further here since it did not block any required deliverable directly (the local stack's running Docker containers were used directly instead).
+3. **Vercel Preview / production deployment access** — see §10, Wave D.
+4. **Independent Codex re-audit** of this entire engagement's work has not occurred and cannot be self-certified.
+5. **Explicit owner production-release authorization** has not been given and cannot be inferred.
+
+## 10. What remains (honest scope, not a promise of imminent completion)
+
+- **Wave B — per-destination feature depth** for the 46 non-Caregiver navigation destinations (beyond "renders without crashing"): this is the same class of multi-round effort the Caregiver office's 92-row CSV required (Rounds 5, 6, 7, Master Corrective, Master Corrective 2) to reach. Not attempted at that depth this checkpoint; attempting a shortcut version would risk exactly the "fabricated/placeholder completion presented as real" outcome every directive in this engagement has prohibited.
+- **Wave D — production-equivalent + hosted Preview verification**: requires a known, authorized Preview URL or Vercel project access this session does not have. See the final report for the exact BLOCKED status and what would unblock it.
+- **Wave E — the 15-document acceptance package**: not yet assembled as discrete files; this register is the primary source document every one of those 15 documents would need to summarize or extract from, so the content exists, the file-splitting work does not yet.
+
+## 11. Final status for this register (this checkpoint)
 
 **IMPLEMENTATION PARTIALLY COMPLETE — BLOCKED ITEMS DOCUMENTED.**
 
-Blocking items requiring further engineering work (not owner decisions): per-destination FEATURE-level verification for the 46 non-Caregiver destinations (navigation-level verification is now done, §2c), Wave D production-equivalent + Vercel Preview evidence, and the remaining 14 documents of the Wave E package.
-
-Blocking items requiring an owner decision before engineering can proceed safely: W13, H13 (final confirmation), O09, O10, the professional credential-validation standard (item 5), and Director-as-communication-participant / account-deletion policy (item 6).
-
-Blocking items no engineering effort can close unilaterally: independent Codex re-audit of this entire engagement's work, and explicit owner production-release authorization.
-
-Wave A and Wave C are now substantively addressed for every item that had a concrete, technically-possible action (no unresolved P0/P1 security defect is currently known and unfixed). Wave B's remaining gap is per-destination feature depth, not navigation. Wave D (production-equivalent + hosted Preview verification) and Wave E (the 15-document package) are the two largest remaining bodies of work and are next, within the explicit no-production-mutation constraint.
+All three explicitly-assigned P1 items (§1.A/B/C) are resolved at the technical-control level. The Supabase authorization audit is complete through migration 090 with a permanent regression guard. The cross-office communication matrix is now a real 24/25-cell PASS. O10's MFA half is code-complete and environment-blocked, disclosed precisely. No P0/P1 security defect found this session remains unfixed. The remaining blockers are: genuine owner decisions (items 5, 7, plus the unchanged W13/H13/O09 items), environmental dependencies this session cannot resolve (§9), and two large, honestly-scoped remaining bodies of work (Wave D, Wave E) that the next section addresses directly.
