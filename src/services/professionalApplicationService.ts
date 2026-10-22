@@ -4,6 +4,7 @@
 // re-verifies authorization server-side; nothing in this file performs
 // or should be trusted to perform an authorization decision on its own.
 import { supabase } from '@/lib/supabase';
+import type { Json } from '@/types/supabase';
 
 export type RequestedOffice = 'director' | 'caregiver' | 'medical_professional' | 'therapist';
 export type ApplicationStatus =
@@ -89,7 +90,7 @@ export async function submitProfessionalApplication(input: SubmitApplicationInpu
     p_contact_phone: input.contactPhone ?? null,
     p_professional_title: input.professionalTitle ?? null,
     p_profession_category: input.professionCategory ?? null,
-    p_application_details: input.applicationDetails,
+    p_application_details: input.applicationDetails as Json,
   });
   if (error || !data) return { application: null, error: errMsg(error, 'Could not submit your application.') };
   return { application: mapApplication(data), error: null };
@@ -116,7 +117,7 @@ export async function resubmitApplication(
     p_application_id: applicationId, p_legal_name: fields.legalName, p_preferred_name: fields.preferredName ?? null,
     p_contact_email: fields.contactEmail, p_contact_phone: fields.contactPhone ?? null,
     p_professional_title: fields.professionalTitle ?? null, p_profession_category: fields.professionCategory ?? null,
-    p_application_details: fields.applicationDetails,
+    p_application_details: fields.applicationDetails as Json,
   });
   if (error || !data) return { application: null, error: errMsg(error, 'Could not resubmit your application.') };
   return { application: mapApplication(data), error: null };
@@ -142,7 +143,7 @@ export async function getDirectorApplications(): Promise<ProfessionalApplication
 }
 
 export async function requestApplicationCorrections(applicationId: string, correctionRequest: string, correctionFields: Record<string, unknown>): Promise<{ error: string | null }> {
-  const { error } = await supabase.rpc('request_application_corrections', { p_application_id: applicationId, p_correction_request: correctionRequest, p_correction_fields: correctionFields });
+  const { error } = await supabase.rpc('request_application_corrections', { p_application_id: applicationId, p_correction_request: correctionRequest, p_correction_fields: correctionFields as Json });
   return { error: error ? errMsg(error, 'Could not request corrections.') : null };
 }
 

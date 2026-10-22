@@ -3299,6 +3299,304 @@ export interface Database {
           },
         ]
       }
+      // FINAL ENGINEERING CLOSURE / Codex MMA-CODEX-18 — these 4 tables
+      // (migrations 083 + 088) were missing from this hand-maintained
+      // file entirely, the root cause of all 56 real `tsc -p
+      // tsconfig.app.json` errors found by the Codex audit. Extracted
+      // verbatim from `supabase gen types typescript --db-url ...`
+      // against the live local schema, not hand-written/guessed.
+      account_deletion_requests: {
+        Row: {
+          created_at: string
+          id: string
+          reason: string | null
+          requested_by: string
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_user_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          reason?: string | null
+          requested_by: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          target_user_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          reason?: string | null
+          requested_by?: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          target_user_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_deletion_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_deletion_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_deletion_requests_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      professional_application_documents: {
+        Row: {
+          application_id: string
+          document_type: string
+          file_name: string
+          id: string
+          storage_path: string
+          uploaded_at: string
+        }
+        Insert: {
+          application_id: string
+          document_type: string
+          file_name: string
+          id?: string
+          storage_path: string
+          uploaded_at?: string
+        }
+        Update: {
+          application_id?: string
+          document_type?: string
+          file_name?: string
+          id?: string
+          storage_path?: string
+          uploaded_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "professional_application_documents_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "professional_applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      professional_application_events: {
+        Row: {
+          actor_role: string | null
+          actor_user_id: string | null
+          application_id: string
+          created_at: string
+          event_type: string
+          from_status: string | null
+          id: string
+          notes: string | null
+          to_status: string | null
+        }
+        Insert: {
+          actor_role?: string | null
+          actor_user_id?: string | null
+          application_id: string
+          created_at?: string
+          event_type: string
+          from_status?: string | null
+          id?: string
+          notes?: string | null
+          to_status?: string | null
+        }
+        Update: {
+          actor_role?: string | null
+          actor_user_id?: string | null
+          application_id?: string
+          created_at?: string
+          event_type?: string
+          from_status?: string | null
+          id?: string
+          notes?: string | null
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "professional_application_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "professional_application_events_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "professional_applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      professional_applications: {
+        Row: {
+          applicant_user_id: string
+          application_details: Json
+          approved_office: string | null
+          contact_email: string
+          contact_phone: string | null
+          correction_request: string | null
+          correction_requested_at: string | null
+          correction_requested_by: string | null
+          correction_requested_fields: Json | null
+          created_at: string
+          credential_verification_evidence: string | null
+          credential_verification_status: string
+          credential_verified_at: string | null
+          credential_verified_by: string | null
+          id: string
+          legal_name: string
+          platform_owner_approval_required: boolean
+          platform_owner_approved_at: string | null
+          platform_owner_approved_by: string | null
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          rejection_reason: string | null
+          requested_office: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_organization_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          applicant_user_id: string
+          application_details?: Json
+          approved_office?: string | null
+          contact_email: string
+          contact_phone?: string | null
+          correction_request?: string | null
+          correction_requested_at?: string | null
+          correction_requested_by?: string | null
+          correction_requested_fields?: Json | null
+          created_at?: string
+          credential_verification_evidence?: string | null
+          credential_verification_status?: string
+          credential_verified_at?: string | null
+          credential_verified_by?: string | null
+          id?: string
+          legal_name: string
+          platform_owner_approval_required?: boolean
+          platform_owner_approved_at?: string | null
+          platform_owner_approved_by?: string | null
+          preferred_name?: string | null
+          profession_category?: string | null
+          professional_title?: string | null
+          proposed_organization_name?: string | null
+          proposed_package_type?: string | null
+          rejection_reason?: string | null
+          requested_office: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          target_organization_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          applicant_user_id?: string
+          application_details?: Json
+          approved_office?: string | null
+          contact_email?: string
+          contact_phone?: string | null
+          correction_request?: string | null
+          correction_requested_at?: string | null
+          correction_requested_by?: string | null
+          correction_requested_fields?: Json | null
+          created_at?: string
+          credential_verification_evidence?: string | null
+          credential_verification_status?: string
+          credential_verified_at?: string | null
+          credential_verified_by?: string | null
+          id?: string
+          legal_name?: string
+          platform_owner_approval_required?: boolean
+          platform_owner_approved_at?: string | null
+          platform_owner_approved_by?: string | null
+          preferred_name?: string | null
+          profession_category?: string | null
+          professional_title?: string | null
+          proposed_organization_name?: string | null
+          proposed_package_type?: string | null
+          rejection_reason?: string | null
+          requested_office?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          target_organization_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "professional_applications_applicant_user_id_fkey"
+            columns: ["applicant_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "professional_applications_correction_requested_by_fkey"
+            columns: ["correction_requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "professional_applications_credential_verified_by_fkey"
+            columns: ["credential_verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "professional_applications_platform_owner_approved_by_fkey"
+            columns: ["platform_owner_approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "professional_applications_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "professional_applications_target_organization_id_fkey"
+            columns: ["target_organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     // NOTE: both views below are proposed for removal by
     // 014_caregiver_relationship_authorization_and_view_hardening.sql
@@ -4490,6 +4788,529 @@ export interface Database {
       caller_is_expired_companion: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      // FINAL ENGINEERING CLOSURE / Codex MMA-CODEX-18 — these RPC
+      // signatures (migrations 083, 087, 088, 089) were missing from
+      // this hand-maintained file entirely. get_my_enterprise_care_team/
+      // get_my_enterprise_organization (migration 082) were ALSO
+      // missing — a pre-existing gap predating this engagement's own
+      // migrations, found by the same audit. Extracted verbatim from
+      // `supabase gen types typescript --db-url ...` against the live
+      // local schema; only the no-arg `Args` shape was normalized from
+      // `never` to `Record<PropertyKey, never>` to match every other
+      // no-arg function already in this file.
+      submit_professional_application: {
+        // Widened from the generator's blind `string` to `string | null`
+        // for every param without a NOT NULL-equivalent constraint — the
+        // generator cannot see from the bare SQL signature
+        // (083_r10_professional_application_approval_system.sql) that
+        // these specific params genuinely accept NULL at runtime
+        // (confirmed by reading the function body: plain TEXT/UUID
+        // params, no DEFAULT, no NOT NULL, and every real caller in
+        // professionalApplicationService.ts legitimately passes `?? null`
+        // for exactly these optional-at-the-UI-level fields).
+        Args: {
+          p_application_details: Json
+          p_contact_email: string
+          p_contact_phone: string | null
+          p_legal_name: string
+          p_preferred_name: string | null
+          p_profession_category: string | null
+          p_professional_title: string | null
+          p_proposed_organization_name: string | null
+          p_proposed_package_type: string | null
+          p_requested_office: string
+          p_target_organization_id: string | null
+        }
+        Returns: {
+          applicant_user_id: string
+          application_details: Json
+          approved_office: string | null
+          contact_email: string
+          contact_phone: string | null
+          correction_request: string | null
+          correction_requested_at: string | null
+          correction_requested_by: string | null
+          correction_requested_fields: Json | null
+          created_at: string
+          credential_verification_evidence: string | null
+          credential_verification_status: string
+          credential_verified_at: string | null
+          credential_verified_by: string | null
+          id: string
+          legal_name: string
+          platform_owner_approval_required: boolean
+          platform_owner_approved_at: string | null
+          platform_owner_approved_by: string | null
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          rejection_reason: string | null
+          requested_office: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_organization_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "professional_applications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      resubmit_application: {
+        // Same widening and reasoning as submit_professional_application
+        // above.
+        Args: {
+          p_application_details: Json
+          p_application_id: string
+          p_contact_email: string
+          p_contact_phone: string | null
+          p_legal_name: string
+          p_preferred_name: string | null
+          p_profession_category: string | null
+          p_professional_title: string | null
+        }
+        Returns: {
+          applicant_user_id: string
+          application_details: Json
+          approved_office: string | null
+          contact_email: string
+          contact_phone: string | null
+          correction_request: string | null
+          correction_requested_at: string | null
+          correction_requested_by: string | null
+          correction_requested_fields: Json | null
+          created_at: string
+          credential_verification_evidence: string | null
+          credential_verification_status: string
+          credential_verified_at: string | null
+          credential_verified_by: string | null
+          id: string
+          legal_name: string
+          platform_owner_approval_required: boolean
+          platform_owner_approved_at: string | null
+          platform_owner_approved_by: string | null
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          rejection_reason: string | null
+          requested_office: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_organization_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "professional_applications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      withdraw_application: {
+        Args: { p_application_id: string }
+        Returns: {
+          applicant_user_id: string
+          application_details: Json
+          approved_office: string | null
+          contact_email: string
+          contact_phone: string | null
+          correction_request: string | null
+          correction_requested_at: string | null
+          correction_requested_by: string | null
+          correction_requested_fields: Json | null
+          created_at: string
+          credential_verification_evidence: string | null
+          credential_verification_status: string
+          credential_verified_at: string | null
+          credential_verified_by: string | null
+          id: string
+          legal_name: string
+          platform_owner_approval_required: boolean
+          platform_owner_approved_at: string | null
+          platform_owner_approved_by: string | null
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          rejection_reason: string | null
+          requested_office: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_organization_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "professional_applications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      request_application_corrections: {
+        Args: {
+          p_application_id: string
+          p_correction_fields: Json
+          p_correction_request: string
+        }
+        Returns: {
+          applicant_user_id: string
+          application_details: Json
+          approved_office: string | null
+          contact_email: string
+          contact_phone: string | null
+          correction_request: string | null
+          correction_requested_at: string | null
+          correction_requested_by: string | null
+          correction_requested_fields: Json | null
+          created_at: string
+          credential_verification_evidence: string | null
+          credential_verification_status: string
+          credential_verified_at: string | null
+          credential_verified_by: string | null
+          id: string
+          legal_name: string
+          platform_owner_approval_required: boolean
+          platform_owner_approved_at: string | null
+          platform_owner_approved_by: string | null
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          rejection_reason: string | null
+          requested_office: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_organization_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "professional_applications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      reject_application: {
+        Args: { p_application_id: string; p_rejection_reason: string }
+        Returns: {
+          applicant_user_id: string
+          application_details: Json
+          approved_office: string | null
+          contact_email: string
+          contact_phone: string | null
+          correction_request: string | null
+          correction_requested_at: string | null
+          correction_requested_by: string | null
+          correction_requested_fields: Json | null
+          created_at: string
+          credential_verification_evidence: string | null
+          credential_verification_status: string
+          credential_verified_at: string | null
+          credential_verified_by: string | null
+          id: string
+          legal_name: string
+          platform_owner_approval_required: boolean
+          platform_owner_approved_at: string | null
+          platform_owner_approved_by: string | null
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          rejection_reason: string | null
+          requested_office: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_organization_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "professional_applications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      director_approve_application: {
+        Args: { p_application_id: string }
+        Returns: {
+          applicant_user_id: string
+          application_details: Json
+          approved_office: string | null
+          contact_email: string
+          contact_phone: string | null
+          correction_request: string | null
+          correction_requested_at: string | null
+          correction_requested_by: string | null
+          correction_requested_fields: Json | null
+          created_at: string
+          credential_verification_evidence: string | null
+          credential_verification_status: string
+          credential_verified_at: string | null
+          credential_verified_by: string | null
+          id: string
+          legal_name: string
+          platform_owner_approval_required: boolean
+          platform_owner_approved_at: string | null
+          platform_owner_approved_by: string | null
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          rejection_reason: string | null
+          requested_office: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_organization_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "professional_applications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      platform_owner_approve_director_application: {
+        Args: { p_application_id: string }
+        Returns: {
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          package_type: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "organizations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      platform_owner_correct_office_classification: {
+        Args: {
+          p_new_org_role: string
+          p_new_status: string
+          p_organization_id: string
+          p_reason: string
+          p_user_id: string
+        }
+        Returns: {
+          created_at: string
+          id: string
+          invited_by: string | null
+          org_role: string
+          organization_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "organization_memberships"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      find_organization_for_application: {
+        Args: { p_name: string }
+        Returns: {
+          id: string
+          name: string
+          package_type: string
+        }[]
+      }
+      record_credential_verification: {
+        Args: {
+          p_application_id: string
+          p_decision: string
+          p_evidence_reference: string
+        }
+        Returns: {
+          applicant_user_id: string
+          application_details: Json
+          approved_office: string | null
+          contact_email: string
+          contact_phone: string | null
+          correction_request: string | null
+          correction_requested_at: string | null
+          correction_requested_by: string | null
+          correction_requested_fields: Json | null
+          created_at: string
+          credential_verification_evidence: string | null
+          credential_verification_status: string
+          credential_verified_at: string | null
+          credential_verified_by: string | null
+          id: string
+          legal_name: string
+          platform_owner_approval_required: boolean
+          platform_owner_approved_at: string | null
+          platform_owner_approved_by: string | null
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          rejection_reason: string | null
+          requested_office: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_organization_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "professional_applications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      request_account_deletion: {
+        Args: { p_reason: string }
+        Returns: {
+          created_at: string
+          id: string
+          reason: string | null
+          requested_by: string
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_user_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "account_deletion_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      cancel_account_deletion_request: {
+        Args: { p_request_id: string }
+        Returns: {
+          created_at: string
+          id: string
+          reason: string | null
+          requested_by: string
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_user_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "account_deletion_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      get_my_account_deletion_requests: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          created_at: string
+          id: string
+          reason: string | null
+          requested_by: string
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_user_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "account_deletion_requests"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      get_pending_account_deletion_requests: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          created_at: string
+          id: string
+          reason: string | null
+          requested_by: string
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_user_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "account_deletion_requests"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      platform_owner_review_account_deletion: {
+        Args: { p_approve: boolean; p_notes: string; p_request_id: string }
+        Returns: {
+          created_at: string
+          id: string
+          reason: string | null
+          requested_by: string
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          target_user_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "account_deletion_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      is_platform_owner: { Args: Record<PropertyKey, never>; Returns: boolean }
+      is_org_director_for_patient: {
+        Args: { p_patient_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      get_my_enterprise_care_team: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          email: string
+          first_name: string
+          last_name: string
+          org_role: string
+          phone: string
+          user_id: string
+        }[]
+      }
+      get_my_enterprise_organization: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          organization_id: string
+          organization_name: string
+          package_type: string
+        }[]
       }
     }
     Enums: {

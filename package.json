@@ -13,7 +13,9 @@
     "test:unit": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:types": "vitest run --typecheck",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json"
+    "typecheck:app": "tsc --noEmit -p tsconfig.app.json",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck": "npm run typecheck:app && npm run typecheck:node"
   },
   "dependencies": {
     "@awesome-cordova-plugins/in-app-purchase-2": "^9.1.2",
