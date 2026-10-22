@@ -49,6 +49,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   sql(`
+    DELETE FROM public.account_management_audit WHERE organization_id='${ORG}';
     DELETE FROM public.professional_application_events WHERE application_id='${applicationId}';
     DELETE FROM public.professional_applications WHERE id='${applicationId}';
     DELETE FROM organizations WHERE id='${ORG}';
@@ -103,6 +104,30 @@ describe('Credential verification gate (migration 089)', () => {
     expect(body.status).toBe('approved');
     const membership = sql(`SELECT org_role, status FROM organization_memberships WHERE organization_id='${ORG}' AND user_id='${ids.applicant}';`);
     expect(membership).toBe('caregiver|active');
+  });
+
+  // Codex MMA-CODEX-02 — "invalidate affected authority when evidence
+  // is changed, rejected, expired... or revoked." The applicant is now
+  // an active member (previous test). Flagging the SAME, already-
+  // approved application's credential as requires_reverification must
+  // revoke that real authority, not just update a column.
+  it('migration 091: flagging an ALREADY-APPROVED application for reverification immediately revokes the real organization membership it granted', async () => {
+    const before = sql(`SELECT status FROM organization_memberships WHERE organization_id='${ORG}' AND user_id='${ids.applicant}';`);
+    expect(before).toBe('active');
+
+    const [status, body] = (await rpc('record_credential_verification', {
+      p_application_id: applicationId, p_decision: 'requires_reverification', p_evidence_reference: 'New information surfaced — re-checking the original license number against the state registry.',
+    }, tok.director)) as [number, { credential_verification_status: string }];
+    expect(status).toBe(200);
+    expect(body.credential_verification_status).toBe('requires_reverification');
+
+    const after = sql(`SELECT status FROM organization_memberships WHERE organization_id='${ORG}' AND user_id='${ids.applicant}';`);
+    expect(after).toBe('revoked');
+    const assignmentActive = sql(`SELECT count(*) FROM staff_patient_assignments WHERE organization_id='${ORG}' AND user_id='${ids.applicant}' AND is_active=true;`);
+    expect(assignmentActive).toBe('0');
+
+    const auditType = sql(`SELECT action_type FROM account_management_audit WHERE target_user_id='${ids.applicant}' AND action_type='membership_revoked_credential_invalidated';`);
+    expect(auditType).toBe('membership_revoked_credential_invalidated');
   });
 
   it('a Director application has no clinical credential to verify — record_credential_verification() refuses to apply to one', async () => {
