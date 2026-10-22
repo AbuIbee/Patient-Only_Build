@@ -506,6 +506,27 @@ describe('CLOSURE REGISTER — anon (unauthenticated) callers are rejected at th
     expect(realStatus).toBe(200);
     expect(Array.isArray(realBody)).toBe(true);
   });
+
+  // MASTER ENTERPRISE COMPLETION DIRECTIVE §2 re-validation: a second,
+  // later full sweep (after migrations 086-089 added new functions)
+  // found 7 MORE residual anon-executable functions migration 085's
+  // original per-function anon revoke never touched, because none of
+  // them ever had anon's OWN separate grant to revoke in the first
+  // place — they were inheriting EXECUTE through the un-revoked PUBLIC
+  // pseudo-role grant instead (their own original migrations never
+  // included a REVOKE FROM PUBLIC line at all). Migration 090 closes
+  // every one of them. This test is a permanent, exhaustive guard
+  // (not a fixed list of names) so a FUTURE migration that forgets
+  // REVOKE FROM PUBLIC is caught automatically, not just the ones
+  // found this pass.
+  it('EXHAUSTIVE GUARD: no function in the public schema grants anon EXECUTE, via any path (direct grant or inherited PUBLIC grant)', () => {
+    const count = sql(`
+      SELECT count(*) FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND has_function_privilege('anon', p.oid, 'EXECUTE');
+    `);
+    expect(count).toBe('0');
+  });
 });
 
 // MASTER ENTERPRISE COMPLETION DIRECTIVE, Wave C — Therapist end-to-end
