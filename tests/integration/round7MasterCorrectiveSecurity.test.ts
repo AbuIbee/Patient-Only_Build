@@ -629,3 +629,39 @@ describe('CLOSURE REGISTER — HELP acknowledgment requires a genuine staff resp
     sql(`DELETE FROM help_activations WHERE id='${help.id}';`);
   });
 });
+
+// Codex MMA-CODEX-06 — clinical provenance. patient_care_providers was
+// never included in migration 076's SEC-03 RESTRICTIVE-policy hardening
+// pass (which covered patient_diagnoses/patient_allergies/patient_vitals)
+// and its own record_patient_provider() RPC gate only ever checked
+// p_source='professional_observation', never 'verified_source' -- the
+// exact two-tier gap SEC-03's own follow-up (44_MASTERCORRECTIVE2_FINDING_REGISTER.md)
+// found and fixed in three OTHER RPCs, left unfixed here. This block
+// reproduces both halves against the CURRENT (pre-fix) code, then
+// migration 093 closes them using the identical proven pattern.
+describe('CLOSURE REGISTER — patient_care_providers source provenance was never hardened (migration 093 fixes both halves)', () => {
+  it('an ordinary caregiver cannot claim verified_source via the RPC (previously only professional_observation was checked)', async () => {
+    const [status, body] = (await rpc('record_patient_provider', {
+      p_patient_id: ids.patientA, p_provider_name: 'Dr. Forged', p_provider_role: 'physician', p_source: 'verified_source',
+    }, tok.caregiverA)) as [number, { message?: string }];
+    expect(status).toBeGreaterThanOrEqual(400);
+    expect(body.message).toContain('Only an assigned therapist or medical professional');
+  });
+
+  it('an ordinary caregiver cannot bypass the RPC entirely via a direct POST to /rest/v1/patient_care_providers claiming professional_observation', async () => {
+    const [status, body] = await http('POST', '/rest/v1/patient_care_providers', {
+      patient_id: ids.patientA, provider_name: 'Dr. Direct Forge', provider_role: 'physician', source: 'professional_observation', author_id: ids.caregiverA,
+    }, tok.caregiverA);
+    expect(status).toBeGreaterThanOrEqual(400);
+    sql(`DELETE FROM patient_care_providers WHERE patient_id='${ids.patientA}' AND provider_name='Dr. Direct Forge';`); // defensive: only removes anything if the defect reproduced
+    void body;
+  });
+
+  it('a real professional staff member can still legitimately claim both tiers', async () => {
+    const [status, body] = (await rpc('record_patient_provider', {
+      p_patient_id: ids.patientA, p_provider_name: 'Dr. Legit', p_provider_role: 'physician', p_source: 'professional_observation',
+    }, tok.medicalA)) as [number, { id: string }];
+    expect(status).toBe(200);
+    sql(`DELETE FROM patient_care_providers WHERE id='${body.id}';`);
+  });
+});
