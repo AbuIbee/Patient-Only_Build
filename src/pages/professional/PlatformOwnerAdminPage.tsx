@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { Loader2, Sparkles, LogOut, ShieldCheck, Search, Building2 } from 'lucide-react';
 import { getDirectorApplications, platformOwnerApproveDirectorApplication, rejectApplication, platformOwnerCorrectOfficeClassification, type ProfessionalApplication } from '@/services/professionalApplicationService';
+import { getPendingAccountDeletionRequests, platformOwnerReviewAccountDeletion, type AccountDeletionRequest } from '@/services/accountDeletionService';
 
 const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
 
@@ -65,6 +66,56 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
                 </button>
                 <input value={rejectReason[a.id] ?? ''} onChange={(e) => setRejectReason((p) => ({ ...p, [a.id]: e.target.value }))} placeholder="Rejection reason…" className={`${inputCls} flex-1 min-w-[160px]`} />
                 <button type="button" onClick={() => { void reject(a.id); }} disabled={busyId === a.id} className="px-3 py-2 rounded-xl border border-ent-rust text-ent-rust text-sm font-semibold hover:bg-ent-rust/10">Reject</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// MASTER ENTERPRISE COMPLETION DIRECTIVE §1.B — Platform Owner review
+// queue for migration 088's account-deletion requests. Approval
+// performs a safe, reversible deactivation server-side (every active
+// membership/assignment/relationship revoked, audited) — never a hard
+// delete of the account or any clinical record it authored.
+function AccountDeletionRequestsPanel() {
+  const [requests, setRequests] = useState<AccountDeletionRequest[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<string, string>>({});
+
+  const refresh = useCallback(async () => { setRequests(await getPendingAccountDeletionRequests()); }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const review = async (id: string, approve: boolean) => {
+    setBusyId(id);
+    try {
+      const { error } = await platformOwnerReviewAccountDeletion(id, approve, notes[id] ?? '');
+      if (error) { toast.error(error); return; }
+      toast.success(approve ? 'Account safely deactivated.' : 'Deletion request denied.');
+      void refresh();
+    } finally { setBusyId(null); }
+  };
+
+  return (
+    <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
+      <h2 className="font-bold text-ent-ink">Account Deletion Requests Awaiting Review</h2>
+      {requests.length === 0 ? (
+        <p className="text-sm text-ent-text">No deletion requests are currently pending.</p>
+      ) : (
+        <ul className="space-y-3">
+          {requests.map((r) => (
+            <li key={r.id} className="p-4 bg-ent-bg rounded-xl border border-ent-line space-y-2">
+              <p className="text-sm text-ent-ink font-mono">{r.targetUserId}</p>
+              {r.reason && <p className="text-xs text-ent-muted">Reason: {r.reason}</p>}
+              <p className="text-xs text-ent-muted">Requested {new Date(r.createdAt).toLocaleString()}</p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button type="button" onClick={() => { void review(r.id, true); }} disabled={busyId === r.id} className="px-3 py-2 rounded-xl bg-ent-rust hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
+                  Approve &amp; Safely Deactivate
+                </button>
+                <input value={notes[r.id] ?? ''} onChange={(e) => setNotes((p) => ({ ...p, [r.id]: e.target.value }))} placeholder="Review notes…" className={`${inputCls} flex-1 min-w-[160px]`} />
+                <button type="button" onClick={() => { void review(r.id, false); }} disabled={busyId === r.id} className="px-3 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">Deny</button>
               </div>
             </li>
           ))}
@@ -198,6 +249,7 @@ export default function PlatformOwnerAdminPage() {
       <main className="p-4 sm:p-6">
         <div className="max-w-3xl mx-auto space-y-5">
           <DirectorApplicationsPanel apps={directorApps} onChanged={() => { void refresh(); }} />
+          <AccountDeletionRequestsPanel />
           <AccountClassificationPanel />
         </div>
       </main>

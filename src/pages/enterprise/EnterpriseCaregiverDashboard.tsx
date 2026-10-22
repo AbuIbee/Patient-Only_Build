@@ -30,6 +30,7 @@ import { RegisterPatientForm, IncompleteRegistrations } from '@/pages/caregiver/
 import { getMyConversations, createConversation, searchMyConversations, type ConversationSummary } from '@/services/communicationsService';
 import { inviteTherapist } from '@/services/therapistConnectionService';
 import { getHelpActivationHistory } from '@/services/helpActivationService';
+import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDeletionRequests, type AccountDeletionRequest } from '@/services/accountDeletionService';
 import {
   getMyVisits, startCaregiverVisit, endCaregiverVisit, scheduleCaregiverVisit,
   getPatientIncidentReports, fileIncidentReport,
@@ -1714,6 +1715,71 @@ function PasswordChangeForm() {
   );
 }
 
+// MASTER ENTERPRISE COMPLETION DIRECTIVE §1.B — self-service entry
+// point for migration 088's account-deletion request workflow. Submits
+// a request only; the Platform Owner review (and the safe, reversible
+// deactivation it performs) is entirely server-enforced, not this
+// component's concern.
+function AccountDeletionRequestPanel() {
+  const [requests, setRequests] = useState<AccountDeletionRequest[]>([]);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setRequests(await getMyAccountDeletionRequests());
+    setLoading(false);
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const open = requests.find((r) => r.status === 'requested' || r.status === 'under_review');
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const { error } = await requestAccountDeletion(reason.trim());
+      if (error) { toast.error(error); return; }
+      toast.success('Deletion request submitted — a Platform Owner will review it.');
+      setReason('');
+      void refresh();
+    } finally { setBusy(false); }
+  };
+  const cancel = async (id: string) => {
+    setBusy(true);
+    try {
+      const { error } = await cancelAccountDeletionRequest(id);
+      if (error) { toast.error(error); return; }
+      toast('Deletion request cancelled.');
+      void refresh();
+    } finally { setBusy(false); }
+  };
+
+  if (loading) return null;
+
+  return (
+    <div className="space-y-2 pt-3 border-t border-soft-taupe">
+      <p className="text-xs font-semibold text-medium-gray">Delete my account</p>
+      {open ? (
+        <div className="p-3 bg-gentle-coral/10 rounded-xl border border-gentle-coral/30 space-y-2">
+          <p className="text-sm text-charcoal">A deletion request is pending Platform Owner review (status: {open.status.replace('_', ' ')}).</p>
+          <button type="button" onClick={() => { void cancel(open.id); }} disabled={busy} className="px-3 py-1.5 rounded-lg border border-soft-taupe text-charcoal text-xs font-semibold hover:bg-warm-ivory disabled:opacity-60">
+            Cancel request
+          </button>
+        </div>
+      ) : (
+        <>
+          <p className="text-[11px] text-medium-gray">Submitting a request does not delete anything immediately. Once approved by the Platform Owner, your organizational access is revoked (a safe, reversible deactivation) — your account and any records you authored are preserved, not destroyed.</p>
+          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional)" className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+          <button type="button" onClick={() => { void submit(); }} disabled={busy} className="px-3 py-1.5 rounded-lg border border-gentle-coral text-gentle-coral text-xs font-semibold hover:bg-gentle-coral/10 disabled:opacity-60">
+            Request account deletion
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SettingsView({ userName, onLogout }: { userName?: string; onLogout: () => Promise<void> }) {
   return (
     <Card>
@@ -1723,6 +1789,7 @@ function SettingsView({ userName, onLogout }: { userName?: string; onLogout: () 
         <LogOut className="w-4 h-4" /> Secure Logout
       </button>
       <PasswordChangeForm />
+      <AccountDeletionRequestPanel />
       <p className="text-[11px] text-medium-gray">MFA and an active-sessions list are not yet available in this shell (see 34_ROUND7_CORRECTIVE_30ITEM_VALIDATION.md for the owner decision needed before building them). A password reset is also always available via the sign-in page's email link.</p>
     </Card>
   );
