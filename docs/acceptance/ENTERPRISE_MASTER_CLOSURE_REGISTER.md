@@ -61,6 +61,16 @@ Built as `tests/integration/crossOfficeCommunicationMatrix.test.ts`. Result: **1
 
 **Why this is not fixed unilaterally here**: a prior round's own adversarial test (C02, in the historical CSV) deliberately verified and *praised* "the org DIRECTOR was correctly rejected as a recipient... confirming least-privilege" as a good security property. Making W09 functional would mean deliberately loosening that property for this one escalation path — a real security-policy trade-off, not a bug with one obvious correct fix. Escalated as owner decision item 6 in §4.
 
+## 2c. Five-office navigation functional pass (Wave B)
+
+`tests/e2e_five_office_navigation_acceptance.spec.ts` (new, self-contained: seeds its own disposable director/medical/therapist/patient fixture in `beforeAll`, tears it down in `afterAll`) — confirmed live, 4/4 passing (must run with `--workers=1`; a parallel-worker race against the shared fixture was found and documented in the file, not silently worked around): every one of the 46 non-Caregiver destinations (Admin 13, Medical 12, Therapy 11, Patient 10) renders without a JS runtime error when clicked through the real `/Professional/<Office>` routing and a real signed-in, authorized user of that office. Combined with the pre-existing Caregiver spec's 14, all **60** destinations now have this level of evidence for the first time.
+
+**Scope correction, stated plainly**: "renders without crashing" is not the same as "is functionally complete." The Caregiver office's 92-row CSV reached genuine feature-level verification only after multiple dedicated rounds (5, 6, 7, Master Corrective, Master Corrective 2) of per-destination work. This checkpoint narrows the five-office gap from "navigation inventory only" to "navigation inventory + confirmed non-crashing," which is real, meaningful progress — it does not claim 60/60 functional completion and should not be read as doing so.
+
+## 2d. Account deletion (Wave A, carried finding)
+
+Searched `supabase/functions/` and `src/services/` for any account-deletion mechanism beyond membership revocation (migration 084's audited `remove_org_member()`): **none exists**. No Edge Function, RPC, or UI control lets a Director or Platform Owner delete a professional's underlying `auth.users`/`profiles` row — only revoke their organization membership (which disables access without destroying the provenance of clinical records they authored). This may well be the *correct* final state for a clinical system — deleting the author of a diagnosis/vitals/note row would corrupt that record's attribution — but it is a product/data-retention decision (hard delete vs. anonymize-on-request vs. never allow), not a gap with an obvious fix, so it is not built here. Folded into owner decision item 6's reasoning rather than opened as a separate numbered item, to avoid escalation-inflation for a closely related question.
+
 ## 3. Professional governance system (Round 2) against the Round 3 directive's lifecycle requirements
 
 Migration `083_r10_professional_application_approval_system.sql` implements all 9 named lifecycle states (`draft, submitted→pending_review, info_required, resubmitted, approved, rejected, withdrawn, suspended, revoked` — `draft`/`submitted` collapse to one `pending_review` entry state since the form has no separate client-side draft-save step; this is a disclosed simplification, not a missing state, since nothing in the directive requires a distinct persisted draft row before submission).
@@ -114,7 +124,7 @@ All findings in `44_MASTERCORRECTIVE2_FINDING_REGISTER.md` (SEC-03 follow-ups ×
 | Wave B — Migration/RLS/RPC integrity audit through migration 085 | DONE THIS CHECKPOINT (§2a) | Full table/policy/function-ACL inventory run; one confirmed, fixed finding (DEFECT-ANON-EXECUTE-GRANT, migration 085); three legacy zero-policy tables audited and confirmed non-issues. |
 | Wave B — Cross-office 25-combination communication matrix | DONE THIS CHECKPOINT, 16/25 PASS + 9/25 BLOCKED (§2b) | `tests/integration/crossOfficeCommunicationMatrix.test.ts`. Director's row/column (9 cells) is schema-unreachable — a real finding (DEFECT-DIRECTOR-NOT-A-PATIENT-CONVERSATION-PARTICIPANT), not a fabricated pass. W09/N11 downgraded from historical PASS to PARTIAL as a result. |
 | Wave B — Professional governance 12-case completion | 12/12 technical PASS (see §3 scope correction — NOT a credential-truth claim) | |
-| Wave B — Five-office 60/60 functional completion | NOT DONE THIS CHECKPOINT | Nav inventory done (§2); per-destination functional E2E for Admin/Medical/Therapy/Patient offices beyond what §2a/§2b's RPC-level checks cover is still outstanding. |
+| Wave B — Five-office 60/60 functional completion | PARTIAL, improved this checkpoint (§2c) | All 60 destinations across all 5 offices now have browser-level "renders without a runtime error" coverage (Caregiver's 14 pre-existing; Admin 13/Medical 12/Therapy 11/Patient 10 new, `tests/e2e_five_office_navigation_acceptance.spec.ts`). This is NOT per-destination feature-depth verification (the much larger task the Caregiver office's 92-row CSV took multiple rounds to reach) — it narrows the gap, it does not close it. |
 | Wave C — Enterprise Patient / Therapist E2E journeys | NOT DONE THIS CHECKPOINT | |
 | Wave C — H13/EVV, W13/offline | Unchanged, owner-blocked (§4) | |
 | Wave D — Production-equivalent verification + Vercel Preview evidence | NOT DONE THIS CHECKPOINT | |
@@ -135,15 +145,16 @@ All findings in `44_MASTERCORRECTIVE2_FINDING_REGISTER.md` (SEC-03 follow-ups ×
 |---|---|---|
 | 1 | `9063602e88a211505aeb9905a7dc862f988f0b80` | Register opened; migration 084 (`remove_org_member` audit logging) + regression test |
 | 2 | `393f5aed` | §2a migration/RLS/RPC audit + migration 085 (anon-execute revoke) + regression test; §2b cross-office communication matrix test suite (`crossOfficeCommunicationMatrix.test.ts`, 23 tests) + W09/N11 downgrade; §3 scope-correction disclosure; owner decision items 5–6 |
+| 3 | *(this update)* | §2c five-office navigation E2E (`e2e_five_office_navigation_acceptance.spec.ts`, 4 self-contained specs, 60/60 destinations now "renders without crashing"-verified); §2d account-deletion finding recorded |
 
 ## 9. Final status for this register (this checkpoint only)
 
 **IMPLEMENTATION PARTIALLY COMPLETE — BLOCKED ITEMS DOCUMENTED.**
 
-Blocking items requiring further engineering work (not owner decisions): five-office functional E2E beyond Caregiver/the RPC-level checks already done, Enterprise Patient/Therapist E2E journeys, Wave D production-equivalent + Vercel Preview evidence, and the remaining 14 documents of the Wave E package.
+Blocking items requiring further engineering work (not owner decisions): per-destination FEATURE-level verification for the 46 non-Caregiver destinations (navigation-level verification is now done, §2c), Enterprise Patient/Therapist E2E journeys, Wave D production-equivalent + Vercel Preview evidence, and the remaining 14 documents of the Wave E package.
 
-Blocking items requiring an owner decision before engineering can proceed safely: W13, H13 (final confirmation), O09, O10, the professional credential-validation standard (item 5), and Director-as-communication-participant (item 6).
+Blocking items requiring an owner decision before engineering can proceed safely: W13, H13 (final confirmation), O09, O10, the professional credential-validation standard (item 5), and Director-as-communication-participant / account-deletion policy (item 6).
 
 Blocking items no engineering effort can close unilaterally: independent Codex re-audit of this entire engagement's work, and explicit owner production-release authorization.
 
-Continuing directly into Wave B's remaining item (five-office functional completion) and then Wave C, per instruction not to stop for routine-step approval.
+Continuing directly into Wave C (Enterprise Patient / Therapist end-to-end journeys) next, per instruction not to stop for routine-step approval.
