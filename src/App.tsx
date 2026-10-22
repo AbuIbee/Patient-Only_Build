@@ -27,6 +27,7 @@ import type { UserRole } from '@/types';
 // authenticated trees load on demand, exactly when state.isAuthenticated
 // actually requires one of them.
 const PatientLayout = lazy(() => import('@/pages/patient/PatientLayout'));
+const EnterprisePatientRouter = lazy(() => import('@/pages/patient/EnterprisePatientRouter'));
 const AdminLayout = lazy(() => import('@/pages/admin/AdminLayout'));
 const EnterpriseDashboardRouter = lazy(() => import('@/pages/enterprise/EnterpriseDashboardRouter'));
 import './App.css';
@@ -698,7 +699,12 @@ function AppContent() {
 
     switch (state.selectedRole) {
       case 'patient':
-        return <PatientLayout />;
+        // FIVE-OFFICE ENTERPRISE PLATFORM — EnterprisePatientRouter checks
+        // the patient's real Enterprise coverage before deciding which
+        // dashboard renders (never from the URL). An ordinary individual
+        // patient — the default outcome, and every existing user today —
+        // still renders PatientLayout, unchanged.
+        return <EnterprisePatientRouter />;
       case 'admin':
         return <AdminLayout />;
       case 'caregiver':
