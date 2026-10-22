@@ -420,3 +420,55 @@ describe('OWNER CORRECTION — Enterprise caregivers are operational users, not 
     await authDeleteUser(ownerId);
   });
 });
+
+// MASTER ENTERPRISE COMPLETION DIRECTIVE, Wave A, account-governance
+// lifecycle case 8 ("suspension/revocation of an active professional").
+// remove_org_member() (migration 035) already revoked an active staff
+// member's membership and deactivated their patient assignments, but
+// predated migration 083's account_management_audit table and so left
+// no audit row behind — every OTHER account-governance action this
+// engagement built was audited; this one was not. Migration 084 closes
+// that gap without changing remove_org_member's signature or
+// authorization check.
+describe('CLOSURE REGISTER — remove_org_member() now writes an auditable account_management_audit row (migration 084)', () => {
+  it('a director revoking an active staff member is recorded in account_management_audit with before/after state and the director as actor', async () => {
+    const staffEmail = `r7mc-removable-${stamp}@local.test`;
+    const staffId = await authSignUp(staffEmail, PW);
+    sql(`
+      UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${staffId}';
+      INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${ORG}','${staffId}','caregiver','active');
+    `);
+
+    const [status, body] = (await rpc('remove_org_member', { p_org_id: ORG, p_user_id: staffId }, tok.directorA)) as [number, boolean];
+    expect(status).toBe(200);
+    expect(body).toBe(true);
+
+    const membership = sql(`SELECT status FROM public.organization_memberships WHERE organization_id='${ORG}' AND user_id='${staffId}';`);
+    expect(membership).toBe('revoked');
+
+    const audit = sql(`SELECT action_type, actor_user_id, previous_value->>'status', new_value->>'status' FROM public.account_management_audit WHERE target_user_id='${staffId}' AND organization_id='${ORG}' ORDER BY created_at DESC LIMIT 1;`);
+    expect(audit).toBe(`staff_member_removed|${ids.directorA}|active|revoked`);
+
+    // Negative: a non-director (an ordinary caregiver) cannot revoke staff,
+    // and no audit row is written for a rejected attempt.
+    const secondStaffEmail = `r7mc-removable2-${stamp}@local.test`;
+    const secondStaffId = await authSignUp(secondStaffEmail, PW);
+    sql(`
+      UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${secondStaffId}';
+      INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${ORG}','${secondStaffId}','caregiver','active');
+    `);
+    const [rejectedStatus] = await rpc('remove_org_member', { p_org_id: ORG, p_user_id: secondStaffId }, tok.caregiverA);
+    expect(rejectedStatus).toBeGreaterThanOrEqual(400);
+    const stillActive = sql(`SELECT status FROM public.organization_memberships WHERE organization_id='${ORG}' AND user_id='${secondStaffId}';`);
+    expect(stillActive).toBe('active');
+    const noAudit = sql(`SELECT count(*) FROM public.account_management_audit WHERE target_user_id='${secondStaffId}';`);
+    expect(noAudit).toBe('0');
+
+    sql(`
+      DELETE FROM public.account_management_audit WHERE target_user_id IN ('${staffId}','${secondStaffId}');
+      DELETE FROM public.organization_memberships WHERE user_id IN ('${staffId}','${secondStaffId}');
+    `);
+    await authDeleteUser(staffId);
+    await authDeleteUser(secondStaffId);
+  });
+});
