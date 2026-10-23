@@ -110,6 +110,75 @@ export async function getMyApplication(): Promise<ProfessionalApplication | null
   return mapApplication(data as unknown as Record<string, unknown>);
 }
 
+// OWNER DIRECTIVE MMA-ENT-SALES-003 Phase D — migration 109's draft
+// persistence. SaveDraftInput mirrors SubmitApplicationInput minus
+// target-organization fields (a draft has no org-selection step for a
+// non-director applicant yet) and allows every identity field to be
+// absent, matching the table's own relaxed-for-drafts constraints.
+export interface SaveDraftInput {
+  requestedOffice: RequestedOffice;
+  proposedOrganizationName?: string | null;
+  proposedPackageType?: 'therapist' | 'integrated_care' | null;
+  legalName?: string | null;
+  preferredName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  professionalTitle?: string | null;
+  professionCategory?: string | null;
+  applicationDetails: Record<string, unknown>;
+}
+
+export async function saveApplicationDraft(input: SaveDraftInput): Promise<{ draft: ProfessionalApplication | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('save_application_draft', {
+    p_requested_office: input.requestedOffice,
+    p_proposed_organization_name: input.proposedOrganizationName ?? null,
+    p_proposed_package_type: input.proposedPackageType ?? null,
+    p_legal_name: input.legalName ?? null,
+    p_preferred_name: input.preferredName ?? null,
+    p_contact_email: input.contactEmail ?? null,
+    p_contact_phone: input.contactPhone ?? null,
+    p_professional_title: input.professionalTitle ?? null,
+    p_profession_category: input.professionCategory ?? null,
+    p_application_details: input.applicationDetails as Json,
+  });
+  if (error || !data) return { draft: null, error: errMsg(error, 'Could not save your draft.') };
+  return { draft: mapApplication(data), error: null };
+}
+
+export async function getMyApplicationDraft(): Promise<ProfessionalApplication | null> {
+  const { data, error } = await supabase.rpc('get_my_application_draft');
+  if (error || !data || data.length === 0) return null;
+  return mapApplication(data[0] as unknown as Record<string, unknown>);
+}
+
+export async function discardApplicationDraft(draftId: string): Promise<{ discarded: boolean; error: string | null }> {
+  const { data, error } = await supabase.rpc('discard_application_draft', { p_draft_id: draftId });
+  if (error) return { discarded: false, error: errMsg(error, 'Could not discard the draft.') };
+  return { discarded: data === true, error: null };
+}
+
+export async function submitApplicationDraft(
+  draftId: string,
+  input: SubmitApplicationInput,
+): Promise<{ application: ProfessionalApplication | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('submit_professional_application', {
+    p_requested_office: input.requestedOffice,
+    p_target_organization_id: input.targetOrganizationId ?? null,
+    p_proposed_organization_name: input.proposedOrganizationName ?? null,
+    p_proposed_package_type: input.proposedPackageType ?? null,
+    p_legal_name: input.legalName,
+    p_preferred_name: input.preferredName ?? null,
+    p_contact_email: input.contactEmail,
+    p_contact_phone: input.contactPhone ?? null,
+    p_professional_title: input.professionalTitle ?? null,
+    p_profession_category: input.professionCategory ?? null,
+    p_application_details: input.applicationDetails as Json,
+    p_draft_id: draftId,
+  });
+  if (error || !data) return { application: null, error: errMsg(error, 'Could not submit your application.') };
+  return { application: mapApplication(data), error: null };
+}
+
 export async function resubmitApplication(
   applicationId: string, fields: Omit<SubmitApplicationInput, 'requestedOffice' | 'targetOrganizationId' | 'proposedOrganizationName' | 'proposedPackageType'>,
 ): Promise<{ application: ProfessionalApplication | null; error: string | null }> {

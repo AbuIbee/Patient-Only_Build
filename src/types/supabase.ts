@@ -5079,12 +5079,21 @@ export interface Database {
           p_proposed_package_type: string | null
           p_requested_office: string
           p_target_organization_id: string | null
+          // MMA-ENT-SALES-003 Phase D -- migration 109: optional,
+          // defaults to NULL. When provided, the caller's own existing
+          // 'draft' row is transitioned in place rather than a new row
+          // being inserted.
+          p_draft_id?: string | null
         }
         Returns: {
           applicant_user_id: string
           application_details: Json
           approved_office: string | null
-          contact_email: string
+          // Widened to nullable: migration 109 relaxes the table's own
+          // NOT NULL on this column so a true partial draft (status
+          // 'draft') can omit it -- every non-draft status still
+          // requires it, enforced by a CHECK constraint, not this type.
+          contact_email: string | null
           contact_phone: string | null
           correction_request: string | null
           correction_requested_at: string | null
@@ -5096,7 +5105,7 @@ export interface Database {
           credential_verified_at: string | null
           credential_verified_by: string | null
           id: string
-          legal_name: string
+          legal_name: string | null
           platform_owner_approval_required: boolean
           platform_owner_approved_at: string | null
           platform_owner_approved_by: string | null
@@ -5119,6 +5128,69 @@ export interface Database {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      // MMA-ENT-SALES-003 Phase D -- migration 109.
+      save_application_draft: {
+        Args: {
+          p_application_details: Json
+          p_contact_email: string | null
+          p_contact_phone: string | null
+          p_legal_name: string | null
+          p_preferred_name: string | null
+          p_profession_category: string | null
+          p_professional_title: string | null
+          p_proposed_organization_name: string | null
+          p_proposed_package_type: string | null
+          p_requested_office: string
+        }
+        Returns: {
+          applicant_user_id: string
+          application_details: Json
+          contact_email: string | null
+          contact_phone: string | null
+          created_at: string
+          id: string
+          legal_name: string | null
+          platform_owner_approval_required: boolean
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          requested_office: string
+          status: string
+          updated_at: string
+        }
+      }
+      // SETOF, not a single composite -- see the migration's own
+      // comment: a bare composite-returning SQL function still returns
+      // one all-NULL row when its query matches nothing, which
+      // PostgREST would serialize as an object full of nulls rather
+      // than a true empty/null result. An empty array means "no draft."
+      get_my_application_draft: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          applicant_user_id: string
+          application_details: Json
+          contact_email: string | null
+          contact_phone: string | null
+          created_at: string
+          id: string
+          legal_name: string | null
+          platform_owner_approval_required: boolean
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          requested_office: string
+          status: string
+          updated_at: string
+        }[]
+      }
+      discard_application_draft: {
+        Args: { p_draft_id: string }
+        Returns: boolean
       }
       resubmit_application: {
         // Same widening and reasoning as submit_professional_application
