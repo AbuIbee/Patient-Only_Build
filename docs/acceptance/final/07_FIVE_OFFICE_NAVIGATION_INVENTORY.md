@@ -1,5 +1,11 @@
 # 07 — Five-Office Navigation Inventory and Functional Acceptance
 
+## UPDATE — 2026-10-23, HEAD `5fba1435`
+
+One of the 60 destinations named in this document's own "renders without a runtime error" claim was re-examined under a later directive and found to be **genuinely broken, not a rendering success**: the Medical and Therapy offices' "Care Team Communication" nav item (`ClinicalOfficeDashboard.tsx`) rendered a blank page for every real user, because `PATIENT_PICKER_DESTINATIONS` was missing the `'communication'` key even though `INITIAL_TAB` already mapped it — the render switch fell through to `: null`. This means "renders without crashing" (no thrown JS error) and "the destination actually shows something" are not the same claim, and this document's original Browser E2E evidence (below) did not distinguish them. Fixed with a one-line addition; see register §2l (finding 10). **The large remaining body of work this document names below — per-destination feature depth for the 46 non-Caregiver destinations — is UNCHANGED and still not attempted at that depth.** This single confirmed defect is disclosed as a reason for added caution about the strength of the "renders" claim generally, not as evidence the remaining 45 are now verified.
+
+---
+
 ## On the directive's "59" figure
 
 No historical document in this repository states or derives the number 59. It is not recoverable as a pre-existing authoritative figure. This document reports the actual, code-derived count instead: **60**.

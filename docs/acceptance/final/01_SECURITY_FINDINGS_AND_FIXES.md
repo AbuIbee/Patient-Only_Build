@@ -1,5 +1,25 @@
 # 01 — Security Findings and Fixes
 
+## UPDATE — 2026-10-23, HEAD `5fba1435`
+
+Nine further confirmed, fixed defects since this document was written (full detail: register §2l/§2k and commit messages `29b45069`/`504b299b`/`8033d52a`/`24a8575f`/`549d6b2d`/`dcdcfe35`/`54763f4b`/`b8c08454`/migration 099):
+
+1. **Credential revocation did not invalidate authority** — flagging an already-approved application `requires_reverification` left the granted membership/assignments live. Fixed, migration 091.
+2. **Patient self-acknowledgment of their own HELP activation** was accepted. Fixed, migration 092.
+3. **`patient_care_providers` provenance gate checked only one of two tiers**, and had no RESTRICTIVE policy backstop. Fixed, migration 093 (both halves reproduced live first).
+4. **Multi-org/dual-relationship deduplication** (this phase's own migration 086 fix) over-corrected and collapsed two genuinely distinct patient relationships into one. Fixed, migration 094.
+5. **Assign-vs-remove race**: `assign_staff_to_patient()` took no lock matching `remove_org_member()`'s own locking. Fixed, migration 095.
+6. **Care-plan replacement race + duplicate account-deletion-request race**: no advisory lock / no partial unique index. Fixed, migration 096.
+7. **Last-licensed-seat double-approval race**: two concurrent approvals for a different applicant could both pass a stale seat-capacity count. Fixed, migration 097.
+8. **Stale pending invitation survives account-deletion approval**, letting a closed account re-activate membership by accepting an old invite. Fixed, migration 098.
+9. **`get_org_communications_overview()` false-zero-count bug**: counted a conversation only via `staff_patient_assignments`, silently excluding migration 087's director-participation path. Fixed, migration 099.
+
+Also: a real RLS defect in a NEW table this phase built (`document_access_audit`, migration 103) — an insert-only/no-self-read design silently 403s on PostgREST's own default `INSERT...RETURNING` — caught and fixed by that table's own first test run before being shipped.
+
+All nine are backed by a reproduced-before/passing-after regression test; `npm run test:integration` is 105/105 as of this update (up from 76/76 below).
+
+---
+
 Every finding below was reproduced live against the local Supabase stack before being fixed, and re-verified after. None is carried forward from memory or inferred without a live check. Evidence tier for all items in this document: **Database integration evidence** (automated regression tests) plus, where stated, **Verified local evidence** (direct SQL/HTTP probes performed while diagnosing).
 
 ## DEFECT-ANON-EXECUTE-GRANT (2 passes)

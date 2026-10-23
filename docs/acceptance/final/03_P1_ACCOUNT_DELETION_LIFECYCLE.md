@@ -1,5 +1,11 @@
 # 03 — P1: Account Deletion and Lifecycle
 
+## UPDATE — 2026-10-23, HEAD `5fba1435`
+
+Two closures since this document was written: (1) MMA-CODEX-08's named scenario — a stale, already-sent `'invited'` org membership could be accepted AFTER account-deletion approval, restoring access the approval was meant to cut off — reproduced live and fixed, migration 098. (2) A duplicate-deletion-request race (two concurrent `request_account_deletion()` calls for the same account) is now closed by a partial unique index, migration 096. The Covered Patient office now also has this same request-deletion control in its own Settings view (previously Caregiver-only) — see MMA-CODEX-15 in register §2l.
+
+---
+
 See `01_SECURITY_FINDINGS_AND_FIXES.md` for defect context (none existed before this phase). This document covers acceptance against the directive's exact 6 required engineering changes and negative-test list.
 
 ## Required engineering changes — status

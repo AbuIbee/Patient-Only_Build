@@ -1,5 +1,11 @@
 # 02 — P1: Director Conversation Participation
 
+## UPDATE — 2026-10-23, HEAD `5fba1435`
+
+Unchanged and reconfirmed. The Director now also has a real UI surface to use this capability (`DirectorCommunicationsView` in `OrganizationDirectorDashboard.tsx`, built this round to close MMA-CODEX-10's "orphaned backend capability" finding) — previously the migration 087 mechanism below existed only in the backend, with the Director dashboard showing aggregate counts only. See register §2l (finding 10) for the UI build.
+
+---
+
 See `01_SECURITY_FINDINGS_AND_FIXES.md` for the defect/fix narrative. This document covers acceptance against the directive's exact 6 required engineering changes and negative-test list.
 
 ## Required engineering changes — status

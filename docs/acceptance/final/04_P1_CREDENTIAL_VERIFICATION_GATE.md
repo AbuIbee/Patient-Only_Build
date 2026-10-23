@@ -1,5 +1,11 @@
 # 04 — P1: Professional Credential Verification
 
+## UPDATE — 2026-10-23, HEAD `5fba1435`
+
+One closure since this document was written: credential revocation now actually invalidates authority. Previously, flagging an already-APPROVED application `requires_reverification` only changed a status column — the membership and any staff_patient_assignments it had already granted stayed fully active. Migration 091 makes a negative/reverification decision immediately revoke the membership and deactivate assignments, audited (`membership_revoked_credential_invalidated`). The substantive evidence-standard owner decision (item 5 below) remains unchanged and open.
+
+---
+
 See `01_SECURITY_FINDINGS_AND_FIXES.md` for the defect/fix narrative (DEFECT-CREDENTIAL-VERIFICATION-STATUS-NEVER-ENFORCED). This document covers acceptance against the directive's exact 6 required engineering changes.
 
 ## Required engineering changes — status

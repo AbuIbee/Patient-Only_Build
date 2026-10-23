@@ -1,5 +1,13 @@
 # 05 — Supabase Authorization Audit (through migration 090)
 
+## UPDATE — 2026-10-23, HEAD `5fba1435`
+
+**The one gap this document explicitly disclosed as not done — "a full fresh-install replay of migrations 001→090 against an empty database" — is now closed, extended to 001→103.** `supabase db diff --linked` (read-only; builds a fully-migrated temporary shadow database, diffs it against the linked remote, writes nothing anywhere) replayed all 103 migrations in order into a fresh database with **zero errors** (2206-line log, confirmed clean). This also surfaced, independently of anything this document originally covered, a CRITICAL finding: the actual linked hosted Supabase project (`axurszlibxwwptkczztt`) is missing every object introduced from migration 072 onward — classified "hosted schema behind local" at a single clean stall point, fully object-level characterized in the register §2m and in `13_WAVE_D_HOSTED_VERIFICATION_STATUS.md`'s own update. This is a materially more specific and more serious finding than this document's prior "hosted/production migration state is unknown" — it is now known, and known to be a real gap, not merely unverified.
+
+Additionally: 13 more migrations (091-103) extended this audit's own anon-execute/RLS/RPC authorization guarantees — all passing the same exhaustive, non-fixed-name regression guard this document describes below; zero new anon-executable functions were introduced by any of them.
+
+---
+
 Directive §2's explicit checklist, addressed item by item.
 
 ## Table/RLS inventory

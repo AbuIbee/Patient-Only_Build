@@ -1,5 +1,11 @@
 # 06 — Cross-Office (5x5) Communication Authorization Matrix
 
+## UPDATE — 2026-10-23, HEAD `5fba1435`
+
+The matrix's own authorization boundary (below) is unchanged and reconfirmed. Since this document was written, the capability set every cell can exercise was extended: message attachments (private Storage, RLS re-derived live so a removed participant loses attachment access on their next request) and assignable, due-dated follow-up ownership (migration 102, MMA-CODEX-11) — see `tests/integration/messageAttachmentsAndFollowUpOwnership.test.ts`, 7/7 passing. The false-zero-count bug in the Director's own aggregate overview card (migration 099) and the Director's previously-missing participation UI (now built, `DirectorCommunicationsView`) are also closed — see `02_P1_DIRECTOR_CONVERSATION_PARTICIPATION.md`'s own update and register §2l (finding 10). **Not yet done**: re-testing all 25 cells against this EXPANDED capability set (attachment send/receive/revoke-then-deny, follow-up assign/resolve) specifically for every ordered pair — the dedicated test above covers the mechanism generically, not matrix-exhaustively.
+
+---
+
 ## The real authorization boundary
 
 This application's conversation authorization is NOT office-category-based: `is_authorized_for_patient()` grants access uniformly to (a) the patient themselves, (b) an active `staff_patient_assignments` holder of any org_role for that patient, (c) an active `therapist_relationships` holder, and now (d) `is_org_director_for_patient()` — an active director of the org actively covering that specific patient (migration 087). `create_conversation()`/`get_my_conversations()`/`send_message()` apply these checks symmetrically to every sender and recipient.

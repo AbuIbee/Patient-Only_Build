@@ -2,6 +2,20 @@
 
 Status date: 2026-10-22. Branch `remediation/mymemoria-functional-001`. Final commit this phase: see `14_FINAL_CONSOLIDATED_REPORT.md` for the exact SHA at close.
 
+## UPDATE — 2026-10-23, HEAD `5fba1435`
+
+Everything below this notice is the ORIGINAL executive summary as written at the close of the FINAL ENGINEERING CLOSURE phase (commit `16d03691`) — preserved verbatim, not rewritten, per this engagement's standing instruction to keep historical evidence tied to its original SHA. Three further directive rounds (MMA-REMEDIATION-CODEX-001, MMA-UNIFIED-CLOSURE-002, MMA-FINAL-EXHAUSTIVE-CLOSURE-003) have since run against this same branch. Headline deltas since this document was written, each with its own full writeup in `docs/acceptance/ENTERPRISE_MASTER_CLOSURE_REGISTER.md`:
+
+- An independent 19-finding Codex audit (MMA-CODEX-01 through 19) was received, independently re-verified (not taken on faith), and is now **17 of 19 FIXED**, 1 PARTIAL (narrow remainder named), 1 PARTIALLY RECONCILED (the hosted-divergence finding below) — see register §2l/§2k.
+- **56 real TypeScript errors** were discovered (every prior `tsc` check in this phase had been silently checking zero files) and fixed; `npm run typecheck` now correctly covers both the app and Node projects.
+- **A CRITICAL finding**: the linked hosted Supabase project's schema is behind local by every migration from 072 onward (31 migrations' worth of tables/functions/columns/policies) — fully object-level characterized, classified, and given a complete reconciliation design, all read-only; see register §2m and `13_WAVE_D_HOSTED_VERIFICATION_STATUS.md`'s update.
+- Migrations 091 through 103 fixed 9 further real, reproduced defects (credential revocation not invalidating authority, patient-care-provider provenance, HELP self-acknowledgment, 4 concurrency races, stale-invitation reactivation, a communications-overview false-zero-count bug, document-storage hardening) and built 3 real features that did not exist before (conversation message attachments + assignable follow-up ownership/due-dates, an honestly-scoped "sign out everywhere else" session control, document-access audit logging).
+- The historical 92-row CSV's own **30 malformed-width records** (an unescaped-comma CSV-authoring defect, confirmed exactly against the Codex claim) are now repaired — 92 unique, well-formed rows.
+- Current totals: **105/105 integration tests, 382/382 unit tests**, typecheck/lint/build all clean, migrations 001-103 all replay cleanly into a fresh shadow database.
+- **Still genuinely open, unchanged in kind from what this document already named**: the 92-requirement/60-destination/25-combination matrices have not been rebuilt at full per-dimension depth with fresh disposable-identity browser E2E for every cell; this is an explicitly disclosed, large remaining body of work, not a defect.
+
+---
+
 This document set is the Wave E evidence package required by the MY MEMORIA ALLY MASTER ENTERPRISE COMPLETION DIRECTIVE and its follow-on FINAL ENGINEERING CLOSURE AND ACCEPTANCE PACKAGE directive. Every claim in every document here is sourced from `docs/acceptance/ENTERPRISE_MASTER_CLOSURE_REGISTER.md` (the single authoritative register this entire phase of work was recorded into as it happened) and from live test runs re-executed while assembling this package — nothing here is reconstructed from memory or invented to make a count look complete.
 
 ## What this phase accomplished
