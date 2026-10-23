@@ -144,4 +144,42 @@ describe('Account deletion request lifecycle (migration 088)', () => {
     expect(recancelStatus).toBeGreaterThanOrEqual(400);
     expect(recancelBody.message).toContain('already been decided');
   });
+
+  // Codex MMA-CODEX-08 — "old invitations cannot recreate prohibited
+  // access" after closure. CONFIRMED GAP (fixed, migration 098):
+  // approval previously revoked only ACTIVE memberships; a pending
+  // 'invited' row (not yet accepted) was left untouched, so the
+  // account could still accept it later and regain access despite
+  // deletion having been approved.
+  it('migration 098: approving a deletion request also cancels every pending invitation, not only active memberships, so none can be stale-accepted afterward', async () => {
+    const SECOND_ORG = 'ad333333-3333-4333-8333-333333333333';
+    sql(`
+      DELETE FROM organizations WHERE id='${SECOND_ORG}';
+      BEGIN;
+      INSERT INTO organizations(id,name,package_type,created_by) VALUES('${SECOND_ORG}','ADL Second Org','integrated_care','${ids.owner}');
+      INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${SECOND_ORG}','${ids.staffB}','caregiver','invited');
+      COMMIT;
+    `);
+
+    const [requestStatus, request] = (await rpc('request_account_deletion', { p_reason: 'testing stale invite' }, tok.staffB)) as [number, { id: string }];
+    expect(requestStatus).toBe(200);
+
+    const [approveStatus, approveBody] = (await rpc('platform_owner_review_account_deletion', { p_request_id: request.id, p_approve: true, p_notes: 'Approved' }, tok.owner)) as [number, { status: string }];
+    expect(approveStatus).toBe(200);
+    expect(approveBody.status).toBe('completed');
+
+    const invitedMembershipStatus = sql(`SELECT status FROM organization_memberships WHERE organization_id='${SECOND_ORG}' AND user_id='${ids.staffB}';`);
+    expect(invitedMembershipStatus).toBe('declined');
+
+    // The stale invitation can no longer be accepted at all.
+    const membershipId = sql(`SELECT id FROM organization_memberships WHERE organization_id='${SECOND_ORG}' AND user_id='${ids.staffB}';`);
+    const [acceptStatus, acceptBody] = (await rpc('respond_to_org_invite', { p_membership_id: membershipId, p_accept: true }, tok.staffB)) as [number, { message?: string }];
+    expect(acceptStatus).toBeGreaterThanOrEqual(400);
+    expect(acceptBody.message).toContain('No pending invitation found');
+
+    const auditType = sql(`SELECT action_type FROM account_management_audit WHERE target_user_id='${ids.staffB}' AND action_type='account_deletion_approved_invitation_cancelled';`);
+    expect(auditType).toBe('account_deletion_approved_invitation_cancelled');
+
+    sql(`DELETE FROM public.account_management_audit WHERE organization_id='${SECOND_ORG}'; DELETE FROM organizations WHERE id='${SECOND_ORG}';`);
+  });
 });
