@@ -29,6 +29,7 @@ import {
   type OrgVisit, type OrgIncidentReport, type OrgShiftHandoff, type IncidentResolutionStatus,
 } from '@/services/organizationDirectorOpsService';
 import OrganizationBillingPage from './OrganizationBillingPage';
+import CareConversations from '@/components/communications/CareConversations';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
@@ -368,6 +369,69 @@ function CommunicationsOverviewCard({ orgId }: { orgId: string }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Codex MMA-CODEX-10 — migration 087 made 'director' a legal
+// conversation participant (is_org_director_for_patient(), narrowly
+// scoped to the director's own org's actively-covered patients), but no
+// UI anywhere ever let a director actually open or send a message in
+// one -- the aggregate-only CommunicationsOverviewCard above was the
+// entire surface. This closes that gap by reusing CareConversations
+// verbatim (the same component every other office uses) for a director-
+// chosen covered patient. All authorization is unchanged and still
+// entirely server-side: is_org_director_for_patient() is re-derived live
+// on every call CareConversations makes, so this is a real UI wire-up,
+// not a new access path.
+function DirectorCommunicationsView({ orgId }: { orgId: string }) {
+  const [patients, setPatients] = useState<{ patientId: string; firstName: string; lastName: string; preferredName: string | null }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [openPatientId, setOpenPatientId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getOrgCoveredPatients(orgId).then((rows) => { if (!cancelled) { setPatients(rows); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [orgId]);
+
+  if (openPatientId) {
+    const p = patients.find((x) => x.patientId === openPatientId);
+    return (
+      <div className="space-y-3">
+        <button type="button" onClick={() => setOpenPatientId(null)} className="text-xs font-semibold text-ent-bronze hover:underline">&larr; Back to communications</button>
+        <CareConversations patientId={openPatientId} patientName={p?.preferredName || `${p?.firstName ?? ''} ${p?.lastName ?? ''}`.trim()} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <CommunicationsOverviewCard orgId={orgId} />
+      <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
+        <h2 className="font-bold text-ent-ink">Open a patient conversation</h2>
+        <p className="text-xs text-ent-muted">
+          As director you may participate in a conversation for any patient this organization actively covers. This does not grant
+          access to a conversation you have not joined — selecting a patient here opens or starts one, scoped to that patient only.
+        </p>
+        {loading ? (
+          <Loader2 className="w-5 h-5 animate-spin text-ent-bronze" />
+        ) : patients.length === 0 ? (
+          <p className="text-sm text-ent-muted">No patients are currently covered by this organization.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {patients.map((p) => (
+              <button
+                key={p.patientId} type="button" onClick={() => setOpenPatientId(p.patientId)}
+                className="flex items-center justify-between gap-2 p-3.5 bg-ent-bg rounded-xl border border-ent-line hover:shadow-sm transition-all text-left"
+              >
+                <span className="font-bold text-ent-ink text-sm truncate">{p.preferredName || `${p.firstName} ${p.lastName}`}</span>
+                <ChevronRight className="w-4 h-4 text-ent-bronze flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1037,7 +1101,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       ) : nav === 'incidents' ? (
         <IncidentsView incidents={incidents} onResolved={() => { void refresh(); }} />
       ) : nav === 'communications' ? (
-        <CommunicationsOverviewCard orgId={organizationId} />
+        <DirectorCommunicationsView orgId={organizationId} />
       ) : nav === 'reports' ? (
         <ReportsInsightsView members={members} visits={visits} incidents={incidents} license={license} />
       ) : nav === 'licensing' ? (
