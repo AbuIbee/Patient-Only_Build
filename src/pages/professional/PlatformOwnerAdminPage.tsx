@@ -10,9 +10,14 @@ import { useEffect, useState, useCallback } from 'react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { Loader2, Sparkles, LogOut, ShieldCheck, Search, Building2 } from 'lucide-react';
+import { Loader2, Sparkles, LogOut, ShieldCheck, Search, Building2, Plus, Send, Ban, FileText, Copy, KeyRound } from 'lucide-react';
 import { getDirectorApplications, platformOwnerApproveDirectorApplication, rejectApplication, platformOwnerCorrectOfficeClassification, type ProfessionalApplication } from '@/services/professionalApplicationService';
 import { getPendingAccountDeletionRequests, platformOwnerReviewAccountDeletion, type AccountDeletionRequest } from '@/services/accountDeletionService';
+import {
+  getSalesProspects, createProspect, getSalesQuotes, createQuote, sendQuote, revokeQuote,
+  getQuoteInvitations, issueQuoteInvitation, revokeQuoteInvitation,
+  type SalesProspect, type SalesQuote, type SalesQuoteInvitation, type SalesPackageType,
+} from '@/services/salesService';
 
 const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
 
@@ -196,6 +201,277 @@ function AccountClassificationPanel() {
   );
 }
 
+// OWNER DIRECTIVE MMA-ENT-SALES-002, PHASE C — Platform Owner console UI
+// for migration 107's prospect/quote/invitation pipeline. Every write
+// goes through one of the nine RPCs (never a direct insert/update on
+// sales_prospects/sales_quotes/sales_quote_invitations); list reads use
+// the standard RLS-protected table read, matching this file's own
+// existing DirectorApplicationsPanel/professional_applications
+// convention exactly. The raw invitation token is shown to the owner
+// exactly once, immediately after issuance (it is returned only in that
+// one RPC response and is never persisted anywhere, including here --
+// this component holds it only in transient React state, cleared the
+// moment a different invitation is issued or the panel unmounts).
+function QuoteInvitationsSection({ quote }: { quote: SalesQuote }) {
+  const [invitations, setInvitations] = useState<SalesQuoteInvitation[]>([]);
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [expiresInHours, setExpiresInHours] = useState(168);
+  const [busy, setBusy] = useState(false);
+  const [justIssued, setJustIssued] = useState<{ invitationId: string; rawToken: string } | null>(null);
+
+  const refresh = useCallback(async () => { setInvitations(await getQuoteInvitations(quote.id)); }, [quote.id]);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const issue = async () => {
+    if (!recipientEmail.trim()) { toast.error('Recipient email is required.'); return; }
+    setBusy(true);
+    try {
+      const { data, error } = await issueQuoteInvitation(quote.id, recipientEmail.trim(), expiresInHours);
+      if (error || !data) { toast.error(error || 'Could not issue invitation.'); return; }
+      setJustIssued({ invitationId: data.invitationId, rawToken: data.rawToken });
+      setRecipientEmail('');
+      void refresh();
+    } finally { setBusy(false); }
+  };
+  const revoke = async (id: string) => {
+    setBusy(true);
+    try {
+      const { error } = await revokeQuoteInvitation(id);
+      if (error) { toast.error(error); return; }
+      if (justIssued?.invitationId === id) setJustIssued(null);
+      toast.success('Invitation revoked.');
+      void refresh();
+    } finally { setBusy(false); }
+  };
+  const copyToken = async () => {
+    if (!justIssued) return;
+    try { await navigator.clipboard.writeText(justIssued.rawToken); toast.success('Token copied.'); }
+    catch { toast.error('Could not copy automatically — select and copy manually.'); }
+  };
+
+  return (
+    <div className="pl-4 border-l-2 border-ent-line space-y-2 mt-2">
+      {justIssued && (
+        <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1.5">
+          <p className="text-xs font-bold text-amber-900 flex items-center gap-1"><KeyRound className="w-3.5 h-3.5" /> Shown once — deliver this to the recipient now; it cannot be retrieved again</p>
+          <div className="flex items-center gap-2">
+            <code className="text-[11px] bg-white px-2 py-1 rounded border border-amber-200 break-all flex-1">{justIssued.rawToken}</code>
+            <button type="button" onClick={() => { void copyToken(); }} className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-900"><Copy className="w-3.5 h-3.5" /></button>
+          </div>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <input value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} placeholder="recipient@example.com" className={`${inputCls} flex-1 min-w-[160px]`} />
+        <input type="number" min={1} max={720} value={expiresInHours} onChange={(e) => setExpiresInHours(Number(e.target.value))} className={`${inputCls} w-28`} title="Expires in (hours)" />
+        <button type="button" onClick={() => { void issue(); }} disabled={busy} className="flex items-center gap-1 px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold disabled:opacity-60">
+          <Plus className="w-3.5 h-3.5" /> Issue invitation
+        </button>
+      </div>
+      {invitations.length > 0 && (
+        <ul className="space-y-1.5">
+          {invitations.map((inv) => (
+            <li key={inv.id} className="flex items-center justify-between gap-2 text-xs p-2 bg-ent-bg rounded-lg border border-ent-line">
+              <span className="text-ent-ink">{inv.recipientEmail} <span className="text-ent-muted">· expires {new Date(inv.expiresAt).toLocaleString()}</span></span>
+              <div className="flex items-center gap-2">
+                <span className={`font-bold capitalize ${inv.status === 'pending' ? 'text-ent-amber' : inv.status === 'accepted' ? 'text-ent-green-active' : 'text-ent-muted'}`}>{inv.status}</span>
+                {inv.status === 'pending' && (
+                  <button type="button" onClick={() => { void revoke(inv.id); }} disabled={busy} className="text-ent-rust hover:underline disabled:opacity-60">Revoke</button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function QuoteCard({ quote, onChanged }: { quote: SalesQuote; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+
+  const send = async () => {
+    setBusy(true);
+    try {
+      const { error } = await sendQuote(quote.id);
+      if (error) { toast.error(error); return; }
+      toast.success('Quote sent.');
+      onChanged();
+    } finally { setBusy(false); }
+  };
+  const revoke = async () => {
+    setBusy(true);
+    try {
+      const { error } = await revokeQuote(quote.id);
+      if (error) { toast.error(error); return; }
+      toast.success('Quote revoked.');
+      onChanged();
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <li className="p-3 bg-ent-bg rounded-xl border border-ent-line space-y-1.5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-sm font-semibold text-ent-ink">
+          {quote.packageType === 'integrated_care' ? 'Full Enterprise' : 'Therapist Enterprise'} · {quote.proposedLicensedSeats} seats · {quote.proposedCoveredPatientCapacity} covered patients
+        </p>
+        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full capitalize ${quote.status === 'sent' ? 'bg-ent-amber/20 text-ent-amber' : quote.status === 'revoked' || quote.status === 'superseded' ? 'bg-ent-line text-ent-muted' : 'bg-ent-pale text-ent-ink'}`}>{quote.status}</span>
+      </div>
+      <p className="text-xs text-ent-muted">
+        {quote.annualLicenseFee != null ? `$${quote.annualLicenseFee.toLocaleString()}/yr` : 'Pricing not yet entered'}
+        {quote.billingCadence ? ` · ${quote.billingCadence}` : ''}
+        {quote.validUntil ? ` · valid until ${new Date(quote.validUntil).toLocaleDateString()}` : ''}
+      </p>
+      {(quote.status === 'draft' || quote.status === 'sent') && (
+        <div className="flex gap-2 pt-1">
+          {quote.status === 'draft' && (
+            <button type="button" onClick={() => { void send(); }} disabled={busy} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold disabled:opacity-60">
+              <Send className="w-3 h-3" /> Send quote
+            </button>
+          )}
+          <button type="button" onClick={() => { void revoke(); }} disabled={busy} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-ent-rust text-ent-rust text-xs font-semibold hover:bg-ent-rust/10 disabled:opacity-60">
+            <Ban className="w-3 h-3" /> Revoke
+          </button>
+        </div>
+      )}
+      {quote.status === 'sent' && <QuoteInvitationsSection quote={quote} />}
+    </li>
+  );
+}
+
+function ProspectCard({ prospect, onChanged }: { prospect: SalesProspect; onChanged: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [quotes, setQuotes] = useState<SalesQuote[]>([]);
+  const [showQuoteForm, setShowQuoteForm] = useState(false);
+  const [packageType, setPackageType] = useState<SalesPackageType>('integrated_care');
+  const [seats, setSeats] = useState(5);
+  const [capacity, setCapacity] = useState(25);
+  const [fee, setFee] = useState('');
+  const [cadence, setCadence] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const refreshQuotes = useCallback(async () => { setQuotes(await getSalesQuotes(prospect.id)); }, [prospect.id]);
+  useEffect(() => { if (expanded) void refreshQuotes(); }, [expanded, refreshQuotes]);
+
+  const submitQuote = async () => {
+    setBusy(true);
+    try {
+      const { error } = await createQuote({
+        prospectId: prospect.id, packageType, proposedLicensedSeats: seats, proposedCoveredPatientCapacity: capacity,
+        annualLicenseFee: fee.trim() ? Number(fee) : null, billingCadence: cadence.trim() || null,
+        quoteTermMonths: null, discountNotes: null, validUntil: null,
+      });
+      if (error) { toast.error(error); return; }
+      toast.success('Quote created as a draft.');
+      setShowQuoteForm(false);
+      void refreshQuotes();
+      onChanged();
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <li className="p-4 bg-ent-panel rounded-xl border border-ent-line space-y-2">
+      <button type="button" onClick={() => setExpanded((e) => !e)} className="w-full flex items-center justify-between gap-2 text-left">
+        <div>
+          <p className="font-semibold text-ent-ink">{prospect.prospectiveOrganizationName}</p>
+          <p className="text-xs text-ent-muted">{prospect.contactName} · {prospect.contactEmail}{prospect.contactPhone ? ` · ${prospect.contactPhone}` : ''}</p>
+        </div>
+        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-ent-pale text-ent-ink capitalize flex-shrink-0">{prospect.status}</span>
+      </button>
+      {expanded && (
+        <div className="pt-2 space-y-2">
+          {prospect.notes && <p className="text-xs text-ent-muted italic">{prospect.notes}</p>}
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold text-ent-muted uppercase tracking-wide">Quotes</h3>
+            <button type="button" onClick={() => setShowQuoteForm((s) => !s)} className="flex items-center gap-1 text-xs font-semibold text-ent-bronze hover:underline">
+              <Plus className="w-3.5 h-3.5" /> New quote
+            </button>
+          </div>
+          {showQuoteForm && (
+            <div className="p-3 bg-ent-bg rounded-xl border border-ent-line space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <select value={packageType} onChange={(e) => setPackageType(e.target.value as SalesPackageType)} className={`${inputCls} flex-1 min-w-[160px]`}>
+                  <option value="integrated_care">Full Enterprise</option>
+                  <option value="therapist">Therapist Enterprise</option>
+                </select>
+                <input type="number" min={1} value={seats} onChange={(e) => setSeats(Number(e.target.value))} placeholder="Seats" className={`${inputCls} w-24`} />
+                <input type="number" min={0} value={capacity} onChange={(e) => setCapacity(Number(e.target.value))} placeholder="Covered patients" className={`${inputCls} w-32`} />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <input value={fee} onChange={(e) => setFee(e.target.value)} placeholder="Annual fee (owner-entered, optional)" className={`${inputCls} flex-1 min-w-[160px]`} />
+                <input value={cadence} onChange={(e) => setCadence(e.target.value)} placeholder="Billing cadence (e.g. annual)" className={`${inputCls} w-48`} />
+              </div>
+              <button type="button" onClick={() => { void submitQuote(); }} disabled={busy} className="px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold disabled:opacity-60">
+                Create quote (draft)
+              </button>
+            </div>
+          )}
+          {quotes.length === 0 ? (
+            <p className="text-xs text-ent-muted">No quotes yet.</p>
+          ) : (
+            <ul className="space-y-2">{quotes.map((q) => <QuoteCard key={q.id} quote={q} onChanged={() => { void refreshQuotes(); onChanged(); }} />)}</ul>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function SalesPipelinePanel() {
+  const [prospects, setProspects] = useState<SalesProspect[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [contactName, setContactName] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [orgName, setOrgName] = useState('');
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => { setProspects(await getSalesProspects()); }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const submit = async () => {
+    if (!contactName.trim() || !contactEmail.trim() || !orgName.trim()) { toast.error('Contact name, email, and prospective organization name are required.'); return; }
+    setBusy(true);
+    try {
+      const { error } = await createProspect(contactName.trim(), contactEmail.trim(), contactPhone.trim() || null, orgName.trim(), notes.trim() || null);
+      if (error) { toast.error(error); return; }
+      toast.success('Prospect created.');
+      setContactName(''); setContactEmail(''); setContactPhone(''); setOrgName(''); setNotes(''); setShowForm(false);
+      void refresh();
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-bold text-ent-ink flex items-center gap-2"><FileText className="w-4 h-4 text-ent-bronze" /> Enterprise Sales Pipeline</h2>
+        <button type="button" onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1 text-sm font-semibold text-ent-bronze hover:underline">
+          <Plus className="w-4 h-4" /> New prospect
+        </button>
+      </div>
+      {showForm && (
+        <div className="p-4 bg-ent-bg rounded-xl border border-ent-line space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Contact name" className={`${inputCls} flex-1 min-w-[140px]`} />
+            <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="Contact email" className={`${inputCls} flex-1 min-w-[160px]`} />
+            <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="Phone (optional)" className={`${inputCls} w-40`} />
+          </div>
+          <input value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Prospective organization name" className={inputCls} />
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes (optional)" className={inputCls} />
+          <button type="button" onClick={() => { void submit(); }} disabled={busy} className="px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
+            Create prospect
+          </button>
+        </div>
+      )}
+      {prospects.length === 0 ? (
+        <p className="text-sm text-ent-text">No sales prospects yet.</p>
+      ) : (
+        <ul className="space-y-2">{prospects.map((p) => <ProspectCard key={p.id} prospect={p} onChanged={() => { void refresh(); }} />)}</ul>
+      )}
+    </div>
+  );
+}
+
 export default function PlatformOwnerAdminPage() {
   const { state, dispatch } = useApp();
   const [loading, setLoading] = useState(true);
@@ -249,6 +525,7 @@ export default function PlatformOwnerAdminPage() {
       <main className="p-4 sm:p-6">
         <div className="max-w-3xl mx-auto space-y-5">
           <DirectorApplicationsPanel apps={directorApps} onChanged={() => { void refresh(); }} />
+          <SalesPipelinePanel />
           <AccountDeletionRequestsPanel />
           <AccountClassificationPanel />
         </div>

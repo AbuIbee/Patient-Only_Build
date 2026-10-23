@@ -3707,6 +3707,191 @@ export interface Database {
         }
         Relationships: []
       }
+      // OWNER DIRECTIVE MMA-ENT-SALES-002 Phase C -- migration 107.
+      sales_prospects: {
+        Row: {
+          contact_email: string
+          contact_name: string
+          contact_phone: string | null
+          created_at: string
+          created_by: string
+          id: string
+          notes: string | null
+          prospective_organization_name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          contact_email: string
+          contact_name: string
+          contact_phone?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          notes?: string | null
+          prospective_organization_name: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          contact_email?: string
+          contact_name?: string
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          notes?: string | null
+          prospective_organization_name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_prospects_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_quotes: {
+        Row: {
+          annual_license_fee: number | null
+          billing_cadence: string | null
+          created_at: string
+          created_by: string
+          discount_notes: string | null
+          id: string
+          package_type: string
+          proposed_covered_patient_capacity: number
+          proposed_licensed_seats: number
+          prospect_id: string
+          quote_term_months: number | null
+          status: string
+          supersedes_quote_id: string | null
+          updated_at: string
+          valid_until: string | null
+        }
+        Insert: {
+          annual_license_fee?: number | null
+          billing_cadence?: string | null
+          created_at?: string
+          created_by: string
+          discount_notes?: string | null
+          id?: string
+          package_type: string
+          proposed_covered_patient_capacity: number
+          proposed_licensed_seats: number
+          prospect_id: string
+          quote_term_months?: number | null
+          status?: string
+          supersedes_quote_id?: string | null
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Update: {
+          annual_license_fee?: number | null
+          billing_cadence?: string | null
+          created_at?: string
+          created_by?: string
+          discount_notes?: string | null
+          id?: string
+          package_type?: string
+          proposed_covered_patient_capacity?: number
+          proposed_licensed_seats?: number
+          prospect_id?: string
+          quote_term_months?: number | null
+          status?: string
+          supersedes_quote_id?: string | null
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_quotes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_quotes_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "sales_prospects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_quotes_supersedes_quote_id_fkey"
+            columns: ["supersedes_quote_id"]
+            isOneToOne: false
+            referencedRelation: "sales_quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_quote_invitations: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          quote_id: string
+          recipient_email: string
+          status: string
+          token_hash: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          created_by: string
+          expires_at: string
+          id?: string
+          quote_id: string
+          recipient_email: string
+          status?: string
+          token_hash: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          id?: string
+          quote_id?: string
+          recipient_email?: string
+          status?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_quote_invitations_accepted_by_fkey"
+            columns: ["accepted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_quote_invitations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_quote_invitations_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "sales_quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       has_patient_access: { Args: { p_patient_id: string }; Returns: boolean }
@@ -5383,6 +5568,188 @@ export interface Database {
           organization_id: string
           organization_name: string
           package_type: string
+        }[]
+      }
+      // OWNER DIRECTIVE MMA-ENT-SALES-002 Phase C -- migration 107.
+      // Returns are inlined (not a Database['public']['Tables'][...]
+      // self-reference) -- the self-referencing form, while used
+      // elsewhere in this file, failed to resolve for these particular
+      // entries (tsc: "Property 'sales_prospects' does not exist"),
+      // apparently order/depth-sensitive for a newly-added table
+      // referenced from within the same interface literal. Inlining
+      // sidesteps the ambiguity entirely and is equally well-precedented
+      // in this file (e.g. get_my_account_deletion_requests below).
+      platform_owner_create_prospect: {
+        Args: {
+          p_contact_email: string
+          p_contact_name: string
+          p_contact_phone: string | null
+          p_notes: string | null
+          p_prospective_organization_name: string
+        }
+        Returns: {
+          contact_email: string
+          contact_name: string
+          contact_phone: string | null
+          created_at: string
+          created_by: string
+          id: string
+          notes: string | null
+          prospective_organization_name: string
+          status: string
+          updated_at: string
+        }
+      }
+      platform_owner_update_prospect_status: {
+        Args: { p_prospect_id: string; p_status: string }
+        Returns: {
+          contact_email: string
+          contact_name: string
+          contact_phone: string | null
+          created_at: string
+          created_by: string
+          id: string
+          notes: string | null
+          prospective_organization_name: string
+          status: string
+          updated_at: string
+        }
+      }
+      platform_owner_create_quote: {
+        Args: {
+          p_annual_license_fee: number | null
+          p_billing_cadence: string | null
+          p_discount_notes: string | null
+          p_package_type: string
+          p_proposed_covered_patient_capacity: number
+          p_proposed_licensed_seats: number
+          p_prospect_id: string
+          p_quote_term_months: number | null
+          p_valid_until: string | null
+        }
+        Returns: {
+          annual_license_fee: number | null
+          billing_cadence: string | null
+          created_at: string
+          created_by: string
+          discount_notes: string | null
+          id: string
+          package_type: string
+          proposed_covered_patient_capacity: number
+          proposed_licensed_seats: number
+          prospect_id: string
+          quote_term_months: number | null
+          status: string
+          supersedes_quote_id: string | null
+          updated_at: string
+          valid_until: string | null
+        }
+      }
+      platform_owner_send_quote: {
+        Args: { p_quote_id: string }
+        Returns: {
+          annual_license_fee: number | null
+          billing_cadence: string | null
+          created_at: string
+          created_by: string
+          discount_notes: string | null
+          id: string
+          package_type: string
+          proposed_covered_patient_capacity: number
+          proposed_licensed_seats: number
+          prospect_id: string
+          quote_term_months: number | null
+          status: string
+          supersedes_quote_id: string | null
+          updated_at: string
+          valid_until: string | null
+        }
+      }
+      platform_owner_revise_quote: {
+        Args: {
+          p_annual_license_fee: number | null
+          p_billing_cadence: string | null
+          p_discount_notes: string | null
+          p_package_type: string
+          p_proposed_covered_patient_capacity: number
+          p_proposed_licensed_seats: number
+          p_quote_id: string
+          p_quote_term_months: number | null
+          p_valid_until: string | null
+        }
+        Returns: {
+          annual_license_fee: number | null
+          billing_cadence: string | null
+          created_at: string
+          created_by: string
+          discount_notes: string | null
+          id: string
+          package_type: string
+          proposed_covered_patient_capacity: number
+          proposed_licensed_seats: number
+          prospect_id: string
+          quote_term_months: number | null
+          status: string
+          supersedes_quote_id: string | null
+          updated_at: string
+          valid_until: string | null
+        }
+      }
+      platform_owner_revoke_quote: {
+        Args: { p_quote_id: string }
+        Returns: {
+          annual_license_fee: number | null
+          billing_cadence: string | null
+          created_at: string
+          created_by: string
+          discount_notes: string | null
+          id: string
+          package_type: string
+          proposed_covered_patient_capacity: number
+          proposed_licensed_seats: number
+          prospect_id: string
+          quote_term_months: number | null
+          status: string
+          supersedes_quote_id: string | null
+          updated_at: string
+          valid_until: string | null
+        }
+      }
+      platform_owner_issue_quote_invitation: {
+        Args: {
+          p_expires_in_hours?: number
+          p_quote_id: string
+          p_recipient_email: string
+        }
+        Returns: {
+          expires_at: string
+          invitation_id: string
+          raw_token: string
+        }[]
+      }
+      platform_owner_revoke_quote_invitation: {
+        Args: { p_invitation_id: string }
+        Returns: {
+          accepted_at: string | null
+          accepted_by: string | null
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          quote_id: string
+          recipient_email: string
+          status: string
+          token_hash: string
+        }
+      }
+      redeem_quote_invitation: {
+        Args: { p_token: string }
+        Returns: {
+          package_type: string
+          proposed_covered_patient_capacity: number
+          proposed_licensed_seats: number
+          prospective_organization_name: string
+          quote_id: string
         }[]
       }
     }
