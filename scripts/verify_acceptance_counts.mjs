@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const failures = [];
@@ -63,9 +64,39 @@ check('92-requirement CSV: unique IDs', new Set(ids92).size, 92);
 // ---------------------------------------------------------------------
 const registerPath = path.join(ROOT, 'docs', 'acceptance', 'ENTERPRISE_MASTER_CLOSURE_REGISTER.md');
 const registerText = fs.readFileSync(registerPath, 'utf8');
-const findingIdMatches = [...registerText.matchAll(/^\|\s*(\d{2})\s*\|/gm)].map((m) => m[1]);
-const uniqueFindingIds = new Set(findingIdMatches.filter((id) => Number(id) >= 1 && Number(id) <= 19));
-check('19 Codex findings: unique numbered rows found in register', uniqueFindingIds.size, 19);
+
+// Isolate the §2l findings-disposition section specifically (not any
+// other numbered table in the register, e.g. the 12-case governance
+// lifecycle table, which also has single-digit numbered rows).
+const section2lStart = registerText.indexOf('## 2l.');
+const section2lEnd = registerText.indexOf('\n## 2m.', section2lStart);
+const section2l = registerText.slice(section2lStart, section2lEnd === -1 ? undefined : section2lEnd);
+const findingRows = [...section2l.matchAll(/^\|\s*(\d{2}|—)\s*\|([^|]+)\|([^|]+)\|([^|]+)\|/gm)]
+  .map((m) => ({ id: m[1].trim(), finding: m[2].trim(), status: m[3].trim(), evidence: m[4].trim() }));
+const numberedFindingIds = findingRows.filter((r) => r.id !== '—').map((r) => r.id);
+check('19 Codex findings: unique numbered rows found in register §2l', new Set(numberedFindingIds).size, 19);
+check('19 Codex findings: no duplicate finding IDs in §2l', numberedFindingIds.length, new Set(numberedFindingIds).size);
+
+// Legitimate disposition vocabulary — a row whose Status column doesn't
+// start with one of these is either a typo or an unauthorized ad-hoc
+// status inconsistent with the rest of the engagement's own discipline.
+const ALLOWED_DISPOSITIONS = ['FIXED', 'PARTIAL', 'PARTIALLY', 'UNCHANGED', 'ALREADY', 'BLOCKED', 'UNVERIFIED', 'CONFIRMED'];
+const illegitimateDispositions = findingRows.filter((r) => !ALLOWED_DISPOSITIONS.some((w) => r.status.toUpperCase().startsWith(w)));
+check('19 Codex findings: every row uses a legitimate disposition lead-word', illegitimateDispositions.length, 0);
+if (illegitimateDispositions.length) {
+  for (const r of illegitimateDispositions) failures.push(`  -> finding ${r.id} ("${r.finding}") has non-standard status: "${r.status.slice(0, 60)}"`);
+}
+
+// Required evidence reference — every row must cite SOMETHING concrete
+// (a migration number, a commit SHA, a test file, or a pointer to
+// another authoritative section/document) rather than an unsupported
+// bare assertion.
+const EVIDENCE_PATTERN = /migrations? \d+|`[^`]+`|\.test\.ts|register §|owner decision register|§\d|NOT AUDITED|NOT ATTEMPTED|commit/i;
+const missingEvidence = findingRows.filter((r) => !EVIDENCE_PATTERN.test(r.evidence));
+check('19 Codex findings: every row cites a concrete evidence reference', missingEvidence.length, 0);
+if (missingEvidence.length) {
+  for (const r of missingEvidence) failures.push(`  -> finding ${r.id} ("${r.finding}") has no recognizable evidence citation`);
+}
 
 // ---------------------------------------------------------------------
 // 3. 60 navigation destinations across the 5 Enterprise offices — read
@@ -124,6 +155,26 @@ const finalDocs = fs.readdirSync(finalDocsDir).filter((f) => f.endsWith('.md'));
 check('15 Wave E acceptance documents present', finalDocs.length, 15);
 const refreshed = finalDocs.filter((f) => fs.readFileSync(path.join(finalDocsDir, f), 'utf8').includes('## UPDATE —'));
 check('15 Wave E acceptance documents carrying a dated current-state UPDATE section', refreshed.length, 15);
+
+// ---------------------------------------------------------------------
+// 6. Final commit consistency — every commit SHA this register cites
+//    (its own checkpoint history, every finding's evidence column,
+//    etc.) must actually exist in this repository's git history. A
+//    typo'd or copy-pasted-wrong SHA would otherwise silently point a
+//    future reader at the wrong diff.
+// ---------------------------------------------------------------------
+const citedShas = new Set([...registerText.matchAll(/`([0-9a-f]{7,10})`/g)].map((m) => m[1]));
+const unknownShas = [];
+for (const sha of citedShas) {
+  try {
+    execFileSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd: ROOT, stdio: 'ignore' });
+  } catch {
+    unknownShas.push(sha);
+  }
+}
+check('Commit-SHA consistency: every SHA cited in the register exists in git history', unknownShas.length, 0);
+if (unknownShas.length) failures.push(`  -> unresolvable SHA(s): ${unknownShas.join(', ')}`);
+oks.push(`Commit-SHA consistency: ${citedShas.size} distinct SHAs cited, all resolved`);
 
 // ---------------------------------------------------------------------
 // Report
