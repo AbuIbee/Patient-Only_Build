@@ -124,8 +124,17 @@ export async function resubmitApplication(
 }
 
 export async function withdrawApplication(applicationId: string): Promise<{ error: string | null }> {
+  // Codex MMA-CODEX-16: the storage paths must be read BEFORE the RPC
+  // (it deletes their metadata row as part of the same transaction) so
+  // the now-orphaned credential-document objects can still be purged
+  // from storage afterward — DELETE FROM storage.objects is blocked at
+  // the SQL level by Supabase Storage's own protective trigger, so this
+  // half has to happen here, not inside the RPC.
+  const docs = await getApplicationDocuments(applicationId);
   const { error } = await supabase.rpc('withdraw_application', { p_application_id: applicationId });
-  return { error: error ? errMsg(error, 'Could not withdraw this application.') : null };
+  if (error) return { error: errMsg(error, 'Could not withdraw this application.') };
+  if (docs.length > 0) await supabase.storage.from(DOC_BUCKET).remove(docs.map((d) => d.storagePath));
+  return { error: null };
 }
 
 export async function getOrgApplications(organizationId: string): Promise<ProfessionalApplication[]> {
@@ -148,8 +157,13 @@ export async function requestApplicationCorrections(applicationId: string, corre
 }
 
 export async function rejectApplication(applicationId: string, rejectionReason: string): Promise<{ error: string | null }> {
+  // Codex MMA-CODEX-16: see withdrawApplication()'s comment above — same
+  // read-paths-before-RPC, remove-from-storage-after pattern.
+  const docs = await getApplicationDocuments(applicationId);
   const { error } = await supabase.rpc('reject_application', { p_application_id: applicationId, p_rejection_reason: rejectionReason });
-  return { error: error ? errMsg(error, 'Could not reject this application.') : null };
+  if (error) return { error: errMsg(error, 'Could not reject this application.') };
+  if (docs.length > 0) await supabase.storage.from(DOC_BUCKET).remove(docs.map((d) => d.storagePath));
+  return { error: null };
 }
 
 export async function directorApproveApplication(applicationId: string): Promise<{ error: string | null }> {

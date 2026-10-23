@@ -37,6 +37,8 @@ import {
 } from '@/services/patientClinicalRecordService';
 import { getMyConversations, type ConversationSummary } from '@/services/communicationsService';
 import CareConversations from '@/components/communications/CareConversations';
+import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDeletionRequests, type AccountDeletionRequest } from '@/services/accountDeletionService';
+import MFASettings from '@/components/MFASettings';
 import PatientMedications from './PatientMedications';
 import PatientDocuments from './PatientDocuments';
 import PatientCareTeam from './PatientCareTeam';
@@ -439,6 +441,66 @@ function PreferencesView({ patientId }: { patientId: string }) {
   );
 }
 
+function AccountDeletionRequestPanel() {
+  const [requests, setRequests] = useState<AccountDeletionRequest[]>([]);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setRequests(await getMyAccountDeletionRequests());
+    setLoading(false);
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const open = requests.find((r) => r.status === 'requested' || r.status === 'under_review');
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const { error } = await requestAccountDeletion(reason.trim());
+      if (error) { toast.error(error); return; }
+      toast.success('Deletion request submitted — a Platform Owner will review it.');
+      setReason('');
+      void refresh();
+    } finally { setBusy(false); }
+  };
+  const cancel = async (id: string) => {
+    setBusy(true);
+    try {
+      const { error } = await cancelAccountDeletionRequest(id);
+      if (error) { toast.error(error); return; }
+      toast('Deletion request cancelled.');
+      void refresh();
+    } finally { setBusy(false); }
+  };
+
+  if (loading) return null;
+
+  return (
+    <div className="space-y-2 pt-3 border-t border-ent-line">
+      <p className="text-xs font-semibold text-ent-muted">Delete my account</p>
+      {open ? (
+        <div className="p-3 bg-red-50 rounded-xl border border-red-200 space-y-2">
+          <p className="text-sm text-ent-ink">A deletion request is pending Platform Owner review (status: {open.status.replace('_', ' ')}).</p>
+          <button type="button" onClick={() => { void cancel(open.id); }} disabled={busy} className="px-3 py-1.5 rounded-lg border border-ent-line text-ent-ink text-xs font-semibold hover:bg-ent-ivory disabled:opacity-60">
+            Cancel request
+          </button>
+        </div>
+      ) : (
+        <>
+          <p className="text-[11px] text-ent-muted">Submitting a request does not delete anything immediately. Once approved by the Platform Owner, your account access is safely deactivated — your account and any records are preserved, not destroyed.</p>
+          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional)" className="w-full px-3 py-2 rounded-xl border border-ent-line text-sm" />
+          <button type="button" onClick={() => { void submit(); }} disabled={busy} className="px-3 py-1.5 rounded-lg border border-red-300 text-red-600 text-xs font-semibold hover:bg-red-50 disabled:opacity-60">
+            Request account deletion
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SettingsView({ onLogout }: { onLogout: () => void }) {
   const { state } = useApp();
   return (
@@ -449,6 +511,8 @@ function SettingsView({ onLogout }: { onLogout: () => void }) {
         <p><span className="text-ent-muted">Email:</span> {state.currentUser?.email}</p>
       </div>
       <button type="button" onClick={onLogout} className="mt-2 px-4 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold">Logout</button>
+      <MFASettings />
+      <AccountDeletionRequestPanel />
     </OfficeCard>
   );
 }

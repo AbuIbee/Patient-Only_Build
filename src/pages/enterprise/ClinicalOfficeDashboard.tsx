@@ -104,6 +104,14 @@ const INITIAL_TAB: Partial<Record<ClinicalNavKey, TabKey>> = {
 
 const PATIENT_PICKER_DESTINATIONS: ClinicalNavKey[] = [
   'patients', 'schedule', 'assessments', 'diagnoses', 'medications', 'careplan', 'documentation', 'goals', 'documents',
+  // Codex MMA-CODEX-10: 'communication' already had an INITIAL_TAB entry
+  // ('communications') but was missing from this array, so the render
+  // switch's PATIENT_PICKER_DESTINATIONS.includes(nav) check never
+  // matched it and it fell through to `: null` -- a real blank page for
+  // both Medical and Therapy staff. EnterprisePatientRecordTabs' own
+  // 'communications' tab (CareConversations) already works correctly
+  // once reached; this was the one missing wire-up.
+  'communication',
 ];
 
 // basePath defaults to null (no URL sync) so every EXISTING caller
