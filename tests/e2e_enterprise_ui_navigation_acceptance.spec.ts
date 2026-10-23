@@ -129,7 +129,7 @@ test.describe('9. Correct data isolation', () => {
     // Negative control at the API boundary -- the owner-approved layout
     // must never be reachable as a reason to weaken RLS; this just
     // re-confirms the boundary this UI work sits on top of still holds.
-    const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+    const ANON = 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH';
     const resp = await request.get('http://127.0.0.1:55321/rest/v1/patients?id=eq.e54b94db-4d6f-45ce-a1ef-b2f225cc763d', {
       headers: { apikey: ANON, Authorization: `Bearer ${ANON}` },
     });

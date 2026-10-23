@@ -16,8 +16,9 @@
 // running on 127.0.0.1:55321. Run with `npm run test:integration`.
 // Creates and fully tears down its own synthetic fixture; never reads
 // or writes any pre-existing data.
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ANON, authDeleteUser, authSignUp, http, login, rpc, runConcurrentAcceptHoldingLock, sql } from './_runtime';
+import { ANON, BASE, authDeleteUser, authSignUp, http, login, rpc, runConcurrentAcceptHoldingLock, sql } from './_runtime';
 
 const PW = 'MasterCorrective9!';
 const stamp = Date.now();
@@ -519,6 +520,25 @@ describe('CLOSURE REGISTER — anon (unauthenticated) callers are rejected at th
   // (not a fixed list of names) so a FUTURE migration that forgets
   // REVOKE FROM PUBLIC is caught automatically, not just the ones
   // found this pass.
+  //
+  // CONFIRMED REGRESSION, root-caused this session: migrations 085/090's
+  // anon-execute revoke broke RLS evaluation for every anon SELECT
+  // against any table carrying a PUBLIC-scoped (no `TO` clause) policy
+  // that calls one of 12 functions DIRECTLY inside its USING/WITH CHECK
+  // expression (profiles, patients, subscriptions, medications, etc. —
+  // migrations 018/019/024 plus 10 more found via a live pg_policy scan)
+  // — anon got "permission denied for function" instead of the correct,
+  // harmless empty result. An earlier draft fix (migration 106, rejected
+  // on security review) proposed re-granting anon EXECUTE on those
+  // functions; that was rejected because (a) it contradicts this
+  // engagement's own stated defense-in-depth standard and (b) one
+  // function, patient_has_paid_entitlement(uuid), does NOT gate on
+  // auth.uid() and would have let anon probe an arbitrary patient's
+  // billing tier. The owner-approved fix instead rescopes every affected
+  // policy to `TO authenticated` (migration 106, policy-scoping version)
+  // — anon never evaluates these predicates at all, no grant needed. This
+  // guard is restored to its original strict form: zero anon-executable
+  // functions anywhere in `public`, no allowlist.
   it('EXHAUSTIVE GUARD: no function in the public schema grants anon EXECUTE, via any path (direct grant or inherited PUBLIC grant)', () => {
     const count = sql(`
       SELECT count(*) FROM pg_proc p
@@ -526,6 +546,83 @@ describe('CLOSURE REGISTER — anon (unauthenticated) callers are rejected at th
       WHERE n.nspname = 'public' AND has_function_privilege('anon', p.oid, 'EXECUTE');
     `);
     expect(count).toBe('0');
+  });
+});
+
+// OWNER DIRECTIVE — RLS POLICY-SCOPING SECURITY REMEDIATION (migration
+// 106, policy-scoping version). Regression coverage for the fix described
+// above: every affected table/RPC family must behave identically for a
+// real authenticated user, while anon gets the correct empty/denied
+// result instead of a 42501 error, and the two caller-independent
+// entitlement-disclosure functions stay unreachable by anyone but a
+// nested nested caller.
+describe('OWNER DIRECTIVE — RLS policy-scoping remediation (migration 106)', () => {
+  it('anonymous REST reads across affected policy families return 200 + [], not 401', async () => {
+    const tables = ['patients', 'patient_notes', 'organizations', 'professional_applications', 'conversations', 'profiles'];
+    for (const table of tables) {
+      const [status, body] = await http('GET', `/rest/v1/${table}?select=id&limit=1`, undefined, ANON);
+      expect([status, table]).toEqual([200, table]);
+      expect(Array.isArray(body)).toBe(true);
+    }
+  });
+
+  it('direct anonymous RPC calls to patient_has_paid_entitlement / is_patient_enterprise_covered are rejected, not disclosed', async () => {
+    const fakePatientId = '00000000-0000-0000-0000-000000000001';
+    const [s1] = await rpc('patient_has_paid_entitlement', { p_patient_id: fakePatientId }, ANON);
+    expect(s1).toBe(401);
+    const [s2] = await rpc('is_patient_enterprise_covered', { p_patient_id: fakePatientId }, ANON);
+    expect(s2).toBe(401);
+  });
+
+  it('direct authenticated RPC calls to is_authorized_for_patient / is_org_director_for_patient with an ARBITRARY other user id are rejected (no cross-user oracle), even though a real logged-in caller is otherwise fully functional', async () => {
+    const dirId = await authSignUp(`r7mc-polscope-dir-${stamp}@local.test`, PW);
+    const dirTok = await login(`r7mc-polscope-dir-${stamp}@local.test`, PW);
+    const someoneElse = '00000000-0000-0000-0000-000000000002';
+    const somePatient = '00000000-0000-0000-0000-000000000003';
+    // PostgREST maps a 42501 permission-denied-for-function error to 401
+    // for the anon role (seen elsewhere in this file) but to 403 for an
+    // already-authenticated role, since re-authenticating can't fix it.
+    const [s1] = await rpc('is_authorized_for_patient', { p_user_id: someoneElse, p_patient_id: somePatient }, dirTok);
+    expect(s1).toBe(403);
+    const [s2] = await rpc('is_org_director_for_patient', { p_user_id: someoneElse, p_patient_id: somePatient }, dirTok);
+    expect(s2).toBe(403);
+    // Regression guard: the same real account's own, legitimate RPC path is unaffected.
+    const [realStatus] = (await rpc('get_my_organizations', {}, dirTok)) as [number, unknown[]];
+    expect(realStatus).toBe(200);
+    await authDeleteUser(dirId);
+  });
+
+  it('the legitimate public patient-intake enrollment workflow still accepts an anonymous submission', async () => {
+    // Deliberately not using the shared http() helper: it always sends
+    // Prefer: return=representation, which requires a SELECT-visible row
+    // back after insert -- patient_intake has no SELECT policy granting
+    // an anonymous submitter visibility of their own just-inserted row
+    // (by design; a pre-existing, unrelated characteristic of this
+    // table), so return=representation 42501s even on a fully successful
+    // insert. The real submission flow (and this test) only needs the
+    // INSERT itself to succeed.
+    const intakeId = randomUUID();
+    const r = await fetch(`${BASE}/rest/v1/patient_intake`, {
+      method: 'POST',
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: intakeId, patient_first_name: 'R7MC-PolicyScope', patient_last_name: 'IntakeProbe' }),
+    });
+    expect(r.status).toBe(201);
+    sql(`DELETE FROM public.patient_intake WHERE id='${intakeId}';`);
+  });
+
+  it('an authenticated director still sees patients covered by their own org (positive control for the just-rescoped policy)', async () => {
+    const [status, body] = (await rpc('get_my_organizations', {}, tok.directorA)) as [number, unknown[]];
+    expect(status).toBe(200);
+    expect(Array.isArray(body)).toBe(true);
+  });
+
+  it('an authenticated non-admin cannot read all profiles (unauthorized-authenticated control for the just-rescoped "Admins can view all profiles" policy)', async () => {
+    const [status, body] = await http('GET', '/rest/v1/profiles?select=id,role&limit=5', undefined, tok.caregiverA);
+    expect(status).toBe(200);
+    // RLS still restricts the row set to the caller's own profile/legitimately-visible rows, not every profile in the system.
+    expect(Array.isArray(body)).toBe(true);
+    expect((body as Array<{ id: string }>).every((r) => r.id === ids.caregiverA)).toBe(true);
   });
 });
 

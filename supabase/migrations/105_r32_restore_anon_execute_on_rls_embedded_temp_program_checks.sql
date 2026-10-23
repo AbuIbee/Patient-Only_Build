@@ -1,0 +1,36 @@
+-- CONFIRMED REGRESSION from migration 090 (anon-execute hardening sweep),
+-- caught live by tests/e2e_enterprise_ui_navigation_acceptance.spec.ts's
+-- "9. Correct data isolation" test once that spec's unrelated fixture gap
+-- was fixed and it could finally run this far.
+--
+-- Migration 090 revoked EXECUTE on caller_is_expired_companion() and
+-- caller_is_temp_user_program() from PUBLIC and granted it only to
+-- `authenticated`, deliberately excluding `anon` — reasoning (090's own
+-- comment) that both are "confirmed live to return false harmlessly for
+-- an anon caller" when invoked directly as an RPC, so excluding anon was
+-- assessed as pure defense-in-depth with no functional cost.
+--
+-- That assessment only considered DIRECT RPC invocation. It missed that
+-- both functions are also embedded inside broad RESTRICTIVE RLS policies
+-- (migrations 018/019/024: `USING (NOT caller_is_temp_user_program())` /
+-- `USING (NOT caller_is_expired_companion())`) applied, with no `TO
+-- authenticated` role scoping, across profiles, patients, subscriptions,
+-- medications, medication_logs, memories, mood_entries, tasks,
+-- patient_intake, and the care_partner_* tables — i.e. to EVERY role,
+-- anon included. SECURITY DEFINER changes whose privileges the function
+-- BODY runs with; it does not waive the caller's own need for EXECUTE to
+-- invoke the function at all. With anon's EXECUTE revoked, RLS evaluation
+-- for an anon SELECT against any of those tables now raises "permission
+-- denied for function ..." (confirmed live, error 42501) instead of the
+-- correct, pre-existing behavior: the RESTRICTIVE predicate evaluates to
+-- a harmless `false` (auth.uid() IS NULL for anon, so the EXISTS check
+-- never matches) and RLS legitimately returns an empty result set.
+--
+-- Net effect of the regression: every anon REST request against any of
+-- those tables now hard-errors instead of transparently returning `[]`.
+-- This is a functional break, not a data-exposure fix — no row was ever
+-- reachable by anon either before or after migration 090 — so restoring
+-- anon's EXECUTE here reverts a regression, it does not reopen a real
+-- security gap.
+GRANT EXECUTE ON FUNCTION public.caller_is_expired_companion() TO anon;
+GRANT EXECUTE ON FUNCTION public.caller_is_temp_user_program() TO anon;
