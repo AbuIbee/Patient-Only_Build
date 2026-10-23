@@ -3,7 +3,7 @@
 // thin pass-through to a SECURITY DEFINER RPC that independently
 // re-verifies authorization server-side; nothing in this file performs
 // or should be trusted to perform an authorization decision on its own.
-import { supabase } from '@/lib/supabase';
+import { supabase, logDocumentAccess } from '@/lib/supabase';
 import type { Json } from '@/types/supabase';
 
 export type RequestedOffice = 'director' | 'caregiver' | 'medical_professional' | 'therapist';
@@ -231,5 +231,6 @@ export async function getApplicationDocuments(applicationId: string): Promise<Ap
 export async function getSignedDocumentUrl(storagePath: string): Promise<string | null> {
   const { data, error } = await supabase.storage.from(DOC_BUCKET).createSignedUrl(storagePath, 3600);
   if (error || !data) return null;
+  void logDocumentAccess(DOC_BUCKET, storagePath);
   return data.signedUrl;
 }

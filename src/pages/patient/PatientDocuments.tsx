@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, logDocumentAccess } from '@/lib/supabase';
 import { getErrorMessage } from '@/lib/utils';
 import { useApp } from '@/store/useApp';
 import { toast } from 'sonner';
@@ -55,6 +55,7 @@ const MAX_DOC_SIZE = 5 * 1024 * 1024; // 5 MB
 async function signDocUrl(storagePath: string): Promise<string> {
   const { data, error } = await supabase.storage.from(DOC_BUCKET).createSignedUrl(storagePath, 3600);
   if (error || !data) return '';
+  void logDocumentAccess(DOC_BUCKET, storagePath);
   return data.signedUrl;
 }
 

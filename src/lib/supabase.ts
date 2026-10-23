@@ -35,6 +35,23 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
   },
 });
 
+// ─── Document access audit (Codex MMA-CODEX-16) ──────────────────────────────
+// Call this after successfully creating a signed URL for a document in
+// 'patient-documents' or 'professional-credentials' — never for patient-
+// media/entertainment content, which this finding does not cover. Best-
+// effort: a logging failure never blocks the download itself (the
+// document was already legitimately authorized by RLS before this
+// point; losing one audit row is not a reason to deny access).
+export async function logDocumentAccess(bucketId: 'patient-documents' | 'professional-credentials', storagePath: string): Promise<void> {
+  try {
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) return;
+    await supabase.from('document_access_audit').insert({ accessed_by: data.user.id, bucket_id: bucketId, storage_path: storagePath });
+  } catch {
+    // best-effort only, see comment above
+  }
+}
+
 // ─── Signed URL helper (private bucket) ──────────────────────────────────────
 // Always use this for patient-media files. Never use getPublicUrl().
 // Results are cached in sessionStorage for 50 minutes (URL valid for 1 hour).

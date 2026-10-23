@@ -12,7 +12,7 @@
 // render any data.
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
+import { supabase, logDocumentAccess } from '@/lib/supabase';
 import {
   ArrowLeft, Loader2, ClipboardList, ClipboardCheck, Calendar, MapPin, Stethoscope, Send,
   ShieldAlert, FileText, Pill, Heart, Activity, Target, Clock, Globe, Upload, Download, AlertTriangle, PencilLine,
@@ -883,6 +883,7 @@ function DocumentsTab({ patientId }: { patientId: string }) {
   const download = async (storagePath: string, fileName: string) => {
     const { data, error: signErr } = await supabase.storage.from(DOC_BUCKET).createSignedUrl(storagePath, 3600);
     if (signErr || !data) { toast.error(signErr?.message || 'Could not generate a secure download link.'); return; }
+    void logDocumentAccess(DOC_BUCKET, storagePath);
     const a = document.createElement('a');
     a.href = data.signedUrl; a.target = '_blank'; a.rel = 'noopener noreferrer';
     a.click();

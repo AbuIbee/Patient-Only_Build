@@ -31,7 +31,7 @@
 // and game-playing activity are excluded from this record — the former
 // Memories section is removed, not relocated.
 import { useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, logDocumentAccess } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { verifyCaregiverPatientLink } from '@/services/caregiverRegistrationService';
 import { getHelpActivationHistory, type HelpActivationHistoryEntry } from '@/services/helpActivationService';
@@ -206,6 +206,7 @@ type LoadState = 'checking' | 'denied' | 'loading' | 'ready' | 'error';
 async function signDocUrl(storagePath: string): Promise<string> {
   const { data, error } = await supabase.storage.from(DOC_BUCKET).createSignedUrl(storagePath, 3600);
   if (error || !data) return '';
+  void logDocumentAccess(DOC_BUCKET, storagePath);
   return data.signedUrl;
 }
 

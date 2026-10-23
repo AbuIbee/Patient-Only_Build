@@ -3409,6 +3409,31 @@ export interface Database {
           },
         ]
       }
+      // Codex MMA-CODEX-16 — migration 103.
+      document_access_audit: {
+        Row: {
+          id: string
+          accessed_by: string
+          bucket_id: string
+          storage_path: string
+          accessed_at: string
+        }
+        Insert: {
+          id?: string
+          accessed_by: string
+          bucket_id: string
+          storage_path: string
+          accessed_at?: string
+        }
+        Update: {
+          id?: string
+          accessed_by?: string
+          bucket_id?: string
+          storage_path?: string
+          accessed_at?: string
+        }
+        Relationships: []
+      }
       professional_application_documents: {
         Row: {
           application_id: string
