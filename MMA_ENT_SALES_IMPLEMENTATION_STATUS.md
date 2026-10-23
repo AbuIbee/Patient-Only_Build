@@ -77,7 +77,8 @@ Proposed implementation order, safest and most load-bearing first:
 | Date | Commit | What happened |
 |---|---|---|
 | 2026-10-23 | `4618a162` | RLS policy-scoping security remediation pushed (unrelated prior work this session). |
-| 2026-10-23 | *(uncommitted)* | Phase A baseline (this document) completed, read-only. No code/schema changes yet. |
+| 2026-10-23 | `74af6c1d` | Phase A baseline (this document) + Phase B: fixed the Director dead end in `ProfessionalOfficeResolver` (pending-invite banner reused from the legacy `/business` tree; `CreateOrgCard` reused for a founding-Director application). New E2E spec `tests/e2e_professional_access_states.spec.ts`, 2/2 passing. No regression in five-office/Caregiver nav E2E, integration (115/115), or unit (382/382). |
+| 2026-10-23 | `6fe90885` | Phase C, increment 1 of 2 (backend): migration `107_mma_ent_sales_002_prospects_quotes_invitations.sql` — `sales_prospects`/`sales_quotes`/`sales_quote_invitations` + 9 Platform-Owner-gated RPCs (create/update prospect; create/send/revise/revoke quote; issue/revoke/redeem invitation). Hashed, single-use, expiring, recipient-email-bound tokens — redemption returns quote terms only, creates no org/membership itself. Caught and fixed a real bug during testing: `gen_random_bytes`/`digest` live in the `extensions` schema here, not `public` — the function bodies now schema-qualify both calls rather than widening `search_path`. New integration suite `tests/integration/salesProspectsQuotesInvitations.test.ts`, 9/9 passing, including the single-use/replay, expiry, revocation, and cross-recipient-rejection cases. Integration 124/124, unit 382/382, typecheck/lint/build clean. **Increment 2 (Platform Owner console UI for this schema) is not yet built.**
 
 ## 10. Open owner-decision items (explicitly not guessed)
 
