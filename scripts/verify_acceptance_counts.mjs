@@ -1,0 +1,139 @@
+#!/usr/bin/env node
+// MANDATORY FINAL ACCEPTANCE ENFORCEMENT §1 — automated checks that the
+// five acceptance registers this engagement maintains contain exactly
+// the counts the governing directives require, each with a unique,
+// non-duplicated identifier. This script does not judge WHETHER an
+// item's disposition is truthful (that is the register's own job,
+// cross-checked by hand throughout this engagement) -- it only catches
+// drift in COUNT and UNIQUENESS, which is the class of error a human
+// re-reading a 300+ line register across many sessions can miss.
+//
+// Run with: node scripts/verify_acceptance_counts.mjs
+// Exits non-zero (and prints exactly what's wrong) on any mismatch.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const failures = [];
+const oks = [];
+
+function check(label, actual, expected) {
+  if (actual === expected) oks.push(`${label}: ${actual} (expected ${expected})`);
+  else failures.push(`${label}: got ${actual}, expected ${expected}`);
+}
+
+// ---------------------------------------------------------------------
+// 1. 92 unique Enterprise requirement IDs — the traceability CSV.
+// ---------------------------------------------------------------------
+function parseCSV(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false; }
+      else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n') { row.push(field); field = ''; rows.push(row); row = []; }
+      else if (c === '\r') { /* skip */ }
+      else field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  return rows.filter((r) => !(r.length === 1 && r[0] === ''));
+}
+
+const csvPath = path.join(ROOT, 'MyMemoria_Functional_Remediation_001', '28_ENTERPRISE_CAREGIVER_TRACEABILITY_MATRIX.csv');
+const csvRows = parseCSV(fs.readFileSync(csvPath, 'utf8'));
+const header = csvRows[0];
+const dataRows = csvRows.slice(1);
+const malformed = dataRows.filter((r) => r.length !== header.length);
+const ids92 = dataRows.map((r) => r[0]);
+check('92-requirement CSV: well-formed rows (13 fields each)', dataRows.length - malformed.length, 92);
+check('92-requirement CSV: malformed-width rows', malformed.length, 0);
+check('92-requirement CSV: unique IDs', new Set(ids92).size, 92);
+
+// ---------------------------------------------------------------------
+// 2. 19 unique Codex finding IDs — the closure register's own
+//    disposition table (§2l), rows "| NN | ... |" where NN is 01-19.
+// ---------------------------------------------------------------------
+const registerPath = path.join(ROOT, 'docs', 'acceptance', 'ENTERPRISE_MASTER_CLOSURE_REGISTER.md');
+const registerText = fs.readFileSync(registerPath, 'utf8');
+const findingIdMatches = [...registerText.matchAll(/^\|\s*(\d{2})\s*\|/gm)].map((m) => m[1]);
+const uniqueFindingIds = new Set(findingIdMatches.filter((id) => Number(id) >= 1 && Number(id) <= 19));
+check('19 Codex findings: unique numbered rows found in register', uniqueFindingIds.size, 19);
+
+// ---------------------------------------------------------------------
+// 3. 60 navigation destinations across the 5 Enterprise offices — read
+//    directly from each dashboard's own nav-array source, not
+//    hardcoded, so this check breaks (correctly) if a destination is
+//    added or removed without updating the register.
+// ---------------------------------------------------------------------
+function countNavKeys(filePath, arrayVarName) {
+  const text = fs.readFileSync(path.join(ROOT, filePath), 'utf8');
+  const start = text.indexOf(`const ${arrayVarName}`);
+  if (start === -1) throw new Error(`Could not find ${arrayVarName} in ${filePath}`);
+  // Skip past any `: Type<...>[]` annotation between the name and `=`
+  // -- its own `[]` is not the array literal's opening bracket.
+  const equalsIdx = text.indexOf('=', start);
+  const arrayStart = text.indexOf('[', equalsIdx);
+  let depth = 0, end = arrayStart;
+  for (let i = arrayStart; i < text.length; i++) {
+    if (text[i] === '[') depth++;
+    else if (text[i] === ']') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  const body = text.slice(arrayStart, end + 1);
+  return [...body.matchAll(/key:\s*'[^']+'/g)].length;
+}
+
+const navCounts = {
+  'Admin/Director (OrganizationDirectorDashboard.tsx DIRECTOR_NAV_ITEMS)': countNavKeys('src/pages/enterprise/OrganizationDirectorDashboard.tsx', 'DIRECTOR_NAV_ITEMS'),
+  'Caregiver (EnterpriseCaregiverDashboard.tsx NAV_ITEMS)': countNavKeys('src/pages/enterprise/EnterpriseCaregiverDashboard.tsx', 'NAV_ITEMS'),
+  'Medical (ClinicalOfficeDashboard.tsx MEDICAL_NAV_ITEMS)': countNavKeys('src/pages/enterprise/ClinicalOfficeDashboard.tsx', 'MEDICAL_NAV_ITEMS'),
+  'Therapy (ClinicalOfficeDashboard.tsx THERAPY_NAV_ITEMS)': countNavKeys('src/pages/enterprise/ClinicalOfficeDashboard.tsx', 'THERAPY_NAV_ITEMS'),
+  'Patient (EnterprisePatientDashboard.tsx NAV_ITEMS)': countNavKeys('src/pages/patient/EnterprisePatientDashboard.tsx', 'NAV_ITEMS'),
+};
+let totalNav = 0;
+for (const [office, count] of Object.entries(navCounts)) {
+  oks.push(`Navigation — ${office}: ${count} destinations`);
+  totalNav += count;
+}
+check('60 navigation destinations: total across all 5 offices', totalNav, 60);
+
+// ---------------------------------------------------------------------
+// 4. 25 ordered office-pair communication combinations — the 5x5 grid
+//    table in the cross-office matrix test file's own header comment
+//    (the authoritative, currently-tested grid).
+// ---------------------------------------------------------------------
+const matrixTestPath = path.join(ROOT, 'tests', 'integration', 'crossOfficeCommunicationMatrix.test.ts');
+const matrixText = fs.readFileSync(matrixTestPath, 'utf8');
+const officesMatch = matrixText.match(/type ReachableOffice = ([^;]+);/);
+if (!officesMatch) throw new Error('Could not find ReachableOffice union in crossOfficeCommunicationMatrix.test.ts');
+const officeCount = officesMatch[1].split('|').length;
+check('25-cell communication matrix: office count forms a 5x5 grid', officeCount * officeCount, 25);
+
+// ---------------------------------------------------------------------
+// 5. 15 current acceptance documents.
+// ---------------------------------------------------------------------
+const finalDocsDir = path.join(ROOT, 'docs', 'acceptance', 'final');
+const finalDocs = fs.readdirSync(finalDocsDir).filter((f) => f.endsWith('.md'));
+check('15 Wave E acceptance documents present', finalDocs.length, 15);
+const refreshed = finalDocs.filter((f) => fs.readFileSync(path.join(finalDocsDir, f), 'utf8').includes('## UPDATE —'));
+check('15 Wave E acceptance documents carrying a dated current-state UPDATE section', refreshed.length, 15);
+
+// ---------------------------------------------------------------------
+// Report
+// ---------------------------------------------------------------------
+console.log('=== PASS ===');
+for (const line of oks) console.log('  ' + line);
+if (failures.length) {
+  console.log('\n=== FAIL ===');
+  for (const line of failures) console.log('  ' + line);
+  console.log(`\n${failures.length} check(s) failed.`);
+  process.exit(1);
+}
+console.log(`\nAll ${oks.length} checks passed.`);

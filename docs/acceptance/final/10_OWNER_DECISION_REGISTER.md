@@ -1,5 +1,11 @@
 # 10 — Owner Decision Register
 
+## UPDATE — 2026-10-23, HEAD `5fba1435` — item 4 (O10 active-sessions) RESOLVED this round; new item 8 (hosted-project reconciliation authorization) added
+
+See item 4 and item 8 below for the full detail. W13/H13/O09/item 5/item 7 are unchanged.
+
+---
+
 Only genuinely undecided product/security policy questions appear here. No requirement is deferred or narrowed by this document; every item below has a determinable-but-not-yet-determined answer that engineering should not pick unilaterally.
 
 ## 1. W13 — Offline Drafting
