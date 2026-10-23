@@ -15,9 +15,10 @@ import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { Loader2, ShieldAlert, LogOut, Sparkles } from 'lucide-react';
-import { getMyOrganizations, type MyOrganization } from '@/services/organizationService';
+import { getMyOrganizations, getMyPendingOrgInvites, type MyOrganization, type PendingOrgInvite } from '@/services/organizationService';
 import { getMyApplication, type ProfessionalApplication } from '@/services/professionalApplicationService';
-import OrganizationDirectorDashboard from '@/pages/enterprise/OrganizationDirectorDashboard';
+import OrganizationDirectorDashboard, { CreateOrgCard } from '@/pages/enterprise/OrganizationDirectorDashboard';
+import { PendingInvitesBanner } from '@/pages/enterprise/EnterpriseDashboardRouter';
 import EnterpriseCaregiverDashboard from '@/pages/enterprise/EnterpriseCaregiverDashboard';
 import ClinicalOfficeDashboard from '@/pages/enterprise/ClinicalOfficeDashboard';
 import EnterprisePatientDashboard from '@/pages/patient/EnterprisePatientDashboard';
@@ -45,7 +46,32 @@ function parseRequestedOffice(): ProfessionalOfficeKey | null {
   return (Object.keys(OFFICE_SEGMENT) as ProfessionalOfficeKey[]).find((k) => OFFICE_SEGMENT[k].toLowerCase() === seg) ?? null;
 }
 
-function AccessRequiredState({ onLogout }: { onLogout: () => void }) {
+// P1 CORRECTIVE ORDER, PHASE B — the prior version of this screen was a
+// true dead end: no link anywhere back to an application, and no
+// awareness of a pending staff invitation (get_my_organizations() only
+// ever returns ACTIVE memberships; an 'invited' one is a separate RPC,
+// get_my_pending_org_invites(), that this resolver never called before).
+// Two distinct, owner-approved paths are offered now, neither of which
+// grants access by itself: (1) a pending invite can be accepted/declined
+// inline (reusing the exact same respond_to_org_invite() RPC and banner
+// component the legacy /business tree already uses — no new mechanism);
+// (2) absent any invite, a prospective founding Director can apply
+// (reusing CreateOrgCard exactly as-is — it already calls
+// create_organization(), which itself only ever submits a
+// professional_applications row for Platform Owner review; Director
+// access is still never self-awarded).
+function AccessRequiredState({
+  onLogout,
+  pendingInvites,
+  onInviteResolved,
+  onApplicationStarted,
+}: {
+  onLogout: () => void;
+  pendingInvites: PendingOrgInvite[];
+  onInviteResolved: () => void;
+  onApplicationStarted: () => void;
+}) {
+  const hasInvites = pendingInvites.length > 0;
   return (
     <div className="min-h-screen bg-ent-bg flex flex-col">
       <header className="bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-4 flex items-center justify-between">
@@ -57,16 +83,28 @@ function AccessRequiredState({ onLogout }: { onLogout: () => void }) {
           <LogOut className="w-4 h-4" /> Logout
         </button>
       </header>
-      <main className="flex-1 flex items-center justify-center p-4">
+      <main className="flex-1 flex flex-col items-center justify-center p-4 gap-6">
         <div className="max-w-md text-center space-y-3">
           <ShieldAlert className="w-10 h-10 text-ent-bronze mx-auto" />
-          <h1 className="text-lg font-bold text-ent-ink">Organization access required</h1>
+          <h1 className="text-lg font-bold text-ent-ink">{hasInvites ? 'You have a pending invitation' : 'Organization access required'}</h1>
           <p className="text-sm text-ent-text">
-            Your account is not currently authorized for any Enterprise office. An organization&apos;s director adds staff
-            members directly, and Enterprise patient access is granted by your care organization — ask them to add you, and
-            you&apos;ll be able to sign back in here once access is active.
+            {hasInvites
+              ? 'Accept below to join, or decline if you don’t recognize this organization.'
+              : 'Your account is not currently authorized for any Enterprise office. An organization’s director adds staff ' +
+                'members directly, and Enterprise patient access is granted by your care organization — ask them to add you, and ' +
+                'you’ll be able to sign back in here once access is active.'}
           </p>
         </div>
+        {hasInvites ? (
+          <PendingInvitesBanner invites={pendingInvites} onResolved={onInviteResolved} />
+        ) : (
+          <div className="w-full max-w-md space-y-3">
+            <div className="flex items-center gap-2 justify-center text-xs font-semibold text-ent-muted uppercase tracking-wide">
+              <span className="h-px flex-1 bg-ent-line" /> New to Enterprise? <span className="h-px flex-1 bg-ent-line" />
+            </div>
+            <CreateOrgCard onCreated={onApplicationStarted} />
+          </div>
+        )}
       </main>
     </div>
   );
@@ -126,13 +164,17 @@ export default function ProfessionalOfficeResolver() {
   const [requestedOffice, setRequestedOffice] = useState<ProfessionalOfficeKey | null>(() => parseRequestedOffice());
   const [manualSelection, setManualSelection] = useState<ProfessionalOfficeKey | null>(null);
   const [myApplication, setMyApplication] = useState<ProfessionalApplication | null>(null);
+  const [pendingInvites, setPendingInvites] = useState<PendingOrgInvite[]>([]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [o, coverageResult, app] = await Promise.all([getMyOrganizations(), supabase.rpc('is_my_enterprise_coverage_active'), getMyApplication()]);
+    const [o, coverageResult, app, invites] = await Promise.all([
+      getMyOrganizations(), supabase.rpc('is_my_enterprise_coverage_active'), getMyApplication(), getMyPendingOrgInvites(),
+    ]);
     setOrgs(o);
     setPatientCovered(coverageResult.data === true);
     setMyApplication(app);
+    setPendingInvites(invites);
     setLoading(false);
   }, []);
 
@@ -185,7 +227,14 @@ export default function ProfessionalOfficeResolver() {
     if (myApplication && ['pending_review', 'info_required', 'resubmitted', 'rejected'].includes(myApplication.status)) {
       return <ApplicationStatusPage application={myApplication} onRefresh={() => { void refresh(); }} />;
     }
-    return <AccessRequiredState onLogout={() => { void handleLogout(); }} />;
+    return (
+      <AccessRequiredState
+        onLogout={() => { void handleLogout(); }}
+        pendingInvites={pendingInvites}
+        onInviteResolved={() => { void refresh(); }}
+        onApplicationStarted={() => { void refresh(); }}
+      />
+    );
   }
 
   // A requested office the user does NOT actually hold is never

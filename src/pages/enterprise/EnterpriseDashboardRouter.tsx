@@ -24,7 +24,7 @@ import ClinicalOfficeDashboard from './ClinicalOfficeDashboard';
 import ResidentialTherapistDashboard from './ResidentialTherapistDashboard';
 import EnterpriseCaregiverDashboard from './EnterpriseCaregiverDashboard';
 
-function PendingInvitesBanner({ invites, onResolved }: { invites: PendingOrgInvite[]; onResolved: () => void }) {
+export function PendingInvitesBanner({ invites, onResolved }: { invites: PendingOrgInvite[]; onResolved: () => void }) {
   const [respondingId, setRespondingId] = useState<string | null>(null);
 
   const respond = async (invite: PendingOrgInvite, accept: boolean) => {
