@@ -16,12 +16,12 @@ import { toast } from 'sonner';
 import {
   getMyConversations, getPatientCareCircle, createConversation, getConversationParticipants,
   getConversationMessages, sendMessage, markMessageRead, acknowledgeMessage, resolveFollowUp,
-  addConversationParticipant, removeConversationParticipant,
+  addConversationParticipant, removeConversationParticipant, uploadMessageAttachment, getSignedAttachmentUrl,
   type ConversationSummary, type CareCircleMember, type ConversationParticipant, type ConversationMessage,
 } from '@/services/communicationsService';
 import { supabase } from '@/lib/supabase';
 import {
-  MessageSquare, ArrowLeft, Loader2, Plus, Send, AlertTriangle, Check, Users, X, Flag,
+  MessageSquare, ArrowLeft, Loader2, Plus, Send, AlertTriangle, Check, Users, X, Flag, Paperclip, Download,
 } from 'lucide-react';
 
 function roleLabel(role: string): string {
@@ -38,6 +38,44 @@ function roleLabel(role: string): string {
 function timeAgo(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// Codex MMA-CODEX-11 — shared attachment list + signed-URL download,
+// reused by both a brand-new message and a reply. Signed URLs are
+// fetched on demand (never cached as a public link) and expire in 1
+// hour (communicationsService.ts), matching this app's existing
+// getSignedMediaUrl()/getSignedDocumentUrl() convention of never
+// exposing a permanent public URL for anything in a private bucket.
+function AttachmentList({ attachments }: { attachments: ConversationMessage['attachments'] }) {
+  const [downloading, setDownloading] = useState<string | null>(null);
+  if (attachments.length === 0) return null;
+
+  const download = async (storagePath: string, fileName: string) => {
+    setDownloading(storagePath);
+    try {
+      const url = await getSignedAttachmentUrl(storagePath);
+      if (!url) { toast.error('Could not open this attachment.'); return; }
+      const a = document.createElement('a');
+      a.href = url; a.download = fileName; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.click();
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {attachments.map((a) => (
+        <button
+          key={a.id} type="button" onClick={() => { void download(a.storagePath, a.fileName); }} disabled={downloading === a.storagePath}
+          className="flex items-center gap-1 text-[11px] font-medium text-warm-bronze bg-warm-bronze/10 hover:bg-warm-bronze/20 rounded-lg px-2 py-1 disabled:opacity-60"
+        >
+          {downloading === a.storagePath ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+          {a.fileName}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 type View = 'list' | 'new' | 'thread';
@@ -143,6 +181,7 @@ function NewConversation({
   const [isCareUpdate, setIsCareUpdate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [myId, setMyId] = useState<string | null>(null);
+  const [attachFile, setAttachFile] = useState<File | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -170,6 +209,10 @@ function NewConversation({
       if (error || !conversationId) { toast.error(error ?? 'Could not start this conversation.'); return; }
       const sendResult = await sendMessage(conversationId, body, isUrgent, null, isCareUpdate ? 'care_update' : 'message');
       if (sendResult.error) { toast.error(sendResult.error); }
+      if (attachFile && sendResult.messageId) {
+        const { error: attachError } = await uploadMessageAttachment(sendResult.messageId, attachFile);
+        if (attachError) toast.error(attachError);
+      }
       onCreated(conversationId);
     } finally {
       setSubmitting(false);
@@ -224,6 +267,11 @@ function NewConversation({
             <input type="checkbox" checked={isCareUpdate} onChange={(e) => setIsCareUpdate(e.target.checked)} className="accent-warm-bronze w-4 h-4" />
             Send as a structured Care Update (not Private Journal)
           </label>
+          <label className="flex items-center gap-2 text-sm text-charcoal cursor-pointer">
+            <Paperclip className="w-4 h-4 text-medium-gray flex-shrink-0" />
+            <span className="truncate">{attachFile ? attachFile.name : 'Attach a file (optional)'}</span>
+            <input type="file" className="hidden" onChange={(e) => setAttachFile(e.target.files?.[0] ?? null)} />
+          </label>
           {isUrgent && (
             <p className="text-[11px] text-medium-gray -mt-2">
               Urgent flags this message for the people in the conversation — it does not page anyone or guarantee an immediate response. For an emergency, contact emergency services directly.
@@ -250,7 +298,9 @@ function ConversationThread({
   const [loading, setLoading] = useState(true);
   const [reply, setReply] = useState('');
   const [replyUrgent, setReplyUrgent] = useState(false);
+  const [replyAttachFile, setReplyAttachFile] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
+  const [followUpFormFor, setFollowUpFormFor] = useState<string | null>(null);
   const [showAddPerson, setShowAddPerson] = useState(false);
   const [creatorId, setCreatorId] = useState<string | null>(null);
   const [patientId, setPatientId] = useState<string | null>(null);
@@ -280,10 +330,15 @@ function ConversationThread({
     if (!reply.trim()) return;
     setSending(true);
     try {
-      const { error } = await sendMessage(conversationId, reply, replyUrgent);
+      const { error, messageId } = await sendMessage(conversationId, reply, replyUrgent);
       if (error) { toast.error(error); return; }
+      if (replyAttachFile && messageId) {
+        const { error: attachError } = await uploadMessageAttachment(messageId, replyAttachFile);
+        if (attachError) toast.error(attachError);
+      }
       setReply('');
       setReplyUrgent(false);
+      setReplyAttachFile(null);
       await load();
     } finally {
       setSending(false);
@@ -298,6 +353,15 @@ function ConversationThread({
 
   const handleResolveFollowUp = async (messageId: string) => {
     await resolveFollowUp(messageId);
+    await load();
+  };
+
+  const handleRequestFollowUp = async (
+    messageId: string, note: string, dueDate: string, assignedTo: string,
+  ) => {
+    const { error } = await acknowledgeMessage(messageId, true, note.trim() || null, dueDate || null, assignedTo || null);
+    if (error) { toast.error(error); return; }
+    setFollowUpFormFor(null);
     await load();
   };
 
@@ -354,6 +418,14 @@ function ConversationThread({
             const myAck = m.acknowledgments.find((a) => a.userId === myId);
             const othersAcked = m.acknowledgments.filter((a) => a.userId !== m.senderId && a.acknowledgedAt);
             const othersRead = m.acknowledgments.filter((a) => a.userId !== m.senderId && a.readAt);
+            // Codex MMA-CODEX-11: an open follow-up assigned to ME, even
+            // on a row someone else created/acknowledged (e.g. the
+            // sender assigned it straight to me without acking it
+            // themselves as an unresolved item of their own).
+            const assignedToMe = m.acknowledgments.find((a) => a.followUpRequested && !a.followUpResolved && a.followUpAssignedTo === myId);
+            const openFollowUp = myAck?.followUpRequested && !myAck.followUpResolved ? myAck : assignedToMe;
+            const canResolve = openFollowUp && (openFollowUp.userId === myId || openFollowUp.followUpAssignedTo === myId);
+            const assignee = openFollowUp?.followUpAssignedTo ? participants.find((p) => p.userId === openFollowUp.followUpAssignedTo) : null;
             return (
               <li key={m.id} className={`p-3 rounded-xl border ${isMine ? 'bg-warm-bronze/10 border-warm-bronze/30 ml-4' : 'bg-warm-ivory border-soft-taupe mr-4'}`}>
                 <div className="flex items-center justify-between gap-2">
@@ -364,6 +436,7 @@ function ConversationThread({
                   </div>
                 </div>
                 <p className="text-sm text-charcoal mt-1 whitespace-pre-wrap">{m.body}</p>
+                <AttachmentList attachments={m.attachments} />
                 <div className="flex items-center justify-between mt-2">
                   <p className="text-[11px] text-medium-gray">{timeAgo(m.createdAt)}</p>
                   <div className="flex items-center gap-2">
@@ -371,19 +444,41 @@ function ConversationThread({
                       <p className="text-[11px] text-medium-gray">
                         {othersAcked.length > 0 ? `Acknowledged by ${othersAcked.length} of ${m.acknowledgments.length - 1}` : othersRead.length > 0 ? 'Seen, not yet acknowledged' : 'Not yet seen'}
                       </p>
-                    ) : myAck?.acknowledgedAt ? (
-                      <span className="flex items-center gap-1 text-[11px] text-soft-sage font-semibold"><Check className="w-3 h-3" /> Acknowledged</span>
                     ) : (
-                      <button type="button" onClick={() => { void handleAcknowledge(m.id); }} className="text-[11px] font-semibold text-warm-bronze hover:underline">
-                        Acknowledge
-                      </button>
+                      <>
+                        {myAck?.acknowledgedAt ? (
+                          <span className="flex items-center gap-1 text-[11px] text-soft-sage font-semibold"><Check className="w-3 h-3" /> Acknowledged</span>
+                        ) : (
+                          <button type="button" onClick={() => { void handleAcknowledge(m.id); }} className="text-[11px] font-semibold text-warm-bronze hover:underline">
+                            Acknowledge
+                          </button>
+                        )}
+                        {!openFollowUp && (
+                          <button type="button" onClick={() => setFollowUpFormFor(followUpFormFor === m.id ? null : m.id)} className="text-[11px] font-semibold text-medium-gray hover:text-warm-bronze hover:underline flex items-center gap-1">
+                            <Flag className="w-3 h-3" /> Request follow-up
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
-                {myAck?.followUpRequested && !myAck.followUpResolved && (
-                  <div className="mt-2 flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-                    <span className="flex items-center gap-1 text-[11px] text-amber-800"><Flag className="w-3 h-3" /> Follow-up requested{myAck.followUpNote ? `: ${myAck.followUpNote}` : ''}</span>
-                    <button type="button" onClick={() => { void handleResolveFollowUp(m.id); }} className="text-[11px] font-semibold text-amber-800 hover:underline">Mark resolved</button>
+                {followUpFormFor === m.id && (
+                  <FollowUpForm
+                    participants={participants} myId={myId}
+                    onCancel={() => setFollowUpFormFor(null)}
+                    onSubmit={(note, dueDate, assignedTo) => { void handleRequestFollowUp(m.id, note, dueDate, assignedTo); }}
+                  />
+                )}
+                {openFollowUp && (
+                  <div className="mt-2 flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 gap-2">
+                    <span className="flex items-center gap-1 text-[11px] text-amber-800 flex-wrap">
+                      <Flag className="w-3 h-3 flex-shrink-0" /> Follow-up{openFollowUp.followUpNote ? `: ${openFollowUp.followUpNote}` : ''}
+                      {openFollowUp.followUpDueDate && <span className="font-semibold"> · due {openFollowUp.followUpDueDate}</span>}
+                      {assignee && <span className="font-semibold"> · assigned to {assignee.firstName} {assignee.lastName}</span>}
+                    </span>
+                    {canResolve && (
+                      <button type="button" onClick={() => { void handleResolveFollowUp(m.id); }} className="text-[11px] font-semibold text-amber-800 hover:underline flex-shrink-0">Mark resolved</button>
+                    )}
                   </div>
                 )}
               </li>
@@ -397,11 +492,18 @@ function ConversationThread({
           value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Write a reply…" rows={2}
           className="w-full px-3 py-2.5 rounded-xl border border-soft-taupe text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze/40 resize-none"
         />
-        <div className="flex items-center justify-between">
-          <label className="flex items-center gap-2 text-xs text-charcoal">
-            <input type="checkbox" checked={replyUrgent} onChange={(e) => setReplyUrgent(e.target.checked)} className="accent-gentle-coral w-3.5 h-3.5" />
-            Mark as urgent
-          </label>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-charcoal">
+              <input type="checkbox" checked={replyUrgent} onChange={(e) => setReplyUrgent(e.target.checked)} className="accent-gentle-coral w-3.5 h-3.5" />
+              Mark as urgent
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-medium-gray cursor-pointer max-w-[10rem]">
+              <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="truncate">{replyAttachFile ? replyAttachFile.name : 'Attach file'}</span>
+              <input type="file" className="hidden" onChange={(e) => setReplyAttachFile(e.target.files?.[0] ?? null)} />
+            </label>
+          </div>
           <button
             type="button" onClick={() => { void submitReply(); }} disabled={sending || !reply.trim()}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60"
@@ -409,6 +511,55 @@ function ConversationThread({
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Codex MMA-CODEX-11 — inline "request a follow-up" form: a note, an
+// optional due date, and an optional assignee. The assignee list is
+// every OTHER current participant, re-validated server-side
+// (acknowledge_message now rejects assigning to anyone who isn't a live
+// participant of this same conversation) — this UI just can't offer an
+// invalid choice in the first place.
+function FollowUpForm({
+  participants, myId, onCancel, onSubmit,
+}: {
+  participants: ConversationParticipant[]; myId: string | null;
+  onCancel: () => void; onSubmit: (note: string, dueDate: string, assignedTo: string) => void;
+}) {
+  const [note, setNote] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [assignedTo, setAssignedTo] = useState('');
+
+  return (
+    <div className="mt-2 p-2.5 bg-warm-ivory rounded-lg border border-soft-taupe space-y-2">
+      <input
+        type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What needs follow-up? (optional)"
+        className="w-full px-2.5 py-1.5 rounded-lg border border-soft-taupe text-xs focus:outline-none focus:ring-2 focus:ring-warm-bronze/40"
+      />
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+          className="px-2.5 py-1.5 rounded-lg border border-soft-taupe text-xs"
+        />
+        <select
+          value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}
+          className="px-2.5 py-1.5 rounded-lg border border-soft-taupe text-xs"
+        >
+          <option value="">Assign to… (optional)</option>
+          {participants.filter((p) => p.userId !== myId).map((p) => (
+            <option key={p.userId} value={p.userId}>{p.firstName} {p.lastName} · {roleLabel(p.participantRole)}</option>
+          ))}
+        </select>
+      </div>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => onSubmit(note, dueDate, assignedTo)} className="px-3 py-1.5 rounded-lg bg-warm-bronze hover:bg-deep-bronze text-white text-xs font-semibold">
+          Request follow-up
+        </button>
+        <button type="button" onClick={onCancel} className="px-3 py-1.5 rounded-lg border border-soft-taupe text-charcoal text-xs font-semibold hover:bg-white">
+          Cancel
+        </button>
       </div>
     </div>
   );

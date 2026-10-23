@@ -43,6 +43,19 @@ export interface MessageAckEntry {
   followUpRequested: boolean;
   followUpNote: string | null;
   followUpResolved: boolean;
+  // Codex MMA-CODEX-11: who this follow-up is assigned to resolve
+  // (independent of who created it) and when it's due. Both null until
+  // explicitly set via acknowledgeMessage().
+  followUpDueDate: string | null;
+  followUpAssignedTo: string | null;
+}
+
+export interface MessageAttachment {
+  id: string;
+  storagePath: string;
+  fileName: string;
+  uploadedBy: string;
+  createdAt: string;
 }
 
 export interface ConversationMessage {
@@ -62,6 +75,7 @@ export interface ConversationMessage {
   // is display-only; this array is the only honest signal for whether
   // anyone has actually seen or acknowledged the message.
   acknowledgments: MessageAckEntry[];
+  attachments: MessageAttachment[];
 }
 
 function errMsg(error: { message: string } | null, fallback: string): string {
@@ -164,7 +178,7 @@ export async function removeConversationParticipant(conversationId: string, user
 export async function getConversationMessages(conversationId: string): Promise<ConversationMessage[]> {
   const { data, error } = await supabase
     .from('messages')
-    .select('id, conversation_id, sender_id, sender_role, body, is_urgent, message_type, reply_to_message_id, created_at, profiles:sender_id(first_name, last_name), message_acknowledgments(user_id, read_at, acknowledged_at, follow_up_requested, follow_up_note, follow_up_resolved)')
+    .select('id, conversation_id, sender_id, sender_role, body, is_urgent, message_type, reply_to_message_id, created_at, profiles:sender_id(first_name, last_name), message_acknowledgments(user_id, read_at, acknowledged_at, follow_up_requested, follow_up_note, follow_up_resolved, follow_up_due_date, follow_up_assigned_to), message_attachments(id, storage_path, file_name, uploaded_by, created_at)')
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: true });
   if (error || !data) return [];
@@ -174,6 +188,10 @@ export async function getConversationMessages(conversationId: string): Promise<C
     const acks = (r.message_acknowledgments as unknown as {
       user_id: string; read_at: string | null; acknowledged_at: string | null;
       follow_up_requested: boolean; follow_up_note: string | null; follow_up_resolved: boolean;
+      follow_up_due_date: string | null; follow_up_assigned_to: string | null;
+    }[]) || [];
+    const attachmentRows = (r.message_attachments as unknown as {
+      id: string; storage_path: string; file_name: string; uploaded_by: string; created_at: string;
     }[]) || [];
     return {
       id: r.id,
@@ -190,6 +208,10 @@ export async function getConversationMessages(conversationId: string): Promise<C
       acknowledgments: acks.map((a) => ({
         userId: a.user_id, readAt: a.read_at, acknowledgedAt: a.acknowledged_at,
         followUpRequested: a.follow_up_requested, followUpNote: a.follow_up_note, followUpResolved: a.follow_up_resolved,
+        followUpDueDate: a.follow_up_due_date, followUpAssignedTo: a.follow_up_assigned_to,
+      })),
+      attachments: attachmentRows.map((a) => ({
+        id: a.id, storagePath: a.storage_path, fileName: a.file_name, uploadedBy: a.uploaded_by, createdAt: a.created_at,
       })),
     };
   });
@@ -203,12 +225,13 @@ export async function sendMessage(
   // client-only label, so it survives being read back by anyone else
   // in the thread.
   messageType: 'message' | 'care_update' = 'message',
-): Promise<{ error: string | null }> {
-  const { error } = await supabase.rpc('send_message', {
+): Promise<{ error: string | null; messageId: string | null }> {
+  const { data, error } = await supabase.rpc('send_message', {
     p_conversation_id: conversationId, p_body: body.trim(), p_is_urgent: isUrgent, p_reply_to_message_id: replyToMessageId,
     p_message_type: messageType,
   });
-  return { error: error ? errMsg(error, 'Could not send this message.') : null };
+  if (error) return { error: errMsg(error, 'Could not send this message.'), messageId: null };
+  return { error: null, messageId: (data as { id: string } | null)?.id ?? null };
 }
 
 export async function markMessageRead(messageId: string): Promise<void> {
@@ -217,13 +240,50 @@ export async function markMessageRead(messageId: string): Promise<void> {
 
 export async function acknowledgeMessage(
   messageId: string, followUpRequested = false, followUpNote: string | null = null,
+  // Codex MMA-CODEX-11: optional due date + assignee. The RPC re-checks
+  // the assignee is a live participant of this same conversation
+  // server-side — never trusted from here.
+  followUpDueDate: string | null = null, followUpAssignedTo: string | null = null,
 ): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('acknowledge_message', {
     p_message_id: messageId, p_follow_up_requested: followUpRequested, p_follow_up_note: followUpNote,
+    p_follow_up_due_date: followUpDueDate, p_follow_up_assigned_to: followUpAssignedTo,
   });
   return { error: error ? errMsg(error, 'Could not acknowledge this message.') : null };
 }
 
 export async function resolveFollowUp(messageId: string): Promise<void> {
   await supabase.rpc('resolve_follow_up', { p_message_id: messageId });
+}
+
+// Codex MMA-CODEX-11 — message attachments. Storage upload first (into
+// a path scoped by this message's own id, matching the bucket's RLS),
+// then the metadata row; if the metadata insert fails the orphaned
+// storage object is removed immediately (same compensating pattern as
+// professionalApplicationService.ts's uploadApplicationDocument) rather
+// than left behind.
+const ATTACHMENT_BUCKET = 'conversation-attachments';
+export async function uploadMessageAttachment(messageId: string, file: File): Promise<{ error: string | null }> {
+  const storagePath = `${messageId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const { error: upErr } = await supabase.storage.from(ATTACHMENT_BUCKET).upload(storagePath, file, { upsert: false, contentType: file.type });
+  if (upErr) return { error: errMsg(upErr, 'Could not upload this attachment.') };
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) {
+    await supabase.storage.from(ATTACHMENT_BUCKET).remove([storagePath]);
+    return { error: 'You must be signed in to attach a file.' };
+  }
+  const { error: dbErr } = await supabase.from('message_attachments').insert({
+    message_id: messageId, storage_path: storagePath, file_name: file.name, uploaded_by: userData.user.id,
+  });
+  if (dbErr) {
+    await supabase.storage.from(ATTACHMENT_BUCKET).remove([storagePath]);
+    return { error: errMsg(dbErr, 'Could not attach this file.') };
+  }
+  return { error: null };
+}
+
+export async function getSignedAttachmentUrl(storagePath: string): Promise<string | null> {
+  const { data, error } = await supabase.storage.from(ATTACHMENT_BUCKET).createSignedUrl(storagePath, 3600);
+  if (error || !data) return null;
+  return data.signedUrl;
 }

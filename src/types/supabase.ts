@@ -1526,6 +1526,9 @@ export interface Database {
           follow_up_requested: boolean
           follow_up_note: string | null
           follow_up_resolved: boolean
+          // Codex MMA-CODEX-11 — migration 102.
+          follow_up_due_date: string | null
+          follow_up_assigned_to: string | null
           updated_at: string
         }
         Insert: {
@@ -1537,6 +1540,8 @@ export interface Database {
           follow_up_requested?: boolean
           follow_up_note?: string | null
           follow_up_resolved?: boolean
+          follow_up_due_date?: string | null
+          follow_up_assigned_to?: string | null
           updated_at?: string
         }
         Update: {
@@ -1548,11 +1553,49 @@ export interface Database {
           follow_up_requested?: boolean
           follow_up_note?: string | null
           follow_up_resolved?: boolean
+          follow_up_due_date?: string | null
+          follow_up_assigned_to?: string | null
           updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: "message_acknowledgments_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      // Codex MMA-CODEX-11 — migration 102.
+      message_attachments: {
+        Row: {
+          id: string
+          message_id: string
+          storage_path: string
+          file_name: string
+          uploaded_by: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          message_id: string
+          storage_path: string
+          file_name: string
+          uploaded_by: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          message_id?: string
+          storage_path?: string
+          file_name?: string
+          uploaded_by?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_attachments_message_id_fkey"
             columns: ["message_id"]
             isOneToOne: false
             referencedRelation: "messages"
@@ -4538,7 +4581,12 @@ export interface Database {
         Returns: boolean
       }
       acknowledge_message: {
-        Args: { p_message_id: string; p_follow_up_requested: boolean | null; p_follow_up_note: string | null }
+        // Codex MMA-CODEX-11 — migration 102 adds the optional due-date/
+        // assignee params.
+        Args: {
+          p_message_id: string; p_follow_up_requested: boolean | null; p_follow_up_note: string | null
+          p_follow_up_due_date?: string | null; p_follow_up_assigned_to?: string | null
+        }
         Returns: MessageAcknowledgmentRow
       }
       resolve_follow_up: {
