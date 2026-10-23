@@ -2,11 +2,20 @@
 // redemption bridge, verified as a real rendered browser flow (not
 // schema/UI existence alone, per the owner's own instruction). Covers
 // the Bilal-shaped path: owner issues a real invitation -> Bilal signs
-// in, pastes the code, sees the accepted offer's locked terms, and
-// starts his Director application -> lands on the pending-review
-// status page, never a dashboard, with zero licensed access. Also
-// verifies a wrong-recipient rejection renders a specific, accurate
-// reason rather than a generic error.
+// in, pastes the code, and reaches the locked six-step wizard with his
+// accepted offer's terms fixed in step 3. Also verifies a wrong-
+// recipient rejection renders a specific, accurate reason rather than a
+// generic error.
+//
+// MMA-ENT-SALES-004 note: redemption now hands off into the full
+// DirectorApplicationWizard (not a 3-field mini-form) -- completing all
+// six steps and submitting is covered end-to-end, with its own
+// assertions on the resulting server-side row, by
+// tests/e2e_director_application_wizard.spec.ts. This file stays
+// focused on what it alone covers: the outsider rejection, and that a
+// successful redemption actually reaches the wizard with the right
+// terms locked, without re-running the full submission flow a second
+// time.
 import { test, expect, type Page } from '@playwright/test';
 import { execSync } from 'node:child_process';
 
@@ -105,10 +114,11 @@ test.describe('Invitation redemption bridge (MMA-ENT-SALES-003 §1)', () => {
       await outsiderPage.getByPlaceholder('Paste your invitation code').fill(rawToken);
       await outsiderPage.getByRole('button', { name: 'Accept' }).click();
       await expect(outsiderPage.getByText(/issued to a different email address/i)).toBeVisible({ timeout: 10000 });
-      await expect(outsiderPage.getByText('Your accepted offer')).toHaveCount(0);
+      await expect(outsiderPage.getByRole('heading', { name: 'Organization legal identity' })).toHaveCount(0);
       await outsiderContext.close();
 
-      // Bilal, the real recipient, redeems it.
+      // Bilal, the real recipient, redeems it and reaches the wizard
+      // with his accepted offer's terms already fixed in step 3.
       const bilalContext = await browser.newContext();
       const page = await bilalContext.newPage();
       await signIn(page, bilalEmail);
@@ -116,25 +126,13 @@ test.describe('Invitation redemption bridge (MMA-ENT-SALES-003 §1)', () => {
       await page.getByPlaceholder('Paste your invitation code').fill(rawToken);
       await page.getByRole('button', { name: 'Accept' }).click();
 
-      await expect(page.getByText('Your accepted offer')).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: 'Organization legal identity' })).toBeVisible({ timeout: 10000 });
+      await page.getByRole('button', { name: '3. Package' }).click();
       await expect(page.getByText(orgName)).toBeVisible();
       await expect(page.getByText('Full Enterprise')).toBeVisible();
-      await expect(page.getByText('4', { exact: true })).toBeVisible();
-      await expect(page.getByText('20', { exact: true })).toBeVisible();
-      // Locked terms: no editable field anywhere offers to change the org name or package.
-      await expect(page.getByPlaceholder('Prospective organization name')).toHaveCount(0);
-
-      await page.getByPlaceholder('Your full legal name').fill('Bilal Ahmed');
-      await page.getByRole('button', { name: 'Start my Director application' }).click();
-
-      await expect(page.getByRole('heading', { name: 'Your application is under review' })).toBeVisible({ timeout: 10000 });
-      await expect(page.getByText(orgName)).toBeVisible();
-      await expect(page.getByText('Director Dashboard')).toHaveCount(0);
-
-      const app = sql(`SELECT status, proposed_organization_name, proposed_package_type, application_details FROM public.professional_applications WHERE applicant_user_id='${bilalId}';`);
-      expect(app).toContain('pending_review');
-      expect(app).toContain(orgName);
-      expect(app).toContain('integrated_care');
+      await expect(page.getByText(/4 seats/)).toBeVisible();
+      await expect(page.getByText(/20 covered patients/)).toBeVisible();
+      await expect(page.getByText('Fixed by your accepted quote')).toBeVisible();
       await bilalContext.close();
     } finally {
       sql(`

@@ -9,6 +9,7 @@
 // — RLS (migration 107's "Platform Owner can view..." policies) is the
 // real boundary either way, not this file.
 import { supabase } from '@/lib/supabase';
+import type { ProfessionalApplication } from './professionalApplicationService';
 
 export type ProspectStatus = 'new' | 'contacted' | 'qualified' | 'quoted' | 'won' | 'lost';
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired' | 'revoked' | 'superseded';
@@ -217,4 +218,15 @@ export async function redeemQuoteInvitation(
     },
     error: null,
   };
+}
+
+// OWNER DIRECTIVE MMA-ENT-SALES-004 Phase D — lets ProfessionalOfficeResolver
+// resume a saved application draft directly into DirectorApplicationWizard
+// on mount (reload, re-login, a different device), without the applicant
+// re-pasting their invitation token -- it is single-use and already
+// consumed. Moved here (not DirectorApplicationWizard.tsx) because a
+// component file may only export components under Fast Refresh.
+export function quoteTermsFromDraft(draft: ProfessionalApplication): RedeemedQuoteTerms | null {
+  const snapshot = (draft.applicationDetails as { quoteSnapshot?: RedeemedQuoteTerms } | undefined)?.quoteSnapshot;
+  return snapshot ?? null;
 }

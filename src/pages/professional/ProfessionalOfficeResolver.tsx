@@ -16,8 +16,9 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { Loader2, ShieldAlert, LogOut, Sparkles, KeyRound, ChevronDown, ChevronUp } from 'lucide-react';
 import { getMyOrganizations, getMyPendingOrgInvites, type MyOrganization, type PendingOrgInvite } from '@/services/organizationService';
-import { getMyApplication, submitProfessionalApplication, type ProfessionalApplication } from '@/services/professionalApplicationService';
-import { redeemQuoteInvitation, type RedemptionOutcome, type RedeemedQuoteTerms } from '@/services/salesService';
+import { getMyApplication, getMyApplicationDraft, type ProfessionalApplication } from '@/services/professionalApplicationService';
+import { redeemQuoteInvitation, quoteTermsFromDraft, type RedemptionOutcome, type RedeemedQuoteTerms } from '@/services/salesService';
+import DirectorApplicationWizard from './DirectorApplicationWizard';
 import OrganizationDirectorDashboard, { CreateOrgCard } from '@/pages/enterprise/OrganizationDirectorDashboard';
 import { PendingInvitesBanner } from '@/pages/enterprise/EnterpriseDashboardRouter';
 import EnterpriseCaregiverDashboard from '@/pages/enterprise/EnterpriseCaregiverDashboard';
@@ -52,16 +53,28 @@ const OUTCOME_MESSAGE: Record<Exclude<RedemptionOutcome, 'redeemed'>, string> = 
 // the resolver (via onApplicationStarted's refresh) to
 // ApplicationStatusPage, which no longer renders this form at all.
 function RedeemInvitationSection({ onApplicationStarted }: { onApplicationStarted: () => void }) {
-  const { state } = useApp();
   const [expanded, setExpanded] = useState(false);
   const [token, setToken] = useState('');
   const [redeeming, setRedeeming] = useState(false);
   const [outcomeMessage, setOutcomeMessage] = useState<string | null>(null);
   const [terms, setTerms] = useState<RedeemedQuoteTerms | null>(null);
-  const [legalName, setLegalName] = useState('');
-  const [contactEmail, setContactEmail] = useState(state.currentUser?.email ?? '');
-  const [contactPhone, setContactPhone] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [existingDraft, setExistingDraft] = useState<ProfessionalApplication | null>(null);
+  // Starts true: a reload, a different device, or logging back in must
+  // resume straight into the wizard from an already-saved draft, never
+  // require re-pasting the (single-use, already-consumed) token.
+  const [loadingDraft, setLoadingDraft] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      const draft = await getMyApplicationDraft();
+      const snapshot = draft ? quoteTermsFromDraft(draft) : null;
+      if (draft && snapshot) {
+        setExistingDraft(draft);
+        setTerms(snapshot);
+      }
+      setLoadingDraft(false);
+    })();
+  }, []);
 
   const redeem = async () => {
     const raw = token.trim();
@@ -72,6 +85,13 @@ function RedeemInvitationSection({ onApplicationStarted }: { onApplicationStarte
       const { outcome, terms: redeemedTerms, error } = await redeemQuoteInvitation(raw);
       if (error || !outcome) { toast.error(error || 'Could not process that invitation.'); return; }
       if (outcome !== 'redeemed') { setOutcomeMessage(OUTCOME_MESSAGE[outcome]); return; }
+      setLoadingDraft(true);
+      // A redemption always re-derives org name/package server-side on
+      // the next draft save (migration 109), so resuming any existing
+      // draft here is safe even if it belonged to a different quote.
+      const draft = await getMyApplicationDraft();
+      setExistingDraft(draft);
+      setLoadingDraft(false);
       setTerms(redeemedTerms);
     } finally {
       setRedeeming(false);
@@ -79,49 +99,12 @@ function RedeemInvitationSection({ onApplicationStarted }: { onApplicationStarte
     }
   };
 
-  const submitApplication = async () => {
-    if (!terms) return;
-    if (!legalName.trim() || !contactEmail.trim()) { toast.error('Legal name and contact email are required.'); return; }
-    setSubmitting(true);
-    try {
-      const { error } = await submitProfessionalApplication({
-        requestedOffice: 'director',
-        proposedOrganizationName: terms.prospectiveOrganizationName,
-        proposedPackageType: terms.packageType,
-        legalName: legalName.trim(),
-        contactEmail: contactEmail.trim(),
-        contactPhone: contactPhone.trim() || null,
-        applicationDetails: { originatingQuoteId: terms.quoteId },
-      });
-      if (error) { toast.error(error); return; }
-      toast.success('Application submitted for Platform Owner review.');
-      onApplicationStarted();
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  if (loadingDraft) {
+    return <Loader2 className="w-5 h-5 animate-spin text-ent-forest mx-auto" />;
+  }
 
   if (terms) {
-    return (
-      <div className="w-full max-w-md p-4 bg-ent-pale rounded-xl border border-ent-line space-y-3">
-        <p className="text-sm font-bold text-ent-ink">Your accepted offer</p>
-        <dl className="text-xs text-ent-text space-y-1">
-          <div className="flex justify-between"><dt className="text-ent-muted">Organization</dt><dd className="font-semibold">{terms.prospectiveOrganizationName}</dd></div>
-          <div className="flex justify-between"><dt className="text-ent-muted">Package</dt><dd className="font-semibold">{terms.packageType === 'integrated_care' ? 'Full Enterprise' : 'Therapist Enterprise'}</dd></div>
-          <div className="flex justify-between"><dt className="text-ent-muted">Seats</dt><dd className="font-semibold">{terms.proposedLicensedSeats}</dd></div>
-          <div className="flex justify-between"><dt className="text-ent-muted">Covered patients</dt><dd className="font-semibold">{terms.proposedCoveredPatientCapacity}</dd></div>
-        </dl>
-        <p className="text-[11px] text-ent-muted">These terms are fixed by your accepted quote and cannot be changed here.</p>
-        <div className="space-y-2 pt-1">
-          <input value={legalName} onChange={(e) => setLegalName(e.target.value)} placeholder="Your full legal name" className={inputCls} />
-          <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="Contact email" className={inputCls} />
-          <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="Phone (optional)" className={inputCls} />
-        </div>
-        <button type="button" onClick={() => { void submitApplication(); }} disabled={submitting} className="w-full py-2.5 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
-          {submitting ? 'Submitting…' : 'Start my Director application'}
-        </button>
-      </div>
-    );
+    return <DirectorApplicationWizard terms={terms} existingDraft={existingDraft} onSubmitted={onApplicationStarted} />;
   }
 
   return (
