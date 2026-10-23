@@ -39,6 +39,7 @@ import { getMyConversations, type ConversationSummary } from '@/services/communi
 import CareConversations from '@/components/communications/CareConversations';
 import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDeletionRequests, type AccountDeletionRequest } from '@/services/accountDeletionService';
 import MFASettings from '@/components/MFASettings';
+import ActiveSessionsPanel from '@/components/ActiveSessionsPanel';
 import PatientMedications from './PatientMedications';
 import PatientDocuments from './PatientDocuments';
 import PatientCareTeam from './PatientCareTeam';
@@ -512,6 +513,7 @@ function SettingsView({ onLogout }: { onLogout: () => void }) {
       </div>
       <button type="button" onClick={onLogout} className="mt-2 px-4 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold">Logout</button>
       <MFASettings />
+      <ActiveSessionsPanel />
       <AccountDeletionRequestPanel />
     </OfficeCard>
   );

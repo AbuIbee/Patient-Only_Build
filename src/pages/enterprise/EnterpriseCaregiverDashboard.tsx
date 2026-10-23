@@ -32,6 +32,7 @@ import { inviteTherapist } from '@/services/therapistConnectionService';
 import { getHelpActivationHistory } from '@/services/helpActivationService';
 import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDeletionRequests, type AccountDeletionRequest } from '@/services/accountDeletionService';
 import MFASettings from '@/components/MFASettings';
+import ActiveSessionsPanel from '@/components/ActiveSessionsPanel';
 import {
   getMyVisits, startCaregiverVisit, endCaregiverVisit, scheduleCaregiverVisit,
   getPatientIncidentReports, fileIncidentReport,
@@ -1791,8 +1792,9 @@ function SettingsView({ userName, onLogout }: { userName?: string; onLogout: () 
       </button>
       <PasswordChangeForm />
       <MFASettings />
+      <ActiveSessionsPanel />
       <AccountDeletionRequestPanel />
-      <p className="text-[11px] text-medium-gray">An active-sessions list is not yet available in this shell. A password reset is also always available via the sign-in page's email link.</p>
+      <p className="text-[11px] text-medium-gray">A password reset is also always available via the sign-in page's email link.</p>
     </Card>
   );
 }
