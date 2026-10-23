@@ -20,9 +20,9 @@ Unchanged this phase; high-contrast/text-sizing already shipped.
 
 > Should language selection (i18n) and speech/TTS support be built, and if so, which languages/vendor, and is synthesized speech of patient-identifying content an acceptable risk for that vendor's data-handling terms?
 
-## 4. O10 — Active-sessions list (MFA half now resolved — see item below and `09_WAVE_C_JOURNEYS_AND_O10_MFA.md`)
+## 4. O10 — Active-sessions list — RESOLVED 2026-10-23
 
-> Should a caregiver be able to see/revoke their own other active sessions? This remains unbuilt engineering work; no policy blocks it, time did.
+Built: `ActiveSessionsPanel.tsx` ("sign out everywhere else," `supabase.auth.signOut({scope:'others'})`), wired into the Caregiver and Covered Patient settings views. Honestly scoped — not a per-device list, since the client SDK this app holds has no API to enumerate a user's other sessions (that needs Admin API access this browser-only SPA correctly never has). No longer open; this was undone engineering work, not a policy question, and engineering has now done it.
 
 ## 5. Professional credential-validation SUBSTANTIVE standard (narrowed this phase)
 
@@ -39,6 +39,12 @@ The FINAL ENGINEERING CLOSURE directive directed implementation of a narrow mech
 The safe, reversible prerequisite (request/review/deactivation) is built. What remains:
 
 > Should this application ever perform irreversible erasure (hard-deleting `auth.users`/`profiles`, or anonymizing authored clinical records)? Should a service-role Edge Function be built to also disable sign-in outright?
+
+## 8. Hosted Supabase project reconciliation (new, 2026-10-23)
+
+The linked hosted project (`axurszlibxwwptkczztt`) is missing every schema object from local migration 072 onward (31 migrations' worth) — fully characterized read-only (register §2m): object-level diff, migration-provenance reconciliation, application-compatibility matrix, forward-only reconciliation design, risk analysis, clone-rehearsal plan. Per the governing directive's absolute prohibition list, nothing beyond read-only diffing was done.
+
+> Is `axurszlibxwwptkczztt` actually the project this application's production/Preview deployment targets? If so: authorize (a) reading its 34 existing dashboard-stamped migration entries, (b) provisioning a branch/clone for rehearsal, (c) a scheduled maintenance window for the real forward apply of migrations 072-104.
 
 ## What is explicitly NOT on this register
 

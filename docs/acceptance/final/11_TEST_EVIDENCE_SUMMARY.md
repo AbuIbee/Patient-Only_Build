@@ -1,5 +1,21 @@
 # 11 — Test Evidence Summary
 
+## UPDATE — 2026-10-23, HEAD `5b6bc43c` (current live counts, superseding everything below)
+
+**Integration: 109/109 passing, 12 files** (up from 76/76 below). The 8 new files since this document was written: `assignmentRemovalConcurrency.test.ts` (2), `carePlanConcurrency.test.ts` (2), `lastSeatApprovalConcurrency.test.ts` (1), `communicationsOverviewUndercount.test.ts` (1), `credentialDocumentPurge.test.ts` (2), `messageAttachmentsAndFollowUpOwnership.test.ts` (7), `documentAccessAudit.test.ts` (5), `codex03AuthorizationGaps.test.ts` (4) — plus 13 new tests added to the pre-existing files for migrations 091-094 and 098.
+
+**Unit: 382/382 passing, 31 files** (up from 377/377, 30 files) — new: `professionalApplicationServiceStorageCleanup.test.ts` (5 tests).
+
+**Static checks**: `npm run typecheck` (now correctly covers BOTH `tsconfig.app.json` and `tsconfig.node.json` — see below, this was itself a discovered-and-fixed defect) is clean; so is lint and `npm run build`.
+
+**The one gap this document explicitly named as not executed — "a full fresh-install replay of migrations 001→090 from an empty database" — is now done, extended through 104**: `supabase db diff --linked` (read-only) replayed all 104 migrations into a fresh shadow database with zero errors (2206+-line log).
+
+**A major process defect in this document's own prior evidence was discovered and disclosed**: every `npx tsc --noEmit` check referenced throughout this entire Wave E package (including this document's own "clean" claim below) was **vacuous** — the root `tsconfig.json` has `"files": []` with project references, so a bare `tsc --noEmit` checks zero files and reports clean regardless of real errors. The actual app had **56 real TypeScript errors** (missing type definitions for 4 tables + ~19 RPCs from migrations 082-083/087-089), discovered only when the pre-existing-but-never-invoked `npm run typecheck` script was finally run. All 56 fixed; `npm run typecheck` (extended to also check `tsconfig.node.json`) is the correct check from this point forward, confirmed 0/0.
+
+Everything below this notice is the ORIGINAL test evidence summary as written at the close of the FINAL ENGINEERING CLOSURE phase — preserved verbatim for its own historical accuracy at that commit, not representative of current state.
+
+---
+
 All counts below are from a live run at the close of this phase, not carried forward from an earlier checkpoint.
 
 ## Integration tests (`npm run test:integration`, against the local Docker Supabase stack)

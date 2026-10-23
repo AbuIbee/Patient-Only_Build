@@ -1,5 +1,13 @@
 # 09 — Wave C: End-to-End Journeys and O10 (MFA)
 
+## UPDATE — 2026-10-23, HEAD `5fba1435`
+
+**O10's second half — the active-sessions list — named below as "unbuilt... undone engineering work" — is now built.** `ActiveSessionsPanel.tsx` adds "Sign out everywhere else" (`supabase.auth.signOut({ scope: 'others' })`) to the Caregiver and Covered Patient settings views. Deliberately NOT a per-device list — the anon-key client SDK this browser-only SPA holds has no API to enumerate a user's other sessions (that needs the Admin API with a service-role key, which this app correctly never exposes to the browser); this is a real, immediate "cut off every other sign-in now" control, presented as exactly that. MFA's own status (code-complete, environment-blocked) is unchanged. See register §2l (finding 13).
+
+The Therapist end-to-end journey below gained one further closed defect since being written: `get_my_staff_patients()`'s own multi-relationship deduplication (migration 086, cited here) was itself found to over-correct and silently collapse two genuinely distinct relationships for the same patient into one — fixed, migration 094 (MMA-CODEX-17).
+
+---
+
 ## Therapist end-to-end journey
 
 See `01_SECURITY_FINDINGS_AND_FIXES.md` for DEFECT-THERAPIST-INVITED-PATIENT-MISSING-FROM-THERAPY-OFFICE. Journey (application → org membership → patient connection → Therapy office visibility → messaging) is now fully functional: an org-member therapist who separately accepts a direct patient-connection invitation sees that patient in "My Therapy Patients" (migration 086) and can message about them under the cross-office matrix's rules (migration 087). Not independently re-run as a single unbroken browser click-through this phase — each stage is covered by its own integration test, not stitched into one E2E script.

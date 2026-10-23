@@ -1,5 +1,39 @@
 # 14 — Final Consolidated Report
 
+## UPDATE — 2026-10-23, HEAD `5b6bc43c` — current final state (supersedes the classification below)
+
+Three further directive rounds have run against this branch since this document's original `16d03691` close (MMA-REMEDIATION-CODEX-001, MMA-UNIFIED-CLOSURE-002, MMA-FINAL-EXHAUSTIVE-CLOSURE-003). Current state, per that latest directive's own required format:
+
+**A. Commit**: `5b6bc43c`, branch `remediation/mymemoria-functional-001`, pushed and verified.
+
+**B. 19 Codex findings**: **18 of 19 FIXED** with live-reproduced, regression-tested evidence or a completed independent audit confirming no defect (01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 15, 16, 17, 18, plus the unnumbered "function default privileges" item). **1 remains PARTIAL**: 19 — the CSV structural defect (30 malformed rows) is FIXED; the 15-document Wave E reconciliation this same finding also names is in progress (this document and 7 others refreshed this round; the remainder below). No finding remains unaudited. Full disposition: register §2l.
+
+**C. New findings discovered and fixed this round**: a false-zero-count bug in the communications overview (migration 099); a real RLS defect in a brand-new audit table caught by its own first test before shipping (migration 103); two MMA-CODEX-03 authorization gaps found by a dedicated full-pathway audit — one serious (a platform-owner office-reclassification/revocation path left stale clinical authority active indefinitely, migration 104) and one correctness/availability (a director-only-authorized participant got an empty read on a conversation they were genuinely entitled to, migration 104).
+
+**D/E/F. 92 requirements / 60 destinations / 25-cell matrix / five-office live browser journeys**: **not rebuilt at full per-dimension depth with fresh disposable identities this round.** This is the same honest disclosure this document has carried since its own first writing — a multi-round effort on the scale of this engagement's historical Rounds 5-7, not attempted as a shortcut to avoid exactly the "fabricated completion" failure mode every directive governing this work has explicitly prohibited.
+
+**G. Supabase local/hosted**: local — all 104 migrations now confirmed to replay cleanly, in order, into a fresh shadow database (previously undisclosed as "not independently re-executed," now done). Hosted — a CRITICAL finding: the linked project is missing every object from migration 072 onward, fully characterized, classified, and given a complete read-only reconciliation design (register §2m; `13_WAVE_D_HOSTED_VERIFICATION_STATUS.md`'s own update). No hosted mutation made or attempted.
+
+**H. Tests**: 109/109 integration (12 files, up from 76/76), 382/382 unit, 0 TypeScript errors (app + Node, the vacuous-`tsc` process defect from this document's own prior checkpoints is itself disclosed and fixed), lint clean, build clean.
+
+**I. 15-document manifest**: 8 of 15 refreshed this round with dated addenda (00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14 — see each file's own "UPDATE" section); historical content preserved verbatim below each addendum, per the standing instruction never to rewrite evidence tied to an earlier SHA.
+
+**J. Owner decisions outstanding**: W13, H13, O09, the credential-evidence substantive standard, irreversible-deletion policy, and (new) the hosted-project reconciliation authorization (register §10 item 8) — none guessed, none resolved unilaterally.
+
+**K. Environment/release blockers**: hosted write access (never requested, per the absolute prohibition list); Vercel Preview/CLI access (unchanged, see `13_WAVE_D_HOSTED_VERIFICATION_STATUS.md`); a real push-notification provider for messaging (would be new architecture, not built, disclosed).
+
+**L. Codex re-audit baseline**: this HEAD, `5b6bc43c`.
+
+**Final classification — stated plainly rather than forced into a label that overclaims or underclaims**: no known, safely-fixable defect remains uncorrected — every defect this engagement or an independent audit has identified has been reproduced, fixed, and regression-tested. The large acceptance-matrix and documentation-completion work (D/E/F/I above) is genuinely unfinished — not because of any owner or environment blocker, but because it is large. Of the three permitted final-status strings, none is fully accurate: "IMPLEMENTATION COMPLETE" is false; "PARTIALLY COMPLETE — EXPLICIT OWNER/ENVIRONMENT BLOCKERS ONLY" is false because the remaining work is not blocker-gated; the closest available label is **INCOMPLETE — ACTIONABLE ENGINEERING OR VERIFICATION WORK REMAINS**, understood specifically as "large verification/documentation work remains, not that a known defect is left uncorrected."
+
+---
+
+Everything below this notice is the ORIGINAL final consolidated report as written at the close of the FINAL ENGINEERING CLOSURE phase (commit `16d03691`) — preserved verbatim for its own historical accuracy at that commit.
+
+---
+
+# 14 — Final Consolidated Report (original, commit `16d03691`)
+
 Per the FINAL ENGINEERING CLOSURE AND ACCEPTANCE PACKAGE directive §8, in the exact required order.
 
 ## 1. Final remediation commit SHA

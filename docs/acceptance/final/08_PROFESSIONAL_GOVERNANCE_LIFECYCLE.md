@@ -1,5 +1,11 @@
 # 08 — Professional Account Governance Lifecycle
 
+## UPDATE — 2026-10-23, HEAD `5fba1435`/`5b6bc43c`
+
+The 12-case checklist below is unchanged and reconfirmed. Since this document was written: credential revocation now actually invalidates authority (migration 091, see `04_P1_CREDENTIAL_VERIFICATION_GATE.md`'s own update), and a fresh full-pathway audit of MMA-CODEX-03 confirmed `platform_owner_correct_office_classification()` (case 9 below) had never deactivated a reclassified/revoked user's existing `staff_patient_assignments` rows — a serious gap, now fixed, migration 104. See register §2l (finding 03) for the full writeup.
+
+---
+
 ## Scope correction (read before the table below)
 
 Every PASS below is a **technical state-transition and authorization-boundary verification only** — it confirms the RPC/RLS/audit-trail machinery enforces who may move an application between which states, atomically and auditably. **None of it establishes that any submitted professional credential is actually true.** See `04_P1_CREDENTIAL_VERIFICATION_GATE.md` for the one case (case 8/credential verification) where this phase added a real, substantive gate on top of the technical machinery — and for the substantive standard that still remains open.
