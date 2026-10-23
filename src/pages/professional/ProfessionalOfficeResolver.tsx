@@ -14,15 +14,135 @@ import { useEffect, useState, useCallback } from 'react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { Loader2, ShieldAlert, LogOut, Sparkles } from 'lucide-react';
+import { Loader2, ShieldAlert, LogOut, Sparkles, KeyRound, ChevronDown, ChevronUp } from 'lucide-react';
 import { getMyOrganizations, getMyPendingOrgInvites, type MyOrganization, type PendingOrgInvite } from '@/services/organizationService';
-import { getMyApplication, type ProfessionalApplication } from '@/services/professionalApplicationService';
+import { getMyApplication, submitProfessionalApplication, type ProfessionalApplication } from '@/services/professionalApplicationService';
+import { redeemQuoteInvitation, type RedemptionOutcome, type RedeemedQuoteTerms } from '@/services/salesService';
 import OrganizationDirectorDashboard, { CreateOrgCard } from '@/pages/enterprise/OrganizationDirectorDashboard';
 import { PendingInvitesBanner } from '@/pages/enterprise/EnterpriseDashboardRouter';
 import EnterpriseCaregiverDashboard from '@/pages/enterprise/EnterpriseCaregiverDashboard';
 import ClinicalOfficeDashboard from '@/pages/enterprise/ClinicalOfficeDashboard';
 import EnterprisePatientDashboard from '@/pages/patient/EnterprisePatientDashboard';
 import ApplicationStatusPage from './ApplicationStatusPage';
+
+const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
+
+const OUTCOME_MESSAGE: Record<Exclude<RedemptionOutcome, 'redeemed'>, string> = {
+  not_found: "That code wasn't recognized. Double-check it and try again, or contact the person who sent it to you.",
+  expired: 'That invitation has expired. Contact My Memoria Ally to request a new one.',
+  revoked: "That invitation is no longer valid. If you believe this is a mistake, contact the person who sent it.",
+  already_used: 'That invitation has already been used.',
+  wrong_recipient: 'That invitation was issued to a different email address. Sign in with the matching account, or contact the person who sent it.',
+};
+
+// OWNER DIRECTIVE MMA-ENT-SALES-003 §1 — the Phase C invitation-
+// redemption bridge. The raw token lives only in this component's own
+// transient state: never written to localStorage/sessionStorage, never
+// logged, and cleared the instant redeemQuoteInvitation() returns
+// (success or not) — it has done its one job either way. A 'redeemed'
+// outcome locks the organization name and package type from the quote
+// (shown read-only below, never an editable field) and submits the
+// SAME director-application RPC CreateOrgCard already uses; the quote's
+// id is folded into application_details so Platform Owner review can
+// cross-reference the originating commercial terms, with no new column
+// on the already-heavily-audited professional_applications table.
+// Double-submission across tabs/retries is already structurally
+// prevented: submit_professional_application() itself rejects a second
+// submission while one is under review, and a successful submit flips
+// the resolver (via onApplicationStarted's refresh) to
+// ApplicationStatusPage, which no longer renders this form at all.
+function RedeemInvitationSection({ onApplicationStarted }: { onApplicationStarted: () => void }) {
+  const { state } = useApp();
+  const [expanded, setExpanded] = useState(false);
+  const [token, setToken] = useState('');
+  const [redeeming, setRedeeming] = useState(false);
+  const [outcomeMessage, setOutcomeMessage] = useState<string | null>(null);
+  const [terms, setTerms] = useState<RedeemedQuoteTerms | null>(null);
+  const [legalName, setLegalName] = useState('');
+  const [contactEmail, setContactEmail] = useState(state.currentUser?.email ?? '');
+  const [contactPhone, setContactPhone] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const redeem = async () => {
+    const raw = token.trim();
+    if (!raw) return;
+    setRedeeming(true);
+    setOutcomeMessage(null);
+    try {
+      const { outcome, terms: redeemedTerms, error } = await redeemQuoteInvitation(raw);
+      if (error || !outcome) { toast.error(error || 'Could not process that invitation.'); return; }
+      if (outcome !== 'redeemed') { setOutcomeMessage(OUTCOME_MESSAGE[outcome]); return; }
+      setTerms(redeemedTerms);
+    } finally {
+      setRedeeming(false);
+      setToken(''); // the raw token has done its one job; never retained
+    }
+  };
+
+  const submitApplication = async () => {
+    if (!terms) return;
+    if (!legalName.trim() || !contactEmail.trim()) { toast.error('Legal name and contact email are required.'); return; }
+    setSubmitting(true);
+    try {
+      const { error } = await submitProfessionalApplication({
+        requestedOffice: 'director',
+        proposedOrganizationName: terms.prospectiveOrganizationName,
+        proposedPackageType: terms.packageType,
+        legalName: legalName.trim(),
+        contactEmail: contactEmail.trim(),
+        contactPhone: contactPhone.trim() || null,
+        applicationDetails: { originatingQuoteId: terms.quoteId },
+      });
+      if (error) { toast.error(error); return; }
+      toast.success('Application submitted for Platform Owner review.');
+      onApplicationStarted();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (terms) {
+    return (
+      <div className="w-full max-w-md p-4 bg-ent-pale rounded-xl border border-ent-line space-y-3">
+        <p className="text-sm font-bold text-ent-ink">Your accepted offer</p>
+        <dl className="text-xs text-ent-text space-y-1">
+          <div className="flex justify-between"><dt className="text-ent-muted">Organization</dt><dd className="font-semibold">{terms.prospectiveOrganizationName}</dd></div>
+          <div className="flex justify-between"><dt className="text-ent-muted">Package</dt><dd className="font-semibold">{terms.packageType === 'integrated_care' ? 'Full Enterprise' : 'Therapist Enterprise'}</dd></div>
+          <div className="flex justify-between"><dt className="text-ent-muted">Seats</dt><dd className="font-semibold">{terms.proposedLicensedSeats}</dd></div>
+          <div className="flex justify-between"><dt className="text-ent-muted">Covered patients</dt><dd className="font-semibold">{terms.proposedCoveredPatientCapacity}</dd></div>
+        </dl>
+        <p className="text-[11px] text-ent-muted">These terms are fixed by your accepted quote and cannot be changed here.</p>
+        <div className="space-y-2 pt-1">
+          <input value={legalName} onChange={(e) => setLegalName(e.target.value)} placeholder="Your full legal name" className={inputCls} />
+          <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="Contact email" className={inputCls} />
+          <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="Phone (optional)" className={inputCls} />
+        </div>
+        <button type="button" onClick={() => { void submitApplication(); }} disabled={submitting} className="w-full py-2.5 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
+          {submitting ? 'Submitting…' : 'Start my Director application'}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full max-w-md">
+      <button type="button" onClick={() => setExpanded((e) => !e)} className="flex items-center gap-1.5 text-xs font-semibold text-ent-bronze hover:underline mx-auto">
+        <KeyRound className="w-3.5 h-3.5" /> Have an invitation code? {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+      {expanded && (
+        <div className="mt-2 p-3 bg-ent-bg rounded-xl border border-ent-line space-y-2">
+          <div className="flex gap-2">
+            <input value={token} onChange={(e) => setToken(e.target.value)} placeholder="Paste your invitation code" className={`${inputCls} flex-1`} />
+            <button type="button" onClick={() => { void redeem(); }} disabled={redeeming || !token.trim()} className="px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold disabled:opacity-60 flex-shrink-0">
+              {redeeming ? 'Checking…' : 'Accept'}
+            </button>
+          </div>
+          {outcomeMessage && <p className="text-xs text-ent-rust">{outcomeMessage}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export type ProfessionalOfficeKey = 'admin' | 'caregiver' | 'medical' | 'therapy' | 'patient';
 
@@ -99,6 +219,7 @@ function AccessRequiredState({
           <PendingInvitesBanner invites={pendingInvites} onResolved={onInviteResolved} />
         ) : (
           <div className="w-full max-w-md space-y-3">
+            <RedeemInvitationSection onApplicationStarted={onApplicationStarted} />
             <div className="flex items-center gap-2 justify-center text-xs font-semibold text-ent-muted uppercase tracking-wide">
               <span className="h-px flex-1 bg-ent-line" /> New to Enterprise? <span className="h-px flex-1 bg-ent-line" />
             </div>

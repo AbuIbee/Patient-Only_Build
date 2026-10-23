@@ -183,3 +183,38 @@ export async function revokeQuoteInvitation(invitationId: string): Promise<{ err
   const { error } = await supabase.rpc('platform_owner_revoke_quote_invitation', { p_invitation_id: invitationId });
   return { error: error ? errMsg(error, 'Could not revoke invitation.') : null };
 }
+
+export type RedemptionOutcome = 'redeemed' | 'not_found' | 'expired' | 'revoked' | 'already_used' | 'wrong_recipient';
+
+export interface RedeemedQuoteTerms {
+  quoteId: string;
+  prospectiveOrganizationName: string;
+  packageType: SalesPackageType;
+  proposedLicensedSeats: number;
+  proposedCoveredPatientCapacity: number;
+}
+
+// OWNER DIRECTIVE MMA-ENT-SALES-003 §1 -- migration 108's
+// redeem_quote_invitation() returns one row with a distinguishable
+// `outcome` rather than throwing, for every "not redeemable" case; this
+// wrapper never logs or persists the raw token itself (the caller is
+// expected to hold it only in transient component state and discard it
+// the moment this call returns, success or not).
+export async function redeemQuoteInvitation(
+  rawToken: string,
+): Promise<{ outcome: RedemptionOutcome | null; terms: RedeemedQuoteTerms | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('redeem_quote_invitation', { p_token: rawToken });
+  if (error || !data || data.length === 0) return { outcome: null, terms: null, error: errMsg(error, 'Could not process that invitation.') };
+  const row = data[0] as Record<string, unknown>;
+  const outcome = row.outcome as RedemptionOutcome;
+  if (outcome !== 'redeemed') return { outcome, terms: null, error: null };
+  return {
+    outcome,
+    terms: {
+      quoteId: row.quote_id as string, prospectiveOrganizationName: row.prospective_organization_name as string,
+      packageType: row.package_type as SalesPackageType, proposedLicensedSeats: row.proposed_licensed_seats as number,
+      proposedCoveredPatientCapacity: row.proposed_covered_patient_capacity as number,
+    },
+    error: null,
+  };
+}

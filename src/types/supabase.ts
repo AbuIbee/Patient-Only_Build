@@ -5742,14 +5742,18 @@ export interface Database {
           token_hash: string
         }
       }
+      // MMA-ENT-SALES-003 §1 -- migration 108: `outcome` replaces a
+      // thrown exception for every "not redeemable" case; quote/org
+      // fields are only populated when outcome === 'redeemed'.
       redeem_quote_invitation: {
         Args: { p_token: string }
         Returns: {
-          package_type: string
-          proposed_covered_patient_capacity: number
-          proposed_licensed_seats: number
-          prospective_organization_name: string
-          quote_id: string
+          outcome: string
+          package_type: string | null
+          proposed_covered_patient_capacity: number | null
+          proposed_licensed_seats: number | null
+          prospective_organization_name: string | null
+          quote_id: string | null
         }[]
       }
     }

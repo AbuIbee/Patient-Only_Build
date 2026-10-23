@@ -105,28 +105,41 @@ describe('MMA-ENT-SALES-002 Phase C — prospects, quotes, invitation tokens (mi
     expect(stored).not.toBe(raw_token);
     expect(sql(`SELECT count(*) FROM sales_quote_invitations WHERE token_hash='${raw_token}';`)).toBe('0');
 
-    // An outsider (different authenticated account, different email) cannot redeem it.
-    const [outsiderStatus] = await rpc('redeem_quote_invitation', { p_token: raw_token }, tok.outsider);
-    expect(outsiderStatus).toBe(400);
+    // An outsider (different authenticated account, different email)
+    // cannot redeem it -- MMA-ENT-SALES-003: the outcome is now
+    // distinguishable (not a generic 400) once a real token_hash
+    // matches, but garbage input still isn't an oracle (see 'not_found'
+    // below) and a mismatched recipient still never gets the quote data.
+    const [outsiderStatus, outsiderResult] = (await rpc('redeem_quote_invitation', { p_token: raw_token }, tok.outsider)) as [number, Array<{ outcome: string; quote_id: string | null }>];
+    expect(outsiderStatus).toBe(200);
+    expect(outsiderResult[0]).toMatchObject({ outcome: 'wrong_recipient', quote_id: null });
 
     // The real recipient can.
     const [redeemStatus, redeemed] = (await rpc('redeem_quote_invitation', { p_token: raw_token }, tok.recipient)) as [
       number,
-      Array<{ quote_id: string; prospective_organization_name: string; package_type: string; proposed_licensed_seats: number; proposed_covered_patient_capacity: number }>,
+      Array<{ outcome: string; quote_id: string; prospective_organization_name: string; package_type: string; proposed_licensed_seats: number; proposed_covered_patient_capacity: number }>,
     ];
     expect(redeemStatus).toBe(200);
     expect(redeemed[0]).toMatchObject({
-      quote_id: quoteId, prospective_organization_name: 'Al-Noor Family Care Services',
+      outcome: 'redeemed', quote_id: quoteId, prospective_organization_name: 'Al-Noor Family Care Services',
       package_type: 'integrated_care', proposed_licensed_seats: 2, proposed_covered_patient_capacity: 10,
     });
     expect(sql(`SELECT status, accepted_by FROM sales_quote_invitations WHERE id='${invitation_id}';`)).toBe(`accepted|${ids.recipient}`);
 
-    // Single-use: redeeming the same token again fails, including for the legitimate recipient.
-    const [replayStatus] = await rpc('redeem_quote_invitation', { p_token: raw_token }, tok.recipient);
-    expect(replayStatus).toBe(400);
+    // Single-use: redeeming the same token again reports 'already_used',
+    // including for the legitimate recipient -- not a silent re-grant.
+    const [replayStatus, replayResult] = (await rpc('redeem_quote_invitation', { p_token: raw_token }, tok.recipient)) as [number, Array<{ outcome: string }>];
+    expect(replayStatus).toBe(200);
+    expect(replayResult[0].outcome).toBe('already_used');
   });
 
-  it('a revoked invitation cannot be redeemed', async () => {
+  it('garbage input reports not_found, never a distinguishable reason (no oracle for an unmatched token)', async () => {
+    const [status, result] = (await rpc('redeem_quote_invitation', { p_token: 'not-a-real-token-at-all' }, tok.recipient)) as [number, Array<{ outcome: string }>];
+    expect(status).toBe(200);
+    expect(result[0].outcome).toBe('not_found');
+  });
+
+  it('a revoked invitation reports outcome revoked, not a generic error', async () => {
     const [issueStatus, issued] = (await rpc(
       'platform_owner_issue_quote_invitation',
       { p_quote_id: quoteId, p_recipient_email: emails.recipient, p_expires_in_hours: 168 },
@@ -138,11 +151,12 @@ describe('MMA-ENT-SALES-002 Phase C — prospects, quotes, invitation tokens (mi
     const [revokeStatus] = await rpc('platform_owner_revoke_quote_invitation', { p_invitation_id: invitation_id }, tok.owner);
     expect(revokeStatus).toBe(200);
 
-    const [redeemStatus] = await rpc('redeem_quote_invitation', { p_token: raw_token }, tok.recipient);
-    expect(redeemStatus).toBe(400);
+    const [redeemStatus, redeemResult] = (await rpc('redeem_quote_invitation', { p_token: raw_token }, tok.recipient)) as [number, Array<{ outcome: string }>];
+    expect(redeemStatus).toBe(200);
+    expect(redeemResult[0].outcome).toBe('revoked');
   });
 
-  it('an expired invitation cannot be redeemed', async () => {
+  it('an expired invitation reports outcome expired, and is recorded as such server-side', async () => {
     const [issueStatus, issued] = (await rpc(
       'platform_owner_issue_quote_invitation',
       { p_quote_id: quoteId, p_recipient_email: emails.recipient, p_expires_in_hours: 1 },
@@ -152,8 +166,11 @@ describe('MMA-ENT-SALES-002 Phase C — prospects, quotes, invitation tokens (mi
     const { invitation_id, raw_token } = issued[0];
     sql(`UPDATE sales_quote_invitations SET expires_at = now() - interval '1 hour' WHERE id='${invitation_id}';`);
 
-    const [redeemStatus] = await rpc('redeem_quote_invitation', { p_token: raw_token }, tok.recipient);
-    expect(redeemStatus).toBe(400);
+    const [redeemStatus, redeemResult] = (await rpc('redeem_quote_invitation', { p_token: raw_token }, tok.recipient)) as [number, Array<{ outcome: string }>];
+    expect(redeemStatus).toBe(200);
+    expect(redeemResult[0].outcome).toBe('expired');
+    // Lazy-expire bookkeeping: the row itself is now marked expired, not left 'pending'.
+    expect(sql(`SELECT status FROM sales_quote_invitations WHERE id='${invitation_id}';`)).toBe('expired');
   });
 
   it('revising a sent quote supersedes it, preserves the original immutably, and auto-revokes its still-pending invitations', async () => {
