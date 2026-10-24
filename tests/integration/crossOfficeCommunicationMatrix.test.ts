@@ -38,7 +38,7 @@
 // `npm run test:integration`. Creates and fully tears down its own
 // fixture; never reads or writes any pre-existing data.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
+import { authDeleteUser, authSignUp, http, login, rpc, sql } from './_runtime';
 
 const PW = 'MasterCompletion9!';
 const stamp = Date.now();
@@ -171,11 +171,40 @@ describe('Wave B — cross-office communication authorization matrix (true 5x5: 
         expect(body.id).toBeTruthy();
         results.push(`${senderOffice}|${recipientOffice}|PASS`);
 
-        // The recipient can read it back; a conversation with their name
-        // was really created, not merely a 200 with no actual recipient.
+        // The recipient can read it back via the RPC...
         const [readStatus, readBody] = (await rpc('get_my_conversations', { p_patient_id: PATIENT_ID }, tokOf(recipientName))) as [number, Array<{ conversation_id: string }>];
         expect(readStatus).toBe(200);
         expect(readBody.some((c) => c.conversation_id === body.id)).toBe(true);
+
+        // ...AND via DIRECT REST table reads (CODEX F-01: the RPC path
+        // and the direct-table RLS path are gated by different
+        // mechanisms -- get_my_conversations() was already correct
+        // before this fix; is_conversation_participant(), which gates
+        // conversations/conversation_participants/messages directly,
+        // was not. Every pair must pass BOTH, not just the RPC the
+        // original matrix happened to test.)
+        const [, senderConvRead] = await http('GET', `/rest/v1/conversations?id=eq.${body.id}&select=id`, undefined, tokOf(senderName));
+        expect((senderConvRead as unknown[]).length).toBe(1);
+        const [, recipientConvRead] = await http('GET', `/rest/v1/conversations?id=eq.${body.id}&select=id`, undefined, tokOf(recipientName));
+        expect((recipientConvRead as unknown[]).length).toBe(1);
+        const [, recipientParticipantRead] = await http('GET', `/rest/v1/conversation_participants?conversation_id=eq.${body.id}&select=id`, undefined, tokOf(recipientName));
+        expect((recipientParticipantRead as unknown[]).length).toBeGreaterThanOrEqual(2);
+
+        // Full dimension coverage for this pair: send a message, the
+        // recipient reads real history (not just the empty shell),
+        // attaches a follow-up, and the sender can read it back too --
+        // "sending, receiving, history, follow-ups" per the directive.
+        const [, msg] = (await rpc('send_message', {
+          p_conversation_id: body.id, p_body: `XOM ${senderOffice}->${recipientOffice} message`, p_is_urgent: false, p_reply_to_message_id: null,
+        }, tokOf(senderName))) as [number, { id: string }];
+        const [, recipientMsgRead] = await http('GET', `/rest/v1/messages?conversation_id=eq.${body.id}&select=id,body`, undefined, tokOf(recipientName));
+        expect((recipientMsgRead as { id: string; body: string }[]).some((m) => m.id === msg.id)).toBe(true);
+        const [ackStatus] = await rpc('acknowledge_message', {
+          p_message_id: msg.id, p_follow_up_requested: true, p_follow_up_note: `${senderOffice}->${recipientOffice} follow-up`, p_follow_up_due_date: null, p_follow_up_assigned_to: null,
+        }, tokOf(recipientName));
+        expect(ackStatus).toBe(200);
+        const [, senderAckRead] = await http('GET', `/rest/v1/message_acknowledgments?message_id=eq.${msg.id}&select=id,follow_up_requested`, undefined, tokOf(senderName));
+        expect((senderAckRead as { follow_up_requested: boolean }[]).some((a) => a.follow_up_requested)).toBe(true);
       });
     }
   }
@@ -247,6 +276,38 @@ describe('Wave B — Director conversation participation is NARROW, not universa
     const [status, body] = (await rpc('get_patient_care_circle', { p_patient_id: PATIENT_ID }, tok.caregiver1)) as [number, Array<{ user_id: string; participant_role: string }>];
     expect(status).toBe(200);
     expect(body.some((m) => m.user_id === ids.director1 && m.participant_role === 'director')).toBe(true);
+  });
+});
+
+describe('Wave B — revocation and unaddressed-participant negatives apply uniformly, not only to the Director case (CODEX F-01, migration 120)', () => {
+  it('a caregiver whose staff_patient_assignments row is revoked loses direct-REST read access to a conversation they already joined, and cannot send into it', async () => {
+    const [, conv] = (await rpc('create_conversation', {
+      p_patient_id: PATIENT_ID, p_recipient_user_ids: [ids.medical1], p_subject: 'XOM caregiver-revocation probe',
+    }, tok.caregiver2)) as [number, { id: string }];
+    const [, baselineRead] = await http('GET', `/rest/v1/conversations?id=eq.${conv.id}&select=id`, undefined, tok.caregiver2);
+    expect((baselineRead as unknown[]).length).toBe(1);
+
+    sql(`UPDATE staff_patient_assignments SET is_active=false WHERE organization_id='${ORG}' AND user_id='${ids.caregiver2}' AND patient_id='${PATIENT_ID}';`);
+    const [, revokedRead] = await http('GET', `/rest/v1/conversations?id=eq.${conv.id}&select=id`, undefined, tok.caregiver2);
+    expect((revokedRead as unknown[]).length).toBe(0);
+    const [sendStatus] = await rpc('send_message', { p_conversation_id: conv.id, p_body: 'should be rejected', p_is_urgent: false, p_reply_to_message_id: null }, tok.caregiver2);
+    expect(sendStatus).toBeGreaterThanOrEqual(400);
+
+    sql(`UPDATE staff_patient_assignments SET is_active=true WHERE organization_id='${ORG}' AND user_id='${ids.caregiver2}' AND patient_id='${PATIENT_ID}';`);
+    const [, restoredRead] = await http('GET', `/rest/v1/conversations?id=eq.${conv.id}&select=id`, undefined, tok.caregiver2);
+    expect((restoredRead as unknown[]).length).toBe(1);
+  });
+
+  it('a medical professional never added to a specific conversation cannot read it directly, even though they actively cover the same patient', async () => {
+    const [, conv] = (await rpc('create_conversation', {
+      p_patient_id: PATIENT_ID, p_recipient_user_ids: [ids.caregiver1], p_subject: 'XOM unaddressed-medical probe',
+    }, tok.caregiver2)) as [number, { id: string }];
+    expect(sql(`SELECT count(*) FROM conversation_participants WHERE conversation_id='${conv.id}' AND user_id='${ids.medical2}';`)).toBe('0');
+
+    const [, unaddressedRead] = await http('GET', `/rest/v1/conversations?id=eq.${conv.id}&select=id`, undefined, tok.medical2);
+    expect((unaddressedRead as unknown[]).length).toBe(0);
+    const [, unaddressedMsgRead] = await http('GET', `/rest/v1/messages?conversation_id=eq.${conv.id}&select=id`, undefined, tok.medical2);
+    expect((unaddressedMsgRead as unknown[]).length).toBe(0);
   });
 });
 
