@@ -111,6 +111,22 @@ test.describe('Enterprise contract/BAA management (MMA-ENT-SALES-006 Phase F3)',
       await ownerPage.getByPlaceholder('Evidence reference (document id, storage path, etc.)').fill('envelope-xyz-789');
       await ownerPage.getByRole('button', { name: 'Record execution' }).click();
       await expect(ownerPage.getByText('executed', { exact: true })).toBeVisible({ timeout: 10000 });
+
+      // CODEX F-04 fix (migration 123): a BAA is now ALSO mandatory,
+      // not just the SaaS license agreement -- created, presented and
+      // executed through the real UI exactly the same way.
+      await ownerPage.getByText('+ Add agreement record').click();
+      await ownerPage.getByRole('combobox').selectOption('baa');
+      await ownerPage.getByPlaceholder('Template version (e.g. MMA-SAAS-2026-v1)').fill('MMA-BAA-2026-v1');
+      await ownerPage.getByPlaceholder('Signatory name').fill('Bilal Ahmed');
+      await ownerPage.getByRole('button', { name: 'Create as draft' }).click();
+      await expect(ownerPage.getByText('MMA-BAA-2026-v1', { exact: false })).toBeVisible({ timeout: 10000 });
+      await ownerPage.getByRole('button', { name: 'Present to customer' }).click();
+      await expect(ownerPage.getByText('presented', { exact: true }).first()).toBeVisible({ timeout: 10000 });
+      await ownerPage.getByPlaceholder('Execution method (e.g. DocuSign envelope #...)').fill('DocuSign envelope');
+      await ownerPage.getByPlaceholder('Evidence reference (document id, storage path, etc.)').fill('envelope-baa-xyz-789');
+      await ownerPage.getByRole('button', { name: 'Record execution' }).click();
+      await expect(ownerPage.getByText('MMA-BAA-2026-v1', { exact: false }).locator('..')).toContainText('executed');
       await ownerContext.close();
 
       // Now activation genuinely succeeds.
@@ -213,6 +229,20 @@ test.describe('Enterprise contract/BAA management (MMA-ENT-SALES-006 Phase F3)',
       await ownerPage.getByPlaceholder('Evidence reference (document id, storage path, etc.)').fill('envelope-replace-1');
       await ownerPage.getByRole('button', { name: 'Record execution' }).click();
       await expect(ownerPage.getByText('executed', { exact: true })).toBeVisible({ timeout: 10000 });
+
+      // CODEX F-04 fix (migration 123): a BAA is now ALSO mandatory.
+      await ownerPage.getByText('+ Add agreement record').click();
+      await ownerPage.getByRole('combobox').selectOption('baa');
+      await ownerPage.getByPlaceholder('Template version (e.g. MMA-SAAS-2026-v1)').fill('MMA-BAA-2026-v1');
+      await ownerPage.getByPlaceholder('Signatory name').fill('Bilal Ahmed');
+      await ownerPage.getByRole('button', { name: 'Create as draft' }).click();
+      await expect(ownerPage.getByText('MMA-BAA-2026-v1', { exact: false })).toBeVisible({ timeout: 10000 });
+      await ownerPage.getByRole('button', { name: 'Present to customer' }).click();
+      await expect(ownerPage.getByText('presented', { exact: true }).first()).toBeVisible({ timeout: 10000 });
+      await ownerPage.getByPlaceholder('Execution method (e.g. DocuSign envelope #...)').fill('DocuSign envelope');
+      await ownerPage.getByPlaceholder('Evidence reference (document id, storage path, etc.)').fill('envelope-baa-replace-1');
+      await ownerPage.getByRole('button', { name: 'Record execution' }).click();
+      await expect(ownerPage.getByText('MMA-BAA-2026-v1', { exact: false }).locator('..')).toContainText('executed');
       await ownerContext.close();
 
       const activated = sql(`SELECT status, license_number FROM activate_enterprise_license_from_quote('${quoteId}');`);

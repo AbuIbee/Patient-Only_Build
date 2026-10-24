@@ -64,6 +64,19 @@ function markPaid(quoteId: string, feeCents: number): void {
     VALUES ('${quoteId}', 'billing@contracttest.local', 'usd', ${feeCents}, 'year', 'active', '${ids.bilal}');
   `);
 }
+// CODEX F-04 fix (migration 123): both 'saas_license' and 'baa' must
+// now be executed before activation -- every test below that expects
+// activation to actually succeed needs both, not just the one this
+// file was originally built around.
+async function executeContract(quoteId: string, contractType: 'saas_license' | 'baa'): Promise<void> {
+  const [, contract] = (await rpc('platform_owner_create_contract', {
+    p_quote_id: quoteId, p_contract_type: contractType, p_template_version: 'v1', p_signatory_name: 'Bilal Ahmed', p_signatory_title: null,
+  }, tok.owner)) as [number, { id: string }];
+  await rpc('platform_owner_present_contract', { p_contract_id: contract.id }, tok.owner);
+  await rpc('platform_owner_record_contract_execution', {
+    p_contract_id: contract.id, p_execution_method: 'manual', p_execution_evidence_reference: `test-evidence-${contractType}`,
+  }, tok.owner);
+}
 
 describe('MMA-ENT-SALES-006 Phase F3 — enterprise contracts (migration 115)', () => {
   it('full lifecycle: draft -> presented -> executed, with a real method/reference, owner-attributed', async () => {
@@ -132,8 +145,10 @@ describe('MMA-ENT-SALES-006 Phase F3 — enterprise contracts (migration 115)', 
     }
     expect(threw).toBe(true);
 
-    // Now execute the contract and retry -- it activates immediately.
+    // Now execute the contract (and the also-mandatory BAA) and retry
+    // -- it activates immediately.
     await rpc('platform_owner_record_contract_execution', { p_contract_id: contract.id, p_execution_method: 'wet signature, scanned', p_execution_evidence_reference: 'storage://contracts/gated-org.pdf' }, tok.owner);
+    await executeContract(quoteId, 'baa');
     const activated = sql(`SELECT status, license_number FROM activate_enterprise_license_from_quote('${quoteId}');`);
     expect(activated).toContain('active|MMA-FE-');
 
@@ -144,12 +159,35 @@ describe('MMA-ENT-SALES-006 Phase F3 — enterprise contracts (migration 115)', 
     `);
   });
 
-  it('BACKWARD COMPATIBILITY: a quote with NO contract at all activates exactly as before (no gate triggers)', async () => {
+  // SUPERSEDED, 2026-10-24: this test previously asserted that a quote
+  // with NO contract record at all activates exactly as if agreements
+  // did not matter -- i.e. it encoded "no contract rows -> no gate" as
+  // the REQUIRED behavior. The independent Codex audit
+  // (MMA_ENT_SALES_007_CODEX_INDEPENDENT_ACCEPTANCE.md, finding F-04,
+  // P1) correctly identified this as the actual defect: every
+  // organization covers patients and therefore handles PHI regardless
+  // of package type, so an agreement requirement that silently never
+  // applies whenever nobody bothered creating a contract row is a
+  // fail-open gate, not a backward-compatibility guarantee worth
+  // keeping. Migration 123 makes both a 'saas_license' and a 'baa'
+  // agreement mandatory; this test now asserts the corrected behavior.
+  it('CODEX F-04 FIX: a quote with NO contract at all does NOT activate -- both saas_license and baa are mandatory, not optional-if-created', async () => {
     const { quoteId, appId } = await makeQuoteAndApplication(`UngatedOrg ${stamp}`, 9000);
     markPaid(quoteId, 900000);
     const [, org] = (await rpc('platform_owner_approve_director_application', { p_application_id: appId }, tok.owner)) as [number, { id: string }];
-    // The approval's own safety-net PERFORM should have activated it immediately -- no contract ever existed for this quote.
-    expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('active');
+    expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('proposed');
+
+    let threw = false;
+    try { sql(`SELECT activate_enterprise_license_from_quote('${quoteId}');`); } catch { threw = true; }
+    expect(threw).toBe(true);
+
+    // Creating and executing BOTH required agreements lets it
+    // genuinely activate -- proving the block above was really about
+    // the missing agreements, not something else.
+    await executeContract(quoteId, 'saas_license');
+    await executeContract(quoteId, 'baa');
+    const activated = sql(`SELECT status FROM activate_enterprise_license_from_quote('${quoteId}');`);
+    expect(activated).toBe('active');
 
     sql(`
       DELETE FROM organization_licenses WHERE organization_id='${org.id}';
@@ -218,6 +256,7 @@ describe('MMA-ENT-SALES-006 Phase F3 — enterprise contracts (migration 115)', 
     await rpc('platform_owner_record_contract_execution', {
       p_contract_id: replacement.id, p_execution_method: 'DocuSign envelope', p_execution_evidence_reference: 'envelope-replacement-1',
     }, tok.owner);
+    await executeContract(quoteId, 'baa');
     const activated = sql(`SELECT status FROM activate_enterprise_license_from_quote('${quoteId}');`);
     expect(activated).toBe('active');
 

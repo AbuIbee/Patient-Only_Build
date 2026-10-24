@@ -34,6 +34,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   sql(`
+    DELETE FROM enterprise_contracts WHERE created_by='${ids.owner}';
     DELETE FROM professional_application_events WHERE application_id IN (SELECT id FROM professional_applications WHERE applicant_user_id IN ('${ids.bilal}','${ids.bilal2}'));
     DELETE FROM enterprise_billing_events WHERE billing_account_id IN (SELECT id FROM enterprise_billing_accounts WHERE created_by IN ('${ids.bilal}','${ids.bilal2}'));
     DELETE FROM enterprise_billing_accounts WHERE created_by IN ('${ids.bilal}','${ids.bilal2}');
@@ -73,6 +74,19 @@ async function submitApplication(userId: string, token: string, orgName: string,
     RETURNING id;
   `);
   return appId;
+}
+// CODEX F-04 fix (migration 123): both 'saas_license' and 'baa' must
+// now be executed before activation can ever succeed.
+async function executeRequiredContracts(quoteId: string, signatoryName: string): Promise<void> {
+  for (const contractType of ['saas_license', 'baa'] as const) {
+    const [, contract] = (await rpc('platform_owner_create_contract', {
+      p_quote_id: quoteId, p_contract_type: contractType, p_template_version: 'v1', p_signatory_name: signatoryName, p_signatory_title: null,
+    }, tok.owner)) as [number, { id: string }];
+    await rpc('platform_owner_present_contract', { p_contract_id: contract.id }, tok.owner);
+    await rpc('platform_owner_record_contract_execution', {
+      p_contract_id: contract.id, p_execution_method: 'manual', p_execution_evidence_reference: `test-evidence-${contractType}`,
+    }, tok.owner);
+  }
 }
 function markBillingAccountActive(quoteId: string, email: string, feeCents: number): string {
   const existing = sql(`SELECT id FROM enterprise_billing_accounts WHERE quote_id='${quoteId}';`);
@@ -117,6 +131,7 @@ describe('MMA-ENT-SALES-005 Phase G — enterprise license issuance engine (migr
     const quoteId = await makeQuote(emails.bilal, `PayFirst Org ${stamp}`, 'integrated_care', 24000);
     const appId = await submitApplication(ids.bilal, tok.bilal, `PayFirst Org ${stamp}`, 'integrated_care', quoteId);
     markBillingAccountActive(quoteId, 'billing@payfirst.test', 2400000);
+    await executeRequiredContracts(quoteId, 'License Test Applicant');
 
     const [status, org] = (await rpc('platform_owner_approve_director_application', { p_application_id: appId }, tok.owner)) as [number, { id: string }];
     expect(status).toBe(200);
@@ -142,6 +157,7 @@ describe('MMA-ENT-SALES-005 Phase G — enterprise license issuance engine (migr
     expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('proposed');
 
     markBillingAccountActive(quoteId, 'billing@approvefirst.test', 1500000);
+    await executeRequiredContracts(quoteId, 'License Test Applicant');
 
     // Simulates exactly what the webhook does post-payment: call the
     // service-role-only activation RPC directly as postgres (the same
@@ -159,6 +175,7 @@ describe('MMA-ENT-SALES-005 Phase G — enterprise license issuance engine (migr
     const quoteId = await makeQuote(emails.bilal, `Idempotent Org ${stamp}`, 'integrated_care', 18000);
     const appId = await submitApplication(ids.bilal, tok.bilal, `Idempotent Org ${stamp}`, 'integrated_care', quoteId);
     markBillingAccountActive(quoteId, 'billing@idem.test', 1800000);
+    await executeRequiredContracts(quoteId, 'License Test Applicant');
 
     const [, org] = (await rpc('platform_owner_approve_director_application', { p_application_id: appId }, tok.owner)) as [number, { id: string }];
     createdOrgIds.push(org.id);
@@ -187,6 +204,7 @@ describe('MMA-ENT-SALES-005 Phase G — enterprise license issuance engine (migr
     const quoteId = await makeQuote(emails.bilal, `Cancel Org ${stamp}`, 'integrated_care', 11000);
     const appId = await submitApplication(ids.bilal, tok.bilal, `Cancel Org ${stamp}`, 'integrated_care', quoteId);
     markBillingAccountActive(quoteId, 'billing@cancel.test', 1100000);
+    await executeRequiredContracts(quoteId, 'License Test Applicant');
     const [, org] = (await rpc('platform_owner_approve_director_application', { p_application_id: appId }, tok.owner)) as [number, { id: string }];
     createdOrgIds.push(org.id);
     expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('active');
@@ -199,6 +217,7 @@ describe('MMA-ENT-SALES-005 Phase G — enterprise license issuance engine (migr
     const quoteId = await makeQuote(emails.bilal, `Locked Org ${stamp}`, 'integrated_care', 13000);
     const appId = await submitApplication(ids.bilal, tok.bilal, `Locked Org ${stamp}`, 'integrated_care', quoteId);
     markBillingAccountActive(quoteId, 'billing@locked.test', 1300000);
+    await executeRequiredContracts(quoteId, 'License Test Applicant');
     const [, org] = (await rpc('platform_owner_approve_director_application', { p_application_id: appId }, tok.owner)) as [number, { id: string }];
     createdOrgIds.push(org.id);
     expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('active');

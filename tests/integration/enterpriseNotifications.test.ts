@@ -95,11 +95,22 @@ describe('MMA-ENT-SALES-006 Phase I2 — enterprise notification center (migrati
     const bilalApprovedNotif = sql(`SELECT notification_type FROM enterprise_notifications WHERE recipient_user_id='${ids.bilal}' AND related_entity_id='${app.id}' AND notification_type='application_approved';`);
     expect(bilalApprovedNotif).toBe('application_approved');
 
-    // Confirm payment and activate -> notifies the Director (license_activated).
+    // Confirm payment, execute the (now-mandatory, migration 123)
+    // saas_license and baa agreements, and activate -> notifies the
+    // Director (license_activated).
     sql(`
       INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, currency, unit_amount_cents, billing_interval, status, created_by)
       VALUES ('${quote.id}', '${emails.bilal}', 'usd', 1000000, 'year', 'active', '${ids.bilal}');
     `);
+    for (const contractType of ['saas_license', 'baa'] as const) {
+      const [, contract] = (await rpc('platform_owner_create_contract', {
+        p_quote_id: quote.id, p_contract_type: contractType, p_template_version: 'v1', p_signatory_name: 'Notify Bilal', p_signatory_title: null,
+      }, tok.owner)) as [number, { id: string }];
+      await rpc('platform_owner_present_contract', { p_contract_id: contract.id }, tok.owner);
+      await rpc('platform_owner_record_contract_execution', {
+        p_contract_id: contract.id, p_execution_method: 'manual', p_execution_evidence_reference: `test-evidence-${contractType}`,
+      }, tok.owner);
+    }
     const license = sql(`SELECT id FROM activate_enterprise_license_from_quote('${quote.id}');`);
     expect(license).toBeTruthy();
     const bilalLicenseNotif = sql(`SELECT notification_type FROM enterprise_notifications WHERE recipient_user_id='${ids.bilal}' AND related_entity_type='organization_license' AND notification_type='license_activated';`);

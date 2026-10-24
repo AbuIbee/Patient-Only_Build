@@ -26,12 +26,14 @@ beforeAll(async () => {
   sql(`
     UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id IN ('${Object.values(ids).join("','")}');
     UPDATE profiles SET role='admin' WHERE id='${ids.owner}';
+    UPDATE profiles SET first_name='Bilal', last_name='Ahmed' WHERE id='${ids.bilal}';
   `);
   for (const [name, email] of Object.entries(emails)) tok[name] = await login(email, PW);
 }, 30000);
 
 afterAll(async () => {
   sql(`
+    DELETE FROM enterprise_contracts WHERE created_by='${ids.owner}';
     DELETE FROM enterprise_billing_accounts WHERE quote_id IN (SELECT id FROM sales_quotes WHERE created_by='${ids.owner}');
     DELETE FROM organization_amendment_requests WHERE organization_id IN (${createdOrgIds.length ? createdOrgIds.map((o) => `'${o}'`).join(',') : "'00000000-0000-0000-0000-000000000000'"});
     DELETE FROM organization_licenses WHERE organization_id IN (${createdOrgIds.length ? createdOrgIds.map((o) => `'${o}'`).join(',') : "'00000000-0000-0000-0000-000000000000'"});
@@ -56,7 +58,7 @@ async function makeActiveLicensedOrg(name: string, licenseNumber: string, seats:
 
 describe('MMA-ENT-SALES-006 — organization amendment requests (migration 113)', () => {
   it('full expansion lifecycle: request -> quote -> confirmed payment -> license updates in place, same license number', async () => {
-    const orgId = await makeActiveLicensedOrg(`Expand Org ${stamp}`, 'MMA-FE-2026-100001', 4, 20, 12000);
+    const orgId = await makeActiveLicensedOrg(`Expand Org ${stamp}`, `MMA-FE-2026-${String(stamp).slice(-6)}1`, 4, 20, 12000);
 
     const [reqStatus, request] = (await rpc('director_request_organization_amendment', {
       p_organization_id: orgId, p_request_type: 'expansion', p_requested_details: { desiredSeats: 8, desiredCapacity: 40 }, p_director_notes: 'Growing fast, need more seats.',
@@ -89,17 +91,29 @@ describe('MMA-ENT-SALES-006 — organization amendment requests (migration 113)'
       INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, currency, unit_amount_cents, billing_interval, status, created_by)
       VALUES ('${quoteId}', '${emails.bilal}', 'usd', 2000000, 'year', 'active', '${ids.bilal}');
     `);
+    // CODEX F-04 fix (migration 123): both a saas_license and a baa
+    // agreement are now mandatory before an amendment can apply, same
+    // as initial activation.
+    for (const contractType of ['saas_license', 'baa'] as const) {
+      const [, contract] = (await rpc('platform_owner_create_contract', {
+        p_quote_id: quoteId, p_contract_type: contractType, p_template_version: 'v1', p_signatory_name: 'Bilal Ahmed', p_signatory_title: null,
+      }, tok.owner)) as [number, { id: string }];
+      await rpc('platform_owner_present_contract', { p_contract_id: contract.id }, tok.owner);
+      await rpc('platform_owner_record_contract_execution', {
+        p_contract_id: contract.id, p_execution_method: 'manual', p_execution_evidence_reference: `test-evidence-${contractType}`,
+      }, tok.owner);
+    }
 
     // Simulates exactly what the webhook does post-payment.
     const applied = sql(`SELECT status, completed_at IS NOT NULL FROM apply_organization_amendment_from_quote('${quoteId}');`);
     expect(applied).toContain('completed|t');
 
     const license = sql(`SELECT licensed_seats, covered_patient_capacity, annual_license_fee, status, license_number FROM organization_licenses WHERE organization_id='${orgId}';`);
-    expect(license).toBe('8|40|20000.00|active|MMA-FE-2026-100001'); // SAME license number -- an amendment, not a new issuance
+    expect(license).toBe(`8|40|20000.00|active|MMA-FE-2026-${String(stamp).slice(-6)}1`); // SAME license number -- an amendment, not a new issuance
   });
 
   it('CRITICAL GATE: an amendment never applies without confirmed payment, even with a real quoted request', async () => {
-    const orgId = await makeActiveLicensedOrg(`UnpaidExpand Org ${stamp}`, 'MMA-FE-2026-100002', 4, 20, 12000);
+    const orgId = await makeActiveLicensedOrg(`UnpaidExpand Org ${stamp}`, `MMA-FE-2026-${String(stamp).slice(-6)}2`, 4, 20, 12000);
     const [, request] = (await rpc('director_request_organization_amendment', {
       p_organization_id: orgId, p_request_type: 'expansion', p_requested_details: {}, p_director_notes: null,
     }, tok.bilal)) as [number, { id: string }];
@@ -120,7 +134,7 @@ describe('MMA-ENT-SALES-006 — organization amendment requests (migration 113)'
   });
 
   it('cancellation goes through direct Platform Owner approval, never a quote or checkout', async () => {
-    const orgId = await makeActiveLicensedOrg(`Cancel Org ${stamp}`, 'MMA-FE-2026-100003', 4, 20, 12000);
+    const orgId = await makeActiveLicensedOrg(`Cancel Org ${stamp}`, `MMA-FE-2026-${String(stamp).slice(-6)}3`, 4, 20, 12000);
     const [, request] = (await rpc('director_request_organization_amendment', {
       p_organization_id: orgId, p_request_type: 'cancellation', p_requested_details: {}, p_director_notes: 'No longer need the service.',
     }, tok.bilal)) as [number, { id: string }];
@@ -146,7 +160,7 @@ describe('MMA-ENT-SALES-006 — organization amendment requests (migration 113)'
   });
 
   it('authorization: an outsider cannot request an amendment for someone else\'s org; a non-owner cannot quote, reject, or approve cancellation', async () => {
-    const orgId = await makeActiveLicensedOrg(`AuthGuard Org ${stamp}`, 'MMA-FE-2026-100004', 4, 20, 12000);
+    const orgId = await makeActiveLicensedOrg(`AuthGuard Org ${stamp}`, `MMA-FE-2026-${String(stamp).slice(-6)}4`, 4, 20, 12000);
 
     const [outsiderReqStatus] = await rpc('director_request_organization_amendment', {
       p_organization_id: orgId, p_request_type: 'expansion', p_requested_details: {}, p_director_notes: null,
@@ -173,7 +187,7 @@ describe('MMA-ENT-SALES-006 — organization amendment requests (migration 113)'
   });
 
   it('a Director can withdraw only their own still-pending request; RLS isolates requests from unrelated organizations', async () => {
-    const orgId = await makeActiveLicensedOrg(`Withdraw Org ${stamp}`, 'MMA-FE-2026-100005', 4, 20, 12000);
+    const orgId = await makeActiveLicensedOrg(`Withdraw Org ${stamp}`, `MMA-FE-2026-${String(stamp).slice(-6)}5`, 4, 20, 12000);
     const [, request] = (await rpc('director_request_organization_amendment', {
       p_organization_id: orgId, p_request_type: 'renewal', p_requested_details: {}, p_director_notes: null,
     }, tok.bilal)) as [number, { id: string }];
@@ -193,7 +207,7 @@ describe('MMA-ENT-SALES-006 — organization amendment requests (migration 113)'
   });
 
   it('MIGRATION 114: a Director can actually create and read an Enterprise billing account for a quoted amendment quote (the real checkout path, not just the DB apply step)', async () => {
-    const orgId = await makeActiveLicensedOrg(`BillingGap Org ${stamp}`, 'MMA-FE-2026-100006', 4, 20, 12000);
+    const orgId = await makeActiveLicensedOrg(`BillingGap Org ${stamp}`, `MMA-FE-2026-${String(stamp).slice(-6)}6`, 4, 20, 12000);
     const [, request] = (await rpc('director_request_organization_amendment', {
       p_organization_id: orgId, p_request_type: 'expansion', p_requested_details: {}, p_director_notes: null,
     }, tok.bilal)) as [number, { id: string }];
