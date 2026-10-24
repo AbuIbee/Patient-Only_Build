@@ -555,6 +555,8 @@ function ContractManagementSection({ quoteId }: { quoteId: string }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [execForm, setExecForm] = useState<Record<string, { method: string; reference: string }>>({});
   const [voidReason, setVoidReason] = useState<Record<string, string>>({});
+  const [replaceOpenId, setReplaceOpenId] = useState<string | null>(null);
+  const [replaceForm, setReplaceForm] = useState<Record<string, { templateVersion: string; signatoryName: string; signatoryTitle: string }>>({});
 
   const refresh = useCallback(async () => { setContracts(await getContractsForQuote(quoteId)); }, [quoteId]);
   useEffect(() => { void refresh(); }, [refresh]);
@@ -602,6 +604,26 @@ function ContractManagementSection({ quoteId }: { quoteId: string }) {
       void refresh();
     } finally { setBusyId(null); }
   };
+  // MMA-ENT-SALES-007 §5/F2 — migration 117's supersession path: the
+  // only way to create a new agreement for a quote+type that already
+  // has a voided one. Without this, voiding a contract would leave
+  // the Platform Owner with no UI path to ever satisfy that
+  // requirement again (only a direct RPC/SQL call could).
+  const submitReplace = async (voidedContract: EnterpriseContract) => {
+    const form = replaceForm[voidedContract.id] ?? { templateVersion: '', signatoryName: '', signatoryTitle: '' };
+    if (!form.templateVersion.trim() || !form.signatoryName.trim()) { toast.error('Template version and signatory name are required.'); return; }
+    setBusyId(voidedContract.id);
+    try {
+      const { error } = await createContract(
+        quoteId, voidedContract.contractType, form.templateVersion.trim(), form.signatoryName.trim(), form.signatoryTitle.trim() || null, voidedContract.id,
+      );
+      if (error) { toast.error(error); return; }
+      toast.success('Replacement agreement created as a draft.');
+      setReplaceOpenId(null);
+      void refresh();
+    } finally { setBusyId(null); }
+  };
+  const supersededIds = new Set(contracts.map((c) => c.supersedesContractId).filter((id): id is string => !!id));
 
   return (
     <div className="pt-1 space-y-2">
@@ -637,7 +659,46 @@ function ContractManagementSection({ quoteId }: { quoteId: string }) {
           {c.status === 'executed' && (
             <p className="text-xs text-ent-muted">Executed via {c.executionMethod} ({c.executionEvidenceReference}) on {c.executedAt ? new Date(c.executedAt).toLocaleDateString() : ''}</p>
           )}
-          {c.status === 'void' && <p className="text-xs text-ent-muted">Voided: {c.voidedReason}</p>}
+          {c.status === 'void' && (
+            <div className="space-y-1.5">
+              <p className="text-xs text-ent-muted">Voided: {c.voidedReason}</p>
+              {!supersededIds.has(c.id) && (
+                replaceOpenId === c.id ? (
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        value={replaceForm[c.id]?.templateVersion ?? ''}
+                        onChange={(e) => setReplaceForm((p) => ({ ...p, [c.id]: { ...(p[c.id] ?? { templateVersion: '', signatoryName: '', signatoryTitle: '' }), templateVersion: e.target.value } }))}
+                        placeholder="Template version (e.g. MMA-SAAS-2026-v1)" className={`${inputCls} flex-1 min-w-[180px]`}
+                      />
+                      <input
+                        value={replaceForm[c.id]?.signatoryName ?? ''}
+                        onChange={(e) => setReplaceForm((p) => ({ ...p, [c.id]: { ...(p[c.id] ?? { templateVersion: '', signatoryName: '', signatoryTitle: '' }), signatoryName: e.target.value } }))}
+                        placeholder="Signatory name" className={`${inputCls} flex-1 min-w-[180px]`}
+                      />
+                      <input
+                        value={replaceForm[c.id]?.signatoryTitle ?? ''}
+                        onChange={(e) => setReplaceForm((p) => ({ ...p, [c.id]: { ...(p[c.id] ?? { templateVersion: '', signatoryName: '', signatoryTitle: '' }), signatoryTitle: e.target.value } }))}
+                        placeholder="Signatory title (optional)" className={`${inputCls} flex-1 min-w-[180px]`}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => { void submitReplace(c); }} disabled={busyId === c.id} className="px-3 py-1.5 rounded-lg bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold disabled:opacity-60">
+                        Create replacement as draft
+                      </button>
+                      <button type="button" onClick={() => setReplaceOpenId(null)} className="px-3 py-1.5 rounded-lg border border-ent-line text-ent-ink text-xs font-semibold">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setReplaceOpenId(c.id)} className="px-3 py-1.5 rounded-lg border border-ent-line text-ent-ink text-xs font-semibold">
+                    Replace with new agreement
+                  </button>
+                )
+              )}
+            </div>
+          )}
           {c.status === 'draft' && (
             <button type="button" onClick={() => { void present(c.id); }} disabled={busyId === c.id} className="px-3 py-1.5 rounded-lg bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold disabled:opacity-60">
               Present to customer

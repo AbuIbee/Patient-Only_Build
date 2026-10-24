@@ -4046,6 +4046,7 @@ export interface Database {
           executed_by: string | null
           executed_at: string | null
           voided_reason: string | null
+          supersedes_contract_id: string | null
           created_by: string
           created_at: string
           updated_at: string
@@ -4064,6 +4065,7 @@ export interface Database {
           executed_by?: string | null
           executed_at?: string | null
           voided_reason?: string | null
+          supersedes_contract_id?: string | null
           created_by: string
           created_at?: string
           updated_at?: string
@@ -4082,6 +4084,7 @@ export interface Database {
           executed_by?: string | null
           executed_at?: string | null
           voided_reason?: string | null
+          supersedes_contract_id?: string | null
           created_by?: string
           created_at?: string
           updated_at?: string
@@ -4099,6 +4102,13 @@ export interface Database {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enterprise_contracts_supersedes_contract_id_fkey"
+            columns: ["supersedes_contract_id"]
+            isOneToOne: false
+            referencedRelation: "enterprise_contracts"
             referencedColumns: ["id"]
           },
         ]
@@ -6241,7 +6251,10 @@ export interface Database {
         }
       }
       platform_owner_create_contract: {
-        Args: { p_quote_id: string; p_contract_type: string; p_template_version: string; p_signatory_name: string; p_signatory_title: string | null }
+        Args: {
+          p_quote_id: string; p_contract_type: string; p_template_version: string; p_signatory_name: string; p_signatory_title: string | null
+          p_supersedes_contract_id?: string | null
+        }
         Returns: {
           id: string
           quote_id: string
@@ -6256,6 +6269,7 @@ export interface Database {
           executed_by: string | null
           executed_at: string | null
           voided_reason: string | null
+          supersedes_contract_id: string | null
           created_by: string
           created_at: string
           updated_at: string
@@ -6277,6 +6291,7 @@ export interface Database {
           executed_by: string | null
           executed_at: string | null
           voided_reason: string | null
+          supersedes_contract_id: string | null
           created_by: string
           created_at: string
           updated_at: string
@@ -6298,6 +6313,7 @@ export interface Database {
           executed_by: string | null
           executed_at: string | null
           voided_reason: string | null
+          supersedes_contract_id: string | null
           created_by: string
           created_at: string
           updated_at: string
@@ -6319,6 +6335,7 @@ export interface Database {
           executed_by: string | null
           executed_at: string | null
           voided_reason: string | null
+          supersedes_contract_id: string | null
           created_by: string
           created_at: string
           updated_at: string

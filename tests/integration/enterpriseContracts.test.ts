@@ -53,7 +53,7 @@ async function makeQuoteAndApplication(orgName: string, fee: number): Promise<{ 
   await rpc('platform_owner_send_quote', { p_quote_id: quote.id }, tok.owner);
   const appId = sql(`
     INSERT INTO professional_applications (applicant_user_id, requested_office, proposed_organization_name, proposed_package_type, legal_name, contact_email, status, platform_owner_approval_required, application_details)
-    VALUES ('${ids.bilal}', 'director', '${orgName}', 'integrated_care', 'Contract Bilal', '${emails.bilal}', 'pending_review', true, '{"originatingQuoteId":"${quote.id}"}'::jsonb)
+    VALUES ('${ids.bilal}', 'director', '${orgName}', 'integrated_care', 'Bilal Ahmed', '${emails.bilal}', 'pending_review', true, '{"originatingQuoteId":"${quote.id}"}'::jsonb)
     RETURNING id;
   `);
   return { quoteId: quote.id, appId };
@@ -97,7 +97,7 @@ describe('MMA-ENT-SALES-006 Phase F3 — enterprise contracts (migration 115)', 
   it('never fabricates a signature: execution requires BOTH a real method and a real evidence reference', async () => {
     const { quoteId } = await makeQuoteAndApplication(`NoFakeSig Org ${stamp}`, 11000);
     const [, contract] = (await rpc('platform_owner_create_contract', {
-      p_quote_id: quoteId, p_contract_type: 'saas_license', p_template_version: 'MMA-SAAS-2026-v1', p_signatory_name: 'x', p_signatory_title: null,
+      p_quote_id: quoteId, p_contract_type: 'saas_license', p_template_version: 'MMA-SAAS-2026-v1', p_signatory_name: 'Bilal Ahmed', p_signatory_title: null,
     }, tok.owner)) as [number, { id: string }];
     await rpc('platform_owner_present_contract', { p_contract_id: contract.id }, tok.owner);
 
@@ -158,32 +158,81 @@ describe('MMA-ENT-SALES-006 Phase F3 — enterprise contracts (migration 115)', 
     `);
   });
 
-  it('a voided contract no longer blocks activation (treated the same as satisfied, not as an open requirement)', async () => {
+  it('MMA-ENT-SALES-007 FIX: a voided contract does NOT satisfy activation -- it must still block, exactly like draft/presented', async () => {
     const { quoteId, appId } = await makeQuoteAndApplication(`VoidedOrg ${stamp}`, 13000);
     const [, contract] = (await rpc('platform_owner_create_contract', {
       p_quote_id: quoteId, p_contract_type: 'saas_license', p_template_version: 'MMA-SAAS-2026-v1', p_signatory_name: 'Bilal Ahmed', p_signatory_title: null,
     }, tok.owner)) as [number, { id: string }];
-    await rpc('platform_owner_void_contract', { p_contract_id: contract.id, p_reason: 'Superseded by a direct manual agreement outside this system.' }, tok.owner);
+    await rpc('platform_owner_void_contract', { p_contract_id: contract.id, p_reason: 'Wrong signatory title entered -- redoing with the correct one.' }, tok.owner);
     markPaid(quoteId, 1300000);
     const [, org] = (await rpc('platform_owner_approve_director_application', { p_application_id: appId }, tok.owner)) as [number, { id: string }];
-    expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('active');
+    // The approval's own safety-net PERFORM swallows the exception --
+    // confirm the license genuinely stayed proposed. Before migration
+    // 117 this incorrectly activated: voiding was treated the same as
+    // executing.
+    expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('proposed');
 
-    sql(`
-      DELETE FROM organization_licenses WHERE organization_id='${org.id}';
-      DELETE FROM organization_memberships WHERE organization_id='${org.id}';
-      DELETE FROM organizations WHERE id='${org.id}';
-    `);
+    let threw = false;
+    try { sql(`SELECT activate_enterprise_license_from_quote('${quoteId}');`); } catch { threw = true; }
+    expect(threw).toBe(true);
+
+    sql(`DELETE FROM organizations WHERE id='${org.id}';`);
+  });
+
+  it('supersession: a voided contract can be replaced by a new one for the same quote+type, and only the NEW one satisfies activation', async () => {
+    const { quoteId, appId } = await makeQuoteAndApplication(`SupersedeOrg ${stamp}`, 15000);
+    const [, original] = (await rpc('platform_owner_create_contract', {
+      p_quote_id: quoteId, p_contract_type: 'saas_license', p_template_version: 'MMA-SAAS-2026-v1', p_signatory_name: 'Bilal Ahmed', p_signatory_title: 'Owner',
+    }, tok.owner)) as [number, { id: string }];
+
+    // Cannot create a second live contract for the same quote+type
+    // without explicitly superseding.
+    const [dupStatus] = await rpc('platform_owner_create_contract', {
+      p_quote_id: quoteId, p_contract_type: 'saas_license', p_template_version: 'MMA-SAAS-2026-v2', p_signatory_name: 'Bilal Ahmed', p_signatory_title: 'Founder',
+    }, tok.owner);
+    expect(dupStatus).toBe(400);
+
+    // Cannot supersede a contract that isn't void yet.
+    const [supersedeLiveStatus] = await rpc('platform_owner_create_contract', {
+      p_quote_id: quoteId, p_contract_type: 'saas_license', p_template_version: 'MMA-SAAS-2026-v2', p_signatory_name: 'Bilal Ahmed', p_signatory_title: 'Founder',
+      p_supersedes_contract_id: original.id,
+    }, tok.owner);
+    expect(supersedeLiveStatus).toBe(400);
+
+    await rpc('platform_owner_void_contract', { p_contract_id: original.id, p_reason: 'Title corrected below.' }, tok.owner);
+    const [replaceStatus, replacement] = (await rpc('platform_owner_create_contract', {
+      p_quote_id: quoteId, p_contract_type: 'saas_license', p_template_version: 'MMA-SAAS-2026-v2', p_signatory_name: 'Bilal Ahmed', p_signatory_title: 'Founder',
+      p_supersedes_contract_id: original.id,
+    }, tok.owner)) as [number, { id: string; status: string }];
+    expect(replaceStatus).toBe(200);
+    expect(replacement.status).toBe('draft');
+
+    markPaid(quoteId, 1500000);
+    const [, org] = (await rpc('platform_owner_approve_director_application', { p_application_id: appId }, tok.owner)) as [number, { id: string }];
+    // The replacement is still only a draft -- the voided original no
+    // longer matters (it's superseded), but the chain's current head
+    // (the replacement) is not yet executed, so this must still block.
+    expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('proposed');
+
+    await rpc('platform_owner_present_contract', { p_contract_id: replacement.id }, tok.owner);
+    await rpc('platform_owner_record_contract_execution', {
+      p_contract_id: replacement.id, p_execution_method: 'DocuSign envelope', p_execution_evidence_reference: 'envelope-replacement-1',
+    }, tok.owner);
+    const activated = sql(`SELECT status FROM activate_enterprise_license_from_quote('${quoteId}');`);
+    expect(activated).toBe('active');
+
+    sql(`DELETE FROM organizations WHERE id='${org.id}';`);
   });
 
   it('authorization: a non-owner cannot create, present, execute, or void a contract; anon is refused', async () => {
     const { quoteId } = await makeQuoteAndApplication(`AuthGuardContract Org ${stamp}`, 14000);
     const [bilalCreateStatus] = await rpc('platform_owner_create_contract', {
-      p_quote_id: quoteId, p_contract_type: 'saas_license', p_template_version: 'v1', p_signatory_name: 'x', p_signatory_title: null,
+      p_quote_id: quoteId, p_contract_type: 'saas_license', p_template_version: 'v1', p_signatory_name: 'Bilal Ahmed', p_signatory_title: null,
     }, tok.bilal);
     expect(bilalCreateStatus).toBe(400);
 
     const [, contract] = (await rpc('platform_owner_create_contract', {
-      p_quote_id: quoteId, p_contract_type: 'saas_license', p_template_version: 'v1', p_signatory_name: 'x', p_signatory_title: null,
+      p_quote_id: quoteId, p_contract_type: 'saas_license', p_template_version: 'v1', p_signatory_name: 'Bilal Ahmed', p_signatory_title: null,
     }, tok.owner)) as [number, { id: string }];
 
     const [bilalPresentStatus] = await rpc('platform_owner_present_contract', { p_contract_id: contract.id }, tok.bilal);

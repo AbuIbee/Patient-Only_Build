@@ -24,6 +24,7 @@ export interface EnterpriseContract {
   executedBy: string | null;
   executedAt: string | null;
   voidedReason: string | null;
+  supersedesContractId: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -40,6 +41,7 @@ function mapContract(r: Record<string, unknown>): EnterpriseContract {
     status: r.status as ContractStatus, presentedAt: r.presented_at as string | null,
     executionMethod: r.execution_method as string | null, executionEvidenceReference: r.execution_evidence_reference as string | null,
     executedBy: r.executed_by as string | null, executedAt: r.executed_at as string | null, voidedReason: r.voided_reason as string | null,
+    supersedesContractId: r.supersedes_contract_id as string | null,
     createdBy: r.created_by as string, createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
 }
@@ -54,12 +56,18 @@ export async function getContractsForQuote(quoteId: string): Promise<EnterpriseC
   return (data as unknown as Record<string, unknown>[]).map(mapContract);
 }
 
+// p_supersedes_contract_id (migration 117): required whenever a live
+// contract already exists for this exact quote+type -- the RPC
+// refuses a second one outright unless it's an explicit, auditable
+// replacement of a contract the owner has already voided. Omitted (or
+// null) for a brand-new quote+type pairing.
 export async function createContract(
   quoteId: string, contractType: ContractType, templateVersion: string, signatoryName: string, signatoryTitle: string | null,
+  supersedesContractId: string | null = null,
 ): Promise<{ data: EnterpriseContract | null; error: string | null }> {
   const { data, error } = await supabase.rpc('platform_owner_create_contract', {
     p_quote_id: quoteId, p_contract_type: contractType, p_template_version: templateVersion,
-    p_signatory_name: signatoryName, p_signatory_title: signatoryTitle,
+    p_signatory_name: signatoryName, p_signatory_title: signatoryTitle, p_supersedes_contract_id: supersedesContractId,
   });
   if (error || !data) return { data: null, error: errMsg(error, 'Could not create this contract.') };
   return { data: mapContract(data as Record<string, unknown>), error: null };

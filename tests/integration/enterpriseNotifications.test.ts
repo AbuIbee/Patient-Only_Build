@@ -125,6 +125,7 @@ describe('MMA-ENT-SALES-006 Phase I2 — enterprise notification center (migrati
   });
 
   it('a quoted amendment request notifies the requesting Director; a presented/executed contract notifies the right recipient', async () => {
+    sql(`UPDATE profiles SET first_name='Bilal', last_name='Amend' WHERE id='${ids.bilal}';`);
     const orgId = sql(`INSERT INTO organizations (name, package_type, created_by) VALUES ('Notify Amend Org ${stamp}', 'integrated_care', '${ids.bilal}') RETURNING id;`);
     sql(`INSERT INTO organization_memberships (organization_id, user_id, org_role, status) VALUES ('${orgId}', '${ids.bilal}', 'director', 'active');`);
     sql(`INSERT INTO organization_licenses (organization_id, licensed_seats, covered_patient_capacity, status, license_number, activated_at) VALUES ('${orgId}', 4, 20, 'active', 'MMA-FE-2026-900001', now());`);
@@ -142,7 +143,7 @@ describe('MMA-ENT-SALES-006 Phase I2 — enterprise notification center (migrati
     expect(amendNotif).toBe('amendment_quoted');
 
     const [, contract] = (await rpc('platform_owner_create_contract', {
-      p_quote_id: quoted.resulting_quote_id, p_contract_type: 'saas_license', p_template_version: 'v1', p_signatory_name: 'Bilal', p_signatory_title: null,
+      p_quote_id: quoted.resulting_quote_id, p_contract_type: 'saas_license', p_template_version: 'v1', p_signatory_name: 'Bilal Amend', p_signatory_title: null,
     }, tok.owner)) as [number, { id: string }];
     await rpc('platform_owner_present_contract', { p_contract_id: contract.id }, tok.owner);
     const presentedNotif = sql(`SELECT notification_type FROM enterprise_notifications WHERE recipient_user_id='${ids.bilal}' AND related_entity_id='${contract.id}' AND notification_type='contract_presented';`);
