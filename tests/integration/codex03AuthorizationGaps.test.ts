@@ -117,26 +117,38 @@ describe('Codex MMA-CODEX-03 gap 1 — platform_owner_correct_office_classificat
   });
 });
 
-describe('Codex MMA-CODEX-03 gap 2 — a director-only-authorized participant can now actually read a conversation they are in (migration 104)', () => {
-  it('a director (authorized ONLY via is_org_director_for_patient, never independently a participant row) sees real participants and messages, not an empty table-RLS-filtered result', async () => {
-    // The medical professional's own authorization was deactivated by
-    // the gap-1 tests above (same org, intentionally reused patient) --
-    // restore it so create_conversation() itself succeeds, isolating
-    // this test to gap 2 only.
+describe('Codex MMA-CODEX-03 gap 2 — a director-only-authorized participant can now actually read a conversation they are in (migration 104, corrected by migration 120)', () => {
+  // SUPERSEDED, 2026-10-24: this test previously asserted that a
+  // director with NO conversation_participants row at all (recipient
+  // was the patient only) could still read the conversation purely via
+  // is_org_director_for_patient() -- i.e. it encoded "unaddressed
+  // Director access" as the REQUIRED behavior. The independent Codex
+  // audit (MMA_ENT_SALES_007_CODEX_INDEPENDENT_ACCEPTANCE.md, finding
+  // F-01, P0) correctly identified this as the actual security defect:
+  // migration 104's is_conversation_participant() granted direct-table
+  // read access to ANY current director-for-patient with no
+  // requirement that they were ever added (addressed) to that specific
+  // conversation. Migration 120 restores the requirement that an
+  // explicit participant row must exist, while still recognizing
+  // is_org_director_for_patient() as a valid CURRENT-authorization
+  // check for that row once it exists -- so this describe block is
+  // rewritten below to prove gap 2's real, legitimate complaint (an
+  // ADDRESSED director saw an empty participant/message list) stays
+  // fixed, while an unaddressed one is now correctly rejected, not
+  // granted.
+  it('an ADDRESSED director participant (added as an explicit recipient, authorized only via is_org_director_for_patient) sees real participants and messages, not an empty table-RLS-filtered result', async () => {
     sql(`UPDATE staff_patient_assignments SET is_active=true WHERE organization_id='${ORG}' AND user_id='${ids.medical}' AND patient_id='${patientId}';`);
 
-    // The recipient is the PATIENT, not the director -- so the director
-    // is never inserted into conversation_participants at all. Their
-    // only possible authorization for this conversation is the live
-    // is_org_director_for_patient() check inside the (now-fixed)
-    // is_conversation_participant().
+    // The director IS an explicit recipient this time -- the actual
+    // scenario migration 087 was built for (a director validly added
+    // to a conversation, whose only authorization is directorship).
     const [createStatus, conv] = (await rpc('create_conversation', {
-      p_patient_id: patientId, p_recipient_user_ids: [patientId], p_subject: 'C03 gap-2 probe',
+      p_patient_id: patientId, p_recipient_user_ids: [patientId, ids.director], p_subject: 'C03 gap-2 probe (addressed)',
     }, tok.medical)) as [number, { id: string }];
     expect(createStatus).toBe(200);
     await rpc('send_message', { p_conversation_id: conv.id, p_body: 'director should be able to read this', p_is_urgent: false, p_reply_to_message_id: null }, tok.medical);
 
-    expect(sql(`SELECT count(*) FROM conversation_participants WHERE conversation_id='${conv.id}' AND user_id='${ids.director}';`)).toBe('0');
+    expect(sql(`SELECT count(*) FROM conversation_participants WHERE conversation_id='${conv.id}' AND user_id='${ids.director}';`)).toBe('1');
 
     const participants = await http('GET', `/rest/v1/conversation_participants?conversation_id=eq.${conv.id}`, undefined, tok.director) as [number, unknown[]];
     expect(participants[0]).toBe(200);
@@ -145,6 +157,28 @@ describe('Codex MMA-CODEX-03 gap 2 — a director-only-authorized participant ca
     const messages = await http('GET', `/rest/v1/messages?conversation_id=eq.${conv.id}`, undefined, tok.director) as [number, unknown[]];
     expect(messages[0]).toBe(200);
     expect((messages[1] as unknown[]).length).toBeGreaterThanOrEqual(1);
+
+    sql(`DELETE FROM conversation_participants WHERE conversation_id='${conv.id}'; DELETE FROM conversations WHERE id='${conv.id}';`);
+  });
+
+  it('CODEX F-01 FIX: an UNADDRESSED director (never added as a participant, recipient was the patient only) cannot read the conversation directly, despite covering the same patient', async () => {
+    sql(`UPDATE staff_patient_assignments SET is_active=true WHERE organization_id='${ORG}' AND user_id='${ids.medical}' AND patient_id='${patientId}';`);
+
+    const [createStatus, conv] = (await rpc('create_conversation', {
+      p_patient_id: patientId, p_recipient_user_ids: [patientId], p_subject: 'C03 gap-2 probe (unaddressed)',
+    }, tok.medical)) as [number, { id: string }];
+    expect(createStatus).toBe(200);
+    await rpc('send_message', { p_conversation_id: conv.id, p_body: 'director should NOT be able to read this', p_is_urgent: false, p_reply_to_message_id: null }, tok.medical);
+
+    expect(sql(`SELECT count(*) FROM conversation_participants WHERE conversation_id='${conv.id}' AND user_id='${ids.director}';`)).toBe('0');
+
+    const participants = await http('GET', `/rest/v1/conversation_participants?conversation_id=eq.${conv.id}`, undefined, tok.director) as [number, unknown[]];
+    expect(participants[0]).toBe(200);
+    expect((participants[1] as unknown[]).length).toBe(0);
+
+    const messages = await http('GET', `/rest/v1/messages?conversation_id=eq.${conv.id}`, undefined, tok.director) as [number, unknown[]];
+    expect(messages[0]).toBe(200);
+    expect((messages[1] as unknown[]).length).toBe(0);
 
     sql(`DELETE FROM conversation_participants WHERE conversation_id='${conv.id}'; DELETE FROM conversations WHERE id='${conv.id}';`);
   });
