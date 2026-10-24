@@ -188,8 +188,12 @@ describe('CODEX F-03 FIX (migration 122) — quote ownership, locking and consum
     expect(redirectStatus).toBe(400);
     expect(JSON.stringify(redirectBody)).toContain('originating quote cannot be changed');
 
+    // CODEX F-11 fix (migration 127): only step1 was reopened for
+    // correction, so legal_name (a step2/"Founding Director" field)
+    // must be resubmitted UNCHANGED -- this test's correction was
+    // about the address (step1), not identity.
     const [okStatus, okApp] = (await rpc('resubmit_application', {
-      p_application_id: app.id, p_legal_name: 'Applicant One Corrected', p_preferred_name: null, p_contact_email: applicant.email, p_contact_phone: null,
+      p_application_id: app.id, p_legal_name: 'Applicant One', p_preferred_name: null, p_contact_email: applicant.email, p_contact_phone: null,
       p_professional_title: null, p_profession_category: null, p_application_details: { originatingQuoteId: quoteId, note: 'fixed' },
     }, applicant.token)) as [number, { proposed_organization_name: string; proposed_package_type: string; status: string }];
     expect(okStatus).toBe(200);
