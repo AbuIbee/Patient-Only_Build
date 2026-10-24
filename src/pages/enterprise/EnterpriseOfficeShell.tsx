@@ -22,6 +22,7 @@
 import { useState } from 'react';
 import { LogOut, Menu, Sparkles, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { NotificationBell } from '@/components/enterprise/NotificationBell';
 
 export interface OfficeNavItem<K extends string> {
   key: K;
@@ -121,6 +122,7 @@ export function EnterpriseOfficeShell<K extends string>({
             </div>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
+            <NotificationBell />
             <div className="hidden sm:block w-8 h-8 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-[11px]" aria-hidden="true">{initials}</div>
             <button type="button" onClick={onLogout} aria-label="Logout" className="lg:hidden p-1.5 text-ent-muted hover:text-ent-ink">
               <LogOut className="w-5 h-5" />

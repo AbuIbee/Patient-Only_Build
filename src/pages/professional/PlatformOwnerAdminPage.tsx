@@ -9,6 +9,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import { NotificationBell } from '@/components/enterprise/NotificationBell';
 import { toast } from 'sonner';
 import { Loader2, Sparkles, LogOut, ShieldCheck, Search, Building2, Plus, Send, Ban, FileText, Copy, KeyRound } from 'lucide-react';
 import {
@@ -1003,6 +1004,7 @@ export default function PlatformOwnerAdminPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <NotificationBell />
           <span className="text-xs text-ent-muted">{state.currentUser?.email}</span>
           <button type="button" onClick={() => { void handleLogout(); }} className="flex items-center gap-1.5 text-sm text-ent-muted hover:text-ent-ink px-3 py-2 rounded-lg hover:bg-ent-pale">
             <LogOut className="w-4 h-4" /> Logout

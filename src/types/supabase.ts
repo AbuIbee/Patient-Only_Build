@@ -4103,6 +4103,53 @@ export interface Database {
           },
         ]
       }
+      enterprise_notifications: {
+        Row: {
+          id: string
+          recipient_user_id: string
+          notification_type: string
+          title: string
+          body: string | null
+          related_entity_type: string | null
+          related_entity_id: string | null
+          status: string
+          read_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          recipient_user_id: string
+          notification_type: string
+          title: string
+          body?: string | null
+          related_entity_type?: string | null
+          related_entity_id?: string | null
+          status?: string
+          read_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          recipient_user_id?: string
+          notification_type?: string
+          title?: string
+          body?: string | null
+          related_entity_type?: string | null
+          related_entity_id?: string | null
+          status?: string
+          read_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enterprise_notifications_recipient_user_id_fkey"
+            columns: ["recipient_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       has_patient_access: { Args: { p_patient_id: string }; Returns: boolean }
@@ -6275,6 +6322,21 @@ export interface Database {
           created_by: string
           created_at: string
           updated_at: string
+        }
+      }
+      mark_notification_read: {
+        Args: { p_notification_id: string }
+        Returns: {
+          id: string
+          recipient_user_id: string
+          notification_type: string
+          title: string
+          body: string | null
+          related_entity_type: string | null
+          related_entity_id: string | null
+          status: string
+          read_at: string | null
+          created_at: string
         }
       }
     }
