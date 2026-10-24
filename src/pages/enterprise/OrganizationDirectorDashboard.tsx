@@ -170,8 +170,15 @@ function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: Or
           {license?.status ?? 'proposed'}
         </span>
       </div>
+      {license?.licenseNumber && (
+        <p className="text-sm font-mono text-ent-ink bg-ent-pale rounded-lg px-3 py-2 inline-block">
+          License {license.licenseNumber}
+        </p>
+      )}
       <p className="text-xs text-ent-muted">
-        Seats, capacity and fee are proposed, configurable commercial terms — setting them here never activates the license or creates a charge. Only an admin can activate, expire, or cancel a license (a separate, staging-only mechanism for synthetic integration testing); this status also controls whether covered patients actually receive Full Support.
+        {license?.status === 'active'
+          ? 'This license is active under a confirmed commercial agreement. Seats, capacity, and fee are locked and can no longer be edited here — contact the Platform Owner for an expansion or renewal quote.'
+          : 'Seats, capacity and fee are proposed, configurable commercial terms — setting them here never activates the license or creates a charge. Activation happens automatically once Enterprise payment is confirmed (or, for synthetic integration testing only, via a separate admin-only mechanism); this status also controls whether covered patients actually receive Full Support.'}
       </p>
       {editing ? (
         <div className="space-y-3">
@@ -203,9 +210,11 @@ function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: Or
             <p>Patient capacity: <strong>{license?.coveredPatientCapacity ?? 'Not configured'}</strong></p>
             <p>Proposed annual fee: <strong>{license?.annualLicenseFee != null ? `$${license.annualLicenseFee.toFixed(2)}` : 'Not configured'}</strong></p>
           </div>
-          <button type="button" onClick={() => setEditing(true)} className="px-3 py-2 rounded-lg border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">
-            Configure
-          </button>
+          {license?.status !== 'active' && (
+            <button type="button" onClick={() => setEditing(true)} className="px-3 py-2 rounded-lg border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">
+              Configure
+            </button>
+          )}
         </div>
       )}
     </div>

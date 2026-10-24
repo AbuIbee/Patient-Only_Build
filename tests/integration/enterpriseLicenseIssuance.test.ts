@@ -9,7 +9,7 @@
 // from the billing account to the license, and confirms neither new
 // service-role-only RPC is reachable by an authenticated client.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ANON, authDeleteUser, authSignUp, http, login, rpc, sql } from './_runtime';
+import { ANON, authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
 
 const PW = 'LicenseEngine9!';
 const stamp = Date.now();
@@ -193,6 +193,37 @@ describe('MMA-ENT-SALES-005 Phase G — enterprise license issuance engine (migr
 
     sql(`SELECT set_enterprise_license_status_for_quote('${quoteId}', 'canceled');`);
     expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('canceled');
+  });
+
+  it('migration 112: once active under a confirmed payment, a Director can no longer self-edit seats/capacity/fee via org_configure_license', async () => {
+    const quoteId = await makeQuote(emails.bilal, `Locked Org ${stamp}`, 'integrated_care', 13000);
+    const appId = await submitApplication(ids.bilal, tok.bilal, `Locked Org ${stamp}`, 'integrated_care', quoteId);
+    markBillingAccountActive(quoteId, 'billing@locked.test', 1300000);
+    const [, org] = (await rpc('platform_owner_approve_director_application', { p_application_id: appId }, tok.owner)) as [number, { id: string }];
+    createdOrgIds.push(org.id);
+    expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('active');
+
+    const [tamperStatus] = await rpc('org_configure_license', {
+      p_org_id: org.id, p_licensed_seats: 999, p_covered_patient_capacity: 999, p_annual_license_fee: 1,
+    }, tok.bilal);
+    expect(tamperStatus).toBe(400);
+
+    const unchanged = sql(`SELECT licensed_seats, covered_patient_capacity, annual_license_fee FROM organization_licenses WHERE organization_id='${org.id}';`);
+    expect(unchanged).toBe('6|30|13000.00');
+  });
+
+  it('a PROPOSED (not yet paid) license can still be freely configured by its Director, exactly as before', async () => {
+    const quoteId = await makeQuote(emails.bilal, `StillProposed Org ${stamp}`, 'integrated_care', 5000);
+    const appId = await submitApplication(ids.bilal, tok.bilal, `StillProposed Org ${stamp}`, 'integrated_care', quoteId);
+    const [, org] = (await rpc('platform_owner_approve_director_application', { p_application_id: appId }, tok.owner)) as [number, { id: string }];
+    createdOrgIds.push(org.id);
+    expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('proposed');
+
+    const [status] = await rpc('org_configure_license', {
+      p_org_id: org.id, p_licensed_seats: 3, p_covered_patient_capacity: 10, p_annual_license_fee: 1200,
+    }, tok.bilal);
+    expect(status).toBe(200);
+    expect(sql(`SELECT licensed_seats, covered_patient_capacity FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('3|10');
   });
 
   it('neither new RPC is reachable by an authenticated client -- service_role only', async () => {

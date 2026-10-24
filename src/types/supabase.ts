@@ -1237,6 +1237,7 @@ export interface Database {
           status: "proposed" | "active" | "expired" | "canceled" | "unpaid"
           activated_by: string | null
           activated_at: string | null
+          license_number: string | null
           created_at: string
           updated_at: string
         }
@@ -1249,6 +1250,7 @@ export interface Database {
           status?: "proposed" | "active" | "expired" | "canceled" | "unpaid"
           activated_by?: string | null
           activated_at?: string | null
+          license_number?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -1261,6 +1263,7 @@ export interface Database {
           status?: "proposed" | "active" | "expired" | "canceled" | "unpaid"
           activated_by?: string | null
           activated_at?: string | null
+          license_number?: string | null
           created_at?: string
           updated_at?: string
         }

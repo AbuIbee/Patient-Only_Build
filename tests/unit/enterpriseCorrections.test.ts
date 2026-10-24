@@ -41,14 +41,26 @@ describe('getOrgLicense — item 1: the full status vocabulary and activation ti
   it('maps canceled/unpaid statuses and activatedAt through unchanged (never coerced to a narrower set)', async () => {
     fromMock.mockReturnValue({
       select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({
-        data: { licensed_seats: 5, covered_patient_capacity: 2, annual_license_fee: 500, status: 'canceled', activated_at: '2026-01-01T00:00:00Z' },
+        data: { licensed_seats: 5, covered_patient_capacity: 2, annual_license_fee: 500, status: 'canceled', activated_at: '2026-01-01T00:00:00Z', license_number: null },
         error: null,
       }) }) }),
     });
     const license = await getOrgLicense('org-1');
     expect(license).toEqual({
-      licensedSeats: 5, coveredPatientCapacity: 2, annualLicenseFee: 500, status: 'canceled', activatedAt: '2026-01-01T00:00:00Z',
+      licensedSeats: 5, coveredPatientCapacity: 2, annualLicenseFee: 500, status: 'canceled', activatedAt: '2026-01-01T00:00:00Z', licenseNumber: null,
     });
+  });
+
+  it('MMA-ENT-SALES-005 Phase G: passes a real, payment-issued license number through unchanged', async () => {
+    fromMock.mockReturnValue({
+      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({
+        data: { licensed_seats: 6, covered_patient_capacity: 30, annual_license_fee: 24000, status: 'active', activated_at: '2026-01-01T00:00:00Z', license_number: 'MMA-FE-2026-000123' },
+        error: null,
+      }) }) }),
+    });
+    const license = await getOrgLicense('org-1');
+    expect(license?.licenseNumber).toBe('MMA-FE-2026-000123');
+    expect(license?.status).toBe('active');
   });
 
   it('returns null (not a thrown error) when no license row exists', async () => {

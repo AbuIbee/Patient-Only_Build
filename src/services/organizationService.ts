@@ -55,6 +55,11 @@ export interface OrgLicense {
   annualLicenseFee: number | null;
   status: OrgLicenseStatus;
   activatedAt: string | null;
+  // MMA-ENT-SALES-005 Phase G: set only once a real Stripe payment has
+  // activated this license (format MMA-FE-YYYY-NNNNNN / MMA-TE-YYYY-NNNNNN,
+  // migration 111) -- null for a 'proposed' license and for any license
+  // activated only via the staging-only admin switch below.
+  licenseNumber: string | null;
 }
 
 export interface StaffPatientAssignment {
@@ -149,7 +154,7 @@ export async function orgConfigureLicense(
 export async function getOrgLicense(orgId: string): Promise<OrgLicense | null> {
   const { data, error } = await supabase
     .from('organization_licenses')
-    .select('licensed_seats, covered_patient_capacity, annual_license_fee, status, activated_at')
+    .select('licensed_seats, covered_patient_capacity, annual_license_fee, status, activated_at, license_number')
     .eq('organization_id', orgId)
     .maybeSingle();
   if (error || !data) return null;
@@ -159,13 +164,19 @@ export async function getOrgLicense(orgId: string): Promise<OrgLicense | null> {
     annualLicenseFee: data.annual_license_fee,
     status: data.status,
     activatedAt: data.activated_at,
+    licenseNumber: data.license_number,
   };
 }
 
-// admin_set_organization_license_status(): the ONLY way a license status
-// can change away from 'proposed' — admin-only server-side, never
-// callable by a director. Staging/synthetic-integration-test use only;
-// this never runs against a real commercial activation.
+// admin_set_organization_license_status(): a staging-only,
+// human-admin-triggered synthetic-test switch -- never callable by a
+// director, never runs against a real commercial activation. Since
+// MMA-ENT-SALES-005 Phase G (migration 111) this is no longer the ONLY
+// way a license status changes: a real, numbered activation now also
+// happens automatically via confirmed Stripe payment
+// (activate_enterprise_license_from_quote(), service_role-only,
+// called from the stripe-webhook Edge Function) -- that second path
+// deliberately does not go through this RPC at all.
 export async function adminSetOrganizationLicenseStatus(orgId: string, status: OrgLicenseStatus): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('admin_set_organization_license_status', { p_org_id: orgId, p_status: status });
   return { error: error ? errMsg(error, 'Could not update the license status.') : null };
