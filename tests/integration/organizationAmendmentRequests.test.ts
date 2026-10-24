@@ -192,6 +192,42 @@ describe('MMA-ENT-SALES-006 — organization amendment requests (migration 113)'
     expect((ownerView as unknown[]).length).toBeGreaterThan(0);
   });
 
+  it('MIGRATION 114: a Director can actually create and read an Enterprise billing account for a quoted amendment quote (the real checkout path, not just the DB apply step)', async () => {
+    const orgId = await makeActiveLicensedOrg(`BillingGap Org ${stamp}`, 'MMA-FE-2026-100006', 4, 20, 12000);
+    const [, request] = (await rpc('director_request_organization_amendment', {
+      p_organization_id: orgId, p_request_type: 'expansion', p_requested_details: {}, p_director_notes: null,
+    }, tok.bilal)) as [number, { id: string }];
+    const [, quoted] = (await rpc('platform_owner_quote_amendment_request', {
+      p_request_id: request.id, p_contact_name: 'Bilal Ahmed', p_contact_email: emails.bilal,
+      p_package_type: 'integrated_care', p_proposed_licensed_seats: 10, p_proposed_covered_patient_capacity: 50,
+      p_annual_license_fee: 25000, p_billing_cadence: 'annual', p_quote_term_months: 12, p_notes: null,
+    }, tok.owner)) as [number, { resulting_quote_id: string }];
+    const quoteId = quoted.resulting_quote_id;
+
+    // Before migration 114 this would have been rejected: "You do not
+    // have an application referencing this quote" -- there IS no
+    // application for an amendment quote, only an amendment request.
+    const [createStatus, account] = (await rpc('create_enterprise_billing_account', {
+      p_quote_id: quoteId, p_billing_contact_email: 'billing@billinggap.test',
+    }, tok.bilal)) as [number, { unit_amount_cents: number }];
+    expect(createStatus).toBe(200);
+    expect(account.unit_amount_cents).toBe(2500000);
+
+    // The Director can also read it back via get_my_enterprise_billing_status
+    // and via direct REST (RLS), same amendment-quote recognition.
+    const [readStatus, read] = (await rpc('get_my_enterprise_billing_status', { p_quote_id: quoteId }, tok.bilal)) as [number, unknown[]];
+    expect(readStatus).toBe(200);
+    expect(read).toHaveLength(1);
+    const [, directRead] = await http('GET', `/rest/v1/enterprise_billing_accounts?quote_id=eq.${quoteId}&select=id`, undefined, tok.bilal);
+    expect((directRead as unknown[]).length).toBe(1);
+
+    // An unrelated outsider still cannot read or create it.
+    const [outsiderCreateStatus] = await rpc('create_enterprise_billing_account', { p_quote_id: quoteId, p_billing_contact_email: 'hijack@test.local' }, tok.outsider);
+    expect(outsiderCreateStatus).toBe(400);
+    const [, outsiderRead] = await http('GET', `/rest/v1/enterprise_billing_accounts?quote_id=eq.${quoteId}&select=id`, undefined, tok.outsider);
+    expect(outsiderRead).toEqual([]);
+  });
+
   it('zero RPCs here are anon-executable, and apply_organization_amendment_from_quote is service_role-only', async () => {
     const [anonStatus] = await rpc('director_request_organization_amendment', { p_organization_id: '00000000-0000-0000-0000-000000000000', p_request_type: 'expansion', p_requested_details: {}, p_director_notes: null }, ANON);
     expect(anonStatus).toBe(401);
