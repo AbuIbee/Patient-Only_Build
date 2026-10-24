@@ -29,7 +29,7 @@ import {
   type OrgVisit, type OrgIncidentReport, type OrgShiftHandoff, type IncidentResolutionStatus,
 } from '@/services/organizationDirectorOpsService';
 import {
-  getMyOrganizationOriginatingQuoteId, getMyEnterpriseBillingStatus, startEnterpriseCheckout,
+  getMyOrganizationOriginatingQuoteId, getMyEnterpriseBillingStatus, startEnterpriseCheckout, openEnterpriseBillingPortal,
   type EnterpriseBillingAccount,
 } from '@/services/salesService';
 import OrganizationBillingPage from './OrganizationBillingPage';
@@ -207,6 +207,45 @@ function EnterpriseActivationSection({ orgId }: { orgId: string }) {
   );
 }
 
+// OWNER DIRECTIVE MMA-ENT-SALES-003 §6 (Phase H) — "Director... may
+// use hosted payment method update if billing permission allows."
+// Shown only once a license is genuinely active under confirmed
+// payment; a quote-less (legacy CreateOrgCard) organization has no
+// Stripe customer to manage and sees nothing extra here.
+function EnterpriseBillingManagementSection({ orgId }: { orgId: string }) {
+  const [quoteId, setQuoteId] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const foundQuoteId = await getMyOrganizationOriginatingQuoteId(orgId);
+      if (!cancelled) setQuoteId(foundQuoteId);
+    })();
+    return () => { cancelled = true; };
+  }, [orgId]);
+
+  const openPortal = async () => {
+    if (!quoteId) return;
+    setOpening(true);
+    try {
+      const { url, error } = await openEnterpriseBillingPortal(quoteId);
+      if (error || !url) { toast.error(error ?? 'Could not open billing portal.'); return; }
+      window.location.href = url;
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  if (!quoteId) return null;
+
+  return (
+    <button type="button" onClick={() => { void openPortal(); }} disabled={opening} className="px-3 py-2 rounded-lg border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale disabled:opacity-60">
+      {opening ? 'Opening…' : 'Manage billing & payment method'}
+    </button>
+  );
+}
+
 function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: OrgLicense | null; onUpdated: () => void }) {
   const [editing, setEditing] = useState(false);
   const [seats, setSeats] = useState(license?.licensedSeats?.toString() ?? '');
@@ -289,7 +328,9 @@ function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: Or
             <p>Patient capacity: <strong>{license?.coveredPatientCapacity ?? 'Not configured'}</strong></p>
             <p>Proposed annual fee: <strong>{license?.annualLicenseFee != null ? `$${license.annualLicenseFee.toFixed(2)}` : 'Not configured'}</strong></p>
           </div>
-          {license?.status !== 'active' && (
+          {license?.status === 'active' ? (
+            <EnterpriseBillingManagementSection orgId={orgId} />
+          ) : (
             <button type="button" onClick={() => setEditing(true)} className="px-3 py-2 rounded-lg border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">
               Configure
             </button>

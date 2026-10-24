@@ -21,7 +21,9 @@ vi.mock('@/lib/supabase', () => ({
   },
 }));
 
-import { startEnterpriseCheckout, getMyEnterpriseBillingStatus, getMyOrganizationOriginatingQuoteId } from '@/services/salesService';
+import {
+  startEnterpriseCheckout, getMyEnterpriseBillingStatus, getMyOrganizationOriginatingQuoteId, openEnterpriseBillingPortal,
+} from '@/services/salesService';
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -65,6 +67,24 @@ describe('startEnterpriseCheckout', () => {
     const { url, error } = await startEnterpriseCheckout('quote-1', 'billing@test.local');
     expect(url).toBeNull();
     expect(error).toMatch(/payment link/i);
+  });
+});
+
+describe('openEnterpriseBillingPortal', () => {
+  it('returns the hosted Stripe Billing Portal URL on success', async () => {
+    invokeMock.mockResolvedValue({ data: { url: 'https://billing.stripe.com/session/bps_test_abc' }, error: null });
+    const { url, error } = await openEnterpriseBillingPortal('quote-1');
+    expect(error).toBeNull();
+    expect(url).toBe('https://billing.stripe.com/session/bps_test_abc');
+    expect(invokeMock).toHaveBeenCalledWith('create-enterprise-billing-portal-session', { body: { quoteId: 'quote-1' } });
+  });
+
+  it('extracts the real rejection reason (e.g. no billing history yet) from a non-2xx response body', async () => {
+    const fakeResponse = { json: () => Promise.resolve({ error: 'No billing history exists yet for this organization -- complete your first payment before managing billing.' }) } as unknown as Response;
+    invokeMock.mockResolvedValue({ data: null, error: new FunctionsHttpError(fakeResponse) });
+    const { url, error } = await openEnterpriseBillingPortal('quote-1');
+    expect(url).toBeNull();
+    expect(error).toMatch(/complete your first payment/);
   });
 });
 

@@ -129,7 +129,7 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
       const [events, quoteChain, duplicateOrgs] = await Promise.all([
         getApplicationEvents(a.id),
         quoteId ? getQuoteWithAncestry(quoteId) : Promise.resolve([]),
-        findSimilarOrganizations(a.proposedOrganizationName),
+        a.proposedOrganizationName ? findSimilarOrganizations(a.proposedOrganizationName) : Promise.resolve([]),
       ]);
       setDetailsCache((prev) => ({ ...prev, [a.id]: { events, quoteChain, duplicateOrgs } }));
     } finally {
@@ -142,7 +142,7 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
   const visible = search
     ? basePool.filter((a) =>
         a.legalName.toLowerCase().includes(search) ||
-        a.proposedOrganizationName.toLowerCase().includes(search) ||
+        (a.proposedOrganizationName ?? '').toLowerCase().includes(search) ||
         a.contactEmail.toLowerCase().includes(search))
     : basePool;
 

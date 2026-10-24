@@ -273,6 +273,35 @@ export async function getMyEnterpriseBillingStatus(quoteId: string): Promise<Ent
   return mapBillingAccount(data[0] as Record<string, unknown>);
 }
 
+// Shared by every Enterprise billing Edge Function that returns a
+// redirect URL (checkout, billing portal). A non-2xx response surfaces
+// from supabase-js as a bare FunctionsHttpError whose own .message is
+// just "Edge Function returned a non-2xx status code" -- the
+// function's actual, specific rejection reason (an ownership check, a
+// missing price, or Stripe's own error) is in the response body,
+// reachable only via error.context.json(). Showing the generic
+// message to the user would hide exactly the information they need
+// (e.g. "This quote has no price yet").
+async function invokeForUrl(
+  functionName: string, body: Record<string, unknown>, noUrlFallback: string,
+): Promise<{ url: string | null; error: string | null }> {
+  const { data, error } = await supabase.functions.invoke<{ url?: string; error?: string }>(functionName, { body });
+  if (error) {
+    if (error instanceof FunctionsHttpError) {
+      try {
+        const errorBody = await error.context.json();
+        if (errorBody?.error) return { url: null, error: errorBody.error as string };
+      } catch {
+        // Response body wasn't JSON (or already consumed) -- fall through to the generic message below.
+      }
+    }
+    return { url: null, error: errMsg(error, `Could not reach ${functionName}.`) };
+  }
+  if (data?.error) return { url: null, error: data.error };
+  if (!data?.url) return { url: null, error: noUrlFallback };
+  return { url: data.url, error: null };
+}
+
 // Starts a real Stripe Checkout Session for Enterprise billing and
 // returns the URL to redirect the browser to. The Edge Function
 // independently re-derives price/currency/term from the live quote and
@@ -281,39 +310,20 @@ export async function getMyEnterpriseBillingStatus(quoteId: string): Promise<Ent
 export async function startEnterpriseCheckout(
   quoteId: string, billingContactEmail: string,
 ): Promise<{ url: string | null; error: string | null }> {
-  const { data, error } = await supabase.functions.invoke<{ url?: string; error?: string }>('create-enterprise-checkout-session', {
-    body: { quoteId, billingContactEmail },
-  });
-  if (error) {
-    // A non-2xx response surfaces here as a bare FunctionsHttpError
-    // whose own .message is just "Edge Function returned a non-2xx
-    // status code" -- the function's actual, specific rejection reason
-    // (an ownership check, a missing price, or Stripe's own error) is
-    // in the response body, reachable only via error.context.json().
-    // Showing the generic message to the user would hide exactly the
-    // information they need (e.g. "This quote has no price yet").
-    if (error instanceof FunctionsHttpError) {
-      try {
-        const body = await error.context.json();
-        if (body?.error) return { url: null, error: body.error as string };
-      } catch {
-        // Response body wasn't JSON (or already consumed) -- fall through to the generic message below.
-      }
-    }
-    return { url: null, error: errMsg(error, 'Could not start checkout.') };
-  }
-  if (data?.error) return { url: null, error: data.error };
-  if (!data?.url) return { url: null, error: 'Checkout did not return a payment link.' };
-  return { url: data.url, error: null };
+  return invokeForUrl('create-enterprise-checkout-session', { quoteId, billingContactEmail }, 'Checkout did not return a payment link.');
 }
 
-// The Director's own approved application is the one place that still
-// links an existing organization back to the quote that created it
-// (organization_licenses itself has no quote_id column -- deliberately:
-// migration 110's comment explains a license can also be configured
-// before any quote-driven payment exists at all, e.g. the legacy
-// CreateOrgCard path). Returns null for such a quote-less organization,
-// not an error -- there is simply nothing to pay for.
+// OWNER DIRECTIVE MMA-ENT-SALES-003 §6 (Phase H) — a Director with an
+// active, paid license can update their payment method and review
+// invoice history on Stripe's own hosted Billing Portal page. The
+// portal's own configuration (set on the Stripe account, not by this
+// code) is what prevents a Director from changing price or seats
+// there -- this wrapper has no entitlement-altering capability either
+// way, it only requests a URL to Stripe's hosted page.
+export async function openEnterpriseBillingPortal(quoteId: string): Promise<{ url: string | null; error: string | null }> {
+  return invokeForUrl('create-enterprise-billing-portal-session', { quoteId }, 'Billing portal did not return a link.');
+}
+
 // OWNER DIRECTIVE MMA-ENT-SALES-003 §3 (Phase E) — "linked quote
 // history" for the owner's application review. A quote revision is
 // immutable (migration 107): revising creates a NEW row with
@@ -336,6 +346,13 @@ export async function getQuoteWithAncestry(quoteId: string): Promise<SalesQuote[
   return chain;
 }
 
+// The Director's own approved application is the one place that still
+// links an existing organization back to the quote that created it
+// (organization_licenses itself has no quote_id column -- deliberately:
+// migration 110's comment explains a license can also be configured
+// before any quote-driven payment exists at all, e.g. the legacy
+// CreateOrgCard path). Returns null for such a quote-less organization,
+// not an error -- there is simply nothing to pay for.
 export async function getMyOrganizationOriginatingQuoteId(orgId: string): Promise<string | null> {
   const { data, error } = await supabase
     .from('professional_applications')
