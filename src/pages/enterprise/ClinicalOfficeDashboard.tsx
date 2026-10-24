@@ -135,7 +135,7 @@ export default function ClinicalOfficeDashboard({ filterRole, basePath = null }:
   const [commsOverview, setCommsOverview] = useState<OrgCommunicationsOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [nav, setNav] = useOfficeUrlSync<ClinicalNavKey>(basePath, navKeys, 'dashboard');
-  const [openPatient, setOpenPatient] = useState<{ orgId: string; patientId: string; tab?: TabKey } | null>(null);
+  const [openPatient, setOpenPatient] = useState<{ orgId: string | null; patientId: string; tab?: TabKey } | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -181,12 +181,21 @@ export default function ClinicalOfficeDashboard({ filterRole, basePath = null }:
         <EnterpriseStaffPatientView
           organizationId={openPatient.orgId} patientId={openPatient.patientId} staffRole={filterRole}
           onBack={() => setOpenPatient(null)}
-          onReady={(patient) => (
+          // CODEX F-16 FIX: a direct (residential) Therapist connection
+          // has no organization at all -- several of the tabbed view's
+          // tabs (care plan scope-concern routing, appointments, shift
+          // handoff timeline) are genuinely Enterprise-operational
+          // concepts that do not apply to one. Rather than fabricate an
+          // organization context for them, a direct connection falls
+          // back to this component's own flat view (medications, mood,
+          // notes, communication needs, code status) -- real,
+          // authorized data, just without the org-scoped tabs.
+          onReady={openPatient.orgId ? (patient) => (
             <EnterprisePatientRecordTabs
-              patientId={openPatient.patientId} patientHeader={patient} staffRole={filterRole} orgId={openPatient.orgId}
+              patientId={openPatient.patientId} patientHeader={patient} staffRole={filterRole} orgId={openPatient.orgId as string}
               onBack={() => setOpenPatient(null)} initialTab={openPatient.tab}
             />
-          )}
+          ) : undefined}
         />
       ) : nav === 'dashboard' ? (
         <DashboardHome isTherapy={isTherapy} roleLabel={roleLabel} patients={patients} commsOverview={commsOverview} onOpenPatient={(p) => openPatientRecord(p)} />

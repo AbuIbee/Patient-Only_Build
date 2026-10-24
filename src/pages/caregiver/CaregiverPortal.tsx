@@ -858,7 +858,13 @@ function PatientsSection({
  * CaregiverPatientView. Read-only cards (no custom label — display_label
  * is scoped to caregiver_patients specifically). */
 function OrgPatientsSection({ patients, onOpen }: { patients: StaffPatient[]; onOpen: (orgId: string, patientId: string) => void }) {
-  if (patients.length === 0) return null;
+  // A direct (residential) Therapist connection has no organizationId
+  // at all -- never belongs under "Organization-Assigned Patients."
+  // Caregivers never actually have one of these rows in practice (only
+  // a Therapist account does), but filtering defensively here keeps
+  // this section's own typing honest rather than assuming it.
+  const orgPatients = patients.filter((p): p is StaffPatient & { organizationId: string } => p.organizationId !== null);
+  if (orgPatients.length === 0) return null;
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-4">
       <div className="flex items-center gap-2">
@@ -866,7 +872,7 @@ function OrgPatientsSection({ patients, onOpen }: { patients: StaffPatient[]; on
         <h2 className="text-lg font-bold text-charcoal">Organization-Assigned Patients</h2>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {patients.map((p) => (
+        {orgPatients.map((p) => (
           <button
             key={`${p.organizationId}-${p.patientId}`}
             type="button"

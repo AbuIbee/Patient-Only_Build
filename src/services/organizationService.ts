@@ -25,7 +25,12 @@ export interface PendingOrgInvite {
 }
 
 export interface StaffPatient {
-  organizationId: string;
+  // CODEX F-16 FIX: null for a direct (residential) Therapist
+  // connection (get_my_staff_patients()'s therapist_relationships
+  // UNION branch, migration 094) -- there is no organization for that
+  // relationship type at all, never a value a caller may assume
+  // non-null.
+  organizationId: string | null;
   organizationName: string;
   patientId: string;
   firstName: string;

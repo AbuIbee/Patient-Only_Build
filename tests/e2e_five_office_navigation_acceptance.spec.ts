@@ -158,3 +158,26 @@ test.describe('Wave B — Enterprise Patient office (10 destinations)', () => {
     expect(errors, `Runtime errors: ${errors.join(' | ')}`).toEqual([]);
   });
 });
+
+// CODEX F-16 FIX — "Genuine direct Therapist journey remains broken."
+// This fixture's own therapist has ONLY a therapist_relationships row
+// for this patient (no staff_patient_assignments row -- confirmed
+// above in beforeAll), the exact "direct (residential) connection"
+// shape Codex named. Before this fix, EnterpriseStaffPatientView's
+// access gate only ever checked staff_patient_assignments, so opening
+// this patient's record here always rendered "You don't have access
+// to this patient" regardless of the real, active, accepted
+// relationship. The nav-only test above never caught this because it
+// never actually opens a patient card.
+test.describe('Wave B — direct (residential) Therapist connection record access', () => {
+  test('a Therapist whose ONLY authorization is a direct therapist_relationships row (no org assignment) can actually open the patient record', async ({ page }) => {
+    const errors = await signIn(page, emails.therapist, '/Professional/Therapy');
+    await expect(page.getByText('Therapy Dashboard').first()).toBeVisible({ timeout: 15000 });
+    await page.getByRole('button', { name: 'My Therapy Patients', exact: true }).click();
+    await page.getByText('FiveOffice Patient', { exact: false }).first().click();
+    await expect(page.getByText('You don’t have access to this patient')).toHaveCount(0, { timeout: 10000 });
+    await expect(page.getByText('FiveOffice Patient', { exact: false }).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Medications', { exact: true })).toBeVisible({ timeout: 10000 });
+    expect(errors, `Runtime errors: ${errors.join(' | ')}`).toEqual([]);
+  });
+});

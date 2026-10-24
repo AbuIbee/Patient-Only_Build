@@ -129,16 +129,24 @@ type LoadState = 'checking' | 'denied' | 'loading' | 'ready' | 'error';
 export default function EnterpriseStaffPatientView({
   organizationId, patientId, onBack, staffRole = 'therapist', onReady,
 }: {
-  organizationId: string; patientId: string; onBack: () => void; staffRole?: StaffRole;
+  // CODEX F-16 FIX: null for a direct (residential) Therapist
+  // connection -- see the access check below, which now recognizes
+  // therapist_relationships as an independent, equally valid
+  // authorization source alongside the organization-scoped
+  // staff_patient_assignments check this component originally only had.
+  organizationId: string | null; patientId: string; onBack: () => void; staffRole?: StaffRole;
   // ROUND 6: when provided, a verified-access "ready" state renders
   // this callback's result INSTEAD of this component's own flat body —
   // used by EnterpriseCaregiverDashboard (Office B) and, since the
   // five-office platform work, ClinicalOfficeDashboard (Offices C/D)
   // to delegate to the full tabbed EnterprisePatientRecordTabs
   // (P01-P22) while reusing this component's already-reviewed
-  // staff_patient_assignments access check unchanged. No current
-  // caller renders this component's own flat fallback body below
-  // anymore, but it is left in place rather than deleted speculatively.
+  // staff_patient_assignments access check unchanged. ClinicalOfficeDashboard
+  // deliberately omits this prop for a direct (organizationId=null)
+  // connection, since this component's own flat fallback body below
+  // is the correct view for one (several tabs the tabbed view would
+  // otherwise render are Enterprise-operational concepts that do not
+  // apply outside an organization).
   onReady?: (patient: PatientHeader) => React.ReactNode;
 }) {
   const [loadState, setLoadState] = useState<LoadState>('checking');
@@ -155,14 +163,22 @@ export default function EnterpriseStaffPatientView({
 
   const load = useCallback(async () => {
     setLoadState('checking');
-    const { data: assignment } = await supabase
-      .from('staff_patient_assignments')
-      .select('id')
-      .eq('organization_id', organizationId)
-      .eq('patient_id', patientId)
-      .eq('is_active', true)
-      .maybeSingle();
-    if (!assignment) { setLoadState('denied'); return; }
+    // CODEX F-16 FIX: a direct (residential) Therapist connection has
+    // no organization at all, so the original organization-scoped
+    // staff_patient_assignments check could never pass for one --
+    // confirmed live: this gate always returned "denied" for a real,
+    // accepted direct connection, regardless of organizationId, since
+    // that relationship is recorded in therapist_relationships, a
+    // completely different table this check never looked at. Checked
+    // independently, matching get_my_staff_patients()'s own two-source
+    // model (migration 094) exactly.
+    const [{ data: assignment }, { data: directRelationship }] = await Promise.all([
+      organizationId
+        ? supabase.from('staff_patient_assignments').select('id').eq('organization_id', organizationId).eq('patient_id', patientId).eq('is_active', true).maybeSingle()
+        : Promise.resolve({ data: null }),
+      supabase.from('therapist_relationships').select('id').eq('patient_id', patientId).eq('is_active', true).maybeSingle(),
+    ]);
+    if (!assignment && !directRelationship) { setLoadState('denied'); return; }
 
     setLoadState('loading');
     try {
@@ -171,16 +187,25 @@ export default function EnterpriseStaffPatientView({
         supabase.from('medications').select('id, name, dosage, instructions').eq('patient_id', patientId).eq('is_active', true).limit(50),
         supabase.from('mood_entries').select('id, mood, intensity, timestamp').eq('patient_id', patientId).order('timestamp', { ascending: false }).limit(moodLimit + 1),
         supabase.from('care_partner_notes').select('category, note').eq('patient_id', patientId),
-        supabase.from('covered_patient_memberships').select('status').eq('organization_id', organizationId).eq('patient_id', patientId).maybeSingle(),
+        // CODEX F-16 FIX: "Full Support — Covered by Organization" is
+        // meaningless for a direct (residential) connection -- there is
+        // no organization to be covered by. Correctly reports
+        // not_covered rather than querying with a null org id.
+        organizationId
+          ? supabase.from('covered_patient_memberships').select('status').eq('organization_id', organizationId).eq('patient_id', patientId).maybeSingle()
+          : Promise.resolve({ data: null }),
         // SEC-06: organization_licenses itself is now director-only
         // (it carries billing terms); this RPC exposes only the
         // operational coverage status to any active org member.
-        supabase.rpc('get_organization_coverage_status', { p_org_id: organizationId }),
+        organizationId
+          ? supabase.rpc('get_organization_coverage_status', { p_org_id: organizationId })
+          : Promise.resolve({ data: null }),
       ]);
       if (!patientRow) { setLoadState('error'); return; }
       const licenseRow = Array.isArray(licenseRowResult) ? licenseRowResult[0] : licenseRowResult;
       const coverageStatus: PatientHeader['coverageStatus'] =
-        !coverageRow ? 'not_covered'
+        !organizationId ? 'not_covered'
+        : !coverageRow ? 'not_covered'
         : coverageRow.status === 'ended' ? 'coverage_ended'
         : (!licenseRow || licenseRow.status !== 'active') ? 'license_inactive'
         : 'covered';
