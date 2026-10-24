@@ -3958,6 +3958,79 @@ export interface Database {
           },
         ]
       }
+      organization_amendment_requests: {
+        Row: {
+          id: string
+          organization_id: string
+          requested_by: string
+          request_type: string
+          requested_details: Json
+          director_notes: string | null
+          status: string
+          resulting_quote_id: string | null
+          platform_owner_notes: string | null
+          reviewed_by: string | null
+          reviewed_at: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          requested_by: string
+          request_type: string
+          requested_details?: Json
+          director_notes?: string | null
+          status?: string
+          resulting_quote_id?: string | null
+          platform_owner_notes?: string | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          requested_by?: string
+          request_type?: string
+          requested_details?: Json
+          director_notes?: string | null
+          status?: string
+          resulting_quote_id?: string | null
+          platform_owner_notes?: string | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          completed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_amendment_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_amendment_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_amendment_requests_resulting_quote_id_fkey"
+            columns: ["resulting_quote_id"]
+            isOneToOne: false
+            referencedRelation: "sales_quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       has_patient_access: { Args: { p_patient_id: string }; Returns: boolean }
@@ -5929,6 +6002,124 @@ export interface Database {
           created_at: string
           updated_at: string
         }[]
+      }
+      director_request_organization_amendment: {
+        Args: { p_organization_id: string; p_request_type: string; p_requested_details: Json; p_director_notes: string | null }
+        Returns: {
+          id: string
+          organization_id: string
+          requested_by: string
+          request_type: string
+          requested_details: Json
+          director_notes: string | null
+          status: string
+          resulting_quote_id: string | null
+          platform_owner_notes: string | null
+          reviewed_by: string | null
+          reviewed_at: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      director_withdraw_amendment_request: {
+        Args: { p_request_id: string }
+        Returns: {
+          id: string
+          organization_id: string
+          requested_by: string
+          request_type: string
+          requested_details: Json
+          director_notes: string | null
+          status: string
+          resulting_quote_id: string | null
+          platform_owner_notes: string | null
+          reviewed_by: string | null
+          reviewed_at: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      get_my_quoted_amendment_for_org: {
+        Args: { p_organization_id: string }
+        Returns: {
+          id: string
+          organization_id: string
+          requested_by: string
+          request_type: string
+          requested_details: Json
+          director_notes: string | null
+          status: string
+          resulting_quote_id: string | null
+          platform_owner_notes: string | null
+          reviewed_by: string | null
+          reviewed_at: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }[]
+      }
+      platform_owner_reject_amendment_request: {
+        Args: { p_request_id: string; p_notes: string }
+        Returns: {
+          id: string
+          organization_id: string
+          requested_by: string
+          request_type: string
+          requested_details: Json
+          director_notes: string | null
+          status: string
+          resulting_quote_id: string | null
+          platform_owner_notes: string | null
+          reviewed_by: string | null
+          reviewed_at: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      platform_owner_approve_cancellation_request: {
+        Args: { p_request_id: string; p_notes: string }
+        Returns: {
+          id: string
+          organization_id: string
+          requested_by: string
+          request_type: string
+          requested_details: Json
+          director_notes: string | null
+          status: string
+          resulting_quote_id: string | null
+          platform_owner_notes: string | null
+          reviewed_by: string | null
+          reviewed_at: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      platform_owner_quote_amendment_request: {
+        Args: {
+          p_request_id: string; p_contact_name: string; p_contact_email: string; p_package_type: string
+          p_proposed_licensed_seats: number; p_proposed_covered_patient_capacity: number
+          p_annual_license_fee: number | null; p_billing_cadence: string | null; p_quote_term_months: number | null; p_notes: string | null
+        }
+        Returns: {
+          id: string
+          organization_id: string
+          requested_by: string
+          request_type: string
+          requested_details: Json
+          director_notes: string | null
+          status: string
+          resulting_quote_id: string | null
+          platform_owner_notes: string | null
+          reviewed_by: string | null
+          reviewed_at: string | null
+          completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
       }
     }
     Enums: {

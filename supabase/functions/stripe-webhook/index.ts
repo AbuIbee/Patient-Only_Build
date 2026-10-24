@@ -167,6 +167,27 @@ const tryActivateLicenseForQuote = async (quoteId: string | null): Promise<void>
 };
 
 /*
+ * OWNER DIRECTIVE MMA-ENT-SALES-006 Phase H5/I1 — the expansion/
+ * renewal/downgrade counterpart to tryActivateLicenseForQuote(). The
+ * SAME checkout.session.completed event is tried against BOTH RPCs;
+ * exactly one of them will ever find a match for a given quote_id
+ * (an initial-activation quote has an approved Director application
+ * referencing it and no amendment request; an amendment quote has an
+ * amendment request referencing it and no such application) -- the
+ * other's failure is the expected, silent no-op case, not an error.
+ */
+const tryApplyAmendmentForQuote = async (quoteId: string | null): Promise<void> => {
+  if (!quoteId) return;
+
+  const { error } = await supabase.rpc('apply_organization_amendment_from_quote', { p_quote_id: quoteId });
+  if (error) {
+    console.warn(`No amendment applied for quote ${quoteId} (likely an initial-activation quote, not an amendment): ${error.message}`);
+  } else {
+    console.log(`Organization amendment applied for quote ${quoteId}.`);
+  }
+};
+
+/*
  * Mirrors a fully confirmed Stripe subscription cancellation onto the
  * organization's own license status (deliberately NOT called for a
  * mere payment-failure/past_due grace period -- see migration 111).
@@ -295,6 +316,7 @@ serve(async (req) => {
 
           console.log(`Enterprise billing account ${billingAccountId} activated via checkout session ${session.id}.`);
           await tryActivateLicenseForQuote(quoteId);
+          await tryApplyAmendmentForQuote(quoteId);
           break;
         }
 
