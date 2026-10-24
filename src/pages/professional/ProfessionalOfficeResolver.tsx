@@ -328,6 +328,23 @@ export default function ProfessionalOfficeResolver() {
     // A withdrawn/approved/suspended/revoked application falls through
     // to the generic state instead (approved-but-zero-offices can only
     // mean the resulting membership was since revoked).
+    if (myApplication && myApplication.status === 'info_required' && myApplication.requestedOffice === 'director') {
+      const correctionTerms = quoteTermsFromDraft(myApplication);
+      const allowedSteps = (myApplication.correctionRequestedFields as { allowedSteps?: string[] } | null)?.allowedSteps;
+      if (correctionTerms && allowedSteps && allowedSteps.length > 0) {
+        return (
+          <DirectorApplicationWizard
+            terms={correctionTerms}
+            existingDraft={null}
+            onSubmitted={() => { void refresh(); }}
+            correction={{ application: myApplication, allowedSteps: new Set(allowedSteps), correctionRequest: myApplication.correctionRequest ?? '' }}
+          />
+        );
+      }
+      // A non-director correction, or a director application that
+      // somehow predates the wizard (no quote snapshot) -- the original,
+      // simpler 3-field correction form remains the fallback, unchanged.
+    }
     if (myApplication && ['pending_review', 'info_required', 'resubmitted', 'rejected'].includes(myApplication.status)) {
       return <ApplicationStatusPage application={myApplication} onRefresh={() => { void refresh(); }} />;
     }

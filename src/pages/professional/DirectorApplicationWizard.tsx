@@ -27,7 +27,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Check, AlertCircle, Loader2, ChevronLeft, ChevronRight, ShieldAlert } from 'lucide-react';
 import {
-  saveApplicationDraft, submitApplicationDraft, type ProfessionalApplication,
+  saveApplicationDraft, submitApplicationDraft, resubmitApplication, type ProfessionalApplication,
 } from '@/services/professionalApplicationService';
 import type { RedeemedQuoteTerms } from '@/services/salesService';
 
@@ -91,14 +91,33 @@ function Field({ label, required, children }: { label: string; required?: boolea
   );
 }
 
+// OWNER DIRECTIVE MMA-ENT-SALES-005 D8 — correction mode. Platform
+// Owner review flags specific STEPS (not individual field names inside
+// a step's JSONB -- a coarser but real and server-auditable grain)
+// via request_application_corrections()'s existing p_correction_fields
+// JSONB; this wizard enforces it client-side by disabling every input
+// outside the reopened steps, while the real server-side immutability
+// guarantee is unchanged: resubmit_application() still requires the
+// full current field set and professional_application_events still
+// logs the transition, exactly as it already did before this mode
+// existed. Step 3 (package) is never correctable here -- it is always
+// quote-locked, with or without a correction in progress.
+export interface CorrectionContext {
+  application: ProfessionalApplication;
+  allowedSteps: Set<string>;
+  correctionRequest: string;
+}
+
 export default function DirectorApplicationWizard({
-  terms, existingDraft, onSubmitted,
+  terms, existingDraft, onSubmitted, correction,
 }: {
   terms: RedeemedQuoteTerms;
   existingDraft: ProfessionalApplication | null;
   onSubmitted: () => void;
+  correction?: CorrectionContext;
 }) {
-  const initial = (existingDraft?.applicationDetails as Partial<WizardDetails> | undefined) ?? {};
+  const sourceDetails = (correction?.application.applicationDetails ?? existingDraft?.applicationDetails) as Partial<WizardDetails> | undefined;
+  const initial = sourceDetails ?? {};
   const [step, setStep] = useState(initial.currentStep ?? 1);
   const [s1, setS1] = useState<Step1>({ ...emptyStep1, ...initial.step1 });
   const [s2, setS2] = useState<Step2>({ ...emptyStep2, ...initial.step2 });
@@ -113,7 +132,14 @@ export default function DirectorApplicationWizard({
   const latest = useRef({ step, s1, s2, s3, s4, s5, s6 });
   latest.current = { step, s1, s2, s3, s4, s5, s6 };
 
+  const isLocked = (stepKey: string) => !!correction && !correction.allowedSteps.has(stepKey);
+
   const persist = useCallback(async () => {
+    // In correction mode, save_application_draft() would itself reject
+    // this call -- the application is 'info_required', not 'draft' --
+    // so there is nothing to autosave; only the final "Resubmit" action
+    // writes anything, via resubmit_application().
+    if (correction) return;
     setSaveState('saving');
     const d = latest.current;
     const details: WizardDetails = { originatingQuoteId: terms.quoteId, quoteSnapshot: terms, currentStep: d.step, step1: d.s1, step2: d.s2, step3: d.s3, step4: d.s4, step5: d.s5, step6: d.s6 };
@@ -128,7 +154,7 @@ export default function DirectorApplicationWizard({
     if (error || !draft) { setSaveState('error'); return; }
     setDraftId(draft.id);
     setSaveState('saved');
-  }, [terms]);
+  }, [terms, correction]);
 
   // Debounced autosave: any field change schedules a save ~1.2s later;
   // a prior pending save is cancelled, not stacked.
@@ -149,10 +175,33 @@ export default function DirectorApplicationWizard({
     && s1.legalBusinessName.trim() && s6.accuracyAttestation && s6.authorizedSignatoryConfirmed && s6.privacyAck && s6.signatureName.trim();
 
   const submit = async () => {
-    if (!draftId || !canSubmit) { toast.error('Please complete every required field before submitting.'); return; }
+    if (!canSubmit) { toast.error('Please complete every required field before submitting.'); return; }
     setSubmitting(true);
     try {
       const details: WizardDetails = { originatingQuoteId: terms.quoteId, quoteSnapshot: terms, currentStep: 6, step1: s1, step2: s2, step3: s3, step4: s4, step5: s5, step6: s6 };
+      if (correction) {
+        // Resubmission: the existing info_required row is updated in
+        // place (resubmit_application()), never a second application
+        // row. Fields outside the flagged steps are sent back exactly
+        // as they were (the fieldset above never let them change), so
+        // the server sees the identical values for anything not
+        // actually being corrected -- there is nothing to silently
+        // drift.
+        const { error } = await resubmitApplication(correction.application.id, {
+          legalName: s2.fullLegalName.trim(),
+          preferredName: s2.preferredName.trim() || null,
+          contactEmail: s2.verifiedBusinessEmail.trim(),
+          contactPhone: s2.mobile.trim() || null,
+          professionalTitle: correction.application.professionalTitle,
+          professionCategory: correction.application.professionCategory,
+          applicationDetails: details as unknown as Record<string, unknown>,
+        });
+        if (error) { toast.error(error); return; }
+        toast.success('Corrections resubmitted for Platform Owner review.');
+        onSubmitted();
+        return;
+      }
+      if (!draftId) { toast.error('Please complete every required field before submitting.'); return; }
       const { error } = await submitApplicationDraft(draftId, {
         requestedOffice: 'director',
         proposedOrganizationName: terms.prospectiveOrganizationName,
@@ -181,6 +230,13 @@ export default function DirectorApplicationWizard({
 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-4">
+      {correction && (
+        <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1">
+          <p className="text-xs font-bold text-amber-900">Platform Owner requested corrections</p>
+          <p className="text-xs text-amber-900">{correction.correctionRequest}</p>
+          <p className="text-[11px] text-amber-800">Only {Array.from(correction.allowedSteps).map((k) => STEP_LABELS[Number(k.replace('step', '')) - 1]).join(', ')} can be edited below — every other step is locked exactly as originally submitted.</p>
+        </div>
+      )}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex gap-1.5 flex-wrap">
           {STEP_LABELS.map((label, i) => (
@@ -193,12 +249,12 @@ export default function DirectorApplicationWizard({
             </button>
           ))}
         </div>
-        {saveIndicator}
+        {!correction && saveIndicator}
       </div>
 
       <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-4">
         {step === 1 && (
-          <div className="space-y-3">
+          <fieldset className="space-y-3" disabled={isLocked('step1')}>
             <h2 className="font-bold text-ent-ink">Organization legal identity</h2>
             <Field label="Registered legal business name" required><input value={s1.legalBusinessName} onChange={(e) => { setS1({ ...s1, legalBusinessName: e.target.value }); scheduleSave(); }} className={inputCls} /></Field>
             <Field label="DBA (if different)"><input value={s1.dba} onChange={(e) => { setS1({ ...s1, dba: e.target.value }); scheduleSave(); }} className={inputCls} /></Field>
@@ -239,11 +295,11 @@ export default function DirectorApplicationWizard({
                 ))}
               </div>
             </Field>
-          </div>
+          </fieldset>
         )}
 
         {step === 2 && (
-          <div className="space-y-3">
+          <fieldset className="space-y-3" disabled={isLocked('step2')}>
             <h2 className="font-bold text-ent-ink">Founding Director</h2>
             <p className="text-xs text-ent-muted">Selecting Director here does not by itself establish legal authority or activate any organizational access — that is confirmed separately by Platform Owner review.</p>
             <div className="grid grid-cols-2 gap-3">
@@ -268,11 +324,11 @@ export default function DirectorApplicationWizard({
             </label>
             <Field label="Alternate administrator email (optional)"><input value={s2.alternateAdmin} onChange={(e) => { setS2({ ...s2, alternateAdmin: e.target.value }); scheduleSave(); }} className={inputCls} /></Field>
             <p className="text-xs text-ent-muted">Multi-factor authentication will be required before your Director dashboard activates.</p>
-          </div>
+          </fieldset>
         )}
 
         {step === 3 && (
-          <div className="space-y-3">
+          <fieldset className="space-y-3" disabled={isLocked('step3')}>
             <h2 className="font-bold text-ent-ink">Enterprise package</h2>
             <div className="p-3 bg-ent-pale rounded-xl border border-ent-line space-y-1 text-sm">
               <p className="font-semibold text-ent-ink">{terms.prospectiveOrganizationName}</p>
@@ -293,11 +349,11 @@ export default function DirectorApplicationWizard({
             <label className="flex items-center gap-2 text-sm text-ent-ink">
               <input type="checkbox" checked={s3.poRequired} onChange={(e) => { setS3({ ...s3, poRequired: e.target.checked }); scheduleSave(); }} /> A purchase order is required for this engagement
             </label>
-          </div>
+          </fieldset>
         )}
 
         {step === 4 && (
-          <div className="space-y-3">
+          <fieldset className="space-y-3" disabled={isLocked('step4')}>
             <h2 className="font-bold text-ent-ink">Operations &amp; compliance</h2>
             <p className="text-xs text-ent-muted">No patient clinical data is collected here.</p>
             <div className="grid grid-cols-2 gap-3">
@@ -337,11 +393,11 @@ export default function DirectorApplicationWizard({
                 <input type="checkbox" checked={s4.migrationConsent} onChange={(e) => { setS4({ ...s4, migrationConsent: e.target.checked }); scheduleSave(); }} /> I consent to the data migration described above
               </label>
             )}
-          </div>
+          </fieldset>
         )}
 
         {step === 5 && (
-          <div className="space-y-3">
+          <fieldset className="space-y-3" disabled={isLocked('step5')}>
             <h2 className="font-bold text-ent-ink">Billing profile</h2>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Billing legal entity" required><input value={s5.billingLegalEntity} onChange={(e) => { setS5({ ...s5, billingLegalEntity: e.target.value }); scheduleSave(); }} className={inputCls} /></Field>
@@ -364,11 +420,12 @@ export default function DirectorApplicationWizard({
               <ShieldAlert className="w-4 h-4 text-ent-bronze flex-shrink-0 mt-0.5" />
               <p className="text-xs text-ent-muted">A hosted payment method is collected later, only once your application is approved — never raw banking details through this form.</p>
             </div>
-          </div>
+          </fieldset>
         )}
 
         {step === 6 && (
-          <div className="space-y-3">
+          <>
+          <fieldset className="space-y-3" disabled={isLocked('step6')}>
             <h2 className="font-bold text-ent-ink">Review &amp; declarations</h2>
             <div className="p-3 bg-ent-bg rounded-xl border border-ent-line text-xs text-ent-text space-y-1">
               <p><strong>{s1.legalBusinessName || '—'}</strong> ({s1.legalForm || '—'})</p>
@@ -391,10 +448,15 @@ export default function DirectorApplicationWizard({
             </label>
             <Field label="Type your full name as your signature" required><input value={s6.signatureName} onChange={(e) => { setS6({ ...s6, signatureName: e.target.value }); scheduleSave(); }} className={inputCls} /></Field>
             <p className="text-[11px] text-ent-muted">A typed name is recorded as an attestation, not a formal digital-signature service — disclosed honestly, not presented as more than it is.</p>
-            <button type="button" onClick={() => { void submit(); }} disabled={submitting || !canSubmit} className="w-full py-3 rounded-xl bg-ent-bronze hover:opacity-90 text-white font-semibold disabled:opacity-60">
-              {submitting ? 'Submitting…' : 'Submit application'}
-            </button>
-          </div>
+          </fieldset>
+          {/* Deliberately OUTSIDE the fieldset above: a <fieldset disabled>
+              cascades to every descendant control, including a <button> --
+              the submit/resubmit action must stay clickable even when step 6
+              itself isn't one of the flagged correction steps. */}
+          <button type="button" onClick={() => { void submit(); }} disabled={submitting || !canSubmit} className="w-full py-3 rounded-xl bg-ent-bronze hover:opacity-90 text-white font-semibold disabled:opacity-60">
+            {submitting ? (correction ? 'Resubmitting…' : 'Submitting…') : (correction ? 'Resubmit for review' : 'Submit application')}
+          </button>
+          </>
         )}
 
         <div className="flex items-center justify-between pt-2">

@@ -11,7 +11,7 @@ import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { Loader2, Sparkles, LogOut, ShieldCheck, Search, Building2, Plus, Send, Ban, FileText, Copy, KeyRound } from 'lucide-react';
-import { getDirectorApplications, platformOwnerApproveDirectorApplication, rejectApplication, platformOwnerCorrectOfficeClassification, type ProfessionalApplication } from '@/services/professionalApplicationService';
+import { getDirectorApplications, platformOwnerApproveDirectorApplication, rejectApplication, requestApplicationCorrections, platformOwnerCorrectOfficeClassification, type ProfessionalApplication } from '@/services/professionalApplicationService';
 import { getPendingAccountDeletionRequests, platformOwnerReviewAccountDeletion, type AccountDeletionRequest } from '@/services/accountDeletionService';
 import {
   getSalesProspects, createProspect, getSalesQuotes, createQuote, sendQuote, revokeQuote,
@@ -23,9 +23,17 @@ const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-non
 
 interface MembershipRow { id: string; organization_id: string; org_role: string; status: string; organizations: { name: string } | null }
 
+const CORRECTABLE_STEPS: { key: string; label: string }[] = [
+  { key: 'step1', label: 'Legal Entity' }, { key: 'step2', label: 'Director' }, { key: 'step3', label: 'Package' },
+  { key: 'step4', label: 'Operations' }, { key: 'step5', label: 'Billing' }, { key: 'step6', label: 'Review' },
+];
+
 function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalApplication[]; onChanged: () => void }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
+  const [correctionOpenId, setCorrectionOpenId] = useState<string | null>(null);
+  const [correctionNote, setCorrectionNote] = useState<Record<string, string>>({});
+  const [correctionSteps, setCorrectionSteps] = useState<Record<string, Set<string>>>({});
 
   const approve = async (id: string) => {
     setBusyId(id);
@@ -44,6 +52,27 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
       const { error } = await rejectApplication(id, reason);
       if (error) { toast.error(error); return; }
       toast.success('Application rejected.');
+      onChanged();
+    } finally { setBusyId(null); }
+  };
+  const toggleStep = (appId: string, stepKey: string) => {
+    setCorrectionSteps((prev) => {
+      const current = new Set(prev[appId] ?? []);
+      if (current.has(stepKey)) current.delete(stepKey); else current.add(stepKey);
+      return { ...prev, [appId]: current };
+    });
+  };
+  const requestCorrections = async (id: string) => {
+    const note = correctionNote[id]?.trim();
+    const steps = Array.from(correctionSteps[id] ?? []);
+    if (!note) { toast.error('Describe what needs to change.'); return; }
+    if (steps.length === 0) { toast.error('Select at least one step to reopen.'); return; }
+    setBusyId(id);
+    try {
+      const { error } = await requestApplicationCorrections(id, note, { allowedSteps: steps });
+      if (error) { toast.error(error); return; }
+      toast.success('Correction request sent.');
+      setCorrectionOpenId(null);
       onChanged();
     } finally { setBusyId(null); }
   };
@@ -71,7 +100,29 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
                 </button>
                 <input value={rejectReason[a.id] ?? ''} onChange={(e) => setRejectReason((p) => ({ ...p, [a.id]: e.target.value }))} placeholder="Rejection reason…" className={`${inputCls} flex-1 min-w-[160px]`} />
                 <button type="button" onClick={() => { void reject(a.id); }} disabled={busyId === a.id} className="px-3 py-2 rounded-xl border border-ent-rust text-ent-rust text-sm font-semibold hover:bg-ent-rust/10">Reject</button>
+                <button type="button" onClick={() => setCorrectionOpenId(correctionOpenId === a.id ? null : a.id)} className="px-3 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">
+                  Request corrections
+                </button>
               </div>
+              {correctionOpenId === a.id && (
+                <div className="p-3 bg-ent-panel rounded-xl border border-ent-line space-y-2">
+                  <p className="text-xs font-semibold text-ent-ink">Which steps need to change?</p>
+                  <div className="flex flex-wrap gap-2">
+                    {CORRECTABLE_STEPS.map((s) => (
+                      <label key={s.key} className="flex items-center gap-1.5 text-xs text-ent-ink px-2 py-1 rounded-lg border border-ent-line cursor-pointer">
+                        <input type="checkbox" checked={correctionSteps[a.id]?.has(s.key) ?? false} onChange={() => toggleStep(a.id, s.key)} /> {s.label}
+                      </label>
+                    ))}
+                  </div>
+                  <textarea
+                    value={correctionNote[a.id] ?? ''} onChange={(e) => setCorrectionNote((p) => ({ ...p, [a.id]: e.target.value }))}
+                    placeholder="Describe exactly what needs to change in the selected steps…" rows={2} className={inputCls}
+                  />
+                  <button type="button" onClick={() => { void requestCorrections(a.id); }} disabled={busyId === a.id} className="px-3 py-2 rounded-xl bg-ent-amber hover:opacity-90 text-white text-xs font-semibold disabled:opacity-60">
+                    Send correction request
+                  </button>
+                </div>
+              )}
             </li>
           ))}
         </ul>
