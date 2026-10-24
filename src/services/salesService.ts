@@ -314,6 +314,28 @@ export async function startEnterpriseCheckout(
 // before any quote-driven payment exists at all, e.g. the legacy
 // CreateOrgCard path). Returns null for such a quote-less organization,
 // not an error -- there is simply nothing to pay for.
+// OWNER DIRECTIVE MMA-ENT-SALES-003 §3 (Phase E) — "linked quote
+// history" for the owner's application review. A quote revision is
+// immutable (migration 107): revising creates a NEW row with
+// supersedes_quote_id pointing at the old one (never edits terms in
+// place), so the full negotiation history is this chain. Returns
+// newest-first; RLS (Platform Owner can view all sales quotes) is the
+// real access boundary, not this function.
+export async function getQuoteWithAncestry(quoteId: string): Promise<SalesQuote[]> {
+  const chain: SalesQuote[] = [];
+  let currentId: string | null = quoteId;
+  const seen = new Set<string>();
+  while (currentId && !seen.has(currentId)) {
+    seen.add(currentId);
+    const { data, error } = await supabase.from('sales_quotes').select('*').eq('id', currentId).maybeSingle();
+    if (error || !data) break;
+    const quote = mapQuote(data as Record<string, unknown>);
+    chain.push(quote);
+    currentId = quote.supersedesQuoteId;
+  }
+  return chain;
+}
+
 export async function getMyOrganizationOriginatingQuoteId(orgId: string): Promise<string | null> {
   const { data, error } = await supabase
     .from('professional_applications')

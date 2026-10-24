@@ -301,3 +301,28 @@ export async function getMyOrgSupervisor(orgId: string): Promise<{ userId: strin
   const row = data[0];
   return { userId: row.member_user_id, firstName: row.first_name, lastName: row.last_name };
 }
+
+// OWNER DIRECTIVE MMA-ENT-SALES-003 §3 (Phase E) — "duplicate
+// organization checks" during Platform Owner review. A read-only,
+// best-effort signal only: a name match is shown as a warning for the
+// reviewer to judge, never an automatic block -- two real organizations
+// can legitimately share a common name fragment. Relies on the
+// existing "Platform Owner can view all organizations" RLS policy
+// (migration 083); no new policy needed.
+export async function findSimilarOrganizations(name: string): Promise<{ id: string; name: string }[]> {
+  const trimmed = name.trim();
+  if (!trimmed) return [];
+  // Matches on the proposed name's leading words (a company's most
+  // distinctive, stable fragment) rather than requiring the entire
+  // string to appear verbatim -- catches e.g. "Acme Corp" already
+  // existing when the new application proposes "Acme Corp North
+  // Branch", which a single ILIKE on the full string would miss.
+  const pattern = trimmed.split(/\s+/).slice(0, 3).join(' ') || trimmed;
+  const { data, error } = await supabase
+    .from('organizations')
+    .select('id, name')
+    .ilike('name', `%${pattern}%`)
+    .limit(10);
+  if (error || !data) return [];
+  return data;
+}

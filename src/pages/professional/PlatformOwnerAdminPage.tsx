@@ -11,11 +11,15 @@ import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { Loader2, Sparkles, LogOut, ShieldCheck, Search, Building2, Plus, Send, Ban, FileText, Copy, KeyRound } from 'lucide-react';
-import { getDirectorApplications, platformOwnerApproveDirectorApplication, rejectApplication, requestApplicationCorrections, platformOwnerCorrectOfficeClassification, type ProfessionalApplication } from '@/services/professionalApplicationService';
+import {
+  getDirectorApplications, platformOwnerApproveDirectorApplication, rejectApplication, requestApplicationCorrections,
+  platformOwnerCorrectOfficeClassification, getApplicationEvents, type ProfessionalApplication,
+} from '@/services/professionalApplicationService';
 import { getPendingAccountDeletionRequests, platformOwnerReviewAccountDeletion, type AccountDeletionRequest } from '@/services/accountDeletionService';
+import { findSimilarOrganizations } from '@/services/organizationService';
 import {
   getSalesProspects, createProspect, getSalesQuotes, createQuote, sendQuote, revokeQuote,
-  getQuoteInvitations, issueQuoteInvitation, revokeQuoteInvitation,
+  getQuoteInvitations, issueQuoteInvitation, revokeQuoteInvitation, getQuoteWithAncestry,
   type SalesProspect, type SalesQuote, type SalesQuoteInvitation, type SalesPackageType,
 } from '@/services/salesService';
 
@@ -28,12 +32,50 @@ const CORRECTABLE_STEPS: { key: string; label: string }[] = [
   { key: 'step4', label: 'Operations' }, { key: 'step5', label: 'Billing' }, { key: 'step6', label: 'Review' },
 ];
 
+// OWNER DIRECTIVE MMA-ENT-SALES-003 §3 (Phase E) — "submitted version
+// inspection": a generic, field-order-preserving renderer for the raw
+// six-step wizard snapshot (application_details) rather than
+// hardcoding every one of D1-D6's field names here a second time --
+// this is strictly a read-only review surface, so a label derived from
+// the key is sufficient and never falls out of sync with the wizard.
+function titleCaseFromKey(key: string): string {
+  return key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
+}
+function StepFieldsReadout({ details, stepKey, label }: { details: Record<string, unknown>; stepKey: string; label: string }) {
+  const step = details[stepKey] as Record<string, unknown> | undefined;
+  if (!step || Object.keys(step).length === 0) return null;
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-bold text-ent-ink uppercase tracking-wide">{label}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
+        {Object.entries(step).map(([k, v]) => (
+          <p key={k} className="text-xs text-ent-text truncate">
+            <span className="text-ent-muted">{titleCaseFromKey(k)}:</span>{' '}
+            <span className="font-medium">{typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v ?? '—')}</span>
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface ApplicationReviewDetails {
+  events: { eventType: string; actorRole: string | null; notes: string | null; createdAt: string }[];
+  quoteChain: SalesQuote[];
+  duplicateOrgs: { id: string; name: string }[];
+}
+
 function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalApplication[]; onChanged: () => void }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
   const [correctionOpenId, setCorrectionOpenId] = useState<string | null>(null);
   const [correctionNote, setCorrectionNote] = useState<Record<string, string>>({});
   const [correctionSteps, setCorrectionSteps] = useState<Record<string, Set<string>>>({});
+  const [searchText, setSearchText] = useState('');
+  const [showAllStatuses, setShowAllStatuses] = useState(false);
+  const [detailsOpenId, setDetailsOpenId] = useState<string | null>(null);
+  const [detailsCache, setDetailsCache] = useState<Record<string, ApplicationReviewDetails>>({});
+  const [detailsLoading, setDetailsLoading] = useState<string | null>(null);
 
   const approve = async (id: string) => {
     setBusyId(id);
@@ -77,16 +119,57 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
     } finally { setBusyId(null); }
   };
 
-  const pending = apps.filter((a) => a.status === 'pending_review' || a.status === 'resubmitted');
+  const toggleDetails = async (a: ProfessionalApplication) => {
+    if (detailsOpenId === a.id) { setDetailsOpenId(null); return; }
+    setDetailsOpenId(a.id);
+    if (detailsCache[a.id]) return;
+    setDetailsLoading(a.id);
+    try {
+      const quoteId = (a.applicationDetails as { originatingQuoteId?: string } | undefined)?.originatingQuoteId;
+      const [events, quoteChain, duplicateOrgs] = await Promise.all([
+        getApplicationEvents(a.id),
+        quoteId ? getQuoteWithAncestry(quoteId) : Promise.resolve([]),
+        findSimilarOrganizations(a.proposedOrganizationName),
+      ]);
+      setDetailsCache((prev) => ({ ...prev, [a.id]: { events, quoteChain, duplicateOrgs } }));
+    } finally {
+      setDetailsLoading(null);
+    }
+  };
+
+  const basePool = showAllStatuses ? apps : apps.filter((a) => a.status === 'pending_review' || a.status === 'resubmitted');
+  const search = searchText.trim().toLowerCase();
+  const visible = search
+    ? basePool.filter((a) =>
+        a.legalName.toLowerCase().includes(search) ||
+        a.proposedOrganizationName.toLowerCase().includes(search) ||
+        a.contactEmail.toLowerCase().includes(search))
+    : basePool;
 
   return (
     <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
-      <h2 className="font-bold text-ent-ink">Initial Director Applications Awaiting Approval</h2>
-      {pending.length === 0 ? (
-        <p className="text-sm text-ent-text">No Director applications are currently pending.</p>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="font-bold text-ent-ink">Initial Director Applications Awaiting Approval</h2>
+        <label className="flex items-center gap-1.5 text-xs text-ent-muted cursor-pointer">
+          <input type="checkbox" checked={showAllStatuses} onChange={(e) => setShowAllStatuses(e.target.checked)} />
+          Show all statuses (including rejected/withdrawn)
+        </label>
+      </div>
+      <div className="relative">
+        <Search className="w-4 h-4 text-ent-muted absolute left-3 top-1/2 -translate-y-1/2" />
+        <input
+          value={searchText} onChange={(e) => setSearchText(e.target.value)}
+          placeholder="Search by legal name, organization, or email…" className={`${inputCls} pl-9`}
+        />
+      </div>
+      {visible.length === 0 ? (
+        <p className="text-sm text-ent-text">No Director applications match.</p>
       ) : (
         <ul className="space-y-3">
-          {pending.map((a) => (
+          {visible.map((a) => {
+            const isPendingReview = a.status === 'pending_review' || a.status === 'resubmitted';
+            const details = detailsCache[a.id];
+            return (
             <li key={a.id} className="p-4 bg-ent-bg rounded-xl border border-ent-line space-y-2">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="font-semibold text-ent-ink">{a.legalName} — proposing &quot;{a.proposedOrganizationName}&quot;</p>
@@ -95,13 +178,20 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
               <p className="text-xs text-ent-muted">{a.contactEmail}{a.contactPhone ? ` · ${a.contactPhone}` : ''} · submitted {new Date(a.createdAt).toLocaleDateString()}</p>
               <p className="text-xs text-ent-muted">Package: {a.proposedPackageType === 'integrated_care' ? 'Enterprise Integrated Care' : 'Enterprise Therapist'}</p>
               <div className="flex flex-wrap gap-2 pt-1">
-                <button type="button" onClick={() => { void approve(a.id); }} disabled={busyId === a.id} className="px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
-                  Approve &amp; Activate Director
-                </button>
-                <input value={rejectReason[a.id] ?? ''} onChange={(e) => setRejectReason((p) => ({ ...p, [a.id]: e.target.value }))} placeholder="Rejection reason…" className={`${inputCls} flex-1 min-w-[160px]`} />
-                <button type="button" onClick={() => { void reject(a.id); }} disabled={busyId === a.id} className="px-3 py-2 rounded-xl border border-ent-rust text-ent-rust text-sm font-semibold hover:bg-ent-rust/10">Reject</button>
-                <button type="button" onClick={() => setCorrectionOpenId(correctionOpenId === a.id ? null : a.id)} className="px-3 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">
-                  Request corrections
+                {isPendingReview && (
+                  <>
+                    <button type="button" onClick={() => { void approve(a.id); }} disabled={busyId === a.id} className="px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
+                      Approve &amp; Activate Director
+                    </button>
+                    <input value={rejectReason[a.id] ?? ''} onChange={(e) => setRejectReason((p) => ({ ...p, [a.id]: e.target.value }))} placeholder="Rejection reason…" className={`${inputCls} flex-1 min-w-[160px]`} />
+                    <button type="button" onClick={() => { void reject(a.id); }} disabled={busyId === a.id} className="px-3 py-2 rounded-xl border border-ent-rust text-ent-rust text-sm font-semibold hover:bg-ent-rust/10">Reject</button>
+                    <button type="button" onClick={() => setCorrectionOpenId(correctionOpenId === a.id ? null : a.id)} className="px-3 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">
+                      Request corrections
+                    </button>
+                  </>
+                )}
+                <button type="button" onClick={() => { void toggleDetails(a); }} className="px-3 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">
+                  {detailsOpenId === a.id ? 'Hide details & history' : 'View details & history'}
                 </button>
               </div>
               {correctionOpenId === a.id && (
@@ -123,8 +213,53 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
                   </button>
                 </div>
               )}
+              {detailsOpenId === a.id && (
+                <div className="p-3 bg-ent-panel rounded-xl border border-ent-line space-y-3">
+                  {detailsLoading === a.id || !details ? (
+                    <p className="text-xs text-ent-muted flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading review details…</p>
+                  ) : (
+                    <>
+                      {details.duplicateOrgs.length > 0 && (
+                        <div className="p-2 bg-ent-amber/10 border border-ent-amber/40 rounded-lg">
+                          <p className="text-xs font-semibold text-ent-amber">Possible duplicate organization — review before approving:</p>
+                          {details.duplicateOrgs.map((o) => (
+                            <p key={o.id} className="text-xs text-ent-ink">• {o.name}</p>
+                          ))}
+                        </div>
+                      )}
+                      {details.quoteChain.length > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-ent-ink uppercase tracking-wide">Linked quote history (newest first)</p>
+                          {details.quoteChain.map((q) => (
+                            <p key={q.id} className="text-xs text-ent-text">
+                              {q.status === 'superseded' ? 'Superseded quote' : 'Quote'} — {q.packageType === 'integrated_care' ? 'Full Enterprise' : 'Therapist Enterprise'}, {q.proposedLicensedSeats} seats, {q.annualLicenseFee != null ? `$${q.annualLicenseFee.toFixed(2)}/${q.billingCadence ?? ''}` : 'no price yet'} ({q.status})
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                      <StepFieldsReadout details={a.applicationDetails} stepKey="step1" label="Legal Entity" />
+                      <StepFieldsReadout details={a.applicationDetails} stepKey="step2" label="Director" />
+                      <StepFieldsReadout details={a.applicationDetails} stepKey="step4" label="Operations" />
+                      <StepFieldsReadout details={a.applicationDetails} stepKey="step5" label="Billing" />
+                      <StepFieldsReadout details={a.applicationDetails} stepKey="step6" label="Declarations & Signature" />
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-ent-ink uppercase tracking-wide">Audit history</p>
+                        {details.events.length === 0 ? (
+                          <p className="text-xs text-ent-muted">No recorded events yet.</p>
+                        ) : (
+                          details.events.map((ev, i) => (
+                            <p key={i} className="text-xs text-ent-text">
+                              {new Date(ev.createdAt).toLocaleString()} — <span className="font-medium capitalize">{ev.eventType.replace(/_/g, ' ')}</span>{ev.actorRole ? ` (${ev.actorRole})` : ''}{ev.notes ? `: ${ev.notes}` : ''}
+                            </p>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </li>
-          ))}
+          );})}
         </ul>
       )}
     </div>
