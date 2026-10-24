@@ -203,7 +203,20 @@ function AppContent() {
         // 'aal1' and this check is a no-op), per the explicit
         // instruction not to enable a mandatory cohort policy without
         // owner approval.
-        const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        // Codex F-15 FIX — the assurance lookup itself can fail (a
+        // transient network/API error, not "no MFA enrolled"), and an
+        // error response leaves `data` null. The check above only
+        // ever compared `aal`'s fields, so an error silently fell
+        // through as if assurance were sufficient — exactly the "fail
+        // open on a lookup error" Codex named. A lookup failure must
+        // be treated the same as an insufficient level: it means this
+        // app cannot currently confirm the session is trustworthy.
+        const { data: aal, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aalError) {
+          console.warn('Could not verify this session\'s MFA assurance level — signing out rather than restoring.', aalError.message);
+          await supabase.auth.signOut();
+          return;
+        }
         if (aal && aal.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
           console.warn('Restored session is below the required MFA assurance level for this account — signing out rather than restoring.');
           await supabase.auth.signOut();
