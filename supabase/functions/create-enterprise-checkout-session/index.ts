@@ -61,29 +61,6 @@ async function stripePost(path: string, params: Record<string, string>) {
   return data;
 }
 
-async function stripeGet(path: string) {
-  const secretKey = Deno.env.get('STRIPE_SECRET_KEY') ?? '';
-
-  if (!secretKey) {
-    throw new Error('STRIPE_SECRET_KEY secret is not set in Supabase.');
-  }
-
-  const response = await fetch(`https://api.stripe.com/v1${path}`, {
-    headers: {
-      Authorization: `Bearer ${secretKey}`,
-    },
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    console.error('Stripe GET error:', JSON.stringify(data));
-    throw new Error(data?.error?.message ?? `Stripe error ${response.status}`);
-  }
-
-  return data;
-}
-
 serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -187,21 +164,50 @@ serve(async (request) => {
 
     const appUrl = (Deno.env.get('APP_URL') ?? 'https://mymemoriaally.com').replace(/\/$/, '');
 
-    // Find-or-create a Stripe customer explicitly tagged for Enterprise
-    // billing. Deliberately does NOT reuse a consumer customer that may
-    // share the same email -- consumer and Enterprise billing stay on
-    // separate Stripe customer records even when the addresses match.
-    const existingCustomers = await stripeGet(`/customers?email=${encodeURIComponent(billingContactEmail)}&limit=20`);
-    type StripeCustomer = { id: string; metadata?: Record<string, string> };
-    let customerId: string | undefined = (existingCustomers.data as StripeCustomer[] | undefined)?.find(
-      (customer) => customer.metadata?.billing_type === 'enterprise',
-    )?.id;
+    // CODEX F-02 FIX (P0): this used to find-or-create a Stripe customer
+    // by searching Stripe GLOBALLY for ANY customer with the
+    // caller-supplied billingContactEmail and a generic
+    // metadata.billing_type === 'enterprise' tag, with no organization/
+    // quote-owner binding at all. Two different organizations' billing
+    // contacts sharing (or an attacker guessing) the same email would
+    // be bound to the SAME Stripe customer -- and since that customer
+    // id is later used to open a Billing Portal session, this let one
+    // organization's checkout silently attach itself to, and gain
+    // portal access to, another organization's real Stripe customer
+    // (payment methods, invoice history).
+    //
+    // Fix: never search Stripe by email. Resolve the TRUSTED
+    // organization behind this exact quote server-side (via the
+    // already-validated billingAccount.quote_id, never client input),
+    // and only ever reuse a Stripe customer that this engagement's OWN
+    // records show was already used for THAT SAME organization's own
+    // prior billing account (a renewal/upgrade/re-quote for an
+    // org that already has one). A brand-new application has no
+    // organization yet (one is created only at approval) and always
+    // gets a brand-new Stripe customer -- there is nothing to bind to
+    // yet, and nothing to leak.
+    // Ownership-checked, independently testable (migration 121): the
+    // caller-scoped client re-verifies this quote is actually theirs
+    // (same check create_enterprise_billing_account() already
+    // enforced), then resolves the one organization-bound Stripe
+    // customer id (if any) that is actually safe to reuse -- never a
+    // caller-supplied email search.
+    const { data: resolution, error: resolveError } = await supabase
+      .rpc('resolve_enterprise_billing_customer', { p_quote_id: quoteId })
+      .single();
+    if (resolveError) {
+      console.error('resolve_enterprise_billing_customer failed:', resolveError.message);
+      return jsonResponse({ error: 'Could not verify your billing ownership for this quote.' }, 400);
+    }
+    const resolvedOrganizationId = (resolution as { organization_id: string | null } | null)?.organization_id ?? null;
+    let customerId: string | undefined = (resolution as { reusable_stripe_customer_id: string | null } | null)?.reusable_stripe_customer_id ?? undefined;
 
     if (!customerId) {
       const customer = await stripePost('/customers', {
         email: billingContactEmail,
         'metadata[billing_type]': 'enterprise',
         'metadata[quote_id]': quoteId,
+        ...(resolvedOrganizationId ? { 'metadata[organization_id]': resolvedOrganizationId } : {}),
       });
       customerId = customer.id;
     }
