@@ -18,6 +18,10 @@ import {
 import { getPendingAccountDeletionRequests, platformOwnerReviewAccountDeletion, type AccountDeletionRequest } from '@/services/accountDeletionService';
 import { findSimilarOrganizations } from '@/services/organizationService';
 import {
+  getAllAmendmentRequests, rejectAmendmentRequest, approveCancellationRequest, quoteAmendmentRequest,
+  type OrganizationAmendmentRequest, type AmendmentRequestType,
+} from '@/services/organizationAmendmentService';
+import {
   getSalesProspects, createProspect, getSalesQuotes, createQuote, sendQuote, revokeQuote,
   getQuoteInvitations, issueQuoteInvitation, revokeQuoteInvitation, getQuoteWithAncestry,
   type SalesProspect, type SalesQuote, type SalesQuoteInvitation, type SalesPackageType,
@@ -658,6 +662,160 @@ function SalesPipelinePanel() {
   );
 }
 
+const AMENDMENT_TYPE_LABEL: Record<AmendmentRequestType, string> = {
+  expansion: 'Expansion', renewal: 'Renewal', downgrade: 'Downgrade', cancellation: 'Cancellation',
+};
+
+// OWNER DIRECTIVE MMA-ENT-SALES-006 Phase H5/I1 — "Director request ->
+// Platform Owner commercial review -> terms/amendment -> ...". A
+// cancellation request is approved directly (no quote, no checkout --
+// see migration 113's own comment on why); every other request type
+// is priced through the same quoting form shape as a brand-new
+// prospect, which the server then wires into the existing sales
+// pipeline (platform_owner_quote_amendment_request()).
+function AmendmentRequestsPanel() {
+  const [requests, setRequests] = useState<(OrganizationAmendmentRequest & { organizationName: string })[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
+  const [cancelNotes, setCancelNotes] = useState<Record<string, string>>({});
+  const [quoteOpenId, setQuoteOpenId] = useState<string | null>(null);
+  const [quoteForm, setQuoteForm] = useState<Record<string, {
+    contactName: string; contactEmail: string; packageType: 'integrated_care' | 'therapist';
+    seats: string; capacity: string; fee: string; cadence: string; termMonths: string; notes: string;
+  }>>({});
+
+  const refresh = useCallback(async () => { setRequests(await getAllAmendmentRequests()); }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const pending = requests.filter((r) => r.status === 'pending');
+
+  const reject = async (id: string) => {
+    const notes = rejectNotes[id]?.trim();
+    if (!notes) { toast.error('Provide a reason.'); return; }
+    setBusyId(id);
+    try {
+      const { error } = await rejectAmendmentRequest(id, notes);
+      if (error) { toast.error(error); return; }
+      toast.success('Request rejected.');
+      void refresh();
+    } finally { setBusyId(null); }
+  };
+
+  const approveCancellation = async (id: string) => {
+    setBusyId(id);
+    try {
+      const { error } = await approveCancellationRequest(id, cancelNotes[id]?.trim() ?? '');
+      if (error) { toast.error(error); return; }
+      toast.success('Cancellation approved — the organization\'s license is now canceled.');
+      void refresh();
+    } finally { setBusyId(null); }
+  };
+
+  const defaultQuoteForm = () => ({
+    contactName: '', contactEmail: '', packageType: 'integrated_care' as const,
+    seats: '', capacity: '', fee: '', cadence: 'annual', termMonths: '', notes: '',
+  });
+
+  const submitQuote = async (id: string) => {
+    const form = quoteForm[id] ?? defaultQuoteForm();
+    if (!form.contactName.trim() || !form.contactEmail.trim() || !form.seats || !form.capacity) {
+      toast.error('Contact name, email, seats, and capacity are required.');
+      return;
+    }
+    setBusyId(id);
+    try {
+      const { error } = await quoteAmendmentRequest(id, {
+        contactName: form.contactName.trim(), contactEmail: form.contactEmail.trim(), packageType: form.packageType,
+        proposedLicensedSeats: Number(form.seats), proposedCoveredPatientCapacity: Number(form.capacity),
+        annualLicenseFee: form.fee.trim() === '' ? null : Number(form.fee), billingCadence: form.cadence.trim() || null,
+        quoteTermMonths: form.termMonths.trim() === '' ? null : Number(form.termMonths), notes: form.notes.trim() || null,
+      });
+      if (error) { toast.error(error); return; }
+      toast.success('Amendment quoted — the Director can now pay for it.');
+      setQuoteOpenId(null);
+      void refresh();
+    } finally { setBusyId(null); }
+  };
+
+  return (
+    <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
+      <h2 className="font-bold text-ent-ink">Organization Expansion / Renewal / Cancellation Requests</h2>
+      {pending.length === 0 ? (
+        <p className="text-sm text-ent-text">No amendment requests are currently pending.</p>
+      ) : (
+        <ul className="space-y-3">
+          {pending.map((r) => {
+            const form = quoteForm[r.id] ?? defaultQuoteForm();
+            const setForm = (patch: Partial<typeof form>) => setQuoteForm((prev) => ({ ...prev, [r.id]: { ...form, ...patch } }));
+            return (
+              <li key={r.id} className="p-4 bg-ent-bg rounded-xl border border-ent-line space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <p className="font-semibold text-ent-ink">{r.organizationName} — {AMENDMENT_TYPE_LABEL[r.requestType]}</p>
+                  <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-ent-amber/20 text-ent-amber capitalize">{r.status}</span>
+                </div>
+                {typeof r.requestedDetails.description === 'string' && r.requestedDetails.description && (
+                  <p className="text-xs text-ent-text">{r.requestedDetails.description}</p>
+                )}
+                {r.directorNotes && <p className="text-xs text-ent-muted">Director notes: {r.directorNotes}</p>}
+                <p className="text-xs text-ent-muted">Requested {new Date(r.createdAt).toLocaleDateString()}</p>
+
+                {r.requestType === 'cancellation' ? (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <input value={cancelNotes[r.id] ?? ''} onChange={(e) => setCancelNotes((p) => ({ ...p, [r.id]: e.target.value }))} placeholder="Confirmation notes (optional)…" className={`${inputCls} flex-1 min-w-[160px]`} />
+                    <button type="button" onClick={() => { void approveCancellation(r.id); }} disabled={busyId === r.id} className="px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
+                      Approve cancellation
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button type="button" onClick={() => setQuoteOpenId(quoteOpenId === r.id ? null : r.id)} className="px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold">
+                        {quoteOpenId === r.id ? 'Close quote form' : 'Quote this request'}
+                      </button>
+                    </div>
+                    {quoteOpenId === r.id && (
+                      <div className="p-3 bg-ent-panel rounded-xl border border-ent-line space-y-2">
+                        <div className="flex flex-wrap gap-2">
+                          <input value={form.contactName} onChange={(e) => setForm({ contactName: e.target.value })} placeholder="Contact name" className={`${inputCls} flex-1 min-w-[140px]`} />
+                          <input value={form.contactEmail} onChange={(e) => setForm({ contactEmail: e.target.value })} placeholder="Contact email" className={`${inputCls} flex-1 min-w-[160px]`} />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <select value={form.packageType} onChange={(e) => setForm({ packageType: e.target.value as 'integrated_care' | 'therapist' })} className={`${inputCls} w-48`}>
+                            <option value="integrated_care">Full Enterprise</option>
+                            <option value="therapist">Therapist Enterprise</option>
+                          </select>
+                          <input type="number" min={1} value={form.seats} onChange={(e) => setForm({ seats: e.target.value })} placeholder="Total seats" className={`${inputCls} w-32`} />
+                          <input type="number" min={0} value={form.capacity} onChange={(e) => setForm({ capacity: e.target.value })} placeholder="Patient capacity" className={`${inputCls} w-36`} />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <input type="number" min={0} step="0.01" value={form.fee} onChange={(e) => setForm({ fee: e.target.value })} placeholder="Annual fee ($)" className={`${inputCls} w-36`} />
+                          <select value={form.cadence} onChange={(e) => setForm({ cadence: e.target.value })} className={`${inputCls} w-36`}>
+                            <option value="annual">Annual</option>
+                            <option value="monthly">Monthly</option>
+                          </select>
+                          <input type="number" min={1} value={form.termMonths} onChange={(e) => setForm({ termMonths: e.target.value })} placeholder="Term (months, optional)" className={`${inputCls} w-48`} />
+                        </div>
+                        <textarea value={form.notes} onChange={(e) => setForm({ notes: e.target.value })} placeholder="Internal notes (optional)…" rows={2} className={inputCls} />
+                        <button type="button" onClick={() => { void submitQuote(r.id); }} disabled={busyId === r.id} className="px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold disabled:opacity-60">
+                          Send quote
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <input value={rejectNotes[r.id] ?? ''} onChange={(e) => setRejectNotes((p) => ({ ...p, [r.id]: e.target.value }))} placeholder="Rejection reason…" className={`${inputCls} flex-1 min-w-[160px]`} />
+                      <button type="button" onClick={() => { void reject(r.id); }} disabled={busyId === r.id} className="px-3 py-2 rounded-xl border border-ent-rust text-ent-rust text-sm font-semibold hover:bg-ent-rust/10">Reject</button>
+                    </div>
+                  </>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function PlatformOwnerAdminPage() {
   const { state, dispatch } = useApp();
   const [loading, setLoading] = useState(true);
@@ -712,6 +870,7 @@ export default function PlatformOwnerAdminPage() {
         <div className="max-w-3xl mx-auto space-y-5">
           <DirectorApplicationsPanel apps={directorApps} onChanged={() => { void refresh(); }} />
           <SalesPipelinePanel />
+          <AmendmentRequestsPanel />
           <AccountDeletionRequestsPanel />
           <AccountClassificationPanel />
         </div>

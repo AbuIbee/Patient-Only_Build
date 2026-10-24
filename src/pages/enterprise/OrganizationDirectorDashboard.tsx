@@ -32,6 +32,10 @@ import {
   getMyOrganizationOriginatingQuoteId, getMyEnterpriseBillingStatus, startEnterpriseCheckout, openEnterpriseBillingPortal,
   type EnterpriseBillingAccount,
 } from '@/services/salesService';
+import {
+  requestOrganizationAmendment, withdrawAmendmentRequest, getMyOrgAmendmentRequests, getMyQuotedAmendmentForOrg,
+  type OrganizationAmendmentRequest, type AmendmentRequestType,
+} from '@/services/organizationAmendmentService';
 import OrganizationBillingPage from './OrganizationBillingPage';
 import CareConversations from '@/components/communications/CareConversations';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
@@ -194,8 +198,10 @@ function EnterpriseActivationSection({ orgId }: { orgId: string }) {
         Your application was approved, but your license stays proposed until Enterprise payment is confirmed. Enter a billing contact email and proceed to a secure Stripe checkout for the exact terms on your accepted quote.
       </p>
       <div className="space-y-1">
-        <label className="text-xs font-medium text-ent-ink">Billing contact email</label>
-        <input type="email" value={billingContactEmail} onChange={(e) => setBillingContactEmail(e.target.value)} placeholder="billing@yourorganization.com" className={inputCls} />
+        <label className="block text-xs font-medium text-ent-ink">
+          Billing contact email
+          <input type="email" value={billingContactEmail} onChange={(e) => setBillingContactEmail(e.target.value)} placeholder="billing@yourorganization.com" className={`${inputCls} mt-1`} />
+        </label>
       </div>
       <button type="button" onClick={() => { void startCheckout(); }} disabled={startingCheckout} className="px-4 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
         {startingCheckout ? 'Starting checkout…' : 'Proceed to payment'}
@@ -243,6 +249,161 @@ function EnterpriseBillingManagementSection({ orgId }: { orgId: string }) {
     <button type="button" onClick={() => { void openPortal(); }} disabled={opening} className="px-3 py-2 rounded-lg border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale disabled:opacity-60">
       {opening ? 'Opening…' : 'Manage billing & payment method'}
     </button>
+  );
+}
+
+const AMENDMENT_TYPE_LABEL: Record<AmendmentRequestType, string> = {
+  expansion: 'Expansion (more seats/capacity)', renewal: 'Renewal', downgrade: 'Downgrade', cancellation: 'Cancellation',
+};
+const AMENDMENT_STATUS_STYLE: Record<string, string> = {
+  pending: 'text-amber-700 bg-amber-100', quoted: 'text-ent-green bg-ent-green-active',
+  rejected: 'text-ent-rust bg-ent-rust/10', withdrawn: 'text-ent-muted bg-ent-pale', completed: 'text-ent-green bg-ent-green-active',
+};
+
+// OWNER DIRECTIVE MMA-ENT-SALES-006 Phase H5/I1 — a Director requests
+// an expansion/renewal/downgrade/cancellation; the Platform Owner
+// reviews it elsewhere (PlatformOwnerAdminPage). Once quoted, the
+// SAME checkout flow already built for initial activation lets the
+// Director pay for it (migration 114 is what makes that work for an
+// amendment quote specifically). Only renders for an organization
+// with an already-active license -- an org whose license is still
+// 'proposed' uses EnterpriseActivationSection instead.
+function AmendmentRequestSection({ orgId }: { orgId: string }) {
+  const [requests, setRequests] = useState<OrganizationAmendmentRequest[]>([]);
+  const [quoted, setQuoted] = useState<OrganizationAmendmentRequest | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState(false);
+  const [requestType, setRequestType] = useState<AmendmentRequestType>('expansion');
+  const [details, setDetails] = useState('');
+  const [notes, setNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [billingEmail, setBillingEmail] = useState('');
+  const [startingCheckout, setStartingCheckout] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const [all, quotedOne] = await Promise.all([getMyOrgAmendmentRequests(orgId), getMyQuotedAmendmentForOrg(orgId)]);
+    setRequests(all);
+    setQuoted(quotedOne);
+    setLoading(false);
+  }, [orgId]);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const submit = async () => {
+    if (!details.trim() && requestType !== 'cancellation') { toast.error('Describe what you need.'); return; }
+    setSubmitting(true);
+    try {
+      const { error } = await requestOrganizationAmendment(orgId, requestType, { description: details.trim() }, notes.trim() || null);
+      if (error) { toast.error(error); return; }
+      toast.success('Request submitted to the Platform Owner.');
+      setFormOpen(false);
+      setDetails('');
+      setNotes('');
+      await refresh();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const withdraw = async (id: string) => {
+    const { error } = await withdrawAmendmentRequest(id);
+    if (error) { toast.error(error); return; }
+    toast.success('Request withdrawn.');
+    await refresh();
+  };
+
+  const payForAmendment = async () => {
+    if (!quoted?.resultingQuoteId) return;
+    if (!billingEmail.trim()) { toast.error('Enter a billing contact email.'); return; }
+    setStartingCheckout(true);
+    try {
+      const { url, error } = await startEnterpriseCheckout(quoted.resultingQuoteId, billingEmail.trim());
+      if (error || !url) { toast.error(error ?? 'Could not start checkout.'); return; }
+      window.location.href = url;
+    } finally {
+      setStartingCheckout(false);
+    }
+  };
+
+  if (loading) return null;
+
+  return (
+    <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="font-bold text-ent-ink">Expansion, Renewal &amp; Cancellation</h2>
+        {!formOpen && !quoted && (
+          <button type="button" onClick={() => setFormOpen(true)} className="px-3 py-2 rounded-lg border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">
+            Request a change
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-ent-muted">
+        You can request a change to your Enterprise license here, but only the Platform Owner can price it, approve it, or alter your entitlements.
+      </p>
+
+      {quoted && (
+        <div className="rounded-xl border border-ent-line bg-ent-bg p-4 space-y-3">
+          <p className="text-sm font-semibold text-ent-ink">A quote is ready for your {AMENDMENT_TYPE_LABEL[quoted.requestType].toLowerCase()} request</p>
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-ent-ink">
+              Billing contact email
+              <input type="email" value={billingEmail} onChange={(e) => setBillingEmail(e.target.value)} placeholder="billing@yourorganization.com" className={`${inputCls} mt-1`} />
+            </label>
+          </div>
+          <button type="button" onClick={() => { void payForAmendment(); }} disabled={startingCheckout} className="px-4 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
+            {startingCheckout ? 'Starting checkout…' : 'Proceed to payment'}
+          </button>
+        </div>
+      )}
+
+      {formOpen && (
+        <div className="p-3 bg-ent-bg rounded-xl border border-ent-line space-y-2">
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-ent-ink">
+              What do you need?
+              <select value={requestType} onChange={(e) => setRequestType(e.target.value as AmendmentRequestType)} className={`${inputCls} mt-1`}>
+                {Object.entries(AMENDMENT_TYPE_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              </select>
+            </label>
+          </div>
+          {requestType !== 'cancellation' && (
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-ent-ink">
+                Describe what you need (seats, capacity, timing, etc.)
+                <textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={2} className={`${inputCls} mt-1`} />
+              </label>
+            </div>
+          )}
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-ent-ink">
+              Additional notes (optional)
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={`${inputCls} mt-1`} />
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => { void submit(); }} disabled={submitting} className="px-4 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
+              {submitting ? 'Submitting…' : 'Submit request'}
+            </button>
+            <button type="button" onClick={() => setFormOpen(false)} className="px-4 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {requests.length > 0 && (
+        <div className="space-y-1.5">
+          {requests.map((r) => (
+            <div key={r.id} className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-ent-ink">{AMENDMENT_TYPE_LABEL[r.requestType]} — {new Date(r.createdAt).toLocaleDateString()}</span>
+              <span className="flex items-center gap-2">
+                <span className={`font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${AMENDMENT_STATUS_STYLE[r.status] ?? ''}`}>{r.status}</span>
+                {r.status === 'pending' && (
+                  <button type="button" onClick={() => { void withdraw(r.id); }} className="text-ent-rust hover:underline font-semibold">Withdraw</button>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -295,23 +456,29 @@ function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: Or
       )}
       <p className="text-xs text-ent-muted">
         {license?.status === 'active'
-          ? 'This license is active under a confirmed commercial agreement. Seats, capacity, and fee are locked and can no longer be edited here — contact the Platform Owner for an expansion or renewal quote.'
+          ? 'This license is active under a confirmed commercial agreement. Seats, capacity, and fee are locked and can no longer be edited here — use "Expansion, Renewal & Cancellation" below to request a change from the Platform Owner.'
           : 'Seats, capacity and fee are proposed, configurable commercial terms — setting them here never activates the license or creates a charge. Activation happens automatically once Enterprise payment is confirmed (or, for synthetic integration testing only, via a separate admin-only mechanism); this status also controls whether covered patients actually receive Full Support.'}
       </p>
       {editing ? (
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-ent-ink">Licensed Staff Seats</label>
-              <input type="number" min={0} value={seats} onChange={(e) => setSeats(e.target.value)} placeholder="e.g. 5" className={inputCls} />
+              <label className="block text-xs font-medium text-ent-ink">
+                Licensed Staff Seats
+                <input type="number" min={0} value={seats} onChange={(e) => setSeats(e.target.value)} placeholder="e.g. 5" className={`${inputCls} mt-1`} />
+              </label>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-ent-ink">Covered Patient Capacity</label>
-              <input type="number" min={0} value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="e.g. 20" className={inputCls} />
+              <label className="block text-xs font-medium text-ent-ink">
+                Covered Patient Capacity
+                <input type="number" min={0} value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="e.g. 20" className={`${inputCls} mt-1`} />
+              </label>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-ent-ink">Proposed Annual Fee ($)</label>
-              <input type="number" min={0} step="0.01" value={fee} onChange={(e) => setFee(e.target.value)} placeholder="e.g. 999.00" className={inputCls} />
+              <label className="block text-xs font-medium text-ent-ink">
+                Proposed Annual Fee ($)
+                <input type="number" min={0} step="0.01" value={fee} onChange={(e) => setFee(e.target.value)} placeholder="e.g. 999.00" className={`${inputCls} mt-1`} />
+              </label>
             </div>
           </div>
           <div className="flex gap-2">
@@ -1243,6 +1410,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
         ) : (
           <div className="space-y-4">
             <LicenseCard orgId={organizationId} license={license} onUpdated={() => { void refresh(); }} />
+            {license?.status === 'active' && <AmendmentRequestSection orgId={organizationId} />}
             <button type="button" onClick={() => setBillingOpen(true)} className="flex items-center gap-1.5 text-sm font-semibold text-ent-bronze hover:underline">
               Open Billing &amp; Add-Ons <ChevronRight className="w-3.5 h-3.5" />
             </button>

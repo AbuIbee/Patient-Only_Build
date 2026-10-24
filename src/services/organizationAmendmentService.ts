@@ -76,11 +76,20 @@ export async function getMyQuotedAmendmentForOrg(organizationId: string): Promis
   return mapRequest(data[0] as Record<string, unknown>);
 }
 
-// Platform Owner side.
-export async function getAllAmendmentRequests(): Promise<OrganizationAmendmentRequest[]> {
-  const { data, error } = await supabase.from('organization_amendment_requests').select('*').order('created_at', { ascending: false });
+// Platform Owner side. Embeds the organization's name (Platform Owner
+// already has unrestricted organizations SELECT access via RLS,
+// migration 083) so the review panel doesn't need a second round
+// trip per request.
+export async function getAllAmendmentRequests(): Promise<(OrganizationAmendmentRequest & { organizationName: string })[]> {
+  const { data, error } = await supabase
+    .from('organization_amendment_requests')
+    .select('*, organizations:organization_id(name)')
+    .order('created_at', { ascending: false });
   if (error || !data) return [];
-  return (data as unknown as Record<string, unknown>[]).map(mapRequest);
+  return (data as unknown as (Record<string, unknown> & { organizations: { name: string } | null })[]).map((r) => ({
+    ...mapRequest(r),
+    organizationName: r.organizations?.name ?? 'Unknown organization',
+  }));
 }
 
 export async function rejectAmendmentRequest(requestId: string, notes: string): Promise<{ error: string | null }> {
