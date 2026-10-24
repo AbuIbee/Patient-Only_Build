@@ -31,7 +31,7 @@ beforeAll(async () => {
   sql(`
     INSERT INTO organizations (id, name, package_type, created_by) VALUES ('${ORG}', 'F13 Eligibility Org ${stamp}', 'integrated_care', '${ids.director}');
     INSERT INTO organization_memberships (organization_id, user_id, org_role, status) VALUES ('${ORG}', '${ids.director}', 'director', 'active');
-    INSERT INTO organization_licenses (organization_id, licensed_seats, covered_patient_capacity, status, license_number, activated_at) VALUES ('${ORG}', 10, 20, 'active', 'MMA-FE-2026-990002', now());
+    INSERT INTO organization_licenses (organization_id, licensed_seats, covered_patient_capacity, status, license_number, activated_at) VALUES ('${ORG}', 10, 20, 'active', 'MMA-FE-2026-${String(stamp).slice(-6)}', now());
   `);
 }, 30000);
 
