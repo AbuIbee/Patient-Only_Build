@@ -67,6 +67,83 @@ const returnUserToFreeTier = async (
   }
 };
 
+/*
+ * OWNER DIRECTIVE MMA-ENT-SALES-005 §2 — mandatory separation: an
+ * Enterprise Stripe event (identified solely by metadata.billing_type
+ * === 'enterprise', set by create-enterprise-checkout-session) is
+ * routed here and can only ever write to enterprise_billing_accounts /
+ * enterprise_billing_events. It never touches `subscriptions`, and a
+ * consumer event (no such metadata) never reaches these functions.
+ */
+const recordEnterpriseEventOnce = async (
+  eventId: string,
+  eventType: string,
+  billingAccountId: string | null,
+  payload: unknown,
+): Promise<boolean> => {
+  const { error } = await supabase.from('enterprise_billing_events').insert({
+    stripe_event_id: eventId,
+    event_type: eventType,
+    billing_account_id: billingAccountId,
+    payload,
+  });
+
+  if (error) {
+    // 23505 = unique_violation on stripe_event_id: this exact Stripe
+    // event was already processed (a retried/duplicated delivery).
+    // Replay-safe no-op, not an error.
+    if (error.code === '23505') {
+      console.log(`Enterprise billing event ${eventId} already processed -- skipping (replay).`);
+      return false;
+    }
+    throw new Error(`Could not record enterprise billing event: ${error.message}`);
+  }
+
+  return true;
+};
+
+const findEnterpriseBillingAccountByQuote = async (quoteId: string) => {
+  const { data, error } = await supabase
+    .from('enterprise_billing_accounts')
+    .select('id')
+    .eq('quote_id', quoteId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Could not look up enterprise billing account by quote: ${error.message}`);
+  }
+
+  return data;
+};
+
+const findEnterpriseBillingAccountBySubscription = async (stripeSubscriptionId: string) => {
+  const { data, error } = await supabase
+    .from('enterprise_billing_accounts')
+    .select('id')
+    .eq('stripe_subscription_id', stripeSubscriptionId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Could not look up enterprise billing account by subscription: ${error.message}`);
+  }
+
+  return data;
+};
+
+const updateEnterpriseBillingAccount = async (
+  billingAccountId: string,
+  updates: Record<string, unknown>,
+) => {
+  const { error } = await supabase
+    .from('enterprise_billing_accounts')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', billingAccountId);
+
+  if (error) {
+    throw new Error(`Could not update enterprise billing account: ${error.message}`);
+  }
+};
+
 const activatePaidTier = async (
   userId: string,
   stripeCustomerId: string | null,
@@ -148,6 +225,38 @@ serve(async (req) => {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
 
+        if (session.metadata?.billing_type === 'enterprise') {
+          const quoteId = session.metadata?.quote_id ?? null;
+          const metadataBillingAccountId = session.metadata?.billing_account_id ?? null;
+          const stripeCustomerId = typeof session.customer === 'string' ? session.customer : null;
+          const stripeSubscriptionId = typeof session.subscription === 'string' ? session.subscription : null;
+
+          const isNewEvent = await recordEnterpriseEventOnce(event.id, event.type, metadataBillingAccountId, session);
+          if (!isNewEvent) break;
+
+          if (!stripeSubscriptionId) {
+            throw new Error('Enterprise checkout session is missing a Stripe subscription ID.');
+          }
+
+          let billingAccountId = metadataBillingAccountId;
+          if (!billingAccountId && quoteId) {
+            billingAccountId = (await findEnterpriseBillingAccountByQuote(quoteId))?.id ?? null;
+          }
+          if (!billingAccountId) {
+            throw new Error(`Enterprise checkout session ${session.id} has no matching billing account (quote_id ${quoteId}).`);
+          }
+
+          await updateEnterpriseBillingAccount(billingAccountId, {
+            status: 'active',
+            stripe_customer_id: stripeCustomerId,
+            stripe_checkout_session_id: session.id,
+            stripe_subscription_id: stripeSubscriptionId,
+          });
+
+          console.log(`Enterprise billing account ${billingAccountId} activated via checkout session ${session.id}.`);
+          break;
+        }
+
         const userId =
           session.metadata?.supabase_user_id ??
           session.client_reference_id;
@@ -199,6 +308,52 @@ serve(async (req) => {
        */
       case 'customer.subscription.updated': {
         const stripeSubscription = event.data.object as Stripe.Subscription;
+
+        if (stripeSubscription.metadata?.billing_type === 'enterprise') {
+          const billingAccountId = stripeSubscription.metadata?.billing_account_id ?? null;
+          const quoteId = stripeSubscription.metadata?.quote_id ?? null;
+
+          const isNewEvent = await recordEnterpriseEventOnce(event.id, event.type, billingAccountId, stripeSubscription);
+          if (!isNewEvent) break;
+
+          let resolvedAccountId = billingAccountId;
+          if (!resolvedAccountId && quoteId) {
+            resolvedAccountId = (await findEnterpriseBillingAccountByQuote(quoteId))?.id ?? null;
+          }
+          if (!resolvedAccountId) {
+            console.warn(`Enterprise subscription ${stripeSubscription.id} has no resolvable billing account.`);
+            break;
+          }
+
+          // Stripe's own vocabulary mapped onto the CHECK constraint on
+          // enterprise_billing_accounts.status -- fail closed (log and
+          // skip) for a status this table has no slot for, rather than
+          // guessing a mapping.
+          const stripeStatusToOurs: Record<string, string> = {
+            active: 'active',
+            trialing: 'active',
+            past_due: 'past_due',
+            canceled: 'canceled',
+            unpaid: 'past_due',
+            incomplete: 'incomplete',
+            incomplete_expired: 'canceled',
+          };
+          const mappedStatus = stripeStatusToOurs[stripeSubscription.status];
+          if (!mappedStatus) {
+            console.warn(`Enterprise subscription ${stripeSubscription.id} has unhandled Stripe status ${stripeSubscription.status} -- not changing stored status.`);
+            break;
+          }
+
+          await updateEnterpriseBillingAccount(resolvedAccountId, {
+            status: mappedStatus,
+            stripe_subscription_id: stripeSubscription.id,
+            stripe_customer_id: typeof stripeSubscription.customer === 'string' ? stripeSubscription.customer : null,
+          });
+
+          console.log(`Enterprise billing account ${resolvedAccountId} set to ${mappedStatus} (Stripe status ${stripeSubscription.status}).`);
+          break;
+        }
+
         const userId = stripeSubscription.metadata?.supabase_user_id;
 
         if (!userId) {
@@ -247,6 +402,28 @@ serve(async (req) => {
        */
       case 'customer.subscription.deleted': {
         const stripeSubscription = event.data.object as Stripe.Subscription;
+
+        if (stripeSubscription.metadata?.billing_type === 'enterprise') {
+          const billingAccountId = stripeSubscription.metadata?.billing_account_id ?? null;
+          const quoteId = stripeSubscription.metadata?.quote_id ?? null;
+
+          const isNewEvent = await recordEnterpriseEventOnce(event.id, event.type, billingAccountId, stripeSubscription);
+          if (!isNewEvent) break;
+
+          let resolvedAccountId = billingAccountId;
+          if (!resolvedAccountId && quoteId) {
+            resolvedAccountId = (await findEnterpriseBillingAccountByQuote(quoteId))?.id ?? null;
+          }
+          if (!resolvedAccountId) {
+            console.warn(`Deleted enterprise subscription ${stripeSubscription.id} has no resolvable billing account.`);
+            break;
+          }
+
+          await updateEnterpriseBillingAccount(resolvedAccountId, { status: 'canceled' });
+          console.log(`Enterprise billing account ${resolvedAccountId} canceled after subscription deletion.`);
+          break;
+        }
+
         const userId = stripeSubscription.metadata?.supabase_user_id;
 
         if (!userId) {
@@ -279,6 +456,16 @@ serve(async (req) => {
 
         if (!stripeSubscriptionId) {
           console.warn('Payment-failed invoice has no Stripe subscription ID.');
+          break;
+        }
+
+        const enterpriseAccount = await findEnterpriseBillingAccountBySubscription(stripeSubscriptionId);
+        if (enterpriseAccount) {
+          const isNewEvent = await recordEnterpriseEventOnce(event.id, event.type, enterpriseAccount.id, invoice);
+          if (isNewEvent) {
+            await updateEnterpriseBillingAccount(enterpriseAccount.id, { status: 'past_due' });
+            console.log(`Enterprise billing account ${enterpriseAccount.id} marked past_due after payment failure.`);
+          }
           break;
         }
 
