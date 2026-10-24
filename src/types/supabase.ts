@@ -3895,6 +3895,69 @@ export interface Database {
           },
         ]
       }
+      enterprise_billing_accounts: {
+        Row: {
+          id: string
+          quote_id: string
+          billing_contact_email: string
+          currency: string
+          unit_amount_cents: number
+          billing_interval: string
+          stripe_customer_id: string | null
+          stripe_checkout_session_id: string | null
+          stripe_subscription_id: string | null
+          status: string
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          quote_id: string
+          billing_contact_email: string
+          currency?: string
+          unit_amount_cents: number
+          billing_interval: string
+          stripe_customer_id?: string | null
+          stripe_checkout_session_id?: string | null
+          stripe_subscription_id?: string | null
+          status?: string
+          created_by: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          quote_id?: string
+          billing_contact_email?: string
+          currency?: string
+          unit_amount_cents?: number
+          billing_interval?: string
+          stripe_customer_id?: string | null
+          stripe_checkout_session_id?: string | null
+          stripe_subscription_id?: string | null
+          status?: string
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enterprise_billing_accounts_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: true
+            referencedRelation: "sales_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enterprise_billing_accounts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       has_patient_access: { Args: { p_patient_id: string }; Returns: boolean }
@@ -5829,6 +5892,42 @@ export interface Database {
           proposed_licensed_seats: number | null
           prospective_organization_name: string | null
           quote_id: string | null
+        }[]
+      }
+      create_enterprise_billing_account: {
+        Args: { p_quote_id: string; p_billing_contact_email: string }
+        Returns: {
+          id: string
+          quote_id: string
+          billing_contact_email: string
+          currency: string
+          unit_amount_cents: number
+          billing_interval: string
+          stripe_customer_id: string | null
+          stripe_checkout_session_id: string | null
+          stripe_subscription_id: string | null
+          status: string
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+      }
+      get_my_enterprise_billing_status: {
+        Args: { p_quote_id: string }
+        Returns: {
+          id: string
+          quote_id: string
+          billing_contact_email: string
+          currency: string
+          unit_amount_cents: number
+          billing_interval: string
+          stripe_customer_id: string | null
+          stripe_checkout_session_id: string | null
+          stripe_subscription_id: string | null
+          status: string
+          created_by: string
+          created_at: string
+          updated_at: string
         }[]
       }
     }

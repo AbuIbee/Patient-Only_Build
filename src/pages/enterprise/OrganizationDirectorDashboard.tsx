@@ -28,6 +28,10 @@ import {
   getOrgVisits, getOrgIncidentReports, getOrgShiftHandoffs, resolveOrgIncidentReport,
   type OrgVisit, type OrgIncidentReport, type OrgShiftHandoff, type IncidentResolutionStatus,
 } from '@/services/organizationDirectorOpsService';
+import {
+  getMyOrganizationOriginatingQuoteId, getMyEnterpriseBillingStatus, startEnterpriseCheckout,
+  type EnterpriseBillingAccount,
+} from '@/services/salesService';
 import OrganizationBillingPage from './OrganizationBillingPage';
 import CareConversations from '@/components/communications/CareConversations';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
@@ -128,6 +132,81 @@ function CreateOrgCard({ onCreated }: { onCreated: () => void }) {
   );
 }
 
+// OWNER DIRECTIVE MMA-ENT-SALES-005 Phase F/G -- the missing link
+// between a Platform-Owner-approved Director application and an
+// actually-paid Enterprise license. Only renders when this
+// organization was created through the quote-driven sales pipeline
+// (an originating quote exists) and payment hasn't already succeeded
+// -- an organization created the old, quote-less way (legacy
+// CreateOrgCard) has nothing to pay against and sees nothing extra
+// here, exactly as before this feature existed.
+function EnterpriseActivationSection({ orgId }: { orgId: string }) {
+  const [quoteId, setQuoteId] = useState<string | null>(null);
+  const [billing, setBilling] = useState<EnterpriseBillingAccount | null>(null);
+  const [billingContactEmail, setBillingContactEmail] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [startingCheckout, setStartingCheckout] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const foundQuoteId = await getMyOrganizationOriginatingQuoteId(orgId);
+      if (cancelled) return;
+      setQuoteId(foundQuoteId);
+      if (foundQuoteId) {
+        const status = await getMyEnterpriseBillingStatus(foundQuoteId);
+        if (cancelled) return;
+        setBilling(status);
+        if (status?.billingContactEmail) setBillingContactEmail(status.billingContactEmail);
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [orgId]);
+
+  const startCheckout = async () => {
+    if (!quoteId) return;
+    if (!billingContactEmail.trim()) { toast.error('Enter a billing contact email.'); return; }
+    setStartingCheckout(true);
+    try {
+      const { url, error } = await startEnterpriseCheckout(quoteId, billingContactEmail.trim());
+      if (error || !url) { toast.error(error ?? 'Could not start checkout.'); return; }
+      window.location.href = url;
+    } finally {
+      setStartingCheckout(false);
+    }
+  };
+
+  if (loading || !quoteId) return null;
+
+  if (billing?.status === 'past_due' || billing?.status === 'canceled') {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+        Your Enterprise payment is {billing.status === 'past_due' ? 'past due' : 'canceled'}. Contact the Platform Owner to resolve billing and reactivate your license.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-ent-line bg-ent-bg p-4 space-y-3">
+      <p className="text-sm font-semibold text-ent-ink">Activate your Enterprise license</p>
+      <p className="text-xs text-ent-muted">
+        Your application was approved, but your license stays proposed until Enterprise payment is confirmed. Enter a billing contact email and proceed to a secure Stripe checkout for the exact terms on your accepted quote.
+      </p>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-ent-ink">Billing contact email</label>
+        <input type="email" value={billingContactEmail} onChange={(e) => setBillingContactEmail(e.target.value)} placeholder="billing@yourorganization.com" className={inputCls} />
+      </div>
+      <button type="button" onClick={() => { void startCheckout(); }} disabled={startingCheckout} className="px-4 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
+        {startingCheckout ? 'Starting checkout…' : 'Proceed to payment'}
+      </button>
+      <p className="text-[11px] text-ent-muted">
+        {billing ? 'A checkout session was started previously but payment has not yet completed — starting again is safe.' : 'This calls out to Stripe; no charge happens until you complete payment there.'}
+      </p>
+    </div>
+  );
+}
+
 function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: OrgLicense | null; onUpdated: () => void }) {
   const [editing, setEditing] = useState(false);
   const [seats, setSeats] = useState(license?.licensedSeats?.toString() ?? '');
@@ -217,6 +296,7 @@ function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: Or
           )}
         </div>
       )}
+      {license?.status === 'proposed' && <EnterpriseActivationSection orgId={orgId} />}
     </div>
   );
 }

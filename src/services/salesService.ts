@@ -8,6 +8,7 @@
 // professionalApplicationService.ts already uses for professional_applications
 // — RLS (migration 107's "Platform Owner can view..." policies) is the
 // real boundary either way, not this file.
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import type { ProfessionalApplication } from './professionalApplicationService';
 
@@ -229,4 +230,100 @@ export async function redeemQuoteInvitation(
 export function quoteTermsFromDraft(draft: ProfessionalApplication): RedeemedQuoteTerms | null {
   const snapshot = (draft.applicationDetails as { quoteSnapshot?: RedeemedQuoteTerms } | undefined)?.quoteSnapshot;
   return snapshot ?? null;
+}
+
+// OWNER DIRECTIVE MMA-ENT-SALES-005 Phase F/G -- client wrappers for
+// migration 110's Enterprise billing. The server (create_enterprise_billing_account(),
+// invoked server-side by the create-enterprise-checkout-session Edge
+// Function, never called directly by this file) is the sole source of
+// truth for amount/currency/interval; nothing here ever sends a price,
+// seat count, or organization id that the server would trust over its
+// own quote lookup.
+export type EnterpriseBillingStatus = 'pending' | 'active' | 'past_due' | 'canceled' | 'incomplete';
+
+export interface EnterpriseBillingAccount {
+  id: string;
+  quoteId: string;
+  billingContactEmail: string;
+  currency: string;
+  unitAmountCents: number;
+  billingInterval: 'month' | 'year';
+  status: EnterpriseBillingStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapBillingAccount(r: Record<string, unknown>): EnterpriseBillingAccount {
+  return {
+    id: r.id as string, quoteId: r.quote_id as string, billingContactEmail: r.billing_contact_email as string,
+    currency: r.currency as string, unitAmountCents: r.unit_amount_cents as number,
+    billingInterval: r.billing_interval as 'month' | 'year', status: r.status as EnterpriseBillingStatus,
+    createdAt: r.created_at as string, updatedAt: r.updated_at as string,
+  };
+}
+
+// Reads the in-flight/confirmed billing status for a quote the signed-in
+// user's own application references (RLS + the RPC's own join both
+// self-scope this -- never returns another applicant's billing data).
+// Returns null when no checkout has been started yet, which is the
+// normal, expected state for a freshly approved application.
+export async function getMyEnterpriseBillingStatus(quoteId: string): Promise<EnterpriseBillingAccount | null> {
+  const { data, error } = await supabase.rpc('get_my_enterprise_billing_status', { p_quote_id: quoteId });
+  if (error || !data || data.length === 0) return null;
+  return mapBillingAccount(data[0] as Record<string, unknown>);
+}
+
+// Starts a real Stripe Checkout Session for Enterprise billing and
+// returns the URL to redirect the browser to. The Edge Function
+// independently re-derives price/currency/term from the live quote and
+// re-verifies the caller's own application references it -- this
+// wrapper cannot and does not influence any of that.
+export async function startEnterpriseCheckout(
+  quoteId: string, billingContactEmail: string,
+): Promise<{ url: string | null; error: string | null }> {
+  const { data, error } = await supabase.functions.invoke<{ url?: string; error?: string }>('create-enterprise-checkout-session', {
+    body: { quoteId, billingContactEmail },
+  });
+  if (error) {
+    // A non-2xx response surfaces here as a bare FunctionsHttpError
+    // whose own .message is just "Edge Function returned a non-2xx
+    // status code" -- the function's actual, specific rejection reason
+    // (an ownership check, a missing price, or Stripe's own error) is
+    // in the response body, reachable only via error.context.json().
+    // Showing the generic message to the user would hide exactly the
+    // information they need (e.g. "This quote has no price yet").
+    if (error instanceof FunctionsHttpError) {
+      try {
+        const body = await error.context.json();
+        if (body?.error) return { url: null, error: body.error as string };
+      } catch {
+        // Response body wasn't JSON (or already consumed) -- fall through to the generic message below.
+      }
+    }
+    return { url: null, error: errMsg(error, 'Could not start checkout.') };
+  }
+  if (data?.error) return { url: null, error: data.error };
+  if (!data?.url) return { url: null, error: 'Checkout did not return a payment link.' };
+  return { url: data.url, error: null };
+}
+
+// The Director's own approved application is the one place that still
+// links an existing organization back to the quote that created it
+// (organization_licenses itself has no quote_id column -- deliberately:
+// migration 110's comment explains a license can also be configured
+// before any quote-driven payment exists at all, e.g. the legacy
+// CreateOrgCard path). Returns null for such a quote-less organization,
+// not an error -- there is simply nothing to pay for.
+export async function getMyOrganizationOriginatingQuoteId(orgId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('professional_applications')
+    .select('application_details')
+    .eq('target_organization_id', orgId)
+    .eq('status', 'approved')
+    .order('platform_owner_approved_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const details = data.application_details as { originatingQuoteId?: string } | null;
+  return details?.originatingQuoteId ?? null;
 }
