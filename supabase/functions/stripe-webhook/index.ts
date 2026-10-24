@@ -144,6 +144,46 @@ const updateEnterpriseBillingAccount = async (
   }
 };
 
+/*
+ * OWNER DIRECTIVE MMA-ENT-SALES-005 Phase G — the license issuance
+ * engine (migration 111). Confirmed payment is the trigger that turns
+ * an already-approved Director application's 'proposed' license into
+ * a real, numbered, 'active' one. If the application hasn't been
+ * approved yet, activate_enterprise_license_from_quote() itself raises
+ * -- logged here and left for Stripe's own automatic webhook retry to
+ * pick up once approval happens; never treated as a fatal webhook
+ * error (that would make Stripe keep retrying a checkout-activation
+ * step that already fully succeeded).
+ */
+const tryActivateLicenseForQuote = async (quoteId: string | null): Promise<void> => {
+  if (!quoteId) return;
+
+  const { error } = await supabase.rpc('activate_enterprise_license_from_quote', { p_quote_id: quoteId });
+  if (error) {
+    console.warn(`License not activated yet for quote ${quoteId} (likely awaiting Platform Owner approval): ${error.message}`);
+  } else {
+    console.log(`Enterprise license activated for quote ${quoteId}.`);
+  }
+};
+
+/*
+ * Mirrors a fully confirmed Stripe subscription cancellation onto the
+ * organization's own license status (deliberately NOT called for a
+ * mere payment-failure/past_due grace period -- see migration 111).
+ * Silently no-ops if the application isn't approved yet / isn't an
+ * Enterprise-billed one -- there is nothing to cancel in that case.
+ */
+const tryCancelLicenseForQuote = async (quoteId: string | null): Promise<void> => {
+  if (!quoteId) return;
+
+  const { error } = await supabase.rpc('set_enterprise_license_status_for_quote', { p_quote_id: quoteId, p_status: 'canceled' });
+  if (error) {
+    console.warn(`Could not mark license canceled for quote ${quoteId} (may not have an issued license yet): ${error.message}`);
+  } else {
+    console.log(`Enterprise license canceled for quote ${quoteId}.`);
+  }
+};
+
 const activatePaidTier = async (
   userId: string,
   stripeCustomerId: string | null,
@@ -254,6 +294,7 @@ serve(async (req) => {
           });
 
           console.log(`Enterprise billing account ${billingAccountId} activated via checkout session ${session.id}.`);
+          await tryActivateLicenseForQuote(quoteId);
           break;
         }
 
@@ -421,6 +462,7 @@ serve(async (req) => {
 
           await updateEnterpriseBillingAccount(resolvedAccountId, { status: 'canceled' });
           console.log(`Enterprise billing account ${resolvedAccountId} canceled after subscription deletion.`);
+          await tryCancelLicenseForQuote(quoteId);
           break;
         }
 

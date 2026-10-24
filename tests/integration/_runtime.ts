@@ -14,7 +14,11 @@ export const SERVICE =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
 
 export function sql(statement: string): string {
-  return execSync('docker exec -i supabase_db_repo psql -U postgres -d postgres -At -v ON_ERROR_STOP=1', {
+  // -q (quiet): without it, psql appends a command-completion tag (e.g.
+  // "INSERT 0 1") after any INSERT/UPDATE/DELETE ... RETURNING value,
+  // silently corrupting the captured result with a trailing newline +
+  // tag. -At alone only suppresses result-set formatting, not this.
+  return execSync('docker exec -i supabase_db_repo psql -U postgres -d postgres -At -q -v ON_ERROR_STOP=1', {
     input: statement,
   })
     .toString()
