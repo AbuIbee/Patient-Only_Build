@@ -4031,6 +4031,78 @@ export interface Database {
           },
         ]
       }
+      enterprise_contracts: {
+        Row: {
+          id: string
+          quote_id: string
+          contract_type: string
+          template_version: string
+          signatory_name: string
+          signatory_title: string | null
+          status: string
+          presented_at: string | null
+          execution_method: string | null
+          execution_evidence_reference: string | null
+          executed_by: string | null
+          executed_at: string | null
+          voided_reason: string | null
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          quote_id: string
+          contract_type: string
+          template_version: string
+          signatory_name: string
+          signatory_title?: string | null
+          status?: string
+          presented_at?: string | null
+          execution_method?: string | null
+          execution_evidence_reference?: string | null
+          executed_by?: string | null
+          executed_at?: string | null
+          voided_reason?: string | null
+          created_by: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          quote_id?: string
+          contract_type?: string
+          template_version?: string
+          signatory_name?: string
+          signatory_title?: string | null
+          status?: string
+          presented_at?: string | null
+          execution_method?: string | null
+          execution_evidence_reference?: string | null
+          executed_by?: string | null
+          executed_at?: string | null
+          voided_reason?: string | null
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enterprise_contracts_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "sales_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enterprise_contracts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       has_patient_access: { Args: { p_patient_id: string }; Returns: boolean }
@@ -6117,6 +6189,90 @@ export interface Database {
           reviewed_by: string | null
           reviewed_at: string | null
           completed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+      }
+      platform_owner_create_contract: {
+        Args: { p_quote_id: string; p_contract_type: string; p_template_version: string; p_signatory_name: string; p_signatory_title: string | null }
+        Returns: {
+          id: string
+          quote_id: string
+          contract_type: string
+          template_version: string
+          signatory_name: string
+          signatory_title: string | null
+          status: string
+          presented_at: string | null
+          execution_method: string | null
+          execution_evidence_reference: string | null
+          executed_by: string | null
+          executed_at: string | null
+          voided_reason: string | null
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+      }
+      platform_owner_present_contract: {
+        Args: { p_contract_id: string }
+        Returns: {
+          id: string
+          quote_id: string
+          contract_type: string
+          template_version: string
+          signatory_name: string
+          signatory_title: string | null
+          status: string
+          presented_at: string | null
+          execution_method: string | null
+          execution_evidence_reference: string | null
+          executed_by: string | null
+          executed_at: string | null
+          voided_reason: string | null
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+      }
+      platform_owner_record_contract_execution: {
+        Args: { p_contract_id: string; p_execution_method: string; p_execution_evidence_reference: string }
+        Returns: {
+          id: string
+          quote_id: string
+          contract_type: string
+          template_version: string
+          signatory_name: string
+          signatory_title: string | null
+          status: string
+          presented_at: string | null
+          execution_method: string | null
+          execution_evidence_reference: string | null
+          executed_by: string | null
+          executed_at: string | null
+          voided_reason: string | null
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+      }
+      platform_owner_void_contract: {
+        Args: { p_contract_id: string; p_reason: string }
+        Returns: {
+          id: string
+          quote_id: string
+          contract_type: string
+          template_version: string
+          signatory_name: string
+          signatory_title: string | null
+          status: string
+          presented_at: string | null
+          execution_method: string | null
+          execution_evidence_reference: string | null
+          executed_by: string | null
+          executed_at: string | null
+          voided_reason: string | null
+          created_by: string
           created_at: string
           updated_at: string
         }

@@ -22,6 +22,10 @@ import {
   type OrganizationAmendmentRequest, type AmendmentRequestType,
 } from '@/services/organizationAmendmentService';
 import {
+  getContractsForQuote, createContract, presentContract, recordContractExecution, voidContract,
+  type EnterpriseContract, type ContractType,
+} from '@/services/enterpriseContractService';
+import {
   getSalesProspects, createProspect, getSalesQuotes, createQuote, sendQuote, revokeQuote,
   getQuoteInvitations, issueQuoteInvitation, revokeQuoteInvitation, getQuoteWithAncestry,
   type SalesProspect, type SalesQuote, type SalesQuoteInvitation, type SalesPackageType,
@@ -524,7 +528,146 @@ function QuoteCard({ quote, onChanged }: { quote: SalesQuote; onChanged: () => v
         </div>
       )}
       {quote.status === 'sent' && <QuoteInvitationsSection quote={quote} />}
+      {quote.status === 'sent' && <ContractManagementSection quoteId={quote.id} />}
     </li>
+  );
+}
+
+const CONTRACT_TYPE_LABEL: Record<ContractType, string> = { saas_license: 'SaaS License Agreement', baa: 'BAA', dpa: 'DPA' };
+const CONTRACT_STATUS_STYLE: Record<string, string> = {
+  draft: 'text-ent-muted bg-ent-pale', presented: 'text-amber-700 bg-amber-100',
+  executed: 'text-ent-green bg-ent-green-active', void: 'text-ent-rust bg-ent-rust/10',
+};
+
+// OWNER DIRECTIVE MMA-ENT-SALES-006 Phase F3 — per-quote agreement
+// management. "Executed" is never a button the Platform Owner clicks
+// without evidence: platform_owner_record_contract_execution() itself
+// rejects an empty method or reference, so this form simply surfaces
+// that same requirement rather than re-validating it client-side only.
+function ContractManagementSection({ quoteId }: { quoteId: string }) {
+  const [contracts, setContracts] = useState<EnterpriseContract[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [contractType, setContractType] = useState<ContractType>('saas_license');
+  const [templateVersion, setTemplateVersion] = useState('');
+  const [signatoryName, setSignatoryName] = useState('');
+  const [signatoryTitle, setSignatoryTitle] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [execForm, setExecForm] = useState<Record<string, { method: string; reference: string }>>({});
+  const [voidReason, setVoidReason] = useState<Record<string, string>>({});
+
+  const refresh = useCallback(async () => { setContracts(await getContractsForQuote(quoteId)); }, [quoteId]);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const submitCreate = async () => {
+    if (!templateVersion.trim() || !signatoryName.trim()) { toast.error('Template version and signatory name are required.'); return; }
+    setBusyId('new');
+    try {
+      const { error } = await createContract(quoteId, contractType, templateVersion.trim(), signatoryName.trim(), signatoryTitle.trim() || null);
+      if (error) { toast.error(error); return; }
+      toast.success('Agreement record created as a draft.');
+      setShowForm(false);
+      setTemplateVersion(''); setSignatoryName(''); setSignatoryTitle('');
+      void refresh();
+    } finally { setBusyId(null); }
+  };
+  const present = async (id: string) => {
+    setBusyId(id);
+    try {
+      const { error } = await presentContract(id);
+      if (error) { toast.error(error); return; }
+      toast.success('Presented to the customer.');
+      void refresh();
+    } finally { setBusyId(null); }
+  };
+  const recordExecution = async (id: string) => {
+    const form = execForm[id] ?? { method: '', reference: '' };
+    if (!form.method.trim() || !form.reference.trim()) { toast.error('An execution method and evidence reference are both required.'); return; }
+    setBusyId(id);
+    try {
+      const { error } = await recordContractExecution(id, form.method.trim(), form.reference.trim());
+      if (error) { toast.error(error); return; }
+      toast.success('Execution recorded.');
+      void refresh();
+    } finally { setBusyId(null); }
+  };
+  const doVoid = async (id: string) => {
+    const reason = voidReason[id]?.trim();
+    if (!reason) { toast.error('A reason is required.'); return; }
+    setBusyId(id);
+    try {
+      const { error } = await voidContract(id, reason);
+      if (error) { toast.error(error); return; }
+      toast.success('Agreement voided.');
+      void refresh();
+    } finally { setBusyId(null); }
+  };
+
+  return (
+    <div className="pt-1 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold text-ent-ink uppercase tracking-wide">Agreements</p>
+        <button type="button" onClick={() => setShowForm((s) => !s)} className="text-xs font-semibold text-ent-bronze hover:underline">
+          + Add agreement record
+        </button>
+      </div>
+      {showForm && (
+        <div className="p-3 bg-ent-panel rounded-xl border border-ent-line space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <select value={contractType} onChange={(e) => setContractType(e.target.value as ContractType)} className={`${inputCls} w-48`}>
+              {Object.entries(CONTRACT_TYPE_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+            <input value={templateVersion} onChange={(e) => setTemplateVersion(e.target.value)} placeholder="Template version (e.g. MMA-SAAS-2026-v1)" className={`${inputCls} flex-1 min-w-[180px]`} />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input value={signatoryName} onChange={(e) => setSignatoryName(e.target.value)} placeholder="Signatory name" className={`${inputCls} flex-1 min-w-[140px]`} />
+            <input value={signatoryTitle} onChange={(e) => setSignatoryTitle(e.target.value)} placeholder="Signatory title (optional)" className={`${inputCls} flex-1 min-w-[140px]`} />
+          </div>
+          <button type="button" onClick={() => { void submitCreate(); }} disabled={busyId === 'new'} className="px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold disabled:opacity-60">
+            Create as draft
+          </button>
+        </div>
+      )}
+      {contracts.map((c) => (
+        <div key={c.id} className="p-3 bg-ent-panel rounded-xl border border-ent-line space-y-1.5">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <p className="text-xs font-semibold text-ent-ink">{CONTRACT_TYPE_LABEL[c.contractType]} · {c.templateVersion} · {c.signatoryName}</p>
+            <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${CONTRACT_STATUS_STYLE[c.status] ?? ''}`}>{c.status}</span>
+          </div>
+          {c.status === 'executed' && (
+            <p className="text-xs text-ent-muted">Executed via {c.executionMethod} ({c.executionEvidenceReference}) on {c.executedAt ? new Date(c.executedAt).toLocaleDateString() : ''}</p>
+          )}
+          {c.status === 'void' && <p className="text-xs text-ent-muted">Voided: {c.voidedReason}</p>}
+          {c.status === 'draft' && (
+            <button type="button" onClick={() => { void present(c.id); }} disabled={busyId === c.id} className="px-3 py-1.5 rounded-lg bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold disabled:opacity-60">
+              Present to customer
+            </button>
+          )}
+          {c.status === 'presented' && (
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap gap-2">
+                <input
+                  value={execForm[c.id]?.method ?? ''} onChange={(e) => setExecForm((p) => ({ ...p, [c.id]: { ...(p[c.id] ?? { method: '', reference: '' }), method: e.target.value } }))}
+                  placeholder="Execution method (e.g. DocuSign envelope #...)" className={`${inputCls} flex-1 min-w-[180px]`}
+                />
+                <input
+                  value={execForm[c.id]?.reference ?? ''} onChange={(e) => setExecForm((p) => ({ ...p, [c.id]: { ...(p[c.id] ?? { method: '', reference: '' }), reference: e.target.value } }))}
+                  placeholder="Evidence reference (document id, storage path, etc.)" className={`${inputCls} flex-1 min-w-[180px]`}
+                />
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { void recordExecution(c.id); }} disabled={busyId === c.id} className="px-3 py-1.5 rounded-lg bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold disabled:opacity-60">
+                  Record execution
+                </button>
+                <input value={voidReason[c.id] ?? ''} onChange={(e) => setVoidReason((p) => ({ ...p, [c.id]: e.target.value }))} placeholder="Void reason…" className={`${inputCls} flex-1 min-w-[140px]`} />
+                <button type="button" onClick={() => { void doVoid(c.id); }} disabled={busyId === c.id} className="px-3 py-1.5 rounded-lg border border-ent-rust text-ent-rust text-xs font-semibold hover:bg-ent-rust/10 disabled:opacity-60">
+                  Void
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 

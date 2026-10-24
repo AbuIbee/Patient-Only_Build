@@ -36,6 +36,7 @@ import {
   requestOrganizationAmendment, withdrawAmendmentRequest, getMyOrgAmendmentRequests, getMyQuotedAmendmentForOrg,
   type OrganizationAmendmentRequest, type AmendmentRequestType,
 } from '@/services/organizationAmendmentService';
+import { getContractsForQuote, type EnterpriseContract } from '@/services/enterpriseContractService';
 import OrganizationBillingPage from './OrganizationBillingPage';
 import CareConversations from '@/components/communications/CareConversations';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
@@ -147,6 +148,7 @@ function CreateOrgCard({ onCreated }: { onCreated: () => void }) {
 function EnterpriseActivationSection({ orgId }: { orgId: string }) {
   const [quoteId, setQuoteId] = useState<string | null>(null);
   const [billing, setBilling] = useState<EnterpriseBillingAccount | null>(null);
+  const [contracts, setContracts] = useState<EnterpriseContract[]>([]);
   const [billingContactEmail, setBillingContactEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [startingCheckout, setStartingCheckout] = useState(false);
@@ -158,15 +160,23 @@ function EnterpriseActivationSection({ orgId }: { orgId: string }) {
       if (cancelled) return;
       setQuoteId(foundQuoteId);
       if (foundQuoteId) {
-        const status = await getMyEnterpriseBillingStatus(foundQuoteId);
+        const [status, contractRows] = await Promise.all([getMyEnterpriseBillingStatus(foundQuoteId), getContractsForQuote(foundQuoteId)]);
         if (cancelled) return;
         setBilling(status);
+        setContracts(contractRows);
         if (status?.billingContactEmail) setBillingContactEmail(status.billingContactEmail);
       }
       setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [orgId]);
+
+  // D9 — "Display: ... Agreement pending/executed..." derived from
+  // the real enterprise_contracts rows this Director can see (RLS
+  // only shows presented-or-later ones, migration 115), never an
+  // invented frontend indicator. No contracts at all means no
+  // agreement was required for this quote -- shown as nothing extra.
+  const unexecutedContract = contracts.find((c) => c.status !== 'executed' && c.status !== 'void');
 
   const startCheckout = async () => {
     if (!quoteId) return;
@@ -197,6 +207,11 @@ function EnterpriseActivationSection({ orgId }: { orgId: string }) {
       <p className="text-xs text-ent-muted">
         Your application was approved, but your license stays proposed until Enterprise payment is confirmed. Enter a billing contact email and proceed to a secure Stripe checkout for the exact terms on your accepted quote.
       </p>
+      {unexecutedContract && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+          Agreement status: <strong>{unexecutedContract.status === 'presented' ? 'pending your signature/execution' : 'preparing'}</strong>. Your license will not activate until this is complete, even after payment.
+        </div>
+      )}
       <div className="space-y-1">
         <label className="block text-xs font-medium text-ent-ink">
           Billing contact email
