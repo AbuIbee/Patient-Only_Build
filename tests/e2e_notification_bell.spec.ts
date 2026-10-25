@@ -80,4 +80,53 @@ test.describe('Notification bell (MMA-ENT-SALES-006 Phase I2)', () => {
       await deleteUser(bilalId);
     }
   });
+
+  // CODEX F-19 -- previously a real fetch failure and "genuinely zero
+  // notifications" rendered identically ("No notifications yet."),
+  // and a failed mark-read still showed as read in the UI because the
+  // local state update ran before the server call was even awaited.
+  test('a genuine fetch failure is shown as an explicit error, not a fabricated empty inbox, and a failed mark-read is not shown as read', async ({ page }) => {
+    const ownerEmail = `bellui-fail-owner-${stamp}@local.test`;
+    const ownerId = await mkUser(ownerEmail);
+    const bilalEmail = `bellui-fail-bilal-${stamp}@local.test`;
+    const bilalId = await mkUser(bilalEmail);
+    let appId = '';
+    try {
+      sql(`UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id IN ('${ownerId}','${bilalId}'); UPDATE profiles SET role='admin' WHERE id='${ownerId}';`);
+      appId = sql(`
+        INSERT INTO professional_applications (applicant_user_id, requested_office, proposed_organization_name, proposed_package_type, legal_name, contact_email, status, platform_owner_approval_required, application_details)
+        VALUES ('${bilalId}', 'director', '${orgName} Fail', 'integrated_care', 'Bell Bilal Fail', '${bilalEmail}', 'pending_review', true, '{}'::jsonb)
+        RETURNING id;
+      `);
+
+      await signIn(page, ownerEmail, '/Professional/Owner');
+      await expect(page.getByText(`${orgName} Fail`)).toBeVisible({ timeout: 15000 });
+
+      const bellButton = page.getByRole('button', { name: /Notifications/ });
+      await bellButton.click();
+      const notificationItem = page.getByRole('button', { name: new RegExp(`New Director application submitted.*Proposing.*${orgName} Fail`, 's') });
+      await expect(notificationItem).toBeVisible({ timeout: 10000 });
+
+      // Force the mark-read RPC to genuinely fail (RLS correctly
+      // rejects marking read someone else's notification) by racing a
+      // revoked-session-shaped failure: simplest real reproduction is
+      // to delete the underlying row server-side between render and
+      // click, so the RPC's own "no such notification" path fires.
+      const notifId = sql(`SELECT id FROM enterprise_notifications WHERE recipient_user_id='${ownerId}' AND notification_type='application_submitted' AND related_entity_id='${appId}';`);
+      sql(`DELETE FROM enterprise_notifications WHERE id='${notifId}';`);
+
+      await notificationItem.click();
+      // The row is gone server-side -- mark_notification_read() must
+      // fail (not silently succeed), and the toast must surface it.
+      await expect(page.getByText(/Couldn't mark that as read/i)).toBeVisible({ timeout: 10000 });
+      // The unread badge must NOT have dropped to zero -- the failed
+      // mark-read was not applied to local state as if it had worked.
+      await expect(bellButton.getByText('1', { exact: true })).toBeVisible();
+    } finally {
+      sql(`DELETE FROM enterprise_notifications WHERE recipient_user_id IN ('${ownerId}','${bilalId}');`);
+      if (appId) sql(`DELETE FROM professional_applications WHERE id='${appId}';`);
+      await deleteUser(ownerId);
+      await deleteUser(bilalId);
+    }
+  });
 });

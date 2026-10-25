@@ -30,17 +30,23 @@ function mapNotification(r: Record<string, unknown>): EnterpriseNotification {
 // for oversight), which would otherwise leak into what is meant to be
 // a personal "my notifications" list the moment an owner account
 // calls this.
-export async function getMyNotifications(limit = 20): Promise<EnterpriseNotification[]> {
+//
+// CODEX F-19 -- a real fetch failure (network error, session expiry,
+// an RLS denial) was previously indistinguishable from "you genuinely
+// have zero notifications": both silently returned []. Returns the
+// error explicitly instead, so the caller can show it rather than a
+// fabricated empty inbox.
+export async function getMyNotifications(limit = 20): Promise<{ notifications: EnterpriseNotification[]; error: string | null }> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  if (!user) return { notifications: [], error: 'Not signed in' };
   const { data, error } = await supabase
     .from('enterprise_notifications')
     .select('*')
     .eq('recipient_user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(limit);
-  if (error || !data) return [];
-  return (data as unknown as Record<string, unknown>[]).map(mapNotification);
+  if (error) return { notifications: [], error: error.message };
+  return { notifications: (data as unknown as Record<string, unknown>[] ?? []).map(mapNotification), error: null };
 }
 
 export async function markNotificationRead(notificationId: string): Promise<{ error: string | null }> {
