@@ -19,7 +19,7 @@ import {
   LogOut, Users, Loader2, MessageSquare, Calendar, ClipboardList,
   ChevronRight, Menu, X, ShieldAlert, Clock, Building2,
   ClipboardCheck, FileText, UserCog, Settings as SettingsIcon, Send,
-  AlertTriangle, CheckCircle2, PlayCircle, StopCircle, Sparkles, Flag, Moon, Upload,
+  AlertTriangle, CheckCircle2, PlayCircle, StopCircle, Sparkles, Flag, Moon, Upload, ArrowLeft,
 } from 'lucide-react';
 import {
   getMyStaffPatients, getMyCareTeam, getMyOrgSupervisor, getMyOrganizations, coverPatientViaStaffRegistration, setStaffPatientLabel,
@@ -28,7 +28,7 @@ import {
 import { getMyPendingRegistrations, type PendingRegistrationSummary } from '@/services/caregiverRegistrationService';
 import { RegisterPatientForm, IncompleteRegistrations } from '@/pages/caregiver/CaregiverPortal';
 import { getMyConversations, createConversation, searchMyConversations, type ConversationSummary } from '@/services/communicationsService';
-import { ConversationThread } from '@/components/communications/CareConversations';
+import CareConversations, { ConversationThread } from '@/components/communications/CareConversations';
 import { inviteTherapist } from '@/services/therapistConnectionService';
 import { getHelpActivationHistory } from '@/services/helpActivationService';
 import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDeletionRequests, type AccountDeletionRequest } from '@/services/accountDeletionService';
@@ -371,7 +371,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
               {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} />}
               {nav === 'visits' && <VisitsListView />}
               {nav === 'tasks' && <TasksView patients={patients} />}
-              {nav === 'communications' && <CommunicationsView />}
+              {nav === 'communications' && <CommunicationsView patients={patients} />}
               {nav === 'notes' && (
                 <>
                   <MyDocumentationHistoryView />
@@ -1336,11 +1336,22 @@ function ConversationGroup({ title, conversations, onOpen }: { title: string; co
   );
 }
 
-function CommunicationsView() {
+// MMA-ENT-CAREGIVER-MASTER-004 D09 (P2) — independent runtime audit
+// finding: "Inbox lacks patient-first composer/filter; record composer
+// DOES work." The per-patient composer (CareConversations.tsx's own
+// NewConversation, reached today only from inside a patient's record)
+// was already correct and already reused this app's one explicit-
+// recipient-selection contract — the gap was that the main Inbox had no
+// way to reach it at all, only ever receiving a conversation someone
+// else already started. Fixed by reusing that EXACT SAME component here
+// behind a deliberate, patient-first selection step, not by building a
+// second composer or widening who may be selected as a recipient.
+function CommunicationsView({ patients }: { patients: StaffPatient[] }) {
   const { state } = useApp();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [composingPatientId, setComposingPatientId] = useState('');
   // CODEX F-18 FIX — inbox items were summaries only, with no way to
   // actually open a thread (no click handler existed at all). Reuses
   // CareConversations.tsx's own already-reviewed ConversationThread
@@ -1374,6 +1385,19 @@ function CommunicationsView() {
   const followUp = filtered.filter((c) => !c.lastMessageUrgent && c.hasOpenFollowUp);
   const routine = filtered.filter((c) => !c.lastMessageUrgent && !c.hasOpenFollowUp);
 
+  if (composingPatientId) {
+    const patient = patients.find((p) => p.patientId === composingPatientId);
+    const displayName = patient ? (patient.preferredName || `${patient.firstName} ${patient.lastName}`) : 'Patient';
+    return (
+      <Card>
+        <button type="button" onClick={() => { setComposingPatientId(''); void refreshList(); }} className="flex items-center gap-1.5 text-sm font-semibold text-medium-gray hover:text-charcoal -ml-1 -mt-1">
+          <ArrowLeft className="w-4 h-4" /> Back to Inbox
+        </button>
+        <CareConversations patientId={composingPatientId} patientName={displayName} />
+      </Card>
+    );
+  }
+
   if (openThreadId) {
     return (
       <Card>
@@ -1387,10 +1411,22 @@ function CommunicationsView() {
 
   return (
     <Card>
-      <div className="flex items-center gap-2"><MessageSquare className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Care Communications</h2></div>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2"><MessageSquare className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Care Communications</h2></div>
+        {patients.length > 0 && (
+          <select
+            value="" onChange={(e) => { if (e.target.value) setComposingPatientId(e.target.value); }}
+            aria-label="Start a new message — select a patient first"
+            className="px-3 py-2 rounded-xl border border-soft-taupe text-sm font-semibold text-warm-bronze"
+          >
+            <option value="">+ New Message…</option>
+            {patients.map((p) => <option key={p.patientId} value={p.patientId}>{p.preferredName || `${p.firstName} ${p.lastName}`}</option>)}
+          </select>
+        )}
+      </div>
       <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by patient, subject, or message…" className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
       {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : filtered.length === 0 ? (
-        <p className="text-sm text-medium-gray">{conversations.length === 0 ? "No conversations yet. Open a patient's record to start one." : 'No conversations match this search.'}</p>
+        <p className="text-sm text-medium-gray">{conversations.length === 0 ? 'No conversations yet. Use "+ New Message" above to start one.' : 'No conversations match this search.'}</p>
       ) : (
         <>
           <ConversationGroup title="Urgent" conversations={urgent} onOpen={setOpenThreadId} />
