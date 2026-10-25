@@ -1835,14 +1835,25 @@ function NotificationsCard() {
       .then(({ data }) => { if (data) setPrefs(data); setLoading(false); });
   }, [state.currentUser?.id]);
 
+  // MMA-ENT-CAREGIVER-MASTER-004 D12 (P2): independent runtime audit
+  // finding: "restore state correctly after failed saves." The
+  // optimistic setPrefs(next) below was never reverted on a failed
+  // UPDATE -- a save that genuinely failed still left the toggle
+  // showing the NEW (unsaved) value, silently misrepresenting what was
+  // actually persisted. previous is captured before the optimistic
+  // update specifically so a failure can roll the UI back to it.
   const save = async (next: typeof prefs) => {
     const myId = state.currentUser?.id;
     if (!myId) return;
+    const previous = prefs;
     setPrefs(next);
     setSaving(true);
     try {
       const { error } = await supabase.from('caregiver_notification_preferences').upsert({ user_id: myId, ...next });
-      if (error) toast.error(error.message);
+      if (error) { toast.error(error.message); setPrefs(previous); }
+    } catch {
+      setPrefs(previous);
+      toast.error('Could not save this preference — you appear to be offline.');
     } finally {
       setSaving(false);
     }
