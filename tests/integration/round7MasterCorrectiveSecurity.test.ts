@@ -820,6 +820,55 @@ describe('MMA-ENT-CAREGIVER-MASTER-003 R15 (P1) — Enterprise-only assigned sta
   });
 });
 
+// MMA-ENT-CAREGIVER-MASTER-003, R16 (P1) — independent runtime audit
+// finding: a genuine Safety Acknowledge (acknowledge_help_activation(),
+// which persists staff_acknowledged_by/at) did not move
+// get_patient_help_activation_history()'s own acknowledged_count/
+// acknowledged_by, because that RPC derived them from an unrelated
+// signal (message_acknowledgments on the auto-created conversation
+// message) instead. Migration 134 makes staff_acknowledged_by/at the
+// single source of truth for both.
+describe('MMA-ENT-CAREGIVER-MASTER-003 R16 (P1) — HELP history acknowledgment matches the real staff acknowledgment (migration 134)', () => {
+  it('history reports unacknowledged (count 0, empty names) until acknowledge_help_activation is actually called', async () => {
+    const [, help] = (await rpc('record_help_activation', { p_phone_dialed: '911' }, tok.patientA)) as [number, { id: string }];
+    try {
+      const [histStatus, history] = (await rpc('get_patient_help_activation_history', { p_patient_id: ids.patientA }, tok.caregiverA)) as [
+        number,
+        { id: string; acknowledged_count: number; acknowledged_by: string[] | null }[],
+      ];
+      expect(histStatus).toBe(200);
+      const row = history.find((h) => h.id === help.id);
+      expect(row?.acknowledged_count).toBe(0);
+      expect(row?.acknowledged_by ?? []).toEqual([]);
+    } finally {
+      sql(`DELETE FROM help_activations WHERE id='${help.id}';`);
+    }
+  });
+
+  it('the SAME event flips to acknowledged in history the moment acknowledge_help_activation persists staff_acknowledged_by — no separate message-ack step required', async () => {
+    const [, help] = (await rpc('record_help_activation', { p_phone_dialed: '911' }, tok.patientA)) as [number, { id: string }];
+    try {
+      const [ackStatus, ack] = (await rpc('acknowledge_help_activation', { p_help_activation_id: help.id }, tok.caregiverA)) as [
+        number,
+        { staff_acknowledged_by: string },
+      ];
+      expect(ackStatus).toBe(200);
+      expect(ack.staff_acknowledged_by).toBe(ids.caregiverA);
+
+      const [histStatus, history] = (await rpc('get_patient_help_activation_history', { p_patient_id: ids.patientA }, tok.caregiverA)) as [
+        number,
+        { id: string; acknowledged_count: number; acknowledged_by: string[] }[],
+      ];
+      expect(histStatus).toBe(200);
+      const row = history.find((h) => h.id === help.id);
+      expect(row?.acknowledged_count).toBe(1);
+      expect(row?.acknowledged_by).toHaveLength(1);
+    } finally {
+      sql(`DELETE FROM help_activations WHERE id='${help.id}';`);
+    }
+  });
+});
+
 // Codex MMA-CODEX-06 — clinical provenance. patient_care_providers was
 // never included in migration 076's SEC-03 RESTRICTIVE-policy hardening
 // pass (which covered patient_diagnoses/patient_allergies/patient_vitals)

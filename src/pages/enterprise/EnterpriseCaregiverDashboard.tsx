@@ -414,7 +414,15 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
       const helpByPatient = await Promise.all(patients.map(async (p) => ({
         patient: p, entries: (await getHelpActivationHistory(p.patientId)).entries,
       })));
-      const allHelp = helpByPatient.flatMap((h) => h.entries);
+      // MMA-ENT-CAREGIVER-MASTER-003 R16: helpCount feeds "Needs
+      // attention" (needsAttentionCount below) and must mean the same
+      // thing as the attention feed itself — unacknowledged events, not
+      // every HELP activation this patient has ever had. acknowledgedCount
+      // now reflects the real staff_acknowledged_by event acknowledgment
+      // (migration 134), so this and helpItems below agree by
+      // construction, and both update the moment the Safety Acknowledge
+      // button is actually pressed.
+      const unacknowledgedHelp = helpByPatient.flatMap((h) => h.entries).filter((e) => e.acknowledgedCount === 0);
 
       // H09 — "overnight observations, authorized patient/family shared
       // notes, condition changes... excluding Private Journal content."
@@ -465,7 +473,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
       setVisits(myVisits);
       const openIncidents = allIncidents.filter((i) => i.resolutionStatus !== 'resolved');
       setIncidents(openIncidents);
-      setHelpCount(allHelp.length);
+      setHelpCount(unacknowledgedHelp.length);
       setRecentUpdates(noteRows.slice(0, 8));
       setMedConcerns(medRows.slice(0, 8));
       setUnacknowledgedHandoffs(unackCount);
