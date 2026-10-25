@@ -757,24 +757,48 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
   );
 }
 
-// W14 — "Show authored entries... recorded times and audit information
-// accessible to caregiver." Every entry is already self-row readable
-// (author_id = auth.uid() / reported_by = auth.uid()); no amendment/
-// correction tracking exists anywhere in this schema, so this
-// genuinely shows only original entries — disclosed, not claimed.
+// MMA-ENT-CAREGIVER-MASTER-003/004, D14 (P2) — independent runtime
+// audit finding: this view's own disclaimer ("no amendment/correction
+// history exists in this schema yet") was already false when written —
+// migration 075 added patient_notes.amends_note_id (a self-referencing
+// FK: a new row with amends_note_id set IS an append-only amendment of
+// an earlier note, via record_note_amendment()) specifically so every
+// correction is a new row, never an edit of the original. A real
+// browser amendment persisted and displayed correctly elsewhere in the
+// app (EnterprisePatientRecordTabs' note history) while this specific
+// summary kept asserting the opposite. Fixed by actually querying and
+// displaying amends_note_id, both directions: a note that amends an
+// earlier one is labeled as a correction, and an original note that was
+// later amended is marked as such — removing the false capability
+// statement entirely rather than narrowing its wording.
 function MyDocumentationHistoryView() {
   const { state } = useApp();
-  const [notes, setNotes] = useState<{ id: string; note: string; created_at: string; note_type: string }[]>([]);
+  const [notes, setNotes] = useState<{ id: string; note: string; created_at: string; note_type: string; amends_note_id: string | null }[]>([]);
+  const [amendedByCount, setAmendedByCount] = useState<Record<string, number>>({});
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const myId = state.currentUser?.id;
     if (!myId) { setLoading(false); return; }
     void Promise.all([
-      supabase.from('patient_notes').select('id, note, created_at, note_type').eq('author_id', myId).order('created_at', { ascending: false }).limit(20),
+      supabase.from('patient_notes').select('id, note, created_at, note_type, amends_note_id').eq('author_id', myId).order('created_at', { ascending: false }).limit(20),
       supabase.from('incident_reports').select('id, patient_id, reported_by, incident_type, description, severity, occurred_at, resolution_status, resolution_notes, supervisor_notified_at').eq('reported_by', myId).order('occurred_at', { ascending: false }).limit(10),
-    ]).then(([n, i]) => {
-      setNotes((n.data ?? []) as typeof notes);
+    ]).then(async ([n, i]) => {
+      const myNotes = (n.data ?? []) as typeof notes;
+      setNotes(myNotes);
+      // Whether any of MY notes were later amended (by anyone — an
+      // amendment is authored by whoever is correcting the record, not
+      // necessarily the original author). RLS already scopes this to
+      // notes for patients I'm authorized for, same as the main query.
+      const originalIds = myNotes.filter((row) => !row.amends_note_id).map((row) => row.id);
+      if (originalIds.length > 0) {
+        const { data: amendments } = await supabase.from('patient_notes').select('amends_note_id').in('amends_note_id', originalIds);
+        const counts: Record<string, number> = {};
+        for (const row of amendments ?? []) {
+          if (row.amends_note_id) counts[row.amends_note_id] = (counts[row.amends_note_id] ?? 0) + 1;
+        }
+        setAmendedByCount(counts);
+      }
       setIncidents((i.data ?? []).map((r) => ({
         id: r.id, patientId: r.patient_id, reportedBy: r.reported_by, incidentType: r.incident_type as IncidentReport['incidentType'],
         description: r.description, severity: r.severity as IncidentReport['severity'], occurredAt: r.occurred_at,
@@ -785,8 +809,12 @@ function MyDocumentationHistoryView() {
   }, [state.currentUser?.id]);
   if (loading) return null;
   const combined = [
-    ...notes.map((n) => ({ at: n.created_at, label: `Note (${n.note_type.replace('_', ' ')}): ${n.note}` })),
-    ...incidents.map((i) => ({ at: i.occurredAt, label: `Incident report: ${i.incidentType.replace('_', ' ')}` })),
+    ...notes.map((n) => ({
+      at: n.created_at,
+      label: `Note (${n.note_type.replace('_', ' ')}): ${n.note}`,
+      amendmentTag: n.amends_note_id ? 'Amendment/correction to an earlier note' : amendedByCount[n.id] ? `Amended ${amendedByCount[n.id]} time${amendedByCount[n.id] === 1 ? '' : 's'} since` : null,
+    })),
+    ...incidents.map((i) => ({ at: i.occurredAt, label: `Incident report: ${i.incidentType.replace('_', ' ')}`, amendmentTag: null as string | null })),
   ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   return (
     <Card>
@@ -796,12 +824,13 @@ function MyDocumentationHistoryView() {
           {combined.map((c, idx) => (
             <li key={idx} className="p-2 bg-warm-ivory rounded-lg border border-soft-taupe text-xs text-charcoal">
               {c.label}
+              {c.amendmentTag && <span className="block text-warm-bronze font-semibold">{c.amendmentTag}</span>}
               <span className="text-medium-gray block">{new Date(c.at).toLocaleString()}</span>
             </li>
           ))}
         </ul>
       )}
-      <p className="text-[11px] text-medium-gray">Every entry shown is the original record — no amendment/correction history exists in this schema yet.</p>
+      <p className="text-[11px] text-medium-gray">A correction is always a new, separate entry linked to the original — the original is never edited or removed.</p>
     </Card>
   );
 }
