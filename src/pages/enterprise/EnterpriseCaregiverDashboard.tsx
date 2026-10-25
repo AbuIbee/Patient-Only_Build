@@ -11,7 +11,7 @@
 // the caller's own active staff_patient_assignments/organization_memberships
 // rows (server-enforced RLS, not a client-side assumption) — no
 // placeholder counts, no fabricated sample patients.
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -102,6 +102,16 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   const [loading, setLoading] = useState(true);
   const [nav, setNav] = useState<NavItem>(() => parseEnterprisePath(basePath).nav);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // MMA-ENT-CAREGIVER-MASTER-003/004, D13 (P2) — independent runtime
+  // audit finding: the mobile nav drawer had no role=dialog/aria-modal,
+  // Escape did nothing, and focus was never moved into the drawer on
+  // open or restored to the trigger on close — reproduced at
+  // 320/375/768px. mobileNavButtonRef is the hamburger trigger (focus
+  // target on close); mobileNavCloseButtonRef/mobileNavPanelRef support
+  // focus-on-open and a Tab-key focus trap while the drawer is open.
+  const mobileNavButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileNavCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileNavPanelRef = useRef<HTMLDivElement>(null);
   const [openPatient, setOpenPatient] = useState<string | null>(() => parseEnterprisePath(basePath).openPatient);
   // MMA-ENT-CAREGIVER-MASTER-003 D05 (P1): which record tab to land on
   // when openPatient is set from a destination-specific patient picker
@@ -153,6 +163,47 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  // D13: Escape closes the drawer, Tab is trapped within it while open,
+  // focus moves to the close button on open and back to the hamburger
+  // trigger on close, and background scroll is suspended — the
+  // standard accessible-dialog contract this drawer previously had
+  // none of.
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const triggerButton = mobileNavButtonRef.current;
+    mobileNavCloseButtonRef.current?.focus();
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMobileNavOpen(false);
+        return;
+      }
+      if (e.key === 'Tab' && mobileNavPanelRef.current) {
+        const focusable = mobileNavPanelRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = prevOverflow;
+      triggerButton?.focus();
+    };
+  }, [mobileNavOpen]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -237,7 +288,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
         {/* Header bar — org/workspace identification + signed-in identity, every viewport. */}
         <header className="bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
           <div className="flex items-center gap-3 min-w-0">
-            <button type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation" className="lg:hidden p-1.5 -ml-1.5 text-ent-ink flex-shrink-0">
+            <button ref={mobileNavButtonRef} type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation" className="lg:hidden p-1.5 -ml-1.5 text-ent-ink flex-shrink-0">
               <Menu className="w-5 h-5" />
             </button>
             <div className="text-[12.5px] sm:text-[13px] font-semibold truncate">
@@ -255,13 +306,16 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
 
         {mobileNavOpen && (
           <div className="lg:hidden fixed inset-0 z-50 bg-black/40" onClick={() => setMobileNavOpen(false)}>
-            <div className="bg-ent-panel w-72 h-full p-2 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div
+              ref={mobileNavPanelRef} role="dialog" aria-modal="true" aria-label="Navigation menu"
+              className="bg-ent-panel w-72 h-full p-2 overflow-y-auto" onClick={(e) => e.stopPropagation()}
+            >
               <div className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="w-8 h-8 rounded-lg bg-ent-green flex items-center justify-center flex-shrink-0"><Sparkles className="w-4 h-4 text-ent-forest" /></div>
                   <span className="font-semibold text-ent-ink text-sm truncate">{hasOrganization ? orgName : 'No organization connected'}</span>
                 </div>
-                <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X className="w-5 h-5 text-ent-muted" /></button>
+                <button ref={mobileNavCloseButtonRef} type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X className="w-5 h-5 text-ent-muted" /></button>
               </div>
               {NAV_GROUPS.map((group) => (
                 <div key={group.label}>
