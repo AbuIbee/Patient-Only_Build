@@ -1682,17 +1682,68 @@ function localDatetimeNow(): string {
 // delivery or emergency dispatch" is preserved verbatim: the
 // notification_status text is shown as recorded, never translated into
 // a delivery/dispatch claim.
+// MMA-ENT-CAREGIVER-MASTER-004 D10 (P1) — independent runtime audit
+// finding: "Offline note failed, draft empty after reconnect/reload, no
+// record persisted." fileIncidentReport() already preserves the draft
+// across a failed-submit-while-staying-on-this-view (submit() returns
+// early on error without clearing any field), but a reload or a nav
+// switch away and back both remount this component from scratch,
+// wiping React state outright — exactly the reconnect/reload case the
+// audit reproduced.
+//
+// Full acceptance ("Approved encrypted/idempotent/reauthorized draft
+// design... reconnect/logout/account change") requires an owner policy
+// decision this session cannot make unilaterally: an incident
+// description is clinical/safety PHI, and persisting it across a
+// LOGOUT or a different account on the same device needs an explicit
+// encryption-at-rest and retention decision, not a default from me.
+// That slice is OUT of scope here and tracked as a policy dependency,
+// not silently skipped.
+//
+// What IS safely implementable without that decision: this app's own
+// established convention (src/lib/supabase.ts, CLAUDE.md) is that
+// sessionStorage — not localStorage — is the HIPAA-aligned place for
+// sensitive data, precisely because it never survives a browser-session
+// end (tab/browser close, and in practice a sign-out clears the whole
+// origin's session). So a session-scoped draft here matches an already-
+// approved pattern rather than introducing a new one: it survives a
+// reload or switching tabs and back (the exact RUNTIME REPRODUCED
+// scenario), and still disappears at the natural session boundary
+// instead of lingering indefinitely on a shared device.
+const INCIDENT_DRAFT_KEY = 'ent_caregiver_incident_draft';
+interface IncidentDraft {
+  patientId: string; incidentType: string; severity: IncidentSeverity; occurredAt: string; description: string;
+}
+function loadIncidentDraft(): IncidentDraft | null {
+  try {
+    const raw = sessionStorage.getItem(INCIDENT_DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as IncidentDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
 function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient[]; orgId: string; onOpenPatient: (patientId: string) => void }) {
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [patientId, setPatientId] = useState('');
-  const [incidentType, setIncidentType] = useState<'fall' | 'injury' | 'behavioral' | 'medication_concern' | 'safety_event' | 'other'>('other');
-  const [severity, setSeverity] = useState<IncidentSeverity>('low');
-  const [occurredAt, setOccurredAt] = useState('');
-  const [description, setDescription] = useState('');
+  const draft = loadIncidentDraft();
+  const [patientId, setPatientId] = useState(draft?.patientId ?? '');
+  const [incidentType, setIncidentType] = useState<'fall' | 'injury' | 'behavioral' | 'medication_concern' | 'safety_event' | 'other'>((draft?.incidentType as typeof incidentType) ?? 'other');
+  const [severity, setSeverity] = useState<IncidentSeverity>(draft?.severity ?? 'low');
+  const [occurredAt, setOccurredAt] = useState(draft?.occurredAt ?? '');
+  const [description, setDescription] = useState(draft?.description ?? '');
   const [attachment, setAttachment] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [acking, setAcking] = useState<string | null>(null);
+
+  // Persist on every change rather than only on unmount — a hard reload
+  // (not just a nav switch) never runs a cleanup/unmount handler.
+  useEffect(() => {
+    try {
+      if (!description.trim() && !patientId) { sessionStorage.removeItem(INCIDENT_DRAFT_KEY); return; }
+      sessionStorage.setItem(INCIDENT_DRAFT_KEY, JSON.stringify({ patientId, incidentType, severity, occurredAt, description }));
+    } catch { /* best-effort; draft recovery is a convenience, not a guarantee */ }
+  }, [patientId, incidentType, severity, occurredAt, description]);
 
   const load = useCallback(async () => {
     const incidentRows = (await Promise.all(patients.map(async (p) => {
@@ -1731,6 +1782,7 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
         if (attachErr) toast.error(attachErr);
       }
       setDescription(''); setSeverity('low'); setOccurredAt(''); setAttachment(null);
+      try { sessionStorage.removeItem(INCIDENT_DRAFT_KEY); } catch { /* best-effort */ }
       await load();
     } finally {
       setSaving(false);
@@ -1789,6 +1841,9 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
             <AlertTriangle className="w-4 h-4" /> Report Scope Concern
           </button>
         </div>
+        {description.trim() && (
+          <p className="text-[11px] text-medium-gray">Draft saved for this browser session — it will survive a reload, but not signing out or closing the browser.</p>
+        )}
       </div>
       {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : alerts.length === 0 ? (
         <p className="text-sm text-medium-gray">No alerts or incidents recorded.</p>
