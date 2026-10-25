@@ -234,6 +234,13 @@ export type CredentialStatus = 'active' | 'expiring_soon' | 'expired';
 export interface CaregiverCredential {
   id: string;
   userId: string;
+  // MMA-ENT-CAREGIVER-MASTER-004 D01: caregiver_credentials.organization_id
+  // was already returned by get_my_credentials() (RETURNS SETOF
+  // caregiver_credentials) but never mapped or used — a caregiver in
+  // two organizations saw BOTH orgs' director-recorded credentials
+  // merged into whichever org's "My Organization" page happened to be
+  // showing, with no way to tell which org recorded which.
+  organizationId: string | null;
   credentialName: string;
   issuedAt: string | null;
   expiresAt: string | null;
@@ -244,7 +251,7 @@ export async function getMyCredentials(): Promise<CaregiverCredential[]> {
   const { data, error } = await supabase.rpc('get_my_credentials');
   if (error || !data) return [];
   return data.map((r) => ({
-    id: r.id, userId: r.user_id, credentialName: r.credential_name, issuedAt: r.issued_at, expiresAt: r.expires_at,
+    id: r.id, userId: r.user_id, organizationId: r.organization_id, credentialName: r.credential_name, issuedAt: r.issued_at, expiresAt: r.expires_at,
     status: r.status as CredentialStatus,
   }));
 }

@@ -11,7 +11,7 @@
 // the caller's own active staff_patient_assignments/organization_memberships
 // rows (server-enforced RLS, not a client-side assumption) — no
 // placeholder counts, no fabricated sample patients.
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import {
   getMyStaffPatients, getMyCareTeam, getMyOrgSupervisor, getMyOrganizations, coverPatientViaStaffRegistration, setStaffPatientLabel,
-  type StaffPatient, type CareTeamMember,
+  type StaffPatient, type CareTeamMember, type MyOrganization,
 } from '@/services/organizationService';
 import { getMyPendingRegistrations, type PendingRegistrationSummary } from '@/services/caregiverRegistrationService';
 import { RegisterPatientForm, IncompleteRegistrations } from '@/pages/caregiver/CaregiverPortal';
@@ -84,21 +84,62 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 // the prior hardcoded behavior) so every EXISTING caller is completely
 // unaffected; ProfessionalOfficeResolver.tsx passes '/Professional/Caregiver'
 // so nested routes resolve/sync under the new centralized entry instead.
-function parseEnterprisePath(root: string): { nav: NavItem; openPatient: string | null } {
+// MMA-ENT-CAREGIVER-MASTER-004, D01 (P1) — independent runtime audit
+// finding: "Alpha header, Alpha/Beta patient cards, no switcher" --
+// confirmed: this shell picked orgs.find(o => o.orgRole === 'caregiver')
+// once and never again, while getMyStaffPatients() (unscoped by org)
+// fed every list and action regardless of which org a given
+// (org, patient) relationship actually belonged to. orgParam carries an
+// explicit ?org=<id> so a deep link or refresh can request a specific,
+// authorized organization context (D01-INVARIANT-06) -- it is only ever
+// a REQUEST: the caller below still validates it against the user's own
+// getMyOrganizations() result before trusting it for anything.
+function parseEnterprisePath(root: string): { nav: NavItem; openPatient: string | null; orgParam: string | null } {
   const rootSegments = root.split('/').filter(Boolean).length; // '/business' -> 1, '/Professional/Caregiver' -> 2
   const segments = window.location.pathname.split('/').filter(Boolean);
   const sub = segments[rootSegments];
   const sub2 = segments[rootSegments + 1];
-  if (sub === 'patients' && sub2) return { nav: 'patients', openPatient: sub2 };
-  if (sub && NAV_ITEMS.some((n) => n.key === sub)) return { nav: sub as NavItem, openPatient: null };
-  return { nav: 'dashboard', openPatient: null };
+  const orgParam = new URLSearchParams(window.location.search).get('org');
+  if (sub === 'patients' && sub2) return { nav: 'patients', openPatient: sub2, orgParam };
+  if (sub && NAV_ITEMS.some((n) => n.key === sub)) return { nav: sub as NavItem, openPatient: null, orgParam };
+  return { nav: 'dashboard', openPatient: null, orgParam };
+}
+
+const SELECTED_ORG_STORAGE_KEY = 'enterprise_selected_org';
+
+// D01: resolves which org to select from the user's own authorized
+// caregiver memberships plus an optional requested id (URL ?org=,
+// deep-link patient resolution, or the previous session's remembered
+// choice). The requested id is accepted ONLY if it is actually one of
+// `orgs` right now (D01-INVARIANT-03) -- a stale, forged or no-longer-
+// authorized id silently falls back to the first authorized org rather
+// than being trusted.
+function resolveOrgSelection(orgs: MyOrganization[], requestedId: string | null): string | null {
+  if (orgs.length === 0) return null;
+  if (requestedId && orgs.some((o) => o.organizationId === requestedId)) return requestedId;
+  return orgs[0].organizationId;
 }
 
 export default function EnterpriseCaregiverDashboard({ basePath = '/business' }: { basePath?: string } = {}) {
   const { state, dispatch } = useApp();
+  // MMA-ENT-CAREGIVER-MASTER-004, D01 (P1) — independent runtime audit
+  // finding: "Alpha header, Alpha/Beta patient cards, no switcher." This
+  // shell previously picked orgs.find(o => o.orgRole === 'caregiver')
+  // ONCE on load and never again, while getMyStaffPatients() (entirely
+  // unscoped by organization) fed every list/action regardless of which
+  // org a given (org, patient) relationship actually belonged to -- a
+  // caregiver in two organizations saw a mixed, unlabeled patient list
+  // under whichever org's name happened to be picked first. myOrgs/orgId
+  // are now the single authoritative selection; `patients` and
+  // `orgName` below are both DERIVED from them (never separate state
+  // that could drift apart, D01-INVARIANT-02), and allStaffPatients
+  // keeps the full unscoped set only so a deep link to a patient
+  // outside the current org can still resolve which org actually has
+  // them (D01-INVARIANT-06) and so switching preserves each org's own
+  // distinct relationship to a shared patient (D01-INVARIANT-05).
+  const [myOrgs, setMyOrgs] = useState<MyOrganization[]>([]);
   const [orgId, setOrgId] = useState<string | null>(null);
-  const [orgName, setOrgName] = useState<string>('');
-  const [patients, setPatients] = useState<StaffPatient[]>([]);
+  const [allStaffPatients, setAllStaffPatients] = useState<StaffPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [nav, setNav] = useState<NavItem>(() => parseEnterprisePath(basePath).nav);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -123,12 +164,31 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
 
   // Keeps the URL in sync so reload/back/forward/shared links land on
   // the same screen, instead of defaulting back to the dashboard.
+  // D01-INVARIANT-06: ?org=<id> rides along on every navigation once a
+  // selection exists, so a refresh or a shared/bookmarked link lands
+  // back in the SAME organization context, not whichever org happens
+  // to be picked first.
   const navigateTo = useCallback((nextNav: NavItem, patientId: string | null = null, initialTab?: TabKey) => {
-    const path = patientId ? `${basePath}/patients/${patientId}` : `${basePath}/${nextNav}`;
-    if (window.location.pathname !== path) window.history.pushState({}, '', path);
+    const base = patientId ? `${basePath}/patients/${patientId}` : `${basePath}/${nextNav}`;
+    const path = orgId ? `${base}?org=${orgId}` : base;
+    if (window.location.pathname + window.location.search !== path) window.history.pushState({}, '', path);
     setNav(nextNav);
     setOpenPatient(patientId);
     setOpenPatientInitialTab(patientId ? initialTab : undefined);
+  }, [basePath, orgId]);
+
+  // D01-INVARIANT-04/10: switching organizations always returns to the
+  // dashboard root rather than leaving a patient record (or a
+  // destination-specific tab selection) opened under the PREVIOUS org
+  // rendering on screen as if it belonged to the new one.
+  const switchOrg = useCallback((newOrgId: string) => {
+    setOrgId(newOrgId);
+    try { sessionStorage.setItem(SELECTED_ORG_STORAGE_KEY, newOrgId); } catch { /* best-effort */ }
+    const path = `${basePath}/dashboard?org=${newOrgId}`;
+    window.history.pushState({}, '', path);
+    setNav('dashboard');
+    setOpenPatient(null);
+    setOpenPatientInitialTab(undefined);
   }, [basePath]);
 
   useEffect(() => {
@@ -136,10 +196,18 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
       const parsed = parseEnterprisePath(basePath);
       setNav(parsed.nav);
       setOpenPatient(parsed.openPatient);
+      // A back/forward navigation that names a DIFFERENT, still-
+      // authorized org must actually switch to it, not just change the
+      // displayed URL while leaving stale data from the old org on
+      // screen (D01-INVARIANT-06/10).
+      if (parsed.orgParam && myOrgs.some((o) => o.organizationId === parsed.orgParam)) {
+        setOrgId(parsed.orgParam);
+        try { sessionStorage.setItem(SELECTED_ORG_STORAGE_KEY, parsed.orgParam); } catch { /* best-effort */ }
+      }
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [basePath]);
+  }, [basePath, myOrgs]);
 
   // Canonicalize a bare basePath (no sub-path) to `${basePath}/dashboard`
   // without adding an extra back-stack entry, so the URL always
@@ -154,13 +222,37 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
     setLoading(true);
     try {
       const [orgs, staffPatients] = await Promise.all([getMyOrganizations(), getMyStaffPatients()]);
-      const myOrg = orgs.find((o) => o.orgRole === 'caregiver');
-      if (myOrg) { setOrgId(myOrg.organizationId); setOrgName(myOrg.organizationName); }
-      setPatients(staffPatients.filter((p) => p.orgRole === 'caregiver'));
+      const myCaregiverOrgs = orgs.filter((o) => o.orgRole === 'caregiver');
+      setMyOrgs(myCaregiverOrgs);
+      const caregiverStaffPatients = staffPatients.filter((p) => p.orgRole === 'caregiver');
+      setAllStaffPatients(caregiverStaffPatients);
+
+      // Resolution priority: an org that actually contains a currently
+      // deep-linked patient > an explicit ?org= request > this
+      // session's remembered choice > the first authorized org. Every
+      // candidate is still validated against myCaregiverOrgs by
+      // resolveOrgSelection (D01-INVARIANT-03) — none of these sources
+      // is trusted blindly.
+      const parsed = parseEnterprisePath(basePath);
+      let requestedOrgId = parsed.orgParam;
+      if (!requestedOrgId) {
+        try { requestedOrgId = sessionStorage.getItem(SELECTED_ORG_STORAGE_KEY); } catch { requestedOrgId = null; }
+      }
+      if (parsed.openPatient) {
+        const ownerOrgIds = caregiverStaffPatients.filter((p) => p.patientId === parsed.openPatient).map((p) => p.organizationId);
+        if (ownerOrgIds.length > 0 && !ownerOrgIds.includes(requestedOrgId)) {
+          requestedOrgId = ownerOrgIds[0];
+        }
+      }
+      const resolvedOrgId = resolveOrgSelection(myCaregiverOrgs, requestedOrgId);
+      setOrgId(resolvedOrgId);
+      if (resolvedOrgId) {
+        try { sessionStorage.setItem(SELECTED_ORG_STORAGE_KEY, resolvedOrgId); } catch { /* best-effort */ }
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [basePath]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -211,6 +303,18 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
     toast('You have been logged out');
   };
 
+  // D01-INVARIANT-01/05: every view below receives ONLY this org's own
+  // (org, patient) relationships — a patient also authorized through a
+  // second organization appears here (and only here) when THIS org is
+  // selected, and under the other org's own row when that one is
+  // selected instead; never both at once. Memoized so child effects
+  // that depend on `patients` (e.g. MyActivityCard) only re-run when
+  // the underlying data or selected org actually changes, not on every
+  // unrelated parent re-render. Declared before the loading early
+  // return — unlike a plain `const`, a Hook cannot be called
+  // conditionally.
+  const patients = useMemo(() => allStaffPatients.filter((p) => p.organizationId === orgId), [allStaffPatients, orgId]);
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-warm-ivory"><Loader2 className="w-8 h-8 animate-spin text-warm-bronze" /></div>;
   }
@@ -224,6 +328,11 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   // no-organization account — every data-bearing panel is replaced by
   // an honest NoOrganizationPanel instead.
   const hasOrganization = !!orgId;
+  // D01-INVARIANT-02: orgName is derived from the SAME verified
+  // myOrgs/orgId pair the selector itself uses — there is no separate
+  // orgName state that could ever show a name inconsistent with which
+  // organization's records are actually visible.
+  const orgName = myOrgs.find((o) => o.organizationId === orgId)?.organizationName ?? '';
 
   const firstName = state.currentUser?.firstName || 'Caregiver';
   const lastName = state.currentUser?.lastName || '';
@@ -291,10 +400,30 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
             <button ref={mobileNavButtonRef} type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation" className="lg:hidden p-1.5 -ml-1.5 text-ent-ink flex-shrink-0">
               <Menu className="w-5 h-5" />
             </button>
-            <div className="text-[12.5px] sm:text-[13px] font-semibold truncate">
-              <span className="text-ent-ink">{hasOrganization ? orgName : 'No organization connected'}</span>
-              <span className="text-ent-muted"> / Caregiver Workspace</span>
-            </div>
+            {/* D01: an explicit organization switcher, shown only when
+                there is genuinely more than one authorized organization
+                to switch between (myOrgs is already scoped server-side
+                to this caregiver's own current memberships —
+                D01-INVARIANT-09, nothing unauthorized is ever listed
+                here). A single-organization caregiver sees the same
+                plain label as before; no behavior changes for them. */}
+            {hasOrganization && myOrgs.length > 1 ? (
+              <div className="min-w-0">
+                <label htmlFor="enterprise-org-switcher" className="sr-only">Switch organization</label>
+                <select
+                  id="enterprise-org-switcher" value={orgId ?? ''} onChange={(e) => switchOrg(e.target.value)}
+                  className="text-[12.5px] sm:text-[13px] font-semibold text-ent-ink bg-transparent border border-ent-line rounded-lg px-2 py-1 max-w-[55vw] sm:max-w-xs truncate"
+                >
+                  {myOrgs.map((o) => <option key={o.organizationId} value={o.organizationId}>{o.organizationName}</option>)}
+                </select>
+                <span className="text-ent-muted text-[12.5px] sm:text-[13px] font-semibold ml-1.5">/ Caregiver Workspace</span>
+              </div>
+            ) : (
+              <div className="text-[12.5px] sm:text-[13px] font-semibold truncate">
+                <span className="text-ent-ink">{hasOrganization ? orgName : 'No organization connected'}</span>
+                <span className="text-ent-muted"> / Caregiver Workspace</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
             <div className="hidden sm:block w-8 h-8 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-[11px]" aria-hidden="true">{initials}</div>
@@ -382,7 +511,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
               {nav === 'alerts' && <AlertsView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id, 'safety')} />}
               {nav === 'careTeam' && <CareTeamView orgId={orgId} patients={patients} />}
               {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view their Documents" />}
-              {nav === 'organization' && <OrganizationView orgId={orgId} orgName={orgName} />}
+              {nav === 'organization' && <OrganizationView orgId={orgId} orgName={orgName} patients={patients} />}
               {nav === 'settings' && <SettingsView userName={state.currentUser?.firstName} onLogout={handleLogout} />}
             </div>
           )}
@@ -1762,7 +1891,13 @@ function MyInvitationsCard() {
 // O07 — "own visit history, task completion, authored documentation
 // and appropriate time/audit records," all scoped to self via the
 // caller's own id, every one of which already has self-row read access.
-function MyActivityCard() {
+// MMA-ENT-CAREGIVER-MASTER-004 D01: previously entirely unscoped by
+// organization — a caregiver in two orgs saw combined visit/task/note
+// activity for BOTH on whichever org's "My Organization" page happened
+// to be open. `patients` is this org's own already-filtered list
+// (EnterpriseCaregiverDashboard's own `patients`), so every count/list
+// below now reflects only this organization's patients.
+function MyActivityCard({ patients }: { patients: StaffPatient[] }) {
   const { state } = useApp();
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [taskUpdates, setTaskUpdates] = useState<{ id: string; title: string; status: string; status_updated_at: string | null }[]>([]);
@@ -1770,14 +1905,19 @@ function MyActivityCard() {
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const myId = state.currentUser?.id;
+    const patientIds = patients.map((p) => p.patientId);
+    if (!myId || patientIds.length === 0) { setVisits([]); setTaskUpdates([]); setNoteCount(0); setLoading(false); return; }
     void Promise.all([
       getMyVisits(),
-      myId ? supabase.from('tasks').select('id, title, status, status_updated_at').eq('status_updated_by', myId).order('status_updated_at', { ascending: false }).limit(20) : Promise.resolve({ data: [] }),
-      myId ? supabase.from('patient_notes').select('id', { count: 'exact', head: true }).eq('author_id', myId) : Promise.resolve({ count: 0 }),
+      supabase.from('tasks').select('id, title, status, status_updated_at').eq('status_updated_by', myId).in('patient_id', patientIds).order('status_updated_at', { ascending: false }).limit(20),
+      supabase.from('patient_notes').select('id', { count: 'exact', head: true }).eq('author_id', myId).in('patient_id', patientIds),
     ]).then(([v, t, n]) => {
-      setVisits(v); setTaskUpdates((t.data ?? []) as typeof taskUpdates); setNoteCount((n as { count: number | null }).count ?? 0); setLoading(false);
+      setVisits(v.filter((visit) => patientIds.includes(visit.patientId)));
+      setTaskUpdates((t.data ?? []) as typeof taskUpdates);
+      setNoteCount((n as { count: number | null }).count ?? 0);
+      setLoading(false);
     });
-  }, [state.currentUser?.id]);
+  }, [state.currentUser?.id, patients]);
   if (loading) return null;
   return (
     <Card>
@@ -1963,11 +2103,18 @@ function MyAssignmentsCard({ orgId }: { orgId: string }) {
   );
 }
 
-function OrganizationView({ orgId, orgName }: { orgId: string; orgName: string }) {
+function OrganizationView({ orgId, orgName, patients }: { orgId: string; orgName: string; patients: StaffPatient[] }) {
   const { state } = useApp();
-  const [credentials, setCredentials] = useState<CaregiverCredential[]>([]);
+  const [allCredentials, setAllCredentials] = useState<CaregiverCredential[]>([]);
   const [loadingCreds, setLoadingCreds] = useState(true);
-  useEffect(() => { void getMyCredentials().then((c) => { setCredentials(c); setLoadingCreds(false); }); }, []);
+  useEffect(() => { void getMyCredentials().then((c) => { setAllCredentials(c); setLoadingCreds(false); }); }, []);
+  // D01: get_my_credentials() returns this caregiver's credentials
+  // across every organization that has recorded one — scope the ones
+  // shown on THIS org's own page to credentials THIS org recorded
+  // (organization_id null is a directorless/legacy row, kept visible
+  // rather than hidden since it isn't wrongly attributed to a DIFFERENT
+  // org either).
+  const credentials = allCredentials.filter((c) => c.organizationId === orgId || c.organizationId === null);
 
   return (
     <>
@@ -2008,7 +2155,7 @@ function OrganizationView({ orgId, orgName }: { orgId: string; orgName: string }
         )}
       </Card>
       <MyInvitationsCard />
-      <MyActivityCard />
+      <MyActivityCard patients={patients} />
       <NotificationsCard />
       <AccessibilityCard />
     </>
