@@ -300,6 +300,13 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    // D10 (Master-005 Part VI.13): supabase.auth.signOut() only clears
+    // the SDK's own auth-token keys in sessionStorage, not unrelated
+    // app keys — a leftover incident-report draft would otherwise
+    // survive sign-out and be visible to the next person who signs in
+    // in this same browser tab. Swept here rather than trusted to
+    // happen implicitly.
+    clearAllIncidentDrafts();
     dispatch({ type: 'LOGOUT' });
     toast('You have been logged out');
   };
@@ -1710,23 +1717,59 @@ function localDatetimeNow(): string {
 // reload or switching tabs and back (the exact RUNTIME REPRODUCED
 // scenario), and still disappears at the natural session boundary
 // instead of lingering indefinitely on a shared device.
-const INCIDENT_DRAFT_KEY = 'ent_caregiver_incident_draft';
+// MMA-ENT-CAREGIVER-MASTER-005 Part VI.13 — independent review correctly
+// flagged that a single fixed key leaked across two real boundaries this
+// first pass missed: (1) sessionStorage is per-BROWSER-TAB, not per-
+// signed-in-user — on a shared device, User B signing in in the same tab
+// after User A signs out would see User A's leftover draft, since
+// supabase.auth.signOut() only clears the SDK's own auth-token keys in
+// that storage, not unrelated app keys; (2) a two-organization Caregiver
+// switching orgs would see the previous org's draft resurface under the
+// new org's Alerts view. The key is now scoped to (user, org) so neither
+// can happen, handleLogout() below sweeps every such key on sign-out
+// (not just the current one, in case of a stale org switch mid-session),
+// and a restored draft is discarded rather than shown if its patientId
+// is no longer in this org's currently authorized patient list (covers
+// revoked/unassigned access between sessions).
+const INCIDENT_DRAFT_PREFIX = 'ent_caregiver_incident_draft_';
+function incidentDraftKey(userId: string, orgId: string): string {
+  return `${INCIDENT_DRAFT_PREFIX}${userId}_${orgId}`;
+}
+function clearAllIncidentDrafts() {
+  try {
+    const keys = Object.keys(sessionStorage).filter((k) => k.startsWith(INCIDENT_DRAFT_PREFIX));
+    keys.forEach((k) => sessionStorage.removeItem(k));
+  } catch { /* best-effort */ }
+}
 interface IncidentDraft {
   patientId: string; incidentType: string; severity: IncidentSeverity; occurredAt: string; description: string;
 }
-function loadIncidentDraft(): IncidentDraft | null {
+function loadIncidentDraft(key: string, authorizedPatientIds: Set<string>): IncidentDraft | null {
   try {
-    const raw = sessionStorage.getItem(INCIDENT_DRAFT_KEY);
-    return raw ? (JSON.parse(raw) as IncidentDraft) : null;
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as IncidentDraft;
+    // Patient authorization may have changed since the draft was saved
+    // (unassignment, revocation) — never restore a reference to a
+    // patient this org no longer authorizes for this user.
+    if (parsed.patientId && !authorizedPatientIds.has(parsed.patientId)) {
+      sessionStorage.removeItem(key);
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
 }
 
 function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient[]; orgId: string; onOpenPatient: (patientId: string) => void }) {
+  const { state } = useApp();
+  const myId = state.currentUser?.id ?? '';
+  const draftKey = incidentDraftKey(myId, orgId);
+  const authorizedIds = useMemo(() => new Set(patients.map((p) => p.patientId)), [patients]);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const draft = loadIncidentDraft();
+  const draft = myId ? loadIncidentDraft(draftKey, authorizedIds) : null;
   const [patientId, setPatientId] = useState(draft?.patientId ?? '');
   const [incidentType, setIncidentType] = useState<'fall' | 'injury' | 'behavioral' | 'medication_concern' | 'safety_event' | 'other'>((draft?.incidentType as typeof incidentType) ?? 'other');
   const [severity, setSeverity] = useState<IncidentSeverity>(draft?.severity ?? 'low');
@@ -1739,11 +1782,12 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
   // Persist on every change rather than only on unmount — a hard reload
   // (not just a nav switch) never runs a cleanup/unmount handler.
   useEffect(() => {
+    if (!myId) return;
     try {
-      if (!description.trim() && !patientId) { sessionStorage.removeItem(INCIDENT_DRAFT_KEY); return; }
-      sessionStorage.setItem(INCIDENT_DRAFT_KEY, JSON.stringify({ patientId, incidentType, severity, occurredAt, description }));
+      if (!description.trim() && !patientId) { sessionStorage.removeItem(draftKey); return; }
+      sessionStorage.setItem(draftKey, JSON.stringify({ patientId, incidentType, severity, occurredAt, description }));
     } catch { /* best-effort; draft recovery is a convenience, not a guarantee */ }
-  }, [patientId, incidentType, severity, occurredAt, description]);
+  }, [myId, draftKey, patientId, incidentType, severity, occurredAt, description]);
 
   const load = useCallback(async () => {
     const incidentRows = (await Promise.all(patients.map(async (p) => {
@@ -1782,7 +1826,7 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
         if (attachErr) toast.error(attachErr);
       }
       setDescription(''); setSeverity('low'); setOccurredAt(''); setAttachment(null);
-      try { sessionStorage.removeItem(INCIDENT_DRAFT_KEY); } catch { /* best-effort */ }
+      try { sessionStorage.removeItem(draftKey); } catch { /* best-effort */ }
       await load();
     } finally {
       setSaving(false);
