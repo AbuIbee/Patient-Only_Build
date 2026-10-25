@@ -154,6 +154,20 @@ export async function searchMyConversations(searchTerm: string): Promise<Set<str
   return new Set(data.map((r) => r.conversation_id));
 }
 
+// MMA-ENT-CAREGIVER-MASTER-005 D02-009: "A failed search must not
+// silently produce zero matches." The plain searchMyConversations()
+// above returns an empty Set on any RPC failure, indistinguishable from
+// a search that genuinely found nothing in message history — a
+// Caregiver searching for a real past conversation during an outage
+// would see "no results," not "search failed, try again."
+export async function searchMyConversationsResult(searchTerm: string): Promise<{ ids: Set<string>; error: string | null }> {
+  if (!searchTerm.trim()) return { ids: new Set(), error: null };
+  const { data, error } = await supabase.rpc('search_my_conversations', { p_search_term: searchTerm.trim() });
+  if (error) return { ids: new Set(), error: errMsg(error, 'Could not search your message history.') };
+  if (!data) return { ids: new Set(), error: 'Could not search your message history — unexpected empty response.' };
+  return { ids: new Set(data.map((r) => r.conversation_id)), error: null };
+}
+
 // create_conversation(): recipientUserIds must be people the caller has
 // deliberately, explicitly selected — never a blanket "everyone linked to
 // this patient" expansion. The RPC independently re-verifies every

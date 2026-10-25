@@ -22,12 +22,12 @@ import {
   AlertTriangle, CheckCircle2, PlayCircle, StopCircle, Sparkles, Flag, Moon, Upload, ArrowLeft,
 } from 'lucide-react';
 import {
-  getMyStaffPatients, getMyCareTeamResult, getMyOrgSupervisorResult, getMyOrganizations, coverPatientViaStaffRegistration, setStaffPatientLabel,
+  getMyCareTeamResult, getMyOrgSupervisorResult, getMyOrganizationsResult, getMyStaffPatientsResult, coverPatientViaStaffRegistration, setStaffPatientLabel,
   type StaffPatient, type CareTeamMember, type MyOrganization,
 } from '@/services/organizationService';
 import { getMyPendingRegistrations, type PendingRegistrationSummary } from '@/services/caregiverRegistrationService';
 import { RegisterPatientForm, IncompleteRegistrations } from '@/pages/caregiver/CaregiverPortal';
-import { getMyConversations, getMyConversationsResult, createConversation, searchMyConversations, type ConversationSummary } from '@/services/communicationsService';
+import { getMyConversationsResult, createConversation, searchMyConversationsResult, type ConversationSummary } from '@/services/communicationsService';
 import CareConversations, { ConversationThread } from '@/components/communications/CareConversations';
 import { inviteTherapist } from '@/services/therapistConnectionService';
 import { getHelpActivationHistory } from '@/services/helpActivationService';
@@ -142,6 +142,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   const [orgId, setOrgId] = useState<string | null>(null);
   const [allStaffPatients, setAllStaffPatients] = useState<StaffPatient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [workspaceLoadError, setWorkspaceLoadError] = useState<string | null>(null);
   const [nav, setNav] = useState<NavItem>(() => parseEnterprisePath(basePath).nav);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // MMA-ENT-CAREGIVER-MASTER-003/004, D13 (P2) — independent runtime
@@ -222,7 +223,17 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [orgs, staffPatients] = await Promise.all([getMyOrganizations(), getMyStaffPatients()]);
+      // MMA-ENT-CAREGIVER-MASTER-005 D02-003: see getMyOrganizationsResult/
+      // getMyStaffPatientsResult in organizationService.ts for the full
+      // rationale — this is the root workspace load every single
+      // downstream view (D01's org/patient context) depends on, so a
+      // silent failure here was the highest-impact instance of this
+      // defect in the whole dashboard.
+      const [orgsResult, staffPatientsResult] = await Promise.all([getMyOrganizationsResult(), getMyStaffPatientsResult()]);
+      const workspaceErrors = [orgsResult.error, staffPatientsResult.error].filter((e): e is string => !!e);
+      setWorkspaceLoadError(workspaceErrors.length > 0 ? workspaceErrors[0] : null);
+      const orgs = orgsResult.data ?? [];
+      const staffPatients = staffPatientsResult.data ?? [];
       const myCaregiverOrgs = orgs.filter((o) => o.orgRole === 'caregiver');
       setMyOrgs(myCaregiverOrgs);
       const caregiverStaffPatients = staffPatients.filter((p) => p.orgRole === 'caregiver');
@@ -488,7 +499,11 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-ent-bg">
           {!hasOrganization ? (
             <div className="max-w-6xl mx-auto space-y-5">
-              <NoOrganizationPanel />
+              {workspaceLoadError ? (
+                <WorkspaceLoadErrorPanel error={workspaceLoadError} onRetry={() => { void load(); }} />
+              ) : (
+                <NoOrganizationPanel />
+              )}
             </div>
           ) : openPatient ? (
             <div className="max-w-5xl mx-auto">
@@ -552,6 +567,25 @@ function Card({ children }: { children: React.ReactNode }) {
 // already holds an active membership anywhere, so this is not merely a
 // hidden button. Any pending invitation is already shown above this
 // panel by EnterpriseDashboardRouter's own PendingInvitesBanner.
+// MMA-ENT-CAREGIVER-MASTER-005 D02-003: shown INSTEAD of NoOrganizationPanel
+// when myOrgs/allStaffPatients are empty because the root fetch failed,
+// not because the account genuinely has no membership — see
+// getMyOrganizationsResult/getMyStaffPatientsResult. Never claims "no
+// organization"; the whole point is that this state is unknown, not
+// confirmed-absent.
+function WorkspaceLoadErrorPanel({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <Card>
+      <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-gentle-coral" /><h2 className="font-bold text-ent-ink">Your organization data could not be loaded</h2></div>
+      <p className="text-sm text-ent-text">
+        This is not a statement that you have no organization or no assigned patients — your real membership and patient
+        assignments could not be confirmed right now: {error}
+      </p>
+      <button type="button" onClick={onRetry} className="px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold">Retry</button>
+    </Card>
+  );
+}
+
 function NoOrganizationPanel() {
   return (
     <Card>
@@ -1637,8 +1671,17 @@ function CommunicationsView({ patients }: { patients: StaffPatient[] }) {
   // CareConversations.tsx's own already-reviewed ConversationThread
   // component rather than building a second one.
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-009: getMyConversations() and
+  // searchMyConversations() (both plain) silently return [] / an empty
+  // Set on failure. "A failed inbox request must not imply that the
+  // user has no messages" and "A failed search must not silently
+  // produce zero matches" — both now have a visible error state instead.
+  const [loadError, setInboxLoadError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const refreshList = useCallback(async () => {
-    setConversations(await getMyConversations());
+    const { data, error } = await getMyConversationsResult();
+    setConversations(data ?? []);
+    setInboxLoadError(error);
     setLoading(false);
   }, []);
   // MASTER CORRECTIVE FUNC-04: ids whose full message HISTORY (not
@@ -1647,8 +1690,10 @@ function CommunicationsView({ patients }: { patients: StaffPatient[] }) {
   useEffect(() => { void refreshList(); }, [refreshList]);
   useEffect(() => {
     const term = search.trim();
-    if (!term) { setHistoricalMatchIds(new Set()); return; }
-    const handle = setTimeout(() => { void searchMyConversations(term).then(setHistoricalMatchIds); }, 250);
+    if (!term) { setHistoricalMatchIds(new Set()); setSearchError(null); return; }
+    const handle = setTimeout(() => {
+      void searchMyConversationsResult(term).then(({ ids, error }) => { setHistoricalMatchIds(ids); setSearchError(error); });
+    }, 250);
     return () => clearTimeout(handle);
   }, [search]);
 
@@ -1705,8 +1750,19 @@ function CommunicationsView({ patients }: { patients: StaffPatient[] }) {
         )}
       </div>
       <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by patient, subject, or message…" className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+      {search.trim() && searchError && (
+        <p className="text-xs text-gentle-coral font-medium">Message-history search could not be completed: {searchError} — only patient/subject/latest-message matches are shown below.</p>
+      )}
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm text-gentle-coral font-medium">Your inbox could not be loaded: {loadError}</p>
+          <button type="button" onClick={() => { setLoading(true); void refreshList(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
+        </div>
+      )}
       {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : filtered.length === 0 ? (
-        <p className="text-sm text-medium-gray">{conversations.length === 0 ? 'No conversations yet. Use "+ New Message" above to start one.' : 'No conversations match this search.'}</p>
+        <p className="text-sm text-medium-gray">
+          {loadError ? 'Your inbox could not be confirmed right now.' : conversations.length === 0 ? 'No conversations yet. Use "+ New Message" above to start one.' : 'No conversations match this search.'}
+        </p>
       ) : (
         <>
           <ConversationGroup title="Urgent" conversations={urgent} onOpen={setOpenThreadId} />

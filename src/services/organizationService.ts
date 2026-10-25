@@ -108,6 +108,32 @@ export async function getMyOrganizations(): Promise<MyOrganization[]> {
   }));
 }
 
+// MMA-ENT-CAREGIVER-MASTER-005 D02-003 — the single most consequential
+// gap this pass found: EnterpriseCaregiverDashboard's root `load()`
+// previously called the PLAIN getMyOrganizations()/getMyStaffPatients()
+// below, both of which collapse a genuine RPC failure into the exact
+// same `[]` as an account that legitimately has zero memberships. A
+// failed fetch therefore produced hasOrganization=false, which renders
+// NoOrganizationPanel's "Your account is not currently connected to an
+// Enterprise organization" -- an outright false claim about WHY nothing
+// is showing, for every downstream view at once, not just one card.
+// Directive text: "Do not render a confident 'No organization' or 'No
+// patients' result when the underlying query failed."
+export async function getMyOrganizationsResult(): Promise<{ data: MyOrganization[] | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('get_my_organizations');
+  if (error) return { data: null, error: errMsg(error, 'Could not load your organization memberships.') };
+  if (!data) return { data: null, error: 'Could not load your organization memberships — unexpected empty response.' };
+  return {
+    data: data.map((r) => ({
+      organizationId: r.organization_id,
+      organizationName: r.organization_name,
+      packageType: r.package_type as OrgPackageType,
+      orgRole: r.org_role as OrgRole,
+    })),
+    error: null,
+  };
+}
+
 export async function getMyPendingOrgInvites(): Promise<PendingOrgInvite[]> {
   const { data, error } = await supabase.rpc('get_my_pending_org_invites');
   if (error || !data) return [];
@@ -141,6 +167,30 @@ export async function getMyStaffPatients(): Promise<StaffPatient[]> {
     assignmentId: r.assignment_id,
     displayLabel: r.display_label,
   }));
+}
+
+// See getMyOrganizationsResult() above — same defect, same fix, for the
+// assigned-patient half of the root workspace load.
+export async function getMyStaffPatientsResult(): Promise<{ data: StaffPatient[] | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('get_my_staff_patients');
+  if (error) return { data: null, error: errMsg(error, 'Could not load your assigned patients.') };
+  if (!data) return { data: null, error: 'Could not load your assigned patients — unexpected empty response.' };
+  return {
+    data: data.map((r) => ({
+      organizationId: r.organization_id,
+      organizationName: r.organization_name,
+      patientId: r.patient_id,
+      firstName: r.first_name,
+      lastName: r.last_name,
+      preferredName: r.preferred_name,
+      orgRole: r.org_role as StaffRole,
+      address: r.address,
+      location: r.location,
+      assignmentId: r.assignment_id,
+      displayLabel: r.display_label,
+    })),
+    error: null,
+  };
 }
 
 // MMA-ENT-CAREGIVER-MASTER-004 D03: sets (or clears, with an empty
