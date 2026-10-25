@@ -1,13 +1,27 @@
-// Shared helpers for tests/integration/**. Targets ONLY the local
-// supabase_db_repo stack reachable at 127.0.0.1:55321 via Docker.
-// NEVER targets staging/production -- there is no staging/production
-// credential anywhere in this file.
+// Shared helpers for tests/integration/**. Targets the local
+// supabase_db_repo stack reachable at 127.0.0.1:55321 via Docker by
+// DEFAULT. NEVER targets staging/production -- there is no
+// staging/production credential anywhere in this file.
+//
+// MMA-ENT-CAREGIVER-MASTER-003, Phase D: supabase_db_repo is the
+// owner's own persistent local dev database (confirmed: 1,190 real
+// auth.users rows, migration history frozen at 104 prior to this
+// branch's own migrations landing on it) -- NOT a disposable fixture
+// store, even though it happens to be what this suite has historically
+// targeted. MMA_TEST_API_BASE/MMA_TEST_DB_CONTAINER let a disposable,
+// throwaway stack (see scripts/disposable_supabase.mjs) be substituted
+// for both the REST/Auth base URL and the `docker exec` target WITHOUT
+// touching any call site below -- `npm run test:integration` keeps its
+// existing default behavior unchanged when neither is set.
 import { execSync, spawn } from 'node:child_process';
 
-export const BASE = 'http://127.0.0.1:55321';
+export const BASE = process.env.MMA_TEST_API_BASE || 'http://127.0.0.1:55321';
+const DB_CONTAINER = process.env.MMA_TEST_DB_CONTAINER || 'supabase_db_repo';
 // Standard Supabase CLI local-dev demo keys (iss: "supabase-demo"), HS256,
 // publicly documented -- not a secret, and meaningless against any real
-// project.
+// project. Every default-config local Supabase stack (disposable ones
+// included) shares this same demo JWT secret, so these keys are valid
+// against any of them.
 export const ANON =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 export const SERVICE =
@@ -18,7 +32,7 @@ export function sql(statement: string): string {
   // "INSERT 0 1") after any INSERT/UPDATE/DELETE ... RETURNING value,
   // silently corrupting the captured result with a trailing newline +
   // tag. -At alone only suppresses result-set formatting, not this.
-  return execSync('docker exec -i supabase_db_repo psql -U postgres -d postgres -At -q -v ON_ERROR_STOP=1', {
+  return execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -At -q -v ON_ERROR_STOP=1`, {
     input: statement,
   })
     .toString()
@@ -139,7 +153,7 @@ SELECT (public.respond_to_therapist_invite('${connectionId}',true)).status;
 COMMIT;`;
   const proc = spawn(
     'docker',
-    ['exec', '-i', 'supabase_db_repo', 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1'],
+    ['exec', '-i', DB_CONTAINER, 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1'],
     { stdio: ['pipe', 'pipe', 'pipe'] },
   );
   proc.stdin.write(statement);

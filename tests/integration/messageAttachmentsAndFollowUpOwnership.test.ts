@@ -99,6 +99,35 @@ describe('Codex MMA-CODEX-11 — message_attachments authorization (migration 10
   });
 });
 
+describe('MMA-ENT-CAREGIVER-MASTER-003 R14 (P1) — attachment downloads cannot outlive revocation (migration 132)', () => {
+  // The reproduced defect: createSignedUrl() only checks storage.objects
+  // RLS at the moment the URL is minted; the resulting token then keeps
+  // working regardless of later revocation. Migration 132's fix is to
+  // remove the ability to mint one AT ALL — the only remaining read path
+  // is the download-message-attachment Edge Function, which re-queries
+  // message_attachments (and therefore is_conversation_participant())
+  // fresh on every single call. This proves the storage-level closure;
+  // the Edge Function's own live-recheck is exercised by the "removing a
+  // participant immediately cuts off..." case above, since both paths
+  // share the identical message_attachments RLS policy.
+  it('a current, authorized participant still cannot mint a direct signed URL for a message attachment object', async () => {
+    const storagePath = `${messageId}/1_test.pdf`; // registered by the first test in this file
+    const [status] = await http(
+      'POST',
+      `/storage/v1/object/sign/conversation-attachments/${storagePath}`,
+      { expiresIn: 3600 },
+      tok.caregiver,
+    ) as [number, { message?: string }];
+    expect(status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('a current, authorized participant cannot directly download the object either', async () => {
+    const storagePath = `${messageId}/1_test.pdf`;
+    const [status] = await http('GET', `/storage/v1/object/authenticated/conversation-attachments/${storagePath}`, undefined, tok.caregiver) as [number, unknown];
+    expect(status).toBeGreaterThanOrEqual(400);
+  });
+});
+
 describe('Codex MMA-CODEX-11 — follow-up due date and assignable ownership (migration 102)', () => {
   it('acknowledging with a due date and an assignee who IS a live conversation participant succeeds', async () => {
     const [status, row] = (await rpc('acknowledge_message', {

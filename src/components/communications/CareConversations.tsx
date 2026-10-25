@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import {
   getMyConversations, getPatientCareCircle, createConversation, getConversationParticipants,
   getConversationMessages, sendMessage, markMessageRead, acknowledgeMessage, resolveFollowUp,
-  addConversationParticipant, removeConversationParticipant, uploadMessageAttachment, getSignedAttachmentUrl,
+  addConversationParticipant, removeConversationParticipant, uploadMessageAttachment, downloadMessageAttachment,
   type ConversationSummary, type CareCircleMember, type ConversationParticipant, type ConversationMessage,
 } from '@/services/communicationsService';
 import { supabase } from '@/lib/supabase';
@@ -40,24 +40,30 @@ function timeAgo(iso: string): string {
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-// Codex MMA-CODEX-11 — shared attachment list + signed-URL download,
-// reused by both a brand-new message and a reply. Signed URLs are
-// fetched on demand (never cached as a public link) and expire in 1
-// hour (communicationsService.ts), matching this app's existing
-// getSignedMediaUrl()/getSignedDocumentUrl() convention of never
-// exposing a permanent public URL for anything in a private bucket.
+// MMA-ENT-CAREGIVER-MASTER-003, R14 (P1) — shared attachment list.
+// Previously fetched a 1-hour createSignedUrl() per open; that token
+// kept working even after the viewer lost conversation access (the
+// actual reproduced defect). Every open now goes through
+// downloadMessageAttachment(), which re-derives live authorization on
+// the server for THIS exact request — no token, signed URL or cache
+// exists afterward for a later revocation to fail to invalidate. The
+// object URL created below is purely a local, in-memory handle to the
+// bytes already in the browser; it is revoked immediately after the
+// download starts and grants no one else any access.
 function AttachmentList({ attachments }: { attachments: ConversationMessage['attachments'] }) {
   const [downloading, setDownloading] = useState<string | null>(null);
   if (attachments.length === 0) return null;
 
-  const download = async (storagePath: string, fileName: string) => {
-    setDownloading(storagePath);
+  const download = async (attachmentId: string, fallbackFileName: string) => {
+    setDownloading(attachmentId);
     try {
-      const url = await getSignedAttachmentUrl(storagePath);
-      if (!url) { toast.error('Could not open this attachment.'); return; }
+      const result = await downloadMessageAttachment(attachmentId);
+      if (!result.ok) { toast.error(result.error); return; }
+      const url = URL.createObjectURL(result.blob);
       const a = document.createElement('a');
-      a.href = url; a.download = fileName; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.href = url; a.download = result.fileName || fallbackFileName; a.target = '_blank'; a.rel = 'noopener noreferrer';
       a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
     } finally {
       setDownloading(null);
     }
@@ -67,10 +73,10 @@ function AttachmentList({ attachments }: { attachments: ConversationMessage['att
     <div className="mt-1.5 flex flex-wrap gap-1.5">
       {attachments.map((a) => (
         <button
-          key={a.id} type="button" onClick={() => { void download(a.storagePath, a.fileName); }} disabled={downloading === a.storagePath}
+          key={a.id} type="button" onClick={() => { void download(a.id, a.fileName); }} disabled={downloading === a.id}
           className="flex items-center gap-1 text-[11px] font-medium text-warm-bronze bg-warm-bronze/10 hover:bg-warm-bronze/20 rounded-lg px-2 py-1 disabled:opacity-60"
         >
-          {downloading === a.storagePath ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+          {downloading === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
           {a.fileName}
         </button>
       ))}

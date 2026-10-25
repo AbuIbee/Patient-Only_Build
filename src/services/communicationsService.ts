@@ -282,8 +282,53 @@ export async function uploadMessageAttachment(messageId: string, file: File): Pr
   return { error: null };
 }
 
-export async function getSignedAttachmentUrl(storagePath: string): Promise<string | null> {
-  const { data, error } = await supabase.storage.from(ATTACHMENT_BUCKET).createSignedUrl(storagePath, 3600);
-  if (error || !data) return null;
-  return data.signedUrl;
+// MMA-ENT-CAREGIVER-MASTER-003, R14 (P1): replaces the old
+// getSignedAttachmentUrl()/createSignedUrl() path. Migration 132 removes
+// the ONLY storage.objects SELECT policy that let a client mint a signed
+// URL for this bucket at all, specifically because an already-issued
+// signed URL kept working after the holder lost conversation access —
+// shortening its TTL would only narrow, not close, that window. This
+// instead calls the download-message-attachment Edge Function on every
+// single open, which re-derives the caller's current authorization from
+// message_attachments' own RLS (is_conversation_participant()) at that
+// exact moment — there is no token or cache for a later revocation to
+// fail to invalidate.
+export type AttachmentDownloadResult =
+  | { ok: true; blob: Blob; fileName: string }
+  | { ok: false; error: string };
+
+export async function downloadMessageAttachment(attachmentId: string): Promise<AttachmentDownloadResult> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  if (!accessToken) return { ok: false, error: 'You must be signed in to open this attachment.' };
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  let response: Response;
+  try {
+    response = await fetch(`${supabaseUrl}/functions/v1/download-message-attachment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: anonKey },
+      body: JSON.stringify({ attachmentId }),
+    });
+  } catch {
+    return { ok: false, error: 'Could not reach the server to open this attachment.' };
+  }
+
+  if (!response.ok) {
+    let message = 'This attachment is not available.';
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body?.error) message = body.error;
+    } catch {
+      // response body wasn't JSON — keep the default message
+    }
+    return { ok: false, error: message };
+  }
+
+  const fileName = decodeURIComponent(response.headers.get('X-File-Name') || 'attachment');
+  const contentType = response.headers.get('X-Attachment-Content-Type') || 'application/octet-stream';
+  const rawBlob = await response.blob();
+  const blob = rawBlob.type === contentType ? rawBlob : new Blob([rawBlob], { type: contentType });
+  return { ok: true, blob, fileName };
 }

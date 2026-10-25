@@ -1,0 +1,42 @@
+-- MMA-ENT-CAREGIVER-MASTER-003, R14 (P1) — "previously issued signed
+-- attachment URL survives revocation." Independent runtime audit
+-- MMA_ENT_CAREGIVER_MASTER_002_RUNTIME_AUDIT.md, finding R14: a
+-- participant obtained a one-hour createSignedUrl() for a message
+-- attachment, was then unassigned/removed, and the SAME, already-issued
+-- URL still returned HTTP 200 and the file body.
+--
+-- Root cause: migration 102's "Conversation participants can read
+-- message attachment objects" SELECT policy on storage.objects is only
+-- re-checked at the moment a signed URL is MINTED (createSignedUrl must
+-- pass storage.objects RLS to be issued at all). Once minted, Supabase
+-- Storage's signed-URL token is a self-contained, HMAC-signed bearer
+-- credential validated against its own embedded expiry — it is NOT
+-- re-evaluated against RLS on each subsequent GET. Shortening the TTL
+-- narrows the exposure window but does not provide immediate
+-- revocation, which is the actual requirement here.
+--
+-- Fix: remove ALL direct authenticated read access to this bucket's
+-- objects (no replacement SELECT policy for the `authenticated` role,
+-- so no client can mint a createSignedUrl() or call .download() against
+-- it at all — the earlier SELECT policy is dropped, not narrowed).
+-- supabase/functions/download-message-attachment is the ONLY remaining
+-- read path: it re-derives authorization from the message_attachments
+-- table using the CALLER's own JWT (so is_conversation_participant()
+-- resolves to the real, live caller on every single request — the
+-- SAME re-check migration 102's own SELECT policy on message_attachments
+-- already performs), then fetches the bytes with the service-role key
+-- only after that check passes. There is no caching, no pre-minted
+-- token and no TTL: a participant removed between one download and the
+-- next loses access on their very next request, exactly like every
+-- other authorization point in this app (is_conversation_participant()
+-- itself, message_attachments' own SELECT policy, etc.).
+--
+-- Upload (INSERT) policies are untouched — a sender still needs to be a
+-- CURRENT participant to attach a file (migration 120, F-01's own
+-- addition), and that is unaffected by removing the SELECT policy.
+DROP POLICY IF EXISTS "Conversation participants can read message attachment objects" ON storage.objects;
+
+-- message_attachments metadata (file_name/storage_path/uploaded_by) keeps
+-- its own existing SELECT policy from migration 102 — the Edge Function
+-- depends on it being live-revalidated exactly as it already is; nothing
+-- here changes that table's RLS.
