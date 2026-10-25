@@ -14,7 +14,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import {
-  getMyConversations, getPatientCareCircle, createConversation, getConversationParticipants,
+  getMyConversations, getMyConversationsResult, getPatientCareCircle, createConversation, getConversationParticipants,
   getConversationMessages, sendMessage, markMessageRead, acknowledgeMessage, resolveFollowUp,
   addConversationParticipant, removeConversationParticipant, uploadMessageAttachment, downloadMessageAttachment,
   type ConversationSummary, type CareCircleMember, type ConversationParticipant, type ConversationMessage,
@@ -92,6 +92,13 @@ export default function CareConversations({ patientId, patientName }: { patientI
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-009: getMyConversations() (plain)
+  // discards its error and returns [] on failure, which this list
+  // previously rendered as an authoritative "no conversations" — this
+  // component is reached from the Caregiver dashboard's patient-record
+  // Communications tab, so it is in scope the same as the main Caregiver
+  // inbox fixed in an earlier commit.
+  const [loadError, setConvoLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     void supabase.auth.getUser().then(({ data }) => setMyId(data?.user?.id ?? null));
@@ -100,7 +107,9 @@ export default function CareConversations({ patientId, patientName }: { patientI
   const refreshList = useCallback(async () => {
     setLoading(true);
     try {
-      setConversations(await getMyConversations(patientId));
+      const { data, error } = await getMyConversationsResult(patientId);
+      setConversations(data ?? []);
+      setConvoLoadError(error);
     } finally {
       setLoading(false);
     }
@@ -144,10 +153,20 @@ export default function CareConversations({ patientId, patientName }: { patientI
         </button>
       </div>
 
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm text-gentle-coral font-medium">Conversations could not be loaded: {loadError}</p>
+          <button type="button" onClick={() => { void refreshList(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
+        </div>
+      )}
       {loading ? (
         <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-warm-bronze" /></div>
       ) : conversations.length === 0 ? (
-        <p className="text-sm text-medium-gray py-4 text-center">No conversations yet. Start one to coordinate care with the people authorized for this patient.</p>
+        loadError ? (
+          <p className="text-sm text-medium-gray py-4 text-center">Conversations could not be confirmed right now.</p>
+        ) : (
+          <p className="text-sm text-medium-gray py-4 text-center">No conversations yet. Start one to coordinate care with the people authorized for this patient.</p>
+        )
       ) : (
         <ul className="space-y-2">
           {conversations.map((c) => (
