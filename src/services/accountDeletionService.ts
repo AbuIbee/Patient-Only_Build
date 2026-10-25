@@ -52,6 +52,19 @@ export async function getMyAccountDeletionRequests(): Promise<AccountDeletionReq
   return (data as Record<string, unknown>[]).map(mapRow);
 }
 
+// MMA-ENT-CAREGIVER-MASTER-005 D02-013: a failed fetch here previously
+// meant `open` (the pending-request lookup in AccountDeletionRequestPanel)
+// was always undefined, silently showing "Request account deletion"
+// even when a request is genuinely already pending — risking a
+// confusing duplicate submission rather than the real "could not be
+// confirmed" state.
+export async function getMyAccountDeletionRequestsResult(): Promise<{ data: AccountDeletionRequest[] | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('get_my_account_deletion_requests');
+  if (error) return { data: null, error: error.message || 'Could not load your account deletion request status.' };
+  if (!data) return { data: null, error: 'Could not load your account deletion request status — unexpected empty response.' };
+  return { data: (data as Record<string, unknown>[]).map(mapRow), error: null };
+}
+
 export async function getPendingAccountDeletionRequests(): Promise<AccountDeletionRequest[]> {
   const { data, error } = await supabase.rpc('get_pending_account_deletion_requests');
   if (error || !data) return [];

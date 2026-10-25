@@ -31,7 +31,7 @@ import { getMyConversationsResult, createConversation, searchMyConversationsResu
 import CareConversations, { ConversationThread } from '@/components/communications/CareConversations';
 import { inviteTherapist } from '@/services/therapistConnectionService';
 import { getHelpActivationHistory } from '@/services/helpActivationService';
-import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDeletionRequests, type AccountDeletionRequest } from '@/services/accountDeletionService';
+import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDeletionRequestsResult, type AccountDeletionRequest } from '@/services/accountDeletionService';
 import MFASettings from '@/components/MFASettings';
 import ActiveSessionsPanel from '@/components/ActiveSessionsPanel';
 import {
@@ -2360,11 +2360,21 @@ function NotificationsCard() {
   const [prefs, setPrefs] = useState({ notify_messages: true, notify_help_alerts: true, notify_follow_up_due: true, channel: 'in_app' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-013: a failed load previously left
+  // `prefs` at its hardcoded defaults with no indication the real saved
+  // values couldn't be confirmed — the toggles would show "on" even if
+  // the caller had actually saved "off" (or vice versa), silently
+  // misrepresenting what is actually persisted.
+  const [loadError, setPrefsLoadError] = useState<string | null>(null);
   useEffect(() => {
     const myId = state.currentUser?.id;
     if (!myId) { setLoading(false); return; }
     void supabase.from('caregiver_notification_preferences').select('*').eq('user_id', myId).maybeSingle()
-      .then(({ data }) => { if (data) setPrefs(data); setLoading(false); });
+      .then(({ data, error }) => {
+        if (data) setPrefs(data);
+        setPrefsLoadError(error ? (error.message || 'Could not load your saved preferences.') : null);
+        setLoading(false);
+      });
   }, [state.currentUser?.id]);
 
   // MMA-ENT-CAREGIVER-MASTER-004 D12 (P2): independent runtime audit
@@ -2395,6 +2405,7 @@ function NotificationsCard() {
   return (
     <Card>
       <div className="flex items-center gap-2"><MessageSquare className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Notifications</h2></div>
+      {loadError && <p className="text-xs text-gentle-coral font-medium">Your saved preferences could not be confirmed ({loadError}) — the toggles below show defaults, not necessarily what is actually saved.</p>}
       <label className="flex items-center justify-between text-sm text-charcoal">
         Messages <input type="checkbox" checked={prefs.notify_messages} disabled={saving} onChange={(e) => { void save({ ...prefs, notify_messages: e.target.checked }); }} />
       </label>
@@ -2615,10 +2626,13 @@ function AccountDeletionRequestPanel() {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setDeletionLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    setRequests(await getMyAccountDeletionRequests());
+    const { data, error } = await getMyAccountDeletionRequestsResult();
+    setRequests(data ?? []);
+    setDeletionLoadError(error);
     setLoading(false);
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
@@ -2646,6 +2660,22 @@ function AccountDeletionRequestPanel() {
   };
 
   if (loading) return null;
+
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-013: when the status genuinely
+  // cannot be confirmed, show neither the "pending" state nor the
+  // submit form confidently — offering a fresh "Request account
+  // deletion" button while a real pending request might already exist
+  // (undetected only because this fetch failed) risks a confusing
+  // duplicate submission.
+  if (loadError) {
+    return (
+      <div className="space-y-2 pt-3 border-t border-soft-taupe">
+        <p className="text-xs font-semibold text-medium-gray">Delete my account</p>
+        <p className="text-sm text-gentle-coral font-medium">Your account deletion request status could not be confirmed: {loadError}</p>
+        <button type="button" onClick={() => { void refresh(); }} className="px-3 py-1.5 rounded-lg border border-soft-taupe text-charcoal text-xs font-semibold hover:bg-warm-ivory">Retry</button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2 pt-3 border-t border-soft-taupe">
