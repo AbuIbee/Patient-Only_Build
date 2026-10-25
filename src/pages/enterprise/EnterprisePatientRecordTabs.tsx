@@ -22,6 +22,7 @@ import type { MoodType, TaskStatus } from '@/types/supabase';
 import { CoverageBanner, type PatientHeader } from './EnterpriseStaffPatientView';
 import { getProfessionalNotes, addProfessionalNote, type ProfessionalNote } from '@/services/professionalNotesService';
 import CareConversations from '@/components/communications/CareConversations';
+import { getMyConversations } from '@/services/communicationsService';
 import { getHelpActivationHistory, type HelpActivationHistoryEntry } from '@/services/helpActivationService';
 import {
   getPatientDiagnoses, recordPatientDiagnosis, getPatientAllergies, recordPatientAllergy,
@@ -1210,24 +1211,58 @@ function SafetyTab({ patientId, patientHeader, staffRole }: { patientId: string;
   );
 }
 
-// P22 — unified chronological timeline, aggregating every dated event
-// type this record has access to. No source is invented; each entry
-// names its real origin table.
+// MMA-ENT-CAREGIVER-MASTER-004, D07 (P2) — independent runtime audit
+// finding: "Timeline omitted required medication/check-in/message
+// categories and has no chronological filter controls." Diagnoses,
+// vitals, incidents, HELP and handoffs were already aggregated
+// correctly; notes, A-G check-ins, medication outcomes and
+// conversations were entirely missing. Every added source reuses an
+// existing, already-authorized query exactly as its own tab already
+// uses it (patient_notes/care_partner_checkins/medication_logs/
+// getMyConversations) -- no new table, RPC or authorization path. Each
+// entry carries its own `kind` so the type filter and cross-tenant
+// scoping (every query is still `.eq('patient_id', patientId)`, same
+// as before) stay verifiable per source, not merged into one opaque
+// list.
+type TimelineKind = 'diagnosis' | 'vitals' | 'incident' | 'help' | 'handoff' | 'note' | 'checkin' | 'medication' | 'message';
+const TIMELINE_KIND_LABELS: Record<TimelineKind, string> = {
+  diagnosis: 'Diagnosis', vitals: 'Vitals', incident: 'Incident', help: 'HELP', handoff: 'Shift Handoff',
+  note: 'Note', checkin: 'Check-in', medication: 'Medication', message: 'Message',
+};
+const TIMELINE_PAGE_SIZE = 20;
+
 function TimelineTab({ patientId, orgId }: { patientId: string; orgId: string }) {
-  const [entries, setEntries] = useState<{ at: string; label: string }[]>([]);
+  const [entries, setEntries] = useState<{ at: string; label: string; kind: TimelineKind }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterKind, setFilterKind] = useState<TimelineKind | 'all'>('all');
+  const [visibleCount, setVisibleCount] = useState(TIMELINE_PAGE_SIZE);
+
   useEffect(() => {
     void (async () => {
-      const [diag, vit, inc, help, handoffs] = await Promise.all([
+      const [diag, vit, inc, help, handoffs, notesRes, checkinsRes, medRes, conversations] = await Promise.all([
         getPatientDiagnoses(patientId), getPatientVitals(patientId), getPatientIncidentReports(patientId),
         getHelpActivationHistory(patientId).then((r) => r.entries), getPatientShiftHandoffs(orgId, patientId),
+        supabase.from('patient_notes').select('note, note_type, created_at').eq('patient_id', patientId).order('created_at', { ascending: false }).limit(30),
+        supabase.from('care_partner_checkins').select('check_in_date, created_at').eq('patient_id', patientId).order('check_in_date', { ascending: false }).limit(30),
+        supabase.from('medication_logs').select('status, date, scheduled_time, medications(name)').eq('patient_id', patientId).order('date', { ascending: false }).limit(30),
+        getMyConversations(patientId),
       ]);
-      const all: { at: string; label: string }[] = [
-        ...diag.map((d) => ({ at: d.createdAt, label: `Diagnosis recorded: ${d.conditionName}` })),
-        ...vit.map((v) => ({ at: v.measuredAt, label: 'Vitals recorded' })),
-        ...inc.map((i) => ({ at: i.occurredAt, label: `Incident: ${i.incidentType.replace('_', ' ')}` })),
-        ...help.map((h: HelpActivationHistoryEntry) => ({ at: h.createdAt, label: 'HELP button activated' })),
-        ...handoffs.map((h) => ({ at: h.createdAt, label: 'Shift handoff recorded' })),
+      const all: { at: string; label: string; kind: TimelineKind }[] = [
+        ...diag.map((d) => ({ at: d.createdAt, label: `Diagnosis recorded: ${d.conditionName}`, kind: 'diagnosis' as const })),
+        ...vit.map((v) => ({ at: v.measuredAt, label: 'Vitals recorded', kind: 'vitals' as const })),
+        ...inc.map((i) => ({ at: i.occurredAt, label: `Incident: ${i.incidentType.replace('_', ' ')}`, kind: 'incident' as const })),
+        ...help.map((h: HelpActivationHistoryEntry) => ({ at: h.createdAt, label: 'HELP button activated', kind: 'help' as const })),
+        ...handoffs.map((h) => ({ at: h.createdAt, label: 'Shift handoff recorded', kind: 'handoff' as const })),
+        ...(notesRes.data ?? []).map((n) => ({ at: n.created_at, label: `Note (${n.note_type.replace('_', ' ')}): ${n.note.slice(0, 80)}`, kind: 'note' as const })),
+        ...(checkinsRes.data ?? []).map((c) => ({ at: c.created_at ?? c.check_in_date, label: 'Care Partner check-in recorded', kind: 'checkin' as const })),
+        ...(medRes.data ?? []).map((m) => ({
+          at: `${m.date}T${m.scheduled_time ?? '00:00'}`,
+          label: `Medication ${m.status}: ${(m as unknown as { medications: { name: string } | null }).medications?.name ?? 'Medication'}`,
+          kind: 'medication' as const,
+        })),
+        ...conversations.filter((c) => c.lastMessageAt).map((c) => ({
+          at: c.lastMessageAt as string, label: `Message${c.subject ? `: ${c.subject}` : ''}${c.lastMessageBody ? ` — ${c.lastMessageBody.slice(0, 60)}` : ''}`, kind: 'message' as const,
+        })),
       ];
       all.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
       setEntries(all);
@@ -1235,18 +1270,38 @@ function TimelineTab({ patientId, orgId }: { patientId: string; orgId: string })
     })();
   }, [patientId, orgId]);
 
+  const filtered = filterKind === 'all' ? entries : entries.filter((e) => e.kind === filterKind);
+  const visible = filtered.slice(0, visibleCount);
+  const kindsPresent = Array.from(new Set(entries.map((e) => e.kind)));
+
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
   return (
     <SectionCard title="Patient Health Timeline" icon={Clock}>
-      {entries.length === 0 ? <p className="text-sm text-medium-gray">No timeline events recorded yet.</p> : (
-        <ul className="space-y-1.5 max-h-[32rem] overflow-y-auto">
-          {entries.map((e, idx) => (
-            <li key={idx} className="p-2 bg-warm-ivory rounded-lg border border-soft-taupe text-xs text-charcoal flex items-center justify-between">
-              <span>{e.label}</span>
-              <span className="text-medium-gray">{new Date(e.at).toLocaleString()}</span>
-            </li>
-          ))}
-        </ul>
+      {entries.length > 0 && (
+        <select
+          value={filterKind} onChange={(e) => { setFilterKind(e.target.value as TimelineKind | 'all'); setVisibleCount(TIMELINE_PAGE_SIZE); }}
+          aria-label="Filter timeline by event type" className="px-3 py-2 rounded-xl border border-soft-taupe text-sm"
+        >
+          <option value="all">All event types</option>
+          {kindsPresent.map((k) => <option key={k} value={k}>{TIMELINE_KIND_LABELS[k]}</option>)}
+        </select>
+      )}
+      {filtered.length === 0 ? <p className="text-sm text-medium-gray">No timeline events recorded yet.</p> : (
+        <>
+          <ul className="space-y-1.5 max-h-[32rem] overflow-y-auto">
+            {visible.map((e, idx) => (
+              <li key={idx} className="p-2 bg-warm-ivory rounded-lg border border-soft-taupe text-xs text-charcoal flex items-center justify-between gap-2">
+                <span><span className="font-semibold text-warm-bronze">{TIMELINE_KIND_LABELS[e.kind]}</span> · {e.label}</span>
+                <span className="text-medium-gray flex-shrink-0">{new Date(e.at).toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
+          {filtered.length > visible.length && (
+            <button type="button" onClick={() => setVisibleCount((n) => n + TIMELINE_PAGE_SIZE)} className="text-xs font-semibold text-warm-bronze hover:underline">
+              Show more ({filtered.length - visible.length} remaining)
+            </button>
+          )}
+        </>
       )}
     </SectionCard>
   );
