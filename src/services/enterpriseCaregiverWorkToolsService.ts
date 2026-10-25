@@ -242,6 +242,18 @@ export async function getIncidentAttachments(incidentId: string): Promise<Incide
   return data.map((r) => ({ id: r.id, storagePath: r.storage_path, fileName: r.file_name, uploadedBy: r.uploaded_by, createdAt: r.created_at }));
 }
 
+// MMA-ENT-CAREGIVER-MASTER-005 D02-010: AlertsView previously read this
+// via the plain getIncidentAttachments() above and discarded its error,
+// so a failed attachment-count lookup silently rendered as "0
+// attachments" — indistinguishable from an incident that genuinely has
+// none.
+export async function getIncidentAttachmentsResult(incidentId: string): Promise<ServiceResult<IncidentAttachment[]>> {
+  const { data, error } = await supabase.from('incident_attachments').select('id, storage_path, file_name, uploaded_by, created_at').eq('incident_id', incidentId).order('created_at', { ascending: true });
+  if (error) return { data: null, error: errMsg(error, 'Could not load attachments for an incident report.') };
+  if (!data) return { data: null, error: 'Could not load attachments — unexpected empty response.' };
+  return { data: data.map((r) => ({ id: r.id, storagePath: r.storage_path, fileName: r.file_name, uploadedBy: r.uploaded_by, createdAt: r.created_at })), error: null };
+}
+
 export async function getSignedIncidentAttachmentUrl(storagePath: string): Promise<string | null> {
   const { data, error } = await supabase.storage.from(INCIDENT_ATTACHMENT_BUCKET).createSignedUrl(storagePath, 3600);
   if (error || !data) return null;

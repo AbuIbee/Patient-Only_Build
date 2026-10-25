@@ -22,7 +22,7 @@ import {
   AlertTriangle, CheckCircle2, PlayCircle, StopCircle, Sparkles, Flag, Moon, Upload, ArrowLeft,
 } from 'lucide-react';
 import {
-  getMyStaffPatients, getMyCareTeam, getMyOrgSupervisor, getMyOrganizations, coverPatientViaStaffRegistration, setStaffPatientLabel,
+  getMyStaffPatients, getMyCareTeamResult, getMyOrgSupervisorResult, getMyOrganizations, coverPatientViaStaffRegistration, setStaffPatientLabel,
   type StaffPatient, type CareTeamMember, type MyOrganization,
 } from '@/services/organizationService';
 import { getMyPendingRegistrations, type PendingRegistrationSummary } from '@/services/caregiverRegistrationService';
@@ -35,10 +35,10 @@ import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDelet
 import MFASettings from '@/components/MFASettings';
 import ActiveSessionsPanel from '@/components/ActiveSessionsPanel';
 import {
-  getMyVisits, startCaregiverVisit, endCaregiverVisit, scheduleCaregiverVisit,
-  getPatientIncidentReports, fileIncidentReport, uploadIncidentAttachment, getIncidentAttachments,
+  startCaregiverVisit, endCaregiverVisit, scheduleCaregiverVisit,
+  fileIncidentReport, uploadIncidentAttachment,
   reportScopeConcern, getMyCredentials,
-  getMyVisitsResult, getPatientIncidentReportsResult, getPatientShiftHandoffsResult,
+  getMyVisitsResult, getPatientIncidentReportsResult, getPatientShiftHandoffsResult, getIncidentAttachmentsResult,
   type CaregiverVisit, type IncidentReport, type CaregiverCredential, type IncidentSeverity,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import { acknowledgeHelpActivation } from '@/services/patientClinicalRecordService';
@@ -1317,8 +1317,17 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
   // call, rather than reverting the backend requirement.
   const [endingVisitId, setEndingVisitId] = useState<string | null>(null);
   const [endNotesDraft, setEndNotesDraft] = useState('');
-
-  const load = useCallback(async () => { setVisits(await getMyVisits()); setLoading(false); }, []);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-005: getMyVisits() discards its
+  // error and returns [] on any failure, which this view then rendered
+  // as an authoritative "No visits scheduled" — a Caregiver with real
+  // scheduled work had no way to tell that apart from a failed query.
+  const [loadError, setScheduleLoadError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    const { data, error } = await getMyVisitsResult();
+    setVisits(data ?? []);
+    setScheduleLoadError(error);
+    setLoading(false);
+  }, []);
   useEffect(() => { void load(); }, [load]);
   const visibleVisits = todayOnly ? visits.filter((v) => isToday(v.scheduledStart)) : visits;
 
@@ -1371,8 +1380,18 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
       <label className="flex items-center gap-2 text-xs font-semibold text-medium-gray">
         <input type="checkbox" checked={todayOnly} onChange={(e) => setTodayOnly(e.target.checked)} /> Today only
       </label>
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm text-gentle-coral font-medium">Your schedule could not be loaded: {loadError}</p>
+          <button type="button" onClick={() => { setLoading(true); void load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
+        </div>
+      )}
       {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : visibleVisits.length === 0 ? (
-        <p className="text-sm text-medium-gray">{todayOnly ? 'No visits scheduled for today.' : 'No visits scheduled yet.'}</p>
+        loadError ? (
+          <p className="text-sm text-medium-gray">Your schedule could not be confirmed right now.</p>
+        ) : (
+          <p className="text-sm text-medium-gray">{todayOnly ? 'No visits scheduled for today.' : 'No visits scheduled yet.'}</p>
+        )
       ) : (
         <ul className="space-y-2">
           {visibleVisits.map((v) => {
@@ -1427,12 +1446,32 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
 function VisitsListView() {
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { void getMyVisits().then((v) => { setVisits(v); setLoading(false); }); }, []);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-007: same defect as ScheduleView —
+  // getMyVisits() silently returns [] on failure, which rendered here as
+  // an authoritative "No visit history yet."
+  const [loadError, setVisitsLoadError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    const { data, error } = await getMyVisitsResult();
+    setVisits(data ?? []);
+    setVisitsLoadError(error);
+    setLoading(false);
+  }, []);
+  useEffect(() => { void load(); }, [load]);
   return (
     <Card>
       <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Visits &amp; Time Records</h2></div>
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm text-gentle-coral font-medium">Your visit history could not be loaded: {loadError}</p>
+          <button type="button" onClick={() => { setLoading(true); void load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
+        </div>
+      )}
       {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : visits.length === 0 ? (
-        <p className="text-sm text-medium-gray">No visit history yet.</p>
+        loadError ? (
+          <p className="text-sm text-medium-gray">Your visit history could not be confirmed right now.</p>
+        ) : (
+          <p className="text-sm text-medium-gray">No visit history yet.</p>
+        )
       ) : (
         <ul className="space-y-2">
           {visits.map((v) => (
@@ -1470,11 +1509,19 @@ interface TaskRow { id: string; patient_id: string; title: string; status: TaskS
 function TasksView({ patients }: { patients: StaffPatient[] }) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
-
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-006: this previously destructured
+  // only `{ data }`, so a failed task query (RLS denial, network error)
+  // produced the same tasks=[] as a patient with a genuinely empty care
+  // plan, rendered here as "No assigned tasks found for your patients."
+  const [loadError, setTasksLoadError] = useState<string | null>(null);
   const load = useCallback(() => {
-    if (patients.length === 0) { setLoading(false); return; }
+    if (patients.length === 0) { setTasks([]); setTasksLoadError(null); setLoading(false); return; }
     void supabase.from('tasks').select('id, patient_id, title, status, refusal_reason').in('patient_id', patients.map((p) => p.patientId)).eq('is_active', true)
-      .then(({ data }) => { setTasks((data ?? []) as TaskRow[]); setLoading(false); });
+      .then(({ data, error }) => {
+        setTasks((data ?? []) as TaskRow[]);
+        setTasksLoadError(error ? (error.message || 'Could not load your assigned tasks.') : null);
+        setLoading(false);
+      });
   }, [patients]);
   useEffect(() => { load(); }, [load]);
 
@@ -1503,8 +1550,18 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
   return (
     <Card>
       <div className="flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Care Plans &amp; Tasks</h2></div>
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm text-gentle-coral font-medium">Your care plan tasks could not be loaded: {loadError}</p>
+          <button type="button" onClick={() => { setLoading(true); load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
+        </div>
+      )}
       {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : tasks.length === 0 ? (
-        <p className="text-sm text-medium-gray">No assigned tasks found for your patients.</p>
+        loadError ? (
+          <p className="text-sm text-medium-gray">Your care plan tasks could not be confirmed right now.</p>
+        ) : (
+          <p className="text-sm text-medium-gray">No assigned tasks found for your patients.</p>
+        )
       ) : (
         <ul className="space-y-2">
           {tasks.map((t) => (
@@ -1789,16 +1846,28 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
     } catch { /* best-effort; draft recovery is a convenience, not a guarantee */ }
   }, [myId, draftKey, patientId, incidentType, severity, occurredAt, description]);
 
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-010: this previously called the
+  // plain getPatientIncidentReports/getIncidentAttachments (both
+  // discard their error and return [] on failure) and destructured only
+  // `{ entries }` from getHelpActivationHistory, dropping its `error`
+  // entirely. A failed HELP-history or incident-report query therefore
+  // rendered as an authoritative "No alerts or incidents recorded" —
+  // exactly the defect this directive names: "A failed HELP query must
+  // never be presented as proof that no HELP event occurred."
+  const [loadError, setAlertsLoadError] = useState<string | null>(null);
   const load = useCallback(async () => {
-    const incidentRows = (await Promise.all(patients.map(async (p) => {
-      const incidents = await getPatientIncidentReports(p.patientId);
-      return Promise.all(incidents.map(async (i): Promise<IncidentAlertRow> => ({
-        ...i, kind: 'incident', patientName: p.preferredName || p.firstName,
-        attachmentCount: (await getIncidentAttachments(i.id)).length,
-      })));
-    }))).flat();
+    setAlertsLoadError(null);
+    const errors: string[] = [];
+    const incidentResults = await Promise.all(patients.map((p) => getPatientIncidentReportsResult(p.patientId)));
+    incidentResults.forEach((r) => { if (r.error) errors.push(r.error); });
+    const incidentRows = await Promise.all(incidentResults.flatMap((r, idx) => (r.data ?? []).map(async (i): Promise<IncidentAlertRow> => {
+      const attResult = await getIncidentAttachmentsResult(i.id);
+      if (attResult.error) errors.push(attResult.error);
+      return { ...i, kind: 'incident', patientName: patients[idx].preferredName || patients[idx].firstName, attachmentCount: (attResult.data ?? []).length };
+    })));
     const helpRows = (await Promise.all(patients.map(async (p) => {
-      const { entries } = await getHelpActivationHistory(p.patientId);
+      const { entries, error } = await getHelpActivationHistory(p.patientId);
+      if (error) errors.push(error);
       return entries.map((e): HelpAlertRow => ({
         kind: 'help', id: e.id, patientId: p.patientId, patientName: p.preferredName || p.firstName, occurredAt: e.createdAt,
         detail: `HELP button activated${e.phoneDialed ? ` — attempted call to ${e.phoneDialed}` : ''} (${e.notificationStatus.replace('_', ' ')})`,
@@ -1808,6 +1877,7 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
     const merged: AlertRow[] = [...incidentRows, ...helpRows];
     merged.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
     setAlerts(merged);
+    if (errors.length > 0) setAlertsLoadError(errors[0]);
     setLoading(false);
   }, [patients]);
   useEffect(() => { void load(); }, [load]);
@@ -1889,8 +1959,18 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
           <p className="text-[11px] text-medium-gray">Draft saved for this browser session — it will survive a reload, but not signing out or closing the browser.</p>
         )}
       </div>
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm text-gentle-coral font-medium">Some alerts or incidents could not be loaded: {loadError}{alerts.length > 0 ? ' — the list below may be incomplete.' : ''}</p>
+          <button type="button" onClick={() => { setLoading(true); void load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
+        </div>
+      )}
       {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : alerts.length === 0 ? (
-        <p className="text-sm text-medium-gray">No alerts or incidents recorded.</p>
+        loadError ? (
+          <p className="text-sm text-medium-gray">Nothing could be confirmed right now — this is not necessarily an empty history.</p>
+        ) : (
+          <p className="text-sm text-medium-gray">No alerts or incidents recorded.</p>
+        )
       ) : (
         <ul className="space-y-2">
           {alerts.map((a) => a.kind === 'help' ? (
@@ -1933,9 +2013,22 @@ function CareTeamView({ orgId, patients }: { orgId: string; patients: StaffPatie
   const [invitePatientId, setInvitePatientId] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
-  useEffect(() => {
-    void Promise.all([getMyCareTeam(orgId), getMyOrgSupervisor(orgId)]).then(([t, s]) => { setTeam(t); setSupervisor(s); setLoading(false); });
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-008: both reads previously
+  // collapsed failure into the same empty/null result as a genuinely
+  // empty team or a patient with no supervisor — "No colleagues share a
+  // patient assignment with you yet" and an absent supervisor card both
+  // rendered identically whether that was true or the query failed.
+  const [loadError, setTeamLoadError] = useState<string | null>(null);
+  const load = useCallback(() => {
+    void Promise.all([getMyCareTeamResult(orgId), getMyOrgSupervisorResult(orgId)]).then(([t, s]) => {
+      setTeam(t.data ?? []);
+      setSupervisor(s.data ?? null);
+      const errors = [t.error, s.error].filter((e): e is string => !!e);
+      setTeamLoadError(errors.length > 0 ? errors[0] : null);
+      setLoading(false);
+    });
   }, [orgId]);
+  useEffect(() => { load(); }, [load]);
 
   // W10 — "initiate caregiver-authorized therapist... connection
   // requests" — the underlying RPC (THER-01/02-hardened) was real and
@@ -1977,6 +2070,12 @@ function CareTeamView({ orgId, patients }: { orgId: string; patients: StaffPatie
   return (
     <Card>
       <div className="flex items-center gap-2"><UserCog className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Care Team</h2></div>
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm text-gentle-coral font-medium">Your care team could not be fully loaded: {loadError}</p>
+          <button type="button" onClick={() => { setLoading(true); load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
+        </div>
+      )}
       {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : (
         <>
           {supervisor && (
@@ -1992,7 +2091,13 @@ function CareTeamView({ orgId, patients }: { orgId: string; patients: StaffPatie
               )}
             </div>
           )}
-          {team.length === 0 ? <p className="text-sm text-medium-gray">No colleagues share a patient assignment with you yet.</p> : (
+          {team.length === 0 ? (
+            loadError ? (
+              <p className="text-sm text-medium-gray">Your care team could not be confirmed right now.</p>
+            ) : (
+              <p className="text-sm text-medium-gray">No colleagues share a patient assignment with you yet.</p>
+            )
+          ) : (
             <ul className="space-y-2">
               {team.map((m) => (
                 <li key={m.userId} className="flex items-center justify-between p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
@@ -2089,18 +2194,30 @@ function MyActivityCard({ patients }: { patients: StaffPatient[] }) {
   const [taskUpdates, setTaskUpdates] = useState<{ id: string; title: string; status: string; status_updated_at: string | null }[]>([]);
   const [noteCount, setNoteCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-013: all three reads here (plain
+  // getMyVisits(), and two inline Supabase queries destructuring only
+  // `{ data }`/`{ count }`) previously discarded their error and this
+  // card just `return null`'d past it — a failed load was visually
+  // identical to a card that renders correctly with zero activity, not
+  // merely an empty state but an ABSENT one (no card shown at all).
+  const [loadError, setActivityLoadError] = useState<string | null>(null);
   useEffect(() => {
     const myId = state.currentUser?.id;
     const patientIds = patients.map((p) => p.patientId);
-    if (!myId || patientIds.length === 0) { setVisits([]); setTaskUpdates([]); setNoteCount(0); setLoading(false); return; }
+    if (!myId || patientIds.length === 0) { setVisits([]); setTaskUpdates([]); setNoteCount(0); setActivityLoadError(null); setLoading(false); return; }
     void Promise.all([
-      getMyVisits(),
+      getMyVisitsResult(),
       supabase.from('tasks').select('id, title, status, status_updated_at').eq('status_updated_by', myId).in('patient_id', patientIds).order('status_updated_at', { ascending: false }).limit(20),
       supabase.from('patient_notes').select('id', { count: 'exact', head: true }).eq('author_id', myId).in('patient_id', patientIds),
     ]).then(([v, t, n]) => {
-      setVisits(v.filter((visit) => patientIds.includes(visit.patientId)));
+      const errors: string[] = [];
+      if (v.error) errors.push(v.error);
+      if (t.error) errors.push(t.error.message);
+      if (n.error) errors.push(n.error.message);
+      setVisits((v.data ?? []).filter((visit) => patientIds.includes(visit.patientId)));
       setTaskUpdates((t.data ?? []) as typeof taskUpdates);
-      setNoteCount((n as { count: number | null }).count ?? 0);
+      setNoteCount(n.count ?? 0);
+      setActivityLoadError(errors.length > 0 ? errors[0] : null);
       setLoading(false);
     });
   }, [state.currentUser?.id, patients]);
@@ -2108,6 +2225,11 @@ function MyActivityCard({ patients }: { patients: StaffPatient[] }) {
   return (
     <Card>
       <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Activity</h2></div>
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
+          <p className="text-sm text-gentle-coral font-medium">Some activity could not be loaded: {loadError} — the counts below may be incomplete.</p>
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="p-2 bg-warm-ivory rounded-xl border border-soft-taupe"><p className="text-lg font-bold text-charcoal">{visits.length}</p><p className="text-[11px] text-medium-gray">Visits</p></div>
         <div className="p-2 bg-warm-ivory rounded-xl border border-soft-taupe"><p className="text-lg font-bold text-charcoal">{taskUpdates.length}</p><p className="text-[11px] text-medium-gray">Tasks updated</p></div>

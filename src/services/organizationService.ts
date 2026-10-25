@@ -322,11 +322,39 @@ export async function getMyCareTeam(orgId: string): Promise<CareTeamMember[]> {
   }));
 }
 
+// MMA-ENT-CAREGIVER-MASTER-005 D02-008: additive error-surfacing
+// siblings of getMyCareTeam/getMyOrgSupervisor above, used only by
+// CareTeamView (the one Caregiver-dashboard consumer this directive
+// covers) so existing callers elsewhere are unaffected. Directive text:
+// "A missing supervisor and an unavailable supervisor lookup are not
+// the same condition" — the plain getMyOrgSupervisor collapses both
+// into the same `null`.
+export async function getMyCareTeamResult(orgId: string): Promise<{ data: CareTeamMember[] | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('get_my_care_team', { p_org_id: orgId });
+  if (error) return { data: null, error: errMsg(error, 'Could not load your care team.') };
+  if (!data) return { data: null, error: 'Could not load your care team — unexpected empty response.' };
+  return {
+    data: data.map((r) => ({
+      userId: r.member_user_id, firstName: r.first_name, lastName: r.last_name,
+      orgRole: r.org_role as OrgRole, isDirector: r.is_director,
+    })),
+    error: null,
+  };
+}
+
 export async function getMyOrgSupervisor(orgId: string): Promise<{ userId: string; firstName: string; lastName: string } | null> {
   const { data, error } = await supabase.rpc('get_my_org_supervisor', { p_org_id: orgId });
   if (error || !data || data.length === 0) return null;
   const row = data[0];
   return { userId: row.member_user_id, firstName: row.first_name, lastName: row.last_name };
+}
+
+export async function getMyOrgSupervisorResult(orgId: string): Promise<{ data: { userId: string; firstName: string; lastName: string } | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('get_my_org_supervisor', { p_org_id: orgId });
+  if (error) return { data: null, error: errMsg(error, 'Could not load your supervisor contact.') };
+  if (!data || data.length === 0) return { data: null, error: null };
+  const row = data[0];
+  return { data: { userId: row.member_user_id, firstName: row.first_name, lastName: row.last_name }, error: null };
 }
 
 // OWNER DIRECTIVE MMA-ENT-SALES-003 §3 (Phase E) — "duplicate
