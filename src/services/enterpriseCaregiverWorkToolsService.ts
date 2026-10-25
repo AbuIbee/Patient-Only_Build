@@ -11,6 +11,29 @@ function errMsg(error: { message: string } | null, fallback: string): string {
   return error?.message || fallback;
 }
 
+// MMA-ENT-CAREGIVER-MASTER-004, D02 (P1) — independent runtime audit
+// finding: "A database error must never appear as an empty patient
+// list, zero tasks, no messages or missing clinical information."
+// Confirmed: every plain-array read in this file (getMyVisits,
+// getPatientIncidentReports, getPatientShiftHandoffs, ...) already
+// receives the real Supabase `error` object and then discards it,
+// returning [] regardless of whether the result was a genuine empty
+// list or a network failure/HTTP 500/RLS-adjacent error. A caller had
+// no way to tell "zero visits" from "the request failed."
+//
+// ServiceResult is additive, not a breaking change to these functions'
+// existing return types (every current caller across every office
+// keeps compiling and behaving exactly as before) — see
+// getMyVisitsResult/getPatientIncidentReportsResult/
+// getPatientShiftHandoffsResult below, each a thin sibling of its
+// existing counterpart used specifically by
+// EnterpriseCaregiverDashboard's own primary load (D02's actual named
+// location), so a real failure there can finally be told apart from
+// legitimate emptiness without touching the ~15 other existing call
+// sites of these functions across other dashboards/offices that this
+// directive does not mandate changing.
+export type ServiceResult<T> = { data: T; error: null } | { data: null; error: string };
+
 export type VisitStatus = 'scheduled' | 'in_progress' | 'completed' | 'missed' | 'canceled';
 
 export interface CaregiverVisit {
@@ -76,6 +99,13 @@ export async function getMyVisits(patientId?: string): Promise<CaregiverVisit[]>
   return data.map(mapVisit);
 }
 
+export async function getMyVisitsResult(patientId?: string): Promise<ServiceResult<CaregiverVisit[]>> {
+  const { data, error } = await supabase.rpc('get_my_visits', { p_patient_id: patientId });
+  if (error) return { data: null, error: errMsg(error, 'Could not load visits.') };
+  if (data === null || data === undefined) return { data: null, error: 'Could not load visits — unexpected empty response.' };
+  return { data: data.map(mapVisit), error: null };
+}
+
 export interface ShiftHandoff {
   id: string;
   authorId: string;
@@ -103,14 +133,28 @@ export async function acknowledgeShiftHandoff(handoffId: string): Promise<{ erro
   return { error: error ? errMsg(error, 'Could not acknowledge this handoff.') : null };
 }
 
-export async function getPatientShiftHandoffs(orgId: string, patientId: string): Promise<ShiftHandoff[]> {
-  const { data, error } = await supabase.rpc('get_patient_shift_handoffs', { p_org_id: orgId, p_patient_id: patientId });
-  if (error || !data) return [];
-  return data.map((r) => ({
+function mapShiftHandoff(r: {
+  id: string; author_id: string; author_first_name: string; author_last_name: string;
+  summary: string; pending_tasks: string | null; concerns: string | null; created_at: string; acknowledged_count: number | string;
+}): ShiftHandoff {
+  return {
     id: r.id, authorId: r.author_id, authorFirstName: r.author_first_name, authorLastName: r.author_last_name,
     summary: r.summary, pendingTasks: r.pending_tasks, concerns: r.concerns, createdAt: r.created_at,
     acknowledgedCount: Number(r.acknowledged_count),
-  }));
+  };
+}
+
+export async function getPatientShiftHandoffs(orgId: string, patientId: string): Promise<ShiftHandoff[]> {
+  const { data, error } = await supabase.rpc('get_patient_shift_handoffs', { p_org_id: orgId, p_patient_id: patientId });
+  if (error || !data) return [];
+  return data.map(mapShiftHandoff);
+}
+
+export async function getPatientShiftHandoffsResult(orgId: string, patientId: string): Promise<ServiceResult<ShiftHandoff[]>> {
+  const { data, error } = await supabase.rpc('get_patient_shift_handoffs', { p_org_id: orgId, p_patient_id: patientId });
+  if (error) return { data: null, error: errMsg(error, 'Could not load shift handoffs.') };
+  if (data === null || data === undefined) return { data: null, error: 'Could not load shift handoffs — unexpected empty response.' };
+  return { data: data.map(mapShiftHandoff), error: null };
 }
 
 export type IncidentType = 'fall' | 'injury' | 'behavioral' | 'medication_concern' | 'safety_event' | 'other';
@@ -222,6 +266,17 @@ export async function getPatientIncidentReports(patientId: string): Promise<Inci
     .order('occurred_at', { ascending: false });
   if (error || !data) return [];
   return data.map(mapIncident);
+}
+
+export async function getPatientIncidentReportsResult(patientId: string): Promise<ServiceResult<IncidentReport[]>> {
+  const { data, error } = await supabase
+    .from('incident_reports')
+    .select('id, patient_id, reported_by, incident_type, description, severity, occurred_at, resolution_status, resolution_notes, supervisor_notified_at')
+    .eq('patient_id', patientId)
+    .order('occurred_at', { ascending: false });
+  if (error) return { data: null, error: errMsg(error, 'Could not load incident reports.') };
+  if (data === null || data === undefined) return { data: null, error: 'Could not load incident reports — unexpected empty response.' };
+  return { data: data.map(mapIncident), error: null };
 }
 
 export async function reportScopeConcern(orgId: string, patientId: string, description: string): Promise<{ error: string | null }> {

@@ -27,7 +27,7 @@ import {
 } from '@/services/organizationService';
 import { getMyPendingRegistrations, type PendingRegistrationSummary } from '@/services/caregiverRegistrationService';
 import { RegisterPatientForm, IncompleteRegistrations } from '@/pages/caregiver/CaregiverPortal';
-import { getMyConversations, createConversation, searchMyConversations, type ConversationSummary } from '@/services/communicationsService';
+import { getMyConversations, getMyConversationsResult, createConversation, searchMyConversations, type ConversationSummary } from '@/services/communicationsService';
 import CareConversations, { ConversationThread } from '@/components/communications/CareConversations';
 import { inviteTherapist } from '@/services/therapistConnectionService';
 import { getHelpActivationHistory } from '@/services/helpActivationService';
@@ -37,7 +37,8 @@ import ActiveSessionsPanel from '@/components/ActiveSessionsPanel';
 import {
   getMyVisits, startCaregiverVisit, endCaregiverVisit, scheduleCaregiverVisit,
   getPatientIncidentReports, fileIncidentReport, uploadIncidentAttachment, getIncidentAttachments,
-  reportScopeConcern, getMyCredentials, getPatientShiftHandoffs,
+  reportScopeConcern, getMyCredentials,
+  getMyVisitsResult, getPatientIncidentReportsResult, getPatientShiftHandoffsResult,
   type CaregiverVisit, type IncidentReport, type CaregiverCredential, type IncidentSeverity,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import { acknowledgeHelpActivation } from '@/services/patientClinicalRecordService';
@@ -597,15 +598,48 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
   const [unfinishedCareLists, setUnfinishedCareLists] = useState(0);
   const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([]);
   const [loadingExtra, setLoadingExtra] = useState(true);
+  // MMA-ENT-CAREGIVER-MASTER-004, D02 (P1) — independent runtime audit
+  // finding: "A database error must never appear as an empty patient
+  // list, zero tasks, no messages or missing clinical information,"
+  // and "A failed query produces a detectable error state, never
+  // silently masquerading as empty data" / "A failed request cannot
+  // advance the last-successful-sync timestamp" (D02-INVARIANT-02/05).
+  // Confirmed: every read below previously discarded its real error
+  // (getMyConversations/getMyVisits/getPatientIncidentReports/
+  // getPatientShiftHandoffs all return [] on ANY failure, and the two
+  // inline Supabase queries destructured only `{ data }`), and
+  // setLoadingExtra(false) always ran regardless, which in turn always
+  // advanced enterprise_last_sync below even when every single fetch
+  // had actually failed. loadError now tracks whether ANYTHING failed
+  // this pass; reloadNonce lets the user actually retry rather than
+  // being stuck on a silently-stale screen.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     let active = true;
     (async () => {
-      const [convos, myVisits] = await Promise.all([getMyConversations(), getMyVisits()]);
-      const allIncidents = (await Promise.all(patients.map((p) => getPatientIncidentReports(p.patientId)))).flat();
-      const helpByPatient = await Promise.all(patients.map(async (p) => ({
-        patient: p, entries: (await getHelpActivationHistory(p.patientId)).entries,
-      })));
+      setLoadError(null);
+      const errors: string[] = [];
+      const noteErrors: string[] = [];
+      const medErrors: string[] = [];
+      const taskErrors: string[] = [];
+
+      const [convosResult, visitsResult] = await Promise.all([getMyConversationsResult(), getMyVisitsResult()]);
+      if (convosResult.error) errors.push(convosResult.error);
+      if (visitsResult.error) errors.push(visitsResult.error);
+      const convos = convosResult.data ?? [];
+      const myVisits = visitsResult.data ?? [];
+
+      const incidentResults = await Promise.all(patients.map((p) => getPatientIncidentReportsResult(p.patientId)));
+      incidentResults.forEach((r) => { if (r.error) errors.push(r.error); });
+      const allIncidents = incidentResults.flatMap((r) => r.data ?? []);
+
+      const helpByPatient = await Promise.all(patients.map(async (p) => {
+        const { entries, error } = await getHelpActivationHistory(p.patientId);
+        if (error) errors.push(error);
+        return { patient: p, entries };
+      }));
       // MMA-ENT-CAREGIVER-MASTER-003 R16: helpCount feeds "Needs
       // attention" (needsAttentionCount below) and must mean the same
       // thing as the attention feed itself — unacknowledged events, not
@@ -623,10 +657,12 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
       // professional types staff can already see.
       const sinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const noteRows = (await Promise.all(patients.map(async (p) => {
-        const { data } = await supabase.from('patient_notes').select('note, created_at').eq('patient_id', p.patientId).gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(5);
+        const { data, error } = await supabase.from('patient_notes').select('note, created_at').eq('patient_id', p.patientId).gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(5);
+        if (error) { noteErrors.push(error.message); return []; }
         return (data ?? []).map((r) => ({ patientName: p.preferredName || p.firstName, note: r.note, at: r.created_at }));
       }))).flat();
       noteRows.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+      if (noteErrors.length > 0) errors.push(`Could not load recent patient updates for ${noteErrors.length} patient(s).`);
 
       // H10 — "documented missed/refused doses" across assigned patients.
       // ROUND 7 CORRECTION: medication_logs.status's real CHECK constraint
@@ -635,13 +671,16 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
       // that half of its own name. Discovered via real seeded-data
       // verification, not source review alone.
       const medRows = (await Promise.all(patients.map(async (p) => {
-        const { data } = await supabase.from('medication_logs').select('status, scheduled_time, date, medication_id, medications(name)').eq('patient_id', p.patientId).in('status', ['missed', 'skipped']).order('date', { ascending: false }).limit(5);
+        const { data, error } = await supabase.from('medication_logs').select('status, scheduled_time, date, medication_id, medications(name)').eq('patient_id', p.patientId).in('status', ['missed', 'skipped']).order('date', { ascending: false }).limit(5);
+        if (error) { medErrors.push(error.message); return []; }
         return (data ?? []).map((r) => ({ patientName: p.preferredName || p.firstName, medName: (r as { medications: { name: string } | null }).medications?.name ?? 'Medication', status: r.status, at: `${r.date} ${r.scheduled_time}` }));
       }))).flat();
+      if (medErrors.length > 0) errors.push(`Could not load medication concerns for ${medErrors.length} patient(s).`);
 
       // H14 — unacknowledged shift handoffs across assigned patients.
-      const handoffCounts = await Promise.all(patients.map((p) => getPatientShiftHandoffs(orgId, p.patientId)));
-      const unackCount = handoffCounts.flat().filter((h) => h.acknowledgedCount === 0).length;
+      const handoffResults = await Promise.all(patients.map((p) => getPatientShiftHandoffsResult(orgId, p.patientId)));
+      handoffResults.forEach((r) => { if (r.error) errors.push(r.error); });
+      const unackCount = handoffResults.flatMap((r) => r.data ?? []).filter((h) => h.acknowledgedCount === 0).length;
       // H14's other three categories: completed visits with no visit
       // notes; unresolved incidents (the same `incidents` data this
       // dashboard already fetches for H03/Open Alerts — not a second
@@ -655,9 +694,11 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
       // already fully knowable from tasks.status='pending' alone.
       const missingNotesCount = myVisits.filter((v) => v.status === 'completed' && !v.visitNotes).length;
       const pendingTaskCounts = await Promise.all(patients.map(async (p) => {
-        const { count } = await supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('patient_id', p.patientId).eq('status', 'pending').eq('is_active', true);
+        const { count, error } = await supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('patient_id', p.patientId).eq('status', 'pending').eq('is_active', true);
+        if (error) { taskErrors.push(error.message); return 0; }
         return count ?? 0;
       }));
+      if (taskErrors.length > 0) errors.push(`Could not load care-plan task counts for ${taskErrors.length} patient(s).`);
       const unfinishedCareListsCount = pendingTaskCounts.filter((c) => c > 0).length;
 
       if (!active) return;
@@ -695,10 +736,15 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
       }));
       const combined = [...helpItems, ...incidentItems, ...noteItems].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
       setAttentionItems(combined.slice(0, 6));
+      // D02-INVARIANT-05: setLoadError BEFORE setLoadingExtra(false) —
+      // the effect below that advances enterprise_last_sync is keyed on
+      // loadingExtra transitioning to false, and must see a non-null
+      // loadError already in place at that moment to correctly skip it.
+      if (errors.length > 0) setLoadError(errors[0]);
       setLoadingExtra(false);
     })();
     return () => { active = false; };
-  }, [patients, orgId]);
+  }, [patients, orgId, reloadNonce]);
 
   // H18 — "Connection & Synchronization." Genuinely implemented via
   // the browser's own online/offline events and a localStorage-recorded
@@ -713,11 +759,32 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
     window.addEventListener('offline', off);
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
+  // D02-INVARIANT-05: a failed request cannot advance the last-
+  // successful-sync timestamp — only a load that finished with
+  // loadError still null actually counts as a successful sync.
+  //
+  // MMA-ENT-CAREGIVER-MASTER-004 D02 (P1) — independent fault-injection
+  // test caught a second, genuinely pre-existing bug here: lastSync was
+  // a plain `let` re-read from localStorage synchronously during
+  // render, while the write happened in a useEffect that runs AFTER
+  // that render commits. Writing to localStorage does not itself
+  // trigger a re-render, so there was nothing to make the component
+  // re-read the fresh value afterward — the display always lagged one
+  // render behind the real stored value, showing "not yet recorded"
+  // even immediately after a genuinely successful first load. lastSync
+  // is now real React state, set in the SAME effect that performs the
+  // write, so the displayed value is always the one actually just
+  // persisted.
+  const [lastSync, setLastSync] = useState<string | null>(() => {
+    try { return localStorage.getItem('enterprise_last_sync'); } catch { return null; }
+  });
   useEffect(() => {
-    if (!loadingExtra) { try { localStorage.setItem('enterprise_last_sync', new Date().toISOString()); } catch { /* best-effort */ } }
-  }, [loadingExtra]);
-  let lastSync: string | null = null;
-  try { lastSync = localStorage.getItem('enterprise_last_sync'); } catch { /* best-effort */ }
+    if (!loadingExtra && !loadError) {
+      const now = new Date().toISOString();
+      try { localStorage.setItem('enterprise_last_sync', now); } catch { /* best-effort */ }
+      setLastSync(now);
+    }
+  }, [loadingExtra, loadError]);
 
   const unreadCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
   const todayVisits = visits.filter((v) => v.scheduledStart && new Date(v.scheduledStart).toDateString() === new Date().toDateString());
@@ -743,21 +810,31 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
       </div>
 
       {/* H02 — the four approved summary cards; each count navigates to
-          its underlying authorized record set, not just the sidebar. */}
+          its underlying authorized record set, not just the sidebar.
+          D02-INVARIANT-03: "Assigned patients" comes from the parent's
+          already-verified org-scoped list (D01), unaffected by this
+          view's own fetches — only the other three can actually be
+          partial, so only they get the "partial" caveat when loadError
+          is set, rather than casting doubt on a count that is not
+          actually in question. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {([
-          { label: 'Assigned patients', sub: 'active', value: patients.length, nav: 'patients' as NavItem },
-          { label: 'Visits today', sub: 'scheduled', value: todayVisits.length, nav: 'schedule' as NavItem },
-          { label: 'Needs attention', sub: 'updates', value: needsAttentionCount, nav: 'alerts' as NavItem },
-          { label: 'Unread messages', sub: 'care team', value: unreadCount, nav: 'communications' as NavItem },
+          { label: 'Assigned patients', sub: 'active', value: patients.length, nav: 'patients' as NavItem, mayBePartial: false },
+          { label: 'Visits today', sub: 'scheduled', value: todayVisits.length, nav: 'schedule' as NavItem, mayBePartial: true },
+          { label: 'Needs attention', sub: 'updates', value: needsAttentionCount, nav: 'alerts' as NavItem, mayBePartial: true },
+          { label: 'Unread messages', sub: 'care team', value: unreadCount, nav: 'communications' as NavItem, mayBePartial: true },
         ]).map((m) => (
           <button
             key={m.label} type="button" onClick={() => onNavigate(m.nav)}
             className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-4 text-left hover:shadow-md hover:border-ent-forest/30 transition-all"
           >
             <p className="text-[11px] font-semibold text-ent-text">{m.label}</p>
-            <p className="text-2xl font-bold text-ent-ink mt-1">{loadingExtra ? <Loader2 className="w-5 h-5 animate-spin" /> : m.value}</p>
-            <p className="text-[11px] text-ent-muted">{m.sub}</p>
+            <p className="text-2xl font-bold text-ent-ink mt-1">
+              {loadingExtra ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                <>{m.value}{m.mayBePartial && loadError && <span className="text-sm font-semibold text-gentle-coral align-top" title="Some data failed to load — this count may be incomplete">*</span>}</>
+              )}
+            </p>
+            <p className="text-[11px] text-ent-muted">{m.sub}{m.mayBePartial && loadError ? ' · partial' : ''}</p>
           </button>
         ))}
       </div>
@@ -933,6 +1010,16 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
       <Card>
         <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Connection &amp; Synchronization</h2></div>
         <p className="text-sm text-ent-text">{isOnline ? 'Online' : 'Offline — changes may not be saved until reconnected'}</p>
+        {/* D02-INVARIANT-02/05: a genuine fetch failure this pass is
+            shown honestly here, right next to the sync timestamp it
+            explicitly did NOT advance — never silently presented as
+            "everything loaded, zero results." */}
+        {loadError && (
+          <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-sm text-gentle-coral font-medium">Some information could not be loaded: {loadError}</p>
+            <button type="button" onClick={() => { setLoadingExtra(true); setReloadNonce((n) => n + 1); }} className="text-sm font-semibold text-ent-forest hover:underline flex-shrink-0">Retry</button>
+          </div>
+        )}
         <p className="text-[11px] text-ent-muted">Last successful sync: {lastSync ? new Date(lastSync).toLocaleString() : 'not yet recorded'}</p>
         <p className="text-[11px] text-ent-muted">No locally queued offline drafts exist in this shell — nothing here is reported as sent unless it has actually reached the server.</p>
       </Card>

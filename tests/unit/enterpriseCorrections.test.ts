@@ -27,7 +27,7 @@ import {
   getOrgCommunicationsOverview,
 } from '@/services/organizationService';
 import {
-  getPatientCareCircle, createConversation, getConversationMessages, getMyConversations,
+  getPatientCareCircle, createConversation, getConversationMessages, getMyConversations, getMyConversationsResult,
 } from '@/services/communicationsService';
 import { getProfessionalNotes, addProfessionalNote } from '@/services/professionalNotesService';
 
@@ -194,6 +194,41 @@ describe('getMyConversations — inbox, never a conversation the caller was not 
   it('returns an empty list on an RPC error rather than throwing', async () => {
     rpcMock.mockResolvedValue({ data: null, error: { message: 'denied' } });
     expect(await getMyConversations('p1')).toEqual([]);
+  });
+});
+
+// MMA-ENT-CAREGIVER-MASTER-004, D02 (P1) — getMyConversations() above
+// is confirmed (by the test right above this one) to collapse ANY
+// error into []. getMyConversationsResult() must not: a real error
+// comes back as an error, and a genuine empty inbox still comes back
+// as a successful data: [].
+describe('getMyConversationsResult — D02 (P1): distinguishes a real error from a genuinely empty inbox', () => {
+  it('a real RPC error is reported as an error, not silently treated as zero conversations', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'connection refused' } });
+    const result = await getMyConversationsResult();
+    expect(result.error).toBe('connection refused');
+    expect(result.data).toBeNull();
+  });
+
+  it('a genuine zero-row response is reported as a successful empty list, not an error', async () => {
+    rpcMock.mockResolvedValue({ data: [], error: null });
+    const result = await getMyConversationsResult();
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual([]);
+  });
+
+  it('a real result still maps unread_count/urgency the same way getMyConversations does', async () => {
+    rpcMock.mockResolvedValue({
+      data: [{
+        conversation_id: 'conv-1', patient_id: 'p1', patient_name: 'Jane', subject: 'Check-in',
+        created_by: 'caregiver-1', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-02T00:00:00Z',
+        last_message_body: 'hi', last_message_at: '2026-01-02T00:00:00Z', last_message_urgent: true, unread_count: 2,
+      }],
+      error: null,
+    });
+    const result = await getMyConversationsResult();
+    expect(result.error).toBeNull();
+    expect(result.data?.[0]).toMatchObject({ unreadCount: 2, lastMessageUrgent: true });
   });
 });
 

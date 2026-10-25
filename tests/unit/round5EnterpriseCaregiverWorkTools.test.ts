@@ -48,9 +48,9 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import {
-  scheduleCaregiverVisit, startCaregiverVisit, endCaregiverVisit, getMyVisits,
-  recordShiftHandoff, acknowledgeShiftHandoff, getPatientShiftHandoffs,
-  fileIncidentReport, resolveIncidentReport, getPatientIncidentReports,
+  scheduleCaregiverVisit, startCaregiverVisit, endCaregiverVisit, getMyVisits, getMyVisitsResult,
+  recordShiftHandoff, acknowledgeShiftHandoff, getPatientShiftHandoffs, getPatientShiftHandoffsResult,
+  fileIncidentReport, resolveIncidentReport, getPatientIncidentReports, getPatientIncidentReportsResult,
   reportScopeConcern, getMyCredentials, recordStaffCredential, getOrgStaffCredentials,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 
@@ -205,5 +205,63 @@ describe('H17/O06 — credentials and training', () => {
     rpcMock.mockResolvedValue({ data: [{ id: 'cr1', user_id: 'c1', first_name: 'Jane', last_name: 'Doe', credential_name: 'CPR', issued_at: null, expires_at: null, status: 'active' }], error: null });
     const [cred] = await getOrgStaffCredentials('org1');
     expect(cred).toMatchObject({ firstName: 'Jane', lastName: 'Doe', credentialName: 'CPR' });
+  });
+});
+
+// MMA-ENT-CAREGIVER-MASTER-004, D02 (P1) — independent runtime audit
+// finding: "A database error must never appear as an empty patient
+// list, zero tasks, no messages or missing clinical information."
+// getMyVisits/getPatientShiftHandoffs/getPatientIncidentReports above
+// all collapse any error into []  — confirmed in the tests above doing
+// nothing to distinguish them. Their *Result siblings must not: a real
+// error must come back AS an error, and a genuine empty result must
+// still come back as data: [] (never miscast as an error).
+describe('MMA-ENT-CAREGIVER-MASTER-004 D02 (P1) — ServiceResult siblings distinguish error from genuine emptiness', () => {
+  it('getMyVisitsResult: a real RPC error is reported as an error, not silently treated as zero visits', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'connection refused' } });
+    const result = await getMyVisitsResult();
+    expect(result.error).toBe('connection refused');
+    expect(result.data).toBeNull();
+  });
+
+  it('getMyVisitsResult: a genuine zero-row response is reported as a successful empty list, not an error', async () => {
+    rpcMock.mockResolvedValue({ data: [], error: null });
+    const result = await getMyVisitsResult();
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual([]);
+  });
+
+  it('getPatientShiftHandoffsResult: a real RPC error is reported as an error, not silently treated as zero handoffs', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'timeout' } });
+    const result = await getPatientShiftHandoffsResult('org1', 'p1');
+    expect(result.error).toBe('timeout');
+    expect(result.data).toBeNull();
+  });
+
+  it('getPatientShiftHandoffsResult: a genuine result still maps acknowledged_count to a number', async () => {
+    rpcMock.mockResolvedValue({ data: [{ id: 'h1', author_id: 'c1', author_first_name: 'Jane', author_last_name: 'Doe', summary: 's', pending_tasks: null, concerns: null, created_at: '2026-01-01', acknowledged_count: '1' }], error: null });
+    const result = await getPatientShiftHandoffsResult('org1', 'p1');
+    expect(result.error).toBeNull();
+    expect(result.data?.[0]).toMatchObject({ id: 'h1', acknowledgedCount: 1 });
+  });
+
+  it('getPatientIncidentReportsResult: a real query error is reported as an error, not silently treated as zero incidents', async () => {
+    const order = vi.fn().mockResolvedValue({ data: null, error: { message: 'relation does not exist' } });
+    const eq = vi.fn(() => ({ order }));
+    const select = vi.fn(() => ({ eq }));
+    fromMock.mockReturnValue({ select });
+    const result = await getPatientIncidentReportsResult('p1');
+    expect(result.error).toBe('relation does not exist');
+    expect(result.data).toBeNull();
+  });
+
+  it('getPatientIncidentReportsResult: a genuine empty list is reported as success with data: []', async () => {
+    const order = vi.fn().mockResolvedValue({ data: [], error: null });
+    const eq = vi.fn(() => ({ order }));
+    const select = vi.fn(() => ({ eq }));
+    fromMock.mockReturnValue({ select });
+    const result = await getPatientIncidentReportsResult('p1');
+    expect(result.error).toBeNull();
+    expect(result.data).toEqual([]);
   });
 });

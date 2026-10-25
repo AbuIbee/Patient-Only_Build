@@ -103,10 +103,12 @@ export async function getPatientCareCircle(patientId: string): Promise<CareCircl
   }));
 }
 
-export async function getMyConversations(patientId?: string): Promise<ConversationSummary[]> {
-  const { data, error } = await supabase.rpc('get_my_conversations', { p_patient_id: patientId ?? null });
-  if (error || !data) return [];
-  return data.map((r) => ({
+function mapConversationSummary(r: {
+  conversation_id: string; patient_id: string; patient_name: string; subject: string | null; created_by: string;
+  created_at: string; updated_at: string; last_message_body: string | null; last_message_at: string | null;
+  last_message_urgent: boolean | null; unread_count: number | string | null; has_open_follow_up: boolean | null;
+}): ConversationSummary {
+  return {
     conversationId: r.conversation_id,
     patientId: r.patient_id,
     patientName: r.patient_name,
@@ -119,7 +121,27 @@ export async function getMyConversations(patientId?: string): Promise<Conversati
     lastMessageUrgent: !!r.last_message_urgent,
     unreadCount: Number(r.unread_count ?? 0),
     hasOpenFollowUp: !!r.has_open_follow_up,
-  }));
+  };
+}
+
+export async function getMyConversations(patientId?: string): Promise<ConversationSummary[]> {
+  const { data, error } = await supabase.rpc('get_my_conversations', { p_patient_id: patientId ?? null });
+  if (error || !data) return [];
+  return data.map(mapConversationSummary);
+}
+
+// MMA-ENT-CAREGIVER-MASTER-004, D02 (P1): additive sibling of
+// getMyConversations() above — see enterpriseCaregiverWorkToolsService.ts's
+// ServiceResult comment for the full rationale. Used specifically by
+// EnterpriseCaregiverDashboard's own primary load so a genuine fetch
+// failure there is distinguishable from zero conversations, without
+// changing getMyConversations()'s existing return type for its many
+// other callers across other offices/components.
+export async function getMyConversationsResult(patientId?: string): Promise<{ data: ConversationSummary[] | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('get_my_conversations', { p_patient_id: patientId ?? null });
+  if (error) return { data: null, error: errMsg(error, 'Could not load conversations.') };
+  if (data === null || data === undefined) return { data: null, error: 'Could not load conversations — unexpected empty response.' };
+  return { data: data.map(mapConversationSummary), error: null };
 }
 
 // MASTER CORRECTIVE FUNC-04: get_my_conversations() only ever carries
