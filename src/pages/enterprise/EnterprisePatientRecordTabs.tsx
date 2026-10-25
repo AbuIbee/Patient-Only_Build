@@ -33,7 +33,8 @@ import {
 } from '@/services/patientClinicalRecordService';
 import {
   getMyVisits, getPatientShiftHandoffs, getPatientIncidentReports, reportScopeConcern,
-  type CaregiverVisit, type IncidentReport,
+  recordShiftHandoff, acknowledgeShiftHandoff,
+  type CaregiverVisit, type IncidentReport, type ShiftHandoff,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 
 // FIVE-OFFICE PLATFORM — CONFIRMED PROVENANCE DEFECT, newly reachable by this
@@ -54,13 +55,24 @@ function professionalSourceFor(staffRole: StaffRole): ProvenanceSource {
   return staffRole === 'medical_professional' || staffRole === 'therapist' ? 'professional_observation' : 'caregiver_report';
 }
 
-export type TabKey = 'overview' | 'medical' | 'medications' | 'tasks' | 'ag' | 'carePlan' | 'appointments' | 'documents' | 'safety' | 'communications' | 'timeline';
+// MMA-ENT-CAREGIVER-MASTER-003, D05 (P1): 'handoffs' added to the
+// locked tab architecture above. Independent runtime audit finding D05
+// (reproduced): record_shift_handoff()/acknowledge_shift_handoff()/
+// get_patient_shift_handoffs() (migration 068) are a complete, correctly
+// authorized backend — the "Shift Handoffs" sidebar destination's own
+// patient picker (EnterpriseCaregiverDashboard.tsx) led only to this
+// record's Overview tab, which has never had any handoff UI at all, so
+// the feature was entirely unreachable despite working end to end at
+// the service layer. One additive tab, appended after the existing
+// eleven rather than altering any of them, is the minimal fix that
+// keeps every other tab's content and order exactly as approved.
+export type TabKey = 'overview' | 'medical' | 'medications' | 'tasks' | 'ag' | 'carePlan' | 'appointments' | 'documents' | 'safety' | 'communications' | 'timeline' | 'handoffs';
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'overview', label: 'Overview' }, { key: 'medical', label: 'Medical' }, { key: 'medications', label: 'Medications' },
   { key: 'tasks', label: 'Tasks' },
   { key: 'ag', label: 'A–G' }, { key: 'carePlan', label: 'Care Plan' }, { key: 'appointments', label: 'Appointments' },
   { key: 'documents', label: 'Documents' }, { key: 'safety', label: 'Safety' }, { key: 'communications', label: 'Communications' },
-  { key: 'timeline', label: 'Timeline' },
+  { key: 'timeline', label: 'Timeline' }, { key: 'handoffs', label: 'Shift Handoffs' },
 ];
 
 function SectionCard({ title, icon: Icon, children }: { title: string; icon: typeof FileText; children: React.ReactNode }) {
@@ -115,6 +127,7 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         {tab === 'safety' && <SafetyTab patientId={patientId} patientHeader={patientHeader} staffRole={staffRole} />}
         {tab === 'communications' && <CareConversations patientId={patientId} patientName={displayName} />}
         {tab === 'timeline' && <TimelineTab patientId={patientId} orgId={orgId} />}
+        {tab === 'handoffs' && <HandoffsTab patientId={patientId} orgId={orgId} />}
       </div>
     </div>
   );
@@ -623,6 +636,101 @@ function TasksTab({ patientId }: { patientId: string }) {
         </ul>
       )}
     </SectionCard>
+  );
+}
+
+// MMA-ENT-CAREGIVER-MASTER-003, D05 (P1) — the first reachable UI for
+// shift handoffs. record_shift_handoff()/acknowledge_shift_handoff()/
+// get_patient_shift_handoffs() (migration 068) are unchanged and
+// reused exactly as-is: this component performs no authorization
+// decisions of its own, same as every other tab in this file. History
+// (every past handoff, not only the latest) comes for free from
+// get_patient_shift_handoffs() already returning the full list.
+function HandoffsTab({ patientId, orgId }: { patientId: string; orgId: string }) {
+  const [handoffs, setHandoffs] = useState<ShiftHandoff[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummaryText] = useState('');
+  const [pendingTasks, setPendingTasksText] = useState('');
+  const [concerns, setConcernsText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [acking, setAcking] = useState<string | null>(null);
+  // Codex MMA-CODEX-11-style local-only signal: acknowledge_shift_handoff
+  // is idempotent server-side (ON CONFLICT DO UPDATE), so re-clicking it
+  // is harmless, but the RPC/list only ever return a COUNT, never who —
+  // this tracks which handoffs THIS session has personally acknowledged
+  // so the button can honestly say "Acknowledged" rather than inferring
+  // it from a count that could just as easily mean someone else did.
+  const [ackedByMe, setAckedByMe] = useState<Set<string>>(new Set());
+
+  const load = useCallback(() => { setLoading(true); void getPatientShiftHandoffs(orgId, patientId).then((h) => { setHandoffs(h); setLoading(false); }); }, [orgId, patientId]);
+  useEffect(() => { load(); }, [load]);
+
+  const submit = async () => {
+    if (!summary.trim()) return;
+    setSaving(true);
+    try {
+      const { error } = await recordShiftHandoff(orgId, patientId, summary.trim(), pendingTasks.trim() || undefined, concerns.trim() || undefined);
+      if (error) { toast.error(error); return; }
+      setSummaryText(''); setPendingTasksText(''); setConcernsText('');
+      load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const acknowledge = async (handoffId: string) => {
+    setAcking(handoffId);
+    try {
+      const { error } = await acknowledgeShiftHandoff(handoffId);
+      if (error) { toast.error(error); return; }
+      setAckedByMe((prev) => new Set(prev).add(handoffId));
+      load();
+    } finally {
+      setAcking(null);
+    }
+  };
+
+  return (
+    <>
+      <SectionCard title="Record a Shift Handoff" icon={Send}>
+        <textarea value={summary} onChange={(e) => setSummaryText(e.target.value)} placeholder="Summary of this shift…" rows={2} className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm resize-none" />
+        <textarea value={pendingTasks} onChange={(e) => setPendingTasksText(e.target.value)} placeholder="Pending tasks for the next shift (optional)…" rows={2} className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm resize-none" />
+        <textarea value={concerns} onChange={(e) => setConcernsText(e.target.value)} placeholder="Concerns to flag (optional)…" rows={2} className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm resize-none" />
+        <button type="button" onClick={() => { void submit(); }} disabled={saving || !summary.trim()} className="px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">
+          {saving ? 'Recording…' : 'Record Handoff'}
+        </button>
+      </SectionCard>
+
+      <SectionCard title="Handoff History" icon={ClipboardList}>
+        {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : handoffs.length === 0 ? (
+          <p className="text-sm text-medium-gray">No shift handoffs recorded yet.</p>
+        ) : (
+          <ul className="space-y-2">
+            {handoffs.map((h) => {
+              const acknowledged = ackedByMe.has(h.id) || h.acknowledgedCount > 0;
+              return (
+                <li key={h.id} className="p-3 rounded-xl border border-soft-taupe bg-warm-ivory text-sm space-y-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs text-medium-gray">{h.authorFirstName} {h.authorLastName} · {new Date(h.createdAt).toLocaleString()}</p>
+                    <button
+                      type="button" onClick={() => { void acknowledge(h.id); }} disabled={acking === h.id}
+                      className={`flex-shrink-0 px-2 py-1 rounded-lg text-xs font-semibold disabled:opacity-60 ${
+                        acknowledged ? 'bg-soft-sage/20 text-soft-sage' : 'bg-warm-bronze/10 text-warm-bronze'
+                      }`}
+                    >
+                      {acking === h.id ? 'Acknowledging…' : acknowledged ? `Acknowledged (${h.acknowledgedCount})` : 'Acknowledge'}
+                    </button>
+                  </div>
+                  <p className="text-charcoal">{h.summary}</p>
+                  {h.pendingTasks && <p className="text-xs text-medium-gray"><span className="font-semibold">Pending:</span> {h.pendingTasks}</p>}
+                  {h.concerns && <p className="text-xs text-gentle-coral"><span className="font-semibold">Concerns:</span> {h.concerns}</p>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </SectionCard>
+    </>
   );
 }
 

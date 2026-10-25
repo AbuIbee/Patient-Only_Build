@@ -41,7 +41,7 @@ import {
   type CaregiverVisit, type IncidentReport, type CaregiverCredential,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
-import EnterprisePatientRecordTabs from './EnterprisePatientRecordTabs';
+import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
 
 type NavItem =
   | 'dashboard' | 'patients' | 'schedule' | 'tasks' | 'records' | 'communications'
@@ -102,14 +102,22 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   const [nav, setNav] = useState<NavItem>(() => parseEnterprisePath(basePath).nav);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [openPatient, setOpenPatient] = useState<string | null>(() => parseEnterprisePath(basePath).openPatient);
+  // MMA-ENT-CAREGIVER-MASTER-003 D05 (P1): which record tab to land on
+  // when openPatient is set from a destination-specific patient picker
+  // (e.g. "Select a patient to record or review Shift Handoffs" should
+  // actually land on that tab, not always Overview). Not carried in the
+  // URL (same as every other in-record tab selection already isn't) —
+  // only read once, at the moment EnterprisePatientRecordTabs mounts.
+  const [openPatientInitialTab, setOpenPatientInitialTab] = useState<TabKey | undefined>(undefined);
 
   // Keeps the URL in sync so reload/back/forward/shared links land on
   // the same screen, instead of defaulting back to the dashboard.
-  const navigateTo = useCallback((nextNav: NavItem, patientId: string | null = null) => {
+  const navigateTo = useCallback((nextNav: NavItem, patientId: string | null = null, initialTab?: TabKey) => {
     const path = patientId ? `${basePath}/patients/${patientId}` : `${basePath}/${nextNav}`;
     if (window.location.pathname !== path) window.history.pushState({}, '', path);
     setNav(nextNav);
     setOpenPatient(patientId);
+    setOpenPatientInitialTab(patientId ? initialTab : undefined);
   }, [basePath]);
 
   useEffect(() => {
@@ -295,7 +303,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
               <EnterpriseStaffPatientView
                 organizationId={orgId} patientId={openPatient} onBack={() => navigateTo(nav)} staffRole="caregiver"
                 onReady={(patient) => (
-                  <EnterprisePatientRecordTabs patientId={openPatient} patientHeader={patient} staffRole="caregiver" orgId={orgId} onBack={() => navigateTo(nav)} />
+                  <EnterprisePatientRecordTabs patientId={openPatient} patientHeader={patient} staffRole="caregiver" orgId={orgId} onBack={() => navigateTo(nav)} initialTab={openPatientInitialTab} />
                 )}
               />
             </div>
@@ -315,7 +323,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
                   <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view or add Care Notes & Observations" />
                 </>
               )}
-              {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to record or review Shift Handoffs" />}
+              {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id, 'handoffs')} title="Select a patient to record or review Shift Handoffs" />}
               {nav === 'alerts' && <AlertsView patients={patients} orgId={orgId} />}
               {nav === 'careTeam' && <CareTeamView orgId={orgId} patients={patients} />}
               {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view their Documents" />}
