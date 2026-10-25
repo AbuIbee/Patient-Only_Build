@@ -84,6 +84,45 @@ export async function rpc(name: string, args: unknown, token: string): Promise<[
   return http('POST', `/rest/v1/rpc/${name}`, args, token);
 }
 
+// CODEX F-10 (migration 130): submit_professional_application()/
+// resubmit_application() now server-side validate the ENTIRE six-step
+// Director payload, not just legal_name/contact_email. Every test that
+// submits (not merely drafts) a real director application must send a
+// complete, valid step1..step6 object or the RPC now correctly rejects
+// it -- this helper is the one shared "known-good" shape, with the
+// identity fields (fullLegalName/verifiedBusinessEmail) deliberately
+// left to the caller since those must match the submission's own
+// p_legal_name/p_contact_email arguments.
+export function validDirectorApplicationDetails(opts: {
+  fullLegalName: string;
+  verifiedBusinessEmail: string;
+  originatingQuoteId?: string;
+}) {
+  return {
+    originatingQuoteId: opts.originatingQuoteId,
+    currentStep: 6,
+    step1: {
+      legalBusinessName: 'Al-Noor Family Care Services', dba: '', legalForm: 'LLC', businessClassification: 'Home care agency',
+      formationJurisdiction: 'Texas', registrationNumber: 'TX-0001', ein: '12-3456789', registeredAddress: '100 Main St, Austin, TX',
+      operatingSameAsRegistered: true, operatingAddress: '', mailingAddress: '', businessEmail: opts.verifiedBusinessEmail,
+      businessPhone: '512-555-0100', website: '', yearEstablished: '2024', numLocations: '1',
+      seatsAdmin: '1', seatsCaregiver: '2', seatsTherapist: '1', seatsMedical: '1',
+    },
+    step2: {
+      fullLegalName: opts.fullLegalName, preferredName: '', verifiedBusinessEmail: opts.verifiedBusinessEmail, mobile: '512-555-0101',
+      title: 'Founder', relationshipToEntity: 'Owner', authorizedSignatory: true, authorityAttestation: true, alternateAdmin: '',
+    },
+    step3: { requestedActivationDate: '', migrationStatus: 'no_migration', migrationDetails: '', poRequired: false, buyerBillingContact: 'Billing Contact' },
+    step4: {
+      services: 'Residential dementia care', careSetting: 'In-home', jurisdictions: 'Texas', phiIntendedUse: 'yes' as const,
+      hipaaDeclaration: 'covered_entity' as const, privacyContact: 'Privacy Contact', securityContact: 'Security Contact',
+      baaSignatory: opts.fullLegalName, orgRegistration: '', orgNpi: '', migrationConsent: false,
+    },
+    step5: { billingLegalEntity: 'Al-Noor Family Care Services', billingContact: 'Billing Contact', billingAddress: '100 Main St, Austin, TX', billingEmail: opts.verifiedBusinessEmail, currency: 'USD', cadence: 'annual', taxExempt: false, poNumber: '' },
+    step6: { accuracyAttestation: true, authorizedSignatoryConfirmed: true, privacyAck: true, signatureName: opts.fullLegalName },
+  };
+}
+
 // Holds a FOR UPDATE lock on a pending_therapist_connections row for
 // `sleepSeconds`, then (still inside the SAME transaction/session, so no
 // self-deadlock) accepts the invitation as the therapist, then commits.

@@ -8,7 +8,7 @@
 // simulated one) must result in exactly one 'submitted' audit event
 // and exactly one successful response -- never two.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
+import { authDeleteUser, authSignUp, login, rpc, sql, validDirectorApplicationDetails } from './_runtime';
 
 const PW = 'CodexF12Fix9!';
 const stamp = Date.now();
@@ -45,7 +45,8 @@ describe('CODEX F-12 FIX (migration 128) — concurrent submission of the same d
       p_requested_office: 'director', p_target_organization_id: null,
       p_proposed_organization_name: `F12 Race Org ${stamp}`, p_proposed_package_type: 'integrated_care',
       p_legal_name: 'Race Applicant', p_preferred_name: null, p_contact_email: emails.applicant, p_contact_phone: null,
-      p_professional_title: null, p_profession_category: null, p_application_details: {}, p_draft_id: draftId,
+      p_professional_title: null, p_profession_category: null,
+      p_application_details: validDirectorApplicationDetails({ fullLegalName: 'Race Applicant', verifiedBusinessEmail: emails.applicant }), p_draft_id: draftId,
     }, tok.applicant);
 
     const [resultA, resultB] = await Promise.all([submitOnce(), submitOnce()]);

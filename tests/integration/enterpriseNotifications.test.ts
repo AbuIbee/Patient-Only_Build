@@ -7,7 +7,7 @@
 // throughout this engagement and assert a real notification row
 // appears as a side effect -- never a mocked or simulated trigger.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authDeleteUser, authSignUp, http, login, rpc, sql } from './_runtime';
+import { authDeleteUser, authSignUp, http, login, rpc, sql, validDirectorApplicationDetails } from './_runtime';
 
 const PW = 'Notify9!';
 const stamp = Date.now();
@@ -60,11 +60,12 @@ describe('MMA-ENT-SALES-006 Phase I2 — enterprise notification center (migrati
 
     // Real submission via the real RPC (not a direct INSERT) --
     // proves the INSERT trigger fires for the real business path.
+    const fullDetails = validDirectorApplicationDetails({ fullLegalName: 'Notify Bilal', verifiedBusinessEmail: emails.bilal, originatingQuoteId: quote.id });
     const [submitStatus, app] = (await rpc('submit_professional_application', {
       p_requested_office: 'director', p_target_organization_id: null, p_proposed_organization_name: `Notify Org ${stamp}`,
       p_proposed_package_type: 'integrated_care', p_legal_name: 'Notify Bilal', p_preferred_name: null,
       p_contact_email: emails.bilal, p_contact_phone: null, p_professional_title: null, p_profession_category: null,
-      p_application_details: { originatingQuoteId: quote.id }, p_draft_id: null,
+      p_application_details: fullDetails, p_draft_id: null,
     }, tok.bilal)) as [number, { id: string }];
     expect(submitStatus).toBe(200);
 
@@ -82,7 +83,7 @@ describe('MMA-ENT-SALES-006 Phase I2 — enterprise notification center (migrati
     // Resubmit -> notifies the owner again.
     const [resubmitStatus] = await rpc('resubmit_application', {
       p_application_id: app.id, p_legal_name: 'Notify Bilal', p_preferred_name: null, p_contact_email: emails.bilal, p_contact_phone: null,
-      p_professional_title: null, p_profession_category: null, p_application_details: { originatingQuoteId: quote.id },
+      p_professional_title: null, p_profession_category: null, p_application_details: fullDetails,
     }, tok.bilal);
     expect(resubmitStatus).toBe(200);
     const ownerResubmitNotif = sql(`SELECT count(*) FROM enterprise_notifications WHERE recipient_user_id='${ids.owner}' AND related_entity_id='${app.id}' AND notification_type='application_resubmitted';`);

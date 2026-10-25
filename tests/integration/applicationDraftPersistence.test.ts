@@ -11,7 +11,7 @@
 // Requires the local Docker Supabase stack. Run with
 // `npm run test:integration`.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
+import { authDeleteUser, authSignUp, login, rpc, sql, validDirectorApplicationDetails } from './_runtime';
 
 const PW = 'DraftPersist9!';
 const stamp = Date.now();
@@ -111,13 +111,14 @@ describe('MMA-ENT-SALES-003 Phase D — application draft persistence (migration
     expect(draftStatus).toBe(200);
     const draftId = drafts[0].id;
 
+    const fullDetails = validDirectorApplicationDetails({ fullLegalName: 'Partial Name', verifiedBusinessEmail: 'adp-final@local.test' });
     const [submitStatus, submitted] = (await rpc(
       'submit_professional_application',
       {
         p_requested_office: 'director', p_target_organization_id: null, p_proposed_organization_name: 'ADP Draft Org',
         p_proposed_package_type: 'integrated_care', p_legal_name: 'Partial Name', p_preferred_name: null,
         p_contact_email: 'adp-final@local.test', p_contact_phone: null, p_professional_title: null,
-        p_profession_category: null, p_application_details: { step: 6 }, p_draft_id: draftId,
+        p_profession_category: null, p_application_details: fullDetails, p_draft_id: draftId,
       },
       tok.applicant,
     )) as [number, { id: string; status: string }];
@@ -134,7 +135,7 @@ describe('MMA-ENT-SALES-003 Phase D — application draft persistence (migration
         p_requested_office: 'director', p_target_organization_id: null, p_proposed_organization_name: 'ADP Draft Org',
         p_proposed_package_type: 'integrated_care', p_legal_name: 'Partial Name', p_preferred_name: null,
         p_contact_email: 'adp-final@local.test', p_contact_phone: null, p_professional_title: null,
-        p_profession_category: null, p_application_details: { step: 6 }, p_draft_id: draftId,
+        p_profession_category: null, p_application_details: fullDetails, p_draft_id: draftId,
       },
       tok.applicant,
     );

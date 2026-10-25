@@ -11,7 +11,7 @@
 // reopened for correction. Reproduced here via a direct RPC call,
 // never through the UI.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
+import { authDeleteUser, authSignUp, login, rpc, sql, validDirectorApplicationDetails } from './_runtime';
 
 const PW = 'CodexF11Fix9!';
 const stamp = Date.now();
@@ -47,13 +47,15 @@ afterAll(async () => {
   for (const id of [...allApplicantIds, ids.owner]) await authDeleteUser(id);
 });
 
+const fullDetails = (fullLegalName: string, email: string) => validDirectorApplicationDetails({ fullLegalName, verifiedBusinessEmail: email });
+
 async function submitDirectorApp(applicant: { email: string; token: string }, orgName: string): Promise<{ id: string }> {
   const [, app] = (await rpc('submit_professional_application', {
     p_requested_office: 'director', p_target_organization_id: null,
     p_proposed_organization_name: orgName, p_proposed_package_type: 'integrated_care',
     p_legal_name: 'Original Name', p_preferred_name: null, p_contact_email: applicant.email, p_contact_phone: '555-0001',
     p_professional_title: 'Founder', p_profession_category: null,
-    p_application_details: {}, p_draft_id: null,
+    p_application_details: fullDetails('Original Name', applicant.email), p_draft_id: null,
   }, applicant.token)) as [number, { id: string }];
   return app;
 }
@@ -104,7 +106,7 @@ describe('CODEX F-11 FIX (migration 127) — the correction-reopened-step bounda
 
     const [status, body] = (await rpc('resubmit_application', {
       p_application_id: app.id, p_legal_name: 'Corrected Legal Name', p_preferred_name: null, p_contact_email: applicant.email, p_contact_phone: '555-0001',
-      p_professional_title: 'Founder', p_profession_category: null, p_application_details: {},
+      p_professional_title: 'Founder', p_profession_category: null, p_application_details: fullDetails('Corrected Legal Name', applicant.email),
     }, applicant.token)) as [number, { legal_name: string; status: string }];
     expect(status).toBe(200);
     expect(body.legal_name).toBe('Corrected Legal Name');
@@ -118,7 +120,7 @@ describe('CODEX F-11 FIX (migration 127) — the correction-reopened-step bounda
 
     const [status, body] = (await rpc('resubmit_application', {
       p_application_id: app.id, p_legal_name: 'Changed Without Restriction', p_preferred_name: null, p_contact_email: applicant.email, p_contact_phone: '555-0001',
-      p_professional_title: 'Founder', p_profession_category: null, p_application_details: {},
+      p_professional_title: 'Founder', p_profession_category: null, p_application_details: fullDetails('Changed Without Restriction', applicant.email),
     }, applicant.token)) as [number, { legal_name: string }];
     expect(status).toBe(200);
     expect(body.legal_name).toBe('Changed Without Restriction');
