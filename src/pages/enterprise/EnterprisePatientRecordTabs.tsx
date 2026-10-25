@@ -109,7 +109,7 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         {tab === 'medications' && <MedicationsTab patientId={patientId} />}
         {tab === 'tasks' && <TasksTab patientId={patientId} />}
         {tab === 'ag' && <AGTab patientId={patientId} />}
-        {tab === 'carePlan' && <CarePlanTab patientId={patientId} orgId={orgId} />}
+        {tab === 'carePlan' && <CarePlanTab patientId={patientId} orgId={orgId} staffRole={staffRole} />}
         {tab === 'appointments' && <AppointmentsTab patientId={patientId} orgId={orgId} />}
         {tab === 'documents' && <DocumentsTab patientId={patientId} />}
         {tab === 'safety' && <SafetyTab patientId={patientId} patientHeader={patientHeader} staffRole={staffRole} />}
@@ -723,7 +723,21 @@ function AGTab({ patientId }: { patientId: string }) {
 // a separate, explicit action below it, not an edit to the order); a
 // flagged ambiguity goes through report_scope_concern (already
 // reviewed, director-only read) rather than any direct edit path.
-function CarePlanTab({ patientId, orgId }: { patientId: string; orgId: string }) {
+function CarePlanTab({ patientId, orgId, staffRole }: { patientId: string; orgId: string; staffRole: StaffRole }) {
+  // MMA-ENT-CAREGIVER-MASTER-003, D06 (P1): this control was shown to
+  // EVERY staff role, including ordinary Caregivers, even though
+  // recordPatientCarePlan()'s own RPC (and the RESTRICTIVE policy SEC-04
+  // added) always correctly rejected a caregiver's attempt with "Only an
+  // assigned therapist or medical professional may author or supersede
+  // a care plan" — so an ordinary Caregiver saw an action they could
+  // click and were then denied, rather than never being offered it.
+  // staffRole is server-trusted (passed from the assignment the server
+  // itself resolved — see the file-level comment above), the same
+  // pattern already used for the Medical/Safety tabs' professional-only
+  // controls. The backend denial for a non-professional staffRole is
+  // UNCHANGED and remains the real authorization boundary; this is
+  // UI-only.
+  const canAuthorCarePlan = staffRole === 'therapist' || staffRole === 'medical_professional';
   const [plans, setPlans] = useState<PatientCarePlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [goals, setGoalsText] = useState('');
@@ -772,9 +786,13 @@ function CarePlanTab({ patientId, orgId }: { patientId: string; orgId: string })
       </SectionCard>
 
       <SectionCard title="Official Care Plan" icon={Target}>
-        <textarea value={goals} onChange={(e) => setGoalsText(e.target.value)} placeholder="Care plan goals…" rows={2} className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm resize-none" />
-        <input value={tasks} onChange={(e) => setTasksText(e.target.value)} placeholder="Permitted caregiver tasks (optional)…" className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
-        <button type="button" onClick={() => { void submit(); }} disabled={!goals.trim()} className="px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">Record New Version</button>
+        {canAuthorCarePlan && (
+          <>
+            <textarea value={goals} onChange={(e) => setGoalsText(e.target.value)} placeholder="Care plan goals…" rows={2} className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm resize-none" />
+            <input value={tasks} onChange={(e) => setTasksText(e.target.value)} placeholder="Permitted caregiver tasks (optional)…" className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+            <button type="button" onClick={() => { void submit(); }} disabled={!goals.trim()} className="px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">Record New Version</button>
+          </>
+        )}
         {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : plans.length === 0 ? (
           <p className="text-sm text-medium-gray">No care plan recorded yet.</p>
         ) : (
