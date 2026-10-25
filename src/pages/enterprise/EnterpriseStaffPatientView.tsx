@@ -30,6 +30,13 @@ export function CoverageBanner({ status }: { status: PatientHeader['coverageStat
     );
   }
   if (status === 'not_covered') return null;
+  if (status === 'unconfirmed') {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-warm-bronze/10 border border-warm-bronze/30 text-sm font-semibold text-charcoal">
+        <AlertTriangle className="w-4 h-4 text-warm-bronze" /> Coverage/license status could not be confirmed right now
+      </div>
+    );
+  }
   const label = status === 'coverage_ended' ? 'Organization coverage for this patient has ended' : 'Organization license is not currently active';
   return (
     <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gentle-coral/15 border border-gentle-coral text-sm font-semibold text-charcoal">
@@ -115,7 +122,14 @@ export interface PatientHeader {
   address: string | null; photoUrl: string | null; language: string | null;
   emergencyContactName: string | null; emergencyContactRelationship: string | null;
   emergencyContactPhone: string | null; emergencyContactEmail: string | null;
-  coverageStatus: 'covered' | 'not_covered' | 'coverage_ended' | 'license_inactive';
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-011: 'unconfirmed' added for F01
+  // ("Full Support — Covered by Organization... never a generic success
+  // banner") — the coverage/license reads below previously discarded
+  // their own error and silently computed license_inactive whenever
+  // either read failed, which is a FALSE coverage claim in the opposite
+  // direction (reporting "not covered" for a patient who may genuinely
+  // be covered) just as much as a false positive would be.
+  coverageStatus: 'covered' | 'not_covered' | 'coverage_ended' | 'license_inactive' | 'unconfirmed';
   // ROUND 7 CORRECTIVE (migration 075): P01/P16.
   communicationNeeds: string | null;
   preferredHospital: string | null; safetyResponseInstructions: string | null;
@@ -182,7 +196,7 @@ export default function EnterpriseStaffPatientView({
 
     setLoadState('loading');
     try {
-      const [{ data: patientRow }, { data: medRows }, { data: moodRows }, { data: noteRows }, { data: coverageRow }, { data: licenseRowResult }] = await Promise.all([
+      const [{ data: patientRow }, { data: medRows }, { data: moodRows }, { data: noteRows }, { data: coverageRow, error: coverageErr }, { data: licenseRowResult, error: licenseErr }] = await Promise.all([
         supabase.from('patients').select('first_name, last_name, preferred_name, date_of_birth, dementia_stage, location, address, photo_url, preferences_language, emergency_contact_name, emergency_contact_relationship, emergency_contact_phone, emergency_contact_email, communication_needs, preferred_hospital, safety_response_instructions, code_status, code_status_source').eq('id', patientId).maybeSingle(),
         supabase.from('medications').select('id, name, dosage, instructions').eq('patient_id', patientId).eq('is_active', true).limit(50),
         supabase.from('mood_entries').select('id, mood, intensity, timestamp').eq('patient_id', patientId).order('timestamp', { ascending: false }).limit(moodLimit + 1),
@@ -193,18 +207,25 @@ export default function EnterpriseStaffPatientView({
         // not_covered rather than querying with a null org id.
         organizationId
           ? supabase.from('covered_patient_memberships').select('status').eq('organization_id', organizationId).eq('patient_id', patientId).maybeSingle()
-          : Promise.resolve({ data: null }),
+          : Promise.resolve({ data: null, error: null }),
         // SEC-06: organization_licenses itself is now director-only
         // (it carries billing terms); this RPC exposes only the
         // operational coverage status to any active org member.
         organizationId
           ? supabase.rpc('get_organization_coverage_status', { p_org_id: organizationId })
-          : Promise.resolve({ data: null }),
+          : Promise.resolve({ data: null, error: null }),
       ]);
       if (!patientRow) { setLoadState('error'); return; }
       const licenseRow = Array.isArray(licenseRowResult) ? licenseRowResult[0] : licenseRowResult;
+      // MMA-ENT-CAREGIVER-MASTER-005 D02-011: a failed coverage or
+      // license read previously fell straight into the `!coverageRow`
+      // or `!licenseRow` branches below, which already mean something
+      // else (genuinely not covered / genuinely inactive) — collapsing
+      // "could not confirm" into "confirmed not covered" is exactly the
+      // false-negative the directive calls out.
       const coverageStatus: PatientHeader['coverageStatus'] =
-        !organizationId ? 'not_covered'
+        (coverageErr || licenseErr) ? 'unconfirmed'
+        : !organizationId ? 'not_covered'
         : !coverageRow ? 'not_covered'
         : coverageRow.status === 'ended' ? 'coverage_ended'
         : (!licenseRow || licenseRow.status !== 'active') ? 'license_inactive'

@@ -22,18 +22,18 @@ import type { MoodType, TaskStatus } from '@/types/supabase';
 import { CoverageBanner, type PatientHeader } from './EnterpriseStaffPatientView';
 import { getProfessionalNotes, addProfessionalNote, type ProfessionalNote } from '@/services/professionalNotesService';
 import CareConversations from '@/components/communications/CareConversations';
-import { getMyConversations } from '@/services/communicationsService';
+import { getMyConversationsResult } from '@/services/communicationsService';
 import { getHelpActivationHistory, type HelpActivationHistoryEntry } from '@/services/helpActivationService';
 import {
-  getPatientDiagnoses, recordPatientDiagnosis, getPatientAllergies, recordPatientAllergy,
-  getPatientCarePlans, recordPatientCarePlan, getPatientVitals, recordPatientVitals,
-  getTherapyGoals, recordTherapyGoal, getCarePreferences, recordCarePreference,
-  getPatientProviders, recordPatientProvider,
+  getPatientDiagnosesResult, recordPatientDiagnosis, getPatientAllergiesResult, recordPatientAllergy,
+  getPatientCarePlansResult, recordPatientCarePlan, getPatientVitalsResult, recordPatientVitals,
+  getTherapyGoalsResult, recordTherapyGoal, getCarePreferencesResult, recordCarePreference,
+  getPatientProvidersResult, recordPatientProvider,
   recordCommunicationNeeds, recordPatientSafetyPlan, recordNoteAmendment, acknowledgeHelpActivation,
   type PatientDiagnosis, type PatientAllergy, type PatientCarePlan, type PatientVitals, type TherapyGoal, type CarePreference, type PatientCareProvider, type ProvenanceSource,
 } from '@/services/patientClinicalRecordService';
 import {
-  getMyVisits, getPatientShiftHandoffs, getPatientIncidentReports, reportScopeConcern,
+  getMyVisitsResult, getPatientShiftHandoffsResult, getPatientIncidentReportsResult, reportScopeConcern,
   recordShiftHandoff, acknowledgeShiftHandoff,
   type CaregiverVisit, type IncidentReport, type ShiftHandoff,
 } from '@/services/enterpriseCaregiverWorkToolsService';
@@ -222,13 +222,29 @@ interface IntakeRow {
 function IntakeSummaryCard({ patientId }: { patientId: string }) {
   const [intake, setIntake] = useState<IntakeRow | null>(null);
   const [loading, setLoading] = useState(true);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-011: not every patient has an
+  // intake record (legitimately absent — this card correctly stays
+  // hidden then), but a FAILED read was previously indistinguishable
+  // from that and also just vanished the card.
+  const [loadError, setIntakeLoadError] = useState<string | null>(null);
   useEffect(() => {
     void supabase.from('patient_intake').select(
       'patient_dementia_stage, patient_diagnosis_date, patient_street_address, patient_city, patient_state, patient_zip_code, patient_phone, patient_email, preferred_hospital, doctor_therapist_name, doctor_therapist_phone, caregiver_name, caregiver_relationship, caregiver_phone, medications_and_dosage, emergency_contact_full_name, emergency_contact_phone, emergency_contact_email, emergency_contact_relationship, created_at'
     ).eq('patient_profile_id', patientId).maybeSingle()
-      .then(({ data }) => { setIntake(data ?? null); setLoading(false); });
+      .then(({ data, error }) => {
+        setIntake(data ?? null);
+        setIntakeLoadError(error ? (error.message || 'Could not load intake information.') : null);
+        setLoading(false);
+      });
   }, [patientId]);
   if (loading) return null;
+  if (loadError) {
+    return (
+      <SectionCard title="Patient Intake Information" icon={ClipboardList}>
+        <p className="text-sm text-gentle-coral font-medium">Intake information could not be confirmed right now: {loadError}</p>
+      </SectionCard>
+    );
+  }
   if (!intake) return null;
   const address = [intake.patient_street_address, intake.patient_city, intake.patient_state, intake.patient_zip_code].filter(Boolean).join(', ');
   return (
@@ -261,8 +277,14 @@ function OverviewTab({ patientId, patientHeader }: { patientId: string; patientH
   // requiring the whole access-check flow to re-run.
   const [communicationNeeds, setCommunicationNeeds] = useState(patientHeader.communicationNeeds ?? '');
   const [savingNeeds, setSavingNeeds] = useState(false);
+  const [loadError, setOverviewLoadError] = useState<string | null>(null);
 
-  const load = useCallback(() => void Promise.all([getCarePreferences(patientId), getPatientCarePlans(patientId)]).then(([p, cp]) => { setPreferences(p); setCarePlans(cp); setLoading(false); }), [patientId]);
+  const load = useCallback(() => void Promise.all([getCarePreferencesResult(patientId), getPatientCarePlansResult(patientId)]).then(([p, cp]) => {
+    setPreferences(p.data ?? []); setCarePlans(cp.data ?? []);
+    const errors = [p.error, cp.error].filter((e): e is string => !!e);
+    setOverviewLoadError(errors.length > 0 ? errors[0] : null);
+    setLoading(false);
+  }), [patientId]);
   useEffect(() => { load(); }, [load]);
   const currentPlan = carePlans.find((p) => p.isCurrent);
 
@@ -286,6 +308,13 @@ function OverviewTab({ patientId, patientHeader }: { patientId: string; patientH
 
   return (
     <>
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
+          <p className="text-sm text-gentle-coral font-medium">
+            Some information could not be loaded: {loadError}{!currentPlan ? ' — including whether a current care plan exists; do not treat its absence here as confirmed.' : ''}
+          </p>
+        </div>
+      )}
       <SectionCard title="Identity & Profile" icon={ClipboardList}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-charcoal">
           {patientHeader.photoUrl && <img src={patientHeader.photoUrl} alt="Patient identification" className="w-16 h-16 rounded-xl object-cover" />}
@@ -322,7 +351,11 @@ function OverviewTab({ patientId, patientHeader }: { patientId: string; patientH
           <button type="button" onClick={() => { void addPreference(); }} className="px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold">Add</button>
         </div>
         {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : preferences.length === 0 ? (
-          <p className="text-sm text-medium-gray">No preferences recorded yet. Distinct from clinical orders — these are patient/family-reported.</p>
+          loadError ? (
+            <p className="text-sm text-medium-gray">Preferences could not be confirmed right now.</p>
+          ) : (
+            <p className="text-sm text-medium-gray">No preferences recorded yet. Distinct from clinical orders — these are patient/family-reported.</p>
+          )
         ) : (
           <ul className="space-y-2">
             {preferences.map((p) => (
@@ -388,16 +421,24 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
   const [moods, setMoods] = useState<{ id: string; mood: string; intensity: number; timestamp: string }[]>([]);
   const [moodLimit, setMoodLimit] = useState(10);
   const [moodHasMore, setMoodHasMore] = useState(false);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-011: diagnoses/vitals/therapy
+  // goals/providers all previously discarded their error via the plain
+  // getters, rendering a failed read identically to a patient with none
+  // on file — for diagnoses and vitals specifically this is exactly the
+  // "missing clinical information" the directive calls unacceptable.
+  const [loadError, setMedicalLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [d, v, g, p, moodResult] = await Promise.all([
-      getPatientDiagnoses(patientId), getPatientVitals(patientId), getTherapyGoals(patientId), getPatientProviders(patientId),
+      getPatientDiagnosesResult(patientId), getPatientVitalsResult(patientId), getTherapyGoalsResult(patientId), getPatientProvidersResult(patientId),
       supabase.from('mood_entries').select('id, mood, intensity, timestamp').eq('patient_id', patientId).order('timestamp', { ascending: false }).limit(moodLimit + 1),
     ]);
-    setDiagnoses(d); setVitals(v); setGoals(g); setProviders(p);
+    setDiagnoses(d.data ?? []); setVitals(v.data ?? []); setGoals(g.data ?? []); setProviders(p.data ?? []);
     const allMoods = moodResult.data ?? [];
     setMoodHasMore(allMoods.length > moodLimit);
     setMoods(allMoods.slice(0, moodLimit));
+    const errors = [d.error, v.error, g.error, p.error, moodResult.error?.message].filter((e): e is string => !!e);
+    setMedicalLoadError(errors.length > 0 ? errors[0] : null);
     setLoading(false);
   }, [patientId, moodLimit]);
   useEffect(() => { void load(); }, [load]);
@@ -424,12 +465,19 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
   return (
     <>
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
+          <p className="text-sm text-gentle-coral font-medium">Some medical information could not be loaded: {loadError}</p>
+        </div>
+      )}
       <SectionCard title="Medical Conditions & Diagnoses" icon={Stethoscope}>
         <div className="flex gap-2">
           <input value={newDiagnosis} onChange={(e) => setNewDiagnosis(e.target.value)} placeholder="Add a diagnosed condition…" className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
           <button type="button" onClick={() => { void addDiagnosis(); }} className="px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold">Add</button>
         </div>
-        {diagnoses.length === 0 ? <p className="text-sm text-medium-gray">No diagnoses recorded.</p> : (
+        {diagnoses.length === 0 ? (
+          loadError ? <p className="text-sm text-gentle-coral font-semibold">Diagnoses could not be confirmed right now — do not treat this as "no diagnoses."</p> : <p className="text-sm text-medium-gray">No diagnoses recorded.</p>
+        ) : (
           <ul className="space-y-1.5">
             {diagnoses.map((d) => (
               <li key={d.id} className="p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
@@ -443,7 +491,9 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
       </SectionCard>
 
       <SectionCard title="Mood History" icon={Heart}>
-        {moods.length === 0 ? <p className="text-sm text-medium-gray">No mood entries recorded.</p> : (
+        {moods.length === 0 ? (
+          loadError ? <p className="text-sm text-medium-gray">Mood history could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No mood entries recorded.</p>
+        ) : (
           <ul className="space-y-1.5">
             {moods.map((m) => (
               <li key={m.id} className="flex items-center justify-between p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
@@ -464,7 +514,9 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
           <input value={newProviderRole} onChange={(e) => setNewProviderRole(e.target.value)} placeholder="Role e.g. Primary Physician" className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
           <button type="button" onClick={() => { void addProvider(); }} className="px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold">Add</button>
         </div>
-        {providers.length === 0 ? <p className="text-sm text-medium-gray">No providers recorded.</p> : (
+        {providers.length === 0 ? (
+          loadError ? <p className="text-sm text-medium-gray">Providers could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No providers recorded.</p>
+        ) : (
           <ul className="space-y-1.5">
             {providers.map((p) => (
               <li key={p.id} className="p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
@@ -478,7 +530,9 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
 
       <SectionCard title="Vital Signs & Health Observations" icon={Activity}>
         <VitalsForm patientId={patientId} staffRole={staffRole} onRecorded={load} />
-        {vitals.length === 0 ? <p className="text-sm text-medium-gray">No vitals recorded.</p> : (
+        {vitals.length === 0 ? (
+          loadError ? <p className="text-sm text-gentle-coral font-semibold">Vitals could not be confirmed right now — do not treat this as "no vitals recorded."</p> : <p className="text-sm text-medium-gray">No vitals recorded.</p>
+        ) : (
           <ul className="space-y-1.5">
             {vitals.slice(0, 10).map((v) => (
               <li key={v.id} className="p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-xs text-charcoal">
@@ -500,7 +554,9 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
             <input value={newGoal} onChange={(e) => setNewGoal(e.target.value)} placeholder="Add a therapy objective…" className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
             <button type="button" onClick={() => { void addGoal(); }} className="px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold">Add</button>
           </div>
-          {goals.length === 0 ? <p className="text-sm text-medium-gray">No therapy goals recorded.</p> : (
+          {goals.length === 0 ? (
+            loadError ? <p className="text-sm text-medium-gray">Therapy goals could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No therapy goals recorded.</p>
+          ) : (
             <ul className="space-y-1.5">
               {goals.map((g) => (
                 <li key={g.id} className="p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
@@ -535,18 +591,38 @@ function MedicationsTab({ patientId }: { patientId: string }) {
   const [meds, setMeds] = useState<{ id: string; name: string; dosage: string; form: string | null; instructions: string; prescribed_by: string | null; prescription_date: string | null; is_active: boolean }[]>([]);
   const [logs, setLogs] = useState<{ id: string; medication_id: string; status: string; scheduled_time: string; taken_time: string | null; date: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-011: a failed medications or
+  // medication-log query previously rendered as "No active medications
+  // on file" / "No dose log entries recorded" — indistinguishable from
+  // a patient who genuinely has none. Medication data is the single
+  // clearest example the directive itself names as unacceptable to get
+  // wrong.
+  const [loadError, setMedsLoadError] = useState<string | null>(null);
   useEffect(() => {
     void Promise.all([
       supabase.from('medications').select('id, name, dosage, form, instructions, prescribed_by, prescription_date, is_active').eq('patient_id', patientId).order('is_active', { ascending: false }),
       supabase.from('medication_logs').select('id, medication_id, status, scheduled_time, taken_time, date').eq('patient_id', patientId).order('date', { ascending: false }).limit(30),
-    ]).then(([m, l]) => { setMeds(m.data ?? []); setLogs((l.data ?? []) as typeof logs); setLoading(false); });
+    ]).then(([m, l]) => {
+      setMeds(m.data ?? []);
+      setLogs((l.data ?? []) as typeof logs);
+      const errors = [m.error?.message, l.error?.message].filter((e): e is string => !!e);
+      setMedsLoadError(errors.length > 0 ? errors[0] : null);
+      setLoading(false);
+    });
   }, [patientId]);
 
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
   return (
     <>
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
+          <p className="text-sm text-gentle-coral font-medium">Medication information could not be fully loaded: {loadError}</p>
+        </div>
+      )}
       <SectionCard title="Current Medications" icon={Pill}>
-        {meds.filter((m) => m.is_active).length === 0 ? <p className="text-sm text-medium-gray">No active medications on file.</p> : (
+        {meds.filter((m) => m.is_active).length === 0 ? (
+          loadError ? <p className="text-sm text-medium-gray">Medications could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No active medications on file.</p>
+        ) : (
           <ul className="space-y-2">
             {meds.filter((m) => m.is_active).map((m) => (
               <li key={m.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
@@ -559,7 +635,9 @@ function MedicationsTab({ patientId }: { patientId: string }) {
         )}
       </SectionCard>
       <SectionCard title="Medication History" icon={Clock}>
-        {logs.length === 0 ? <p className="text-sm text-medium-gray">No dose log entries recorded.</p> : (
+        {logs.length === 0 ? (
+          loadError ? <p className="text-sm text-medium-gray">Medication history could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No dose log entries recorded.</p>
+        ) : (
           <ul className="space-y-1.5 max-h-96 overflow-y-auto">
             {logs.map((l) => (
               <li key={l.id} className="flex items-center justify-between p-2 bg-warm-ivory rounded-lg border border-soft-taupe text-xs">
@@ -583,10 +661,15 @@ interface TaskRow { id: string; title: string; status: TaskStatus; refusal_reaso
 function TasksTab({ patientId }: { patientId: string }) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setTasksTabLoadError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     void supabase.from('tasks').select('id, title, status, refusal_reason').eq('patient_id', patientId).eq('is_active', true)
-      .then(({ data }) => { setTasks((data ?? []) as TaskRow[]); setLoading(false); });
+      .then(({ data, error }) => {
+        setTasks((data ?? []) as TaskRow[]);
+        setTasksTabLoadError(error ? (error.message || 'Could not load this patient’s care plan tasks.') : null);
+        setLoading(false);
+      });
   }, [patientId]);
   useEffect(() => { load(); }, [load]);
 
@@ -617,7 +700,10 @@ function TasksTab({ patientId }: { patientId: string }) {
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
   return (
     <SectionCard title="Daily Care Activities" icon={ClipboardCheck}>
-      {tasks.length === 0 ? <p className="text-sm text-medium-gray">No assigned tasks found for this patient.</p> : (
+      {loadError && <p className="text-sm text-gentle-coral font-medium">Care plan tasks could not be loaded: {loadError}</p>}
+      {tasks.length === 0 ? (
+        loadError ? <p className="text-sm text-medium-gray">Care plan tasks could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No assigned tasks found for this patient.</p>
+      ) : (
         <ul className="space-y-2">
           {tasks.map((t) => (
             <li key={t.id} className="flex items-center justify-between gap-2 p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
@@ -662,8 +748,12 @@ function HandoffsTab({ patientId, orgId }: { patientId: string; orgId: string })
   // so the button can honestly say "Acknowledged" rather than inferring
   // it from a count that could just as easily mean someone else did.
   const [ackedByMe, setAckedByMe] = useState<Set<string>>(new Set());
+  const [loadError, setHandoffsLoadError] = useState<string | null>(null);
 
-  const load = useCallback(() => { setLoading(true); void getPatientShiftHandoffs(orgId, patientId).then((h) => { setHandoffs(h); setLoading(false); }); }, [orgId, patientId]);
+  const load = useCallback(() => {
+    setLoading(true);
+    void getPatientShiftHandoffsResult(orgId, patientId).then(({ data, error }) => { setHandoffs(data ?? []); setHandoffsLoadError(error); setLoading(false); });
+  }, [orgId, patientId]);
   useEffect(() => { load(); }, [load]);
 
   const submit = async () => {
@@ -703,8 +793,9 @@ function HandoffsTab({ patientId, orgId }: { patientId: string; orgId: string })
       </SectionCard>
 
       <SectionCard title="Handoff History" icon={ClipboardList}>
+        {loadError && <p className="text-sm text-gentle-coral font-medium">Handoff history could not be loaded: {loadError}</p>}
         {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : handoffs.length === 0 ? (
-          <p className="text-sm text-medium-gray">No shift handoffs recorded yet.</p>
+          loadError ? <p className="text-sm text-medium-gray">Handoff history could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No shift handoffs recorded yet.</p>
         ) : (
           <ul className="space-y-2">
             {handoffs.map((h) => {
@@ -796,6 +887,7 @@ function AGTab({ patientId }: { patientId: string }) {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [checkins, setCheckins] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setAgLoadError] = useState<string | null>(null);
   useEffect(() => {
     void Promise.all([
       supabase.from('care_partner_notes').select('category, note').eq('patient_id', patientId),
@@ -803,17 +895,27 @@ function AGTab({ patientId }: { patientId: string }) {
     ]).then(([n, c]) => {
       const map: Record<string, string> = {};
       (n.data ?? []).forEach((r) => { if (r.note?.trim()) map[r.category] = r.note; });
-      setNotes(map); setCheckins(c.data ?? []); setLoading(false);
+      setNotes(map); setCheckins(c.data ?? []);
+      const errors = [n.error?.message, c.error?.message].filter((e): e is string => !!e);
+      setAgLoadError(errors.length > 0 ? errors[0] : null);
+      setLoading(false);
     });
   }, [patientId]);
 
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
   return (
     <>
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
+          <p className="text-sm text-gentle-coral font-medium">Some A–G information could not be loaded: {loadError}</p>
+        </div>
+      )}
       {AG_DOMAINS.map((d) => (
         <SectionCard key={d.code} title={`${d.code} — ${d.label}`} icon={ClipboardList}>
           {notes[d.code] && <p className="text-sm text-charcoal mb-2"><span className="font-semibold text-warm-bronze text-xs">Current summary: </span>{notes[d.code]}</p>}
-          {checkins.length === 0 ? <p className="text-sm text-medium-gray">No historical check-ins recorded.</p> : (
+          {checkins.length === 0 ? (
+            loadError ? <p className="text-sm text-medium-gray">Check-in history could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No historical check-ins recorded.</p>
+          ) : (
             <ul className="space-y-1.5">
               {checkins.map((c, idx) => {
                 const row = c as Record<string, unknown>;
@@ -862,8 +964,9 @@ function CarePlanTab({ patientId, orgId, staffRole }: { patientId: string; orgId
   const [tasks, setTasksText] = useState('');
   const [ambiguity, setAmbiguity] = useState('');
   const [flagging, setFlagging] = useState(false);
+  const [loadError, setCarePlanLoadError] = useState<string | null>(null);
 
-  const load = useCallback(() => void getPatientCarePlans(patientId).then((p) => { setPlans(p); setLoading(false); }), [patientId]);
+  const load = useCallback(() => void getPatientCarePlansResult(patientId).then(({ data, error }) => { setPlans(data ?? []); setCarePlanLoadError(error); setLoading(false); }), [patientId]);
   useEffect(() => { load(); }, [load]);
   const currentPlan = plans.find((p) => p.isCurrent);
 
@@ -911,8 +1014,9 @@ function CarePlanTab({ patientId, orgId, staffRole }: { patientId: string; orgId
             <button type="button" onClick={() => { void submit(); }} disabled={!goals.trim()} className="px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">Record New Version</button>
           </>
         )}
+        {loadError && <p className="text-sm text-gentle-coral font-medium">Care plan could not be loaded: {loadError}</p>}
         {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : plans.length === 0 ? (
-          <p className="text-sm text-medium-gray">No care plan recorded yet.</p>
+          loadError ? <p className="text-sm text-medium-gray">Care plan could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No care plan recorded yet.</p>
         ) : (
           <ul className="space-y-2">
             {plans.map((p) => (
@@ -933,18 +1037,28 @@ function AppointmentsTab({ patientId, orgId }: { patientId: string; orgId: strin
   const [appointments, setAppointments] = useState<{ id: string; title: string; provider: string; location: string | null; date: string; time: string }[]>([]);
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setApptLoadError] = useState<string | null>(null);
   useEffect(() => {
     void Promise.all([
       supabase.from('appointments').select('id, title, provider, location, date, time').eq('patient_id', patientId).order('date', { ascending: false }),
-      getMyVisits(patientId),
-    ]).then(([a, v]) => { setAppointments(a.data ?? []); setVisits(v); setLoading(false); });
+      getMyVisitsResult(patientId),
+    ]).then(([a, v]) => {
+      setAppointments(a.data ?? []);
+      setVisits(v.data ?? []);
+      const errors = [a.error?.message, v.error].filter((e): e is string => !!e);
+      setApptLoadError(errors.length > 0 ? errors[0] : null);
+      setLoading(false);
+    });
   }, [patientId, orgId]);
 
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
   return (
     <>
+      {loadError && <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30"><p className="text-sm text-gentle-coral font-medium">Appointments/visits could not be fully loaded: {loadError}</p></div>}
       <SectionCard title="Medical Appointments" icon={Calendar}>
-        {appointments.length === 0 ? <p className="text-sm text-medium-gray">No appointments on file.</p> : (
+        {appointments.length === 0 ? (
+          loadError ? <p className="text-sm text-medium-gray">Appointments could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No appointments on file.</p>
+        ) : (
           <ul className="space-y-1.5">
             {appointments.map((a) => (
               <li key={a.id} className="p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
@@ -956,7 +1070,9 @@ function AppointmentsTab({ patientId, orgId }: { patientId: string; orgId: strin
         )}
       </SectionCard>
       <SectionCard title="Caregiver Visits" icon={Clock}>
-        {visits.length === 0 ? <p className="text-sm text-medium-gray">No visit records for this patient.</p> : (
+        {visits.length === 0 ? (
+          loadError ? <p className="text-sm text-medium-gray">Visit records could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No visit records for this patient.</p>
+        ) : (
           <ul className="space-y-1.5">
             {visits.map((v) => (
               <li key={v.id} className="p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
@@ -988,9 +1104,17 @@ function DocumentsTab({ patientId }: { patientId: string }) {
   const [uploading, setUploading] = useState(false);
   const [section, setSection] = useState<'medical_docs' | 'medical_bills'>('medical_docs');
   const [error, setError] = useState('');
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-012: a failed document-list query
+  // previously rendered as "No documents on file for this patient" —
+  // indistinguishable from a patient with genuinely none on file.
+  const [loadError, setDocsLoadError] = useState<string | null>(null);
 
   const load = useCallback(() => void supabase.from('patient_document_uploads').select('id, file_name, section, note_text, uploaded_at, storage_path').eq('patient_id', patientId).order('uploaded_at', { ascending: false })
-    .then(({ data }) => { setDocs(data ?? []); setLoading(false); }), [patientId]);
+    .then(({ data, error: loadErr }) => {
+      setDocs(data ?? []);
+      setDocsLoadError(loadErr ? (loadErr.message || 'Could not load documents.') : null);
+      setLoading(false);
+    }), [patientId]);
   useEffect(() => { load(); }, [load]);
 
   const upload = async (file: File) => {
@@ -1040,7 +1164,10 @@ function DocumentsTab({ patientId }: { patientId: string }) {
         </label>
       </div>
       {error && <p className="text-xs text-gentle-coral">{error}</p>}
-      {docs.length === 0 ? <p className="text-sm text-medium-gray">No documents on file for this patient.</p> : (
+      {loadError && <p className="text-sm text-gentle-coral font-medium">Documents could not be loaded: {loadError}</p>}
+      {docs.length === 0 ? (
+        loadError ? <p className="text-sm text-medium-gray">Documents could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No documents on file for this patient.</p>
+      ) : (
         <ul className="space-y-2">
           {docs.map((d) => (
             <li key={d.id} className="flex items-center justify-between gap-2 p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
@@ -1075,8 +1202,16 @@ interface HelpRow { id: string; created_at: string; phone_dialed: string | null;
 function HelpHistorySection({ patientId }: { patientId: string }) {
   const [rows, setRows] = useState<HelpRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-010: "A failed HELP query must
+  // never be presented as proof that no HELP event occurred" — this
+  // read previously discarded its error entirely.
+  const [loadError, setHelpHistoryLoadError] = useState<string | null>(null);
   const load = useCallback(() => void supabase.from('help_activations').select('id, created_at, phone_dialed, notification_status, staff_acknowledged_by, staff_acknowledged_at').eq('patient_id', patientId).order('created_at', { ascending: false })
-    .then(({ data }) => { setRows((data ?? []) as HelpRow[]); setLoading(false); }), [patientId]);
+    .then(({ data, error }) => {
+      setRows((data ?? []) as HelpRow[]);
+      setHelpHistoryLoadError(error ? (error.message || 'Could not load HELP activation history.') : null);
+      setLoading(false);
+    }), [patientId]);
   useEffect(() => { load(); }, [load]);
 
   const ack = async (id: string) => {
@@ -1088,7 +1223,10 @@ function HelpHistorySection({ patientId }: { patientId: string }) {
   if (loading) return null;
   return (
     <SectionCard title="HELP Activation History" icon={AlertTriangle}>
-      {rows.length === 0 ? <p className="text-sm text-medium-gray">No HELP activations recorded.</p> : (
+      {loadError && <p className="text-sm text-gentle-coral font-medium">HELP activation history could not be loaded: {loadError}</p>}
+      {rows.length === 0 ? (
+        loadError ? <p className="text-sm text-gentle-coral font-semibold">HELP activation history could not be confirmed right now — do not treat this as "no HELP events."</p> : <p className="text-sm text-medium-gray">No HELP activations recorded.</p>
+      ) : (
         <ul className="space-y-1.5">
           {rows.map((r) => (
             <li key={r.id} className="p-2.5 bg-gentle-coral/5 border border-gentle-coral/30 rounded-xl text-sm">
@@ -1115,10 +1253,18 @@ function SafetyTab({ patientId, patientHeader, staffRole }: { patientId: string;
   const [preferredHospital, setPreferredHospital] = useState(patientHeader.preferredHospital ?? '');
   const [safetyInstructions, setSafetyInstructions] = useState(patientHeader.safetyResponseInstructions ?? '');
   const [savingSafety, setSavingSafety] = useState(false);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-011: see getPatientAllergiesResult
+  // — allergy data silently disappearing on a failed query is the
+  // single clearest safety-relevant instance of this defect in this
+  // file.
+  const [loadError, setSafetyLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [a, i] = await Promise.all([getPatientAllergies(patientId), getPatientIncidentReports(patientId)]);
-    setAllergies(a); setIncidents(i); setLoading(false);
+    const [a, i] = await Promise.all([getPatientAllergiesResult(patientId), getPatientIncidentReportsResult(patientId)]);
+    setAllergies(a.data ?? []); setIncidents(i.data ?? []);
+    const errors = [a.error, i.error].filter((e): e is string => !!e);
+    setSafetyLoadError(errors.length > 0 ? errors[0] : null);
+    setLoading(false);
   }, [patientId]);
   useEffect(() => { void load(); }, [load]);
 
@@ -1143,6 +1289,11 @@ function SafetyTab({ patientId, patientHeader, staffRole }: { patientId: string;
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
   return (
     <>
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
+          <p className="text-sm text-gentle-coral font-medium">Safety information could not be fully loaded: {loadError}</p>
+        </div>
+      )}
       <SectionCard title="Allergies & Medical Warnings" icon={ShieldAlert}>
         <div className="flex gap-2">
           <input value={newAllergen} onChange={(e) => setNewAllergen(e.target.value)} placeholder="Add an allergy…" className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
@@ -1150,8 +1301,17 @@ function SafetyTab({ patientId, patientHeader, staffRole }: { patientId: string;
         </div>
         {/* Never presents missing data as "No Known Allergies" — an
             empty list is explicitly "not recorded," per the locked
-            requirement. */}
-        {allergies.length === 0 ? <p className="text-sm text-medium-gray italic">No allergies recorded (this is not a claim of "no known allergies" — absence of data, not a verified negative).</p> : (
+            requirement. When the read itself failed, that is a THIRD,
+            more urgent state — "not recorded" implies the read
+            succeeded and found nothing, which a failed read cannot
+            claim. */}
+        {allergies.length === 0 ? (
+          loadError ? (
+            <p className="text-sm text-gentle-coral font-semibold">Allergy information could not be confirmed right now — do not treat this as "no known allergies."</p>
+          ) : (
+            <p className="text-sm text-medium-gray italic">No allergies recorded (this is not a claim of "no known allergies" — absence of data, not a verified negative).</p>
+          )
+        ) : (
           <ul className="space-y-1.5">
             {allergies.map((a) => (
               <li key={a.id} className="p-2.5 bg-gentle-coral/5 border border-gentle-coral/30 rounded-xl text-sm">
@@ -1196,7 +1356,9 @@ function SafetyTab({ patientId, patientHeader, staffRole }: { patientId: string;
       <HelpHistorySection patientId={patientId} />
 
       <SectionCard title="Incident History" icon={ShieldAlert}>
-        {incidents.length === 0 ? <p className="text-sm text-medium-gray">No incidents recorded.</p> : (
+        {incidents.length === 0 ? (
+          loadError ? <p className="text-sm text-medium-gray">Incident history could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No incidents recorded.</p>
+        ) : (
           <ul className="space-y-1.5">
             {incidents.map((i) => (
               <li key={i.id} className="p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
@@ -1236,23 +1398,30 @@ function TimelineTab({ patientId, orgId }: { patientId: string; orgId: string })
   const [loading, setLoading] = useState(true);
   const [filterKind, setFilterKind] = useState<TimelineKind | 'all'>('all');
   const [visibleCount, setVisibleCount] = useState(TIMELINE_PAGE_SIZE);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-011/D07: this aggregates nine
+  // independent sources; previously every one of them discarded its own
+  // error, so a failure in any single source simply omitted that whole
+  // category of events from the timeline with no indication — the
+  // timeline would look complete and current when it was actually
+  // missing, say, every diagnosis or incident entry.
+  const [loadError, setTimelineLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
       const [diag, vit, inc, help, handoffs, notesRes, checkinsRes, medRes, conversations] = await Promise.all([
-        getPatientDiagnoses(patientId), getPatientVitals(patientId), getPatientIncidentReports(patientId),
-        getHelpActivationHistory(patientId).then((r) => r.entries), getPatientShiftHandoffs(orgId, patientId),
+        getPatientDiagnosesResult(patientId), getPatientVitalsResult(patientId), getPatientIncidentReportsResult(patientId),
+        getHelpActivationHistory(patientId), getPatientShiftHandoffsResult(orgId, patientId),
         supabase.from('patient_notes').select('note, note_type, created_at').eq('patient_id', patientId).order('created_at', { ascending: false }).limit(30),
         supabase.from('care_partner_checkins').select('check_in_date, created_at').eq('patient_id', patientId).order('check_in_date', { ascending: false }).limit(30),
         supabase.from('medication_logs').select('status, date, scheduled_time, medications(name)').eq('patient_id', patientId).order('date', { ascending: false }).limit(30),
-        getMyConversations(patientId),
+        getMyConversationsResult(patientId),
       ]);
       const all: { at: string; label: string; kind: TimelineKind }[] = [
-        ...diag.map((d) => ({ at: d.createdAt, label: `Diagnosis recorded: ${d.conditionName}`, kind: 'diagnosis' as const })),
-        ...vit.map((v) => ({ at: v.measuredAt, label: 'Vitals recorded', kind: 'vitals' as const })),
-        ...inc.map((i) => ({ at: i.occurredAt, label: `Incident: ${i.incidentType.replace('_', ' ')}`, kind: 'incident' as const })),
-        ...help.map((h: HelpActivationHistoryEntry) => ({ at: h.createdAt, label: 'HELP button activated', kind: 'help' as const })),
-        ...handoffs.map((h) => ({ at: h.createdAt, label: 'Shift handoff recorded', kind: 'handoff' as const })),
+        ...(diag.data ?? []).map((d) => ({ at: d.createdAt, label: `Diagnosis recorded: ${d.conditionName}`, kind: 'diagnosis' as const })),
+        ...(vit.data ?? []).map((v) => ({ at: v.measuredAt, label: 'Vitals recorded', kind: 'vitals' as const })),
+        ...(inc.data ?? []).map((i) => ({ at: i.occurredAt, label: `Incident: ${i.incidentType.replace('_', ' ')}`, kind: 'incident' as const })),
+        ...help.entries.map((h: HelpActivationHistoryEntry) => ({ at: h.createdAt, label: 'HELP button activated', kind: 'help' as const })),
+        ...(handoffs.data ?? []).map((h) => ({ at: h.createdAt, label: 'Shift handoff recorded', kind: 'handoff' as const })),
         ...(notesRes.data ?? []).map((n) => ({ at: n.created_at, label: `Note (${n.note_type.replace('_', ' ')}): ${n.note.slice(0, 80)}`, kind: 'note' as const })),
         ...(checkinsRes.data ?? []).map((c) => ({ at: c.created_at ?? c.check_in_date, label: 'Care Partner check-in recorded', kind: 'checkin' as const })),
         ...(medRes.data ?? []).map((m) => ({
@@ -1260,12 +1429,17 @@ function TimelineTab({ patientId, orgId }: { patientId: string; orgId: string })
           label: `Medication ${m.status}: ${(m as unknown as { medications: { name: string } | null }).medications?.name ?? 'Medication'}`,
           kind: 'medication' as const,
         })),
-        ...conversations.filter((c) => c.lastMessageAt).map((c) => ({
+        ...(conversations.data ?? []).filter((c) => c.lastMessageAt).map((c) => ({
           at: c.lastMessageAt as string, label: `Message${c.subject ? `: ${c.subject}` : ''}${c.lastMessageBody ? ` — ${c.lastMessageBody.slice(0, 60)}` : ''}`, kind: 'message' as const,
         })),
       ];
       all.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
       setEntries(all);
+      const errors = [
+        diag.error, vit.error, inc.error, help.error, handoffs.error,
+        notesRes.error?.message, checkinsRes.error?.message, medRes.error?.message, conversations.error,
+      ].filter((e): e is string => !!e);
+      setTimelineLoadError(errors.length > 0 ? `${errors.length} of 9 timeline source${errors.length === 1 ? '' : 's'} could not be loaded (e.g. ${errors[0]})` : null);
       setLoading(false);
     })();
   }, [patientId, orgId]);
@@ -1277,6 +1451,11 @@ function TimelineTab({ patientId, orgId }: { patientId: string; orgId: string })
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
   return (
     <SectionCard title="Patient Health Timeline" icon={Clock}>
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm text-gentle-coral font-medium">{loadError} — this timeline is incomplete, not necessarily this quiet.</p>
+        </div>
+      )}
       {entries.length > 0 && (
         <select
           value={filterKind} onChange={(e) => { setFilterKind(e.target.value as TimelineKind | 'all'); setVisibleCount(TIMELINE_PAGE_SIZE); }}
@@ -1286,7 +1465,9 @@ function TimelineTab({ patientId, orgId }: { patientId: string; orgId: string })
           {kindsPresent.map((k) => <option key={k} value={k}>{TIMELINE_KIND_LABELS[k]}</option>)}
         </select>
       )}
-      {filtered.length === 0 ? <p className="text-sm text-medium-gray">No timeline events recorded yet.</p> : (
+      {filtered.length === 0 ? (
+        loadError ? <p className="text-sm text-medium-gray">Timeline could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No timeline events recorded yet.</p>
+      ) : (
         <>
           <ul className="space-y-1.5 max-h-[32rem] overflow-y-auto">
             {visible.map((e, idx) => (
