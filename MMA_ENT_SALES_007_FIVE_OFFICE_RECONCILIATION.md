@@ -35,7 +35,7 @@ Fully reconciled in commit `43fd170a`. Every one of the 24 constructible pairs (
 | Director Dashboard | none named | UNVERIFIED (renders; depth not attempted) |
 | Organization Overview | none named | UNVERIFIED |
 | Applications & Approvals | F-13 (eligibility bypass) | **RESOLVED** — `invite_org_member()` can no longer grant therapist/medical_professional without credential verification (migration 124, `codexF13EligibilityBypass.test.ts`) |
-| Staff Management | F-09 (office caps), F-13 | F-13 portion RESOLVED (as above). F-09 (no office-cap/per-role-seat model) **NOT fixed** — real missing feature, not attempted this pass |
+| Staff Management | F-09 (office caps), F-13 | F-13 portion RESOLVED. F-09's configure-vs-activation race **RESOLVED** (migration 129, real concurrent-lock proof). F-09's remaining ask (no office-cap/per-role-seat model) **NOT fixed** — real missing feature, not attempted this pass |
 | Patient Management | none named | UNVERIFIED |
 | Assignments and Coverage | none named | UNVERIFIED |
 | Scheduling Oversight | none named | UNVERIFIED |
@@ -69,7 +69,7 @@ Fully reconciled in commit `43fd170a`. Every one of the 24 constructible pairs (
 
 | Destination | Codex finding | Current status |
 |---|---|---|
-| Clinical Dashboard | F-18 (Director-only aggregate yields false zero for Medical/Therapy callers) | NOT fixed |
+| Clinical Dashboard | F-18 (Director-only aggregate yields false zero for Medical/Therapy callers) | **RESOLVED** — `ClinicalOfficeDashboard.tsx` no longer calls the Director-only `get_org_communications_overview()` (which this dashboard's real users, never directors, could never pass); replaced with the caller's own real `get_my_conversations()` data. Proven live in `e2e_five_office_navigation_acceptance.spec.ts`'s new false-zero test (a real conversation now shows as "1", not "0") |
 | My Patients | none named | UNVERIFIED |
 | Clinical Schedule | none named | UNVERIFIED |
 | Assessments | none named | UNVERIFIED |
@@ -78,7 +78,7 @@ Fully reconciled in commit `43fd170a`. Every one of the 24 constructible pairs (
 | Care Plan Review | none named | UNVERIFIED |
 | Clinical Documentation | F-13 | **RESOLVED** |
 | Care Team Communication | F-01 | **RESOLVED** |
-| Reports & Outcomes | F-18 (same false-zero issue) | NOT fixed |
+| Reports & Outcomes | F-18 (same false-zero issue) | **RESOLVED** (same fix) |
 | My Credentials | none named | UNVERIFIED |
 | Settings & Account | F-15 (verification needed) | PARTIALLY RESOLVED, same basis as Caregiver Settings above |
 
@@ -86,14 +86,14 @@ Fully reconciled in commit `43fd170a`. Every one of the 24 constructible pairs (
 
 | Destination | Codex finding | Current status |
 |---|---|---|
-| Therapy Dashboard | F-18 (false-zero reporting) | NOT fixed |
+| Therapy Dashboard | F-18 (false-zero reporting) | **RESOLVED** (same fix as Clinical Dashboard — shared component) |
 | My Therapy Patients | F-16 | **RESOLVED** — proven live in `e2e_five_office_navigation_acceptance.spec.ts`'s new direct-connection test |
 | Session Schedule | none named | UNVERIFIED |
 | Treatment Plans | F-16 | **RESOLVED** (same fix: direct therapist_relationships access to care-plan-relevant patient data) |
 | Therapy Notes | F-13, F-16 | **RESOLVED** (both) |
 | Goals & Progress | F-16 | **RESOLVED** |
 | Care Team Communication | F-01 | **RESOLVED** |
-| Reports & Outcomes | F-18 | NOT fixed |
+| Reports & Outcomes | F-18 | **RESOLVED** (same fix) |
 | My Credentials | none named | UNVERIFIED |
 | Documents | F-16 | **RESOLVED** |
 | Settings & Account | none named specific | UNVERIFIED |
@@ -113,7 +113,7 @@ Fully reconciled in commit `43fd170a`. Every one of the 24 constructible pairs (
 | My Preferences | none named | UNVERIFIED |
 | Settings & Account | F-15 (verification needed) | PARTIALLY RESOLVED, same basis as above |
 
-**Aggregate**: of the destinations Codex specifically flagged with a named defect (roughly half of the 60), the defects mapping to F-01, F-13, F-14, F-16 — the majority of named defects — are now RESOLVED and independently re-verified. F-02/F-03/F-04 (Director licensing) are RESOLVED. F-09, F-17, F-18, F-21 (office caps, Full Support capability, P2 UX polish, policy-blocked items) are confirmed still open and are NOT claimed fixed. Destinations with no named defect remain at "renders," exactly as the pre-existing inventory already stated — this pass did not newly attempt feature-depth verification for destinations with no identified defect, in order to prioritize closing confirmed P0/P1 authorization gaps first, per the Platform Owner's own stated sequence.
+**Aggregate**: of the destinations Codex specifically flagged with a named defect (roughly half of the 60), the defects mapping to F-01, F-13, F-14, F-16, and now F-18's false-zero reporting (4 destinations: Clinical/Therapy Dashboard and Reports & Outcomes) are RESOLVED and independently re-verified. F-02/F-03/F-04 (Director licensing) are RESOLVED. F-09's configure-vs-activation race is RESOLVED; its office-cap/per-role-seat model remains open. F-17, F-21 (Full Support capability, policy-blocked items), and F-18's remaining P2 UX items (inbox thread-opening, multi-org selection, personal-label filtering) are confirmed still open and are NOT claimed fixed. Destinations with no named defect remain at "renders," exactly as the pre-existing inventory already stated — this pass did not newly attempt feature-depth verification for destinations with no identified defect, in order to prioritize closing confirmed P0/P1 authorization gaps first, per the Platform Owner's own stated sequence.
 
 ## C. 92 Caregiver requirements — reconciliation
 
@@ -135,9 +135,9 @@ This reconciliation does not re-litigate the 2 rows the pre-existing CSV itself 
 
 **No office is being declared complete.** Every office has at least one open, named, P1-or-higher gap:
 
-- **Director**: F-09 (office/seat entitlement caps) open.
-- **Caregiver**: F-18 (P2 only) open — closest to complete of the five, consistent with its pre-existing 92-row depth of prior verification.
-- **Medical / Therapy**: F-18 (false-zero reporting on shared aggregates) open.
+- **Director**: F-09's office/seat entitlement cap model (a real missing feature, not an authorization defect in the narrow sense) open.
+- **Caregiver**: F-18 (P2 only — inbox thread-opening, multi-org selection, personal-label filtering) open — closest to complete of the five, consistent with its pre-existing 92-row depth of prior verification.
+- **Medical / Therapy**: false-zero reporting (F-18) now RESOLVED; no other named defect open for either office beyond the shared cross-cutting items (F-05 through F-10, F-17, F-21) that apply platform-wide, not specifically to these offices.
 - **Patient**: F-17 (missing Full Support capability entry points) open.
 
-All P0 authorization defects across all five offices (F-01, F-02) are closed. The majority of P1 authorization defects (F-03, F-04, F-11, F-12, F-13, F-14, F-16) are closed or explicitly, narrowly partial with the residual stated. The remaining open items (F-05 through F-10, F-17 through F-21) are real feature/redesign work, not authorization defects in the P0/P1 sense the Platform Owner's sequence prioritizes first — they are reported honestly as not yet started, matching `MMA_ENT_SALES_007_FINAL_REMEDIATION_REPORT.md`'s own section 4.
+All P0 authorization defects across all five offices (F-01, F-02) are closed. The majority of P1 authorization defects (F-03, F-04, F-09's concurrency race, F-11, F-12, F-13, F-14, F-16, and F-18's false-zero reporting) are closed or explicitly, narrowly partial with the residual stated. The remaining open items (F-05 through F-08, F-10, F-17, the office-cap portion of F-09, the P2 portion of F-18, F-19 through F-21) are real feature/redesign work, not authorization defects in the P0/P1 sense the Platform Owner's sequence prioritizes first — they are reported honestly as not yet started, matching `MMA_ENT_SALES_007_FINAL_REMEDIATION_REPORT.md`'s own section 4.

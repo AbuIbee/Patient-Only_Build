@@ -36,10 +36,11 @@ import {
   MessageSquare, BarChart3, Award, Settings as SettingsIcon, ChevronRight, Loader2,
 } from 'lucide-react';
 import {
-  getMyOrganizations, getMyStaffPatients, getOrgCommunicationsOverview,
-  type MyOrganization, type StaffPatient, type StaffRole, type OrgCommunicationsOverview,
+  getMyOrganizations, getMyStaffPatients,
+  type MyOrganization, type StaffPatient, type StaffRole,
 } from '@/services/organizationService';
 import { getMyCredentials, type CaregiverCredential } from '@/services/enterpriseCaregiverWorkToolsService';
+import { getMyConversations } from '@/services/communicationsService';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
@@ -132,7 +133,17 @@ export default function ClinicalOfficeDashboard({ filterRole, basePath = null }:
   const [myOrg, setMyOrg] = useState<MyOrganization | null>(null);
   const [patients, setPatients] = useState<StaffPatient[]>([]);
   const [credentials, setCredentials] = useState<CaregiverCredential[]>([]);
-  const [commsOverview, setCommsOverview] = useState<OrgCommunicationsOverview | null>(null);
+  // CODEX F-18 FIX: get_org_communications_overview() is Director-only
+  // (correctly so -- it's an org-wide oversight aggregate). This
+  // dashboard is NEVER reached by a director (Medical/Therapist only),
+  // so calling it here always raised, the client wrapper swallowed
+  // the error into null, and the UI rendered a false "0" for every
+  // real user of this dashboard, not merely sometimes. Replaced with
+  // the caller's own real conversation data (get_my_conversations(),
+  // already scoped to patients they're actually authorized for) --
+  // an honest personal metric, not an org-wide one they were never
+  // entitled to see.
+  const [commsOverview, setCommsOverview] = useState<{ activeConversations: number; unresolvedFollowUps: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [nav, setNav] = useOfficeUrlSync<ClinicalNavKey>(basePath, navKeys, 'dashboard');
   const [openPatient, setOpenPatient] = useState<{ orgId: string | null; patientId: string; tab?: TabKey } | null>(null);
@@ -144,12 +155,15 @@ export default function ClinicalOfficeDashboard({ filterRole, basePath = null }:
       const org = orgs.find((o) => o.orgRole === filterRole) ?? null;
       setMyOrg(org);
       setPatients(allPatients.filter((p) => p.orgRole === filterRole));
-      const [creds, comms] = await Promise.all([
+      const [creds, myConversations] = await Promise.all([
         getMyCredentials(),
-        org ? getOrgCommunicationsOverview(org.organizationId) : Promise.resolve(null),
+        getMyConversations(),
       ]);
       setCredentials(creds);
-      setCommsOverview(comms);
+      setCommsOverview({
+        activeConversations: myConversations.length,
+        unresolvedFollowUps: myConversations.filter((c) => c.hasOpenFollowUp).length,
+      });
     } finally {
       setLoading(false);
     }
@@ -217,7 +231,7 @@ export default function ClinicalOfficeDashboard({ filterRole, basePath = null }:
 }
 
 function DashboardHome({ isTherapy, roleLabel, patients, commsOverview, onOpenPatient }: {
-  isTherapy: boolean; roleLabel: string; patients: StaffPatient[]; commsOverview: OrgCommunicationsOverview | null;
+  isTherapy: boolean; roleLabel: string; patients: StaffPatient[]; commsOverview: { activeConversations: number; unresolvedFollowUps: number } | null;
   onOpenPatient: (p: StaffPatient) => void;
 }) {
   return (
@@ -332,7 +346,7 @@ function CredentialsView({ credentials }: { credentials: CaregiverCredential[] }
 // outcome-scoring schema exists yet for assessments/sessions, so this
 // stays a plain current-state summary rather than inventing trend
 // metrics the backend cannot actually support.
-function ReportsView({ isTherapy, patients, commsOverview }: { isTherapy: boolean; patients: StaffPatient[]; commsOverview: OrgCommunicationsOverview | null }) {
+function ReportsView({ isTherapy, patients, commsOverview }: { isTherapy: boolean; patients: StaffPatient[]; commsOverview: { activeConversations: number; unresolvedFollowUps: number } | null }) {
   return (
     <OfficeCard>
       <div className="flex items-center gap-2"><BarChart3 className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Reports & Outcomes</h2></div>

@@ -43,7 +43,13 @@ const stamp = Date.now();
 const ORG = 'ffffffff-5e5e-4e5e-8e5e-5e5e5e5e5e5e';
 
 function sql(statement: string): string {
-  return execSync('docker exec -i supabase_db_repo psql -U postgres -d postgres -At -v ON_ERROR_STOP=1', { input: statement }).toString().trim();
+  // -q (quiet): without it, psql appends a command-completion tag
+  // (e.g. "INSERT 0 1") after any INSERT/UPDATE/DELETE ... RETURNING
+  // value, silently corrupting the captured result with a trailing
+  // newline + tag -- confirmed live, this exact gap, this file's own
+  // local sql() helper (established fix already applied to every
+  // other test file's _runtime.ts).
+  return execSync('docker exec -i supabase_db_repo psql -U postgres -d postgres -At -q -v ON_ERROR_STOP=1', { input: statement }).toString().trim();
 }
 async function mkUser(email: string): Promise<string> {
   const r = await fetch(`${API_BASE}/auth/v1/admin/users`, {
@@ -132,6 +138,38 @@ test.describe('Wave B — Medical office (12 destinations)', () => {
       await page.waitForTimeout(150);
     }
     expect(errors, `Runtime errors: ${errors.join(' | ')}`).toEqual([]);
+  });
+});
+
+// CODEX F-18 FIX — "Medical/Therapy call a Director-only aggregate
+// and display failure as zero." get_org_communications_overview() is
+// correctly Director-only, but this dashboard is NEVER reached by a
+// director -- so the call always raised for every real Medical/
+// Therapy user, and the client wrapper's error-swallowing rendered a
+// false "0" on every single load, not merely sometimes. Fixed by
+// replacing it with the caller's own real get_my_conversations() data.
+// This proves it live: a real conversation the medical professional
+// actually participates in must show as a real, non-zero count, not
+// the old always-zero value.
+test.describe('Wave B — Medical dashboard shows real conversation counts, not a false zero (CODEX F-18)', () => {
+  test('a medical professional with a real conversation sees a true non-zero "Care team messages" count', async ({ page }) => {
+    const convId = sql(`
+      INSERT INTO conversations (patient_id, subject, created_by) VALUES ('${ids.patient}', 'F18 false-zero probe', '${ids.medical}') RETURNING id;
+    `);
+    sql(`
+      INSERT INTO conversation_participants (conversation_id, user_id, participant_role, added_by) VALUES
+        ('${convId}', '${ids.medical}', 'medical_professional', '${ids.medical}'),
+        ('${convId}', '${ids.patient}', 'patient', '${ids.medical}');
+    `);
+
+    const errors = await signIn(page, emails.medical, '/Professional/Medical');
+    await expect(page.getByText('Clinical Dashboard').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Care team messages')).toBeVisible({ timeout: 10000 });
+    const metricValue = page.getByText('Care team messages').locator('..').locator('p').nth(1);
+    await expect(metricValue).toHaveText('1');
+    expect(errors, `Runtime errors: ${errors.join(' | ')}`).toEqual([]);
+
+    sql(`DELETE FROM conversation_participants WHERE conversation_id='${convId}'; DELETE FROM conversations WHERE id='${convId}';`);
   });
 });
 
