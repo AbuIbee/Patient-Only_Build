@@ -48,9 +48,16 @@ describe('CODEX F-14 FIX (migration 125) — task and patient safety-plan INSERT
       status_updated_by: ids.outsider, completed_at: '2020-01-01T00:00:00Z',
     }, tok.caregiver);
     expect(status).toBe(201);
-    const row = (body as { id: string; status_updated_by: string }[])[0]!;
+    const row = (body as { id: string; status_updated_by: string; completed_at: string }[])[0]!;
     expect(row.status_updated_by).toBe(ids.caregiver);
     expect(row.status_updated_by).not.toBe(ids.outsider);
+    // MMA-ENT-CAREGIVER-MASTER-003 D04 (P1): this payload already sent a
+    // forged completed_at (2020-01-01) above -- the audit's own
+    // reproduction of the gap was exactly that nothing here checked
+    // whether it stuck. Migration 135 extends the same trigger to
+    // derive completed_at server-side too.
+    expect(new Date(row.completed_at).getUTCFullYear()).not.toBe(2020);
+    expect(Date.now() - new Date(row.completed_at).getTime()).toBeLessThan(10_000);
     sql(`DELETE FROM tasks WHERE id='${row.id}';`);
   });
 
@@ -67,6 +74,65 @@ describe('CODEX F-14 FIX (migration 125) — task and patient safety-plan INSERT
     const updated = (updateBody as { status_updated_by: string }[])[0]!;
     expect(updated.status_updated_by).toBe(ids.caregiver);
     sql(`DELETE FROM tasks WHERE id='${taskId}';`);
+  });
+
+  // MMA-ENT-CAREGIVER-MASTER-003, D04 (P1) — independent runtime audit
+  // finding: an ordinary authenticated UPDATE was accepted with
+  // completed_at forged to 2000-01-01. Migration 135 makes completed_at
+  // entirely server-derived from the same real status transition
+  // status_updated_at already uses, never trusted from the client.
+  describe('MMA-ENT-CAREGIVER-MASTER-003 D04 (P1) — completed_at is server-owned, not client-settable (migration 135)', () => {
+    it('a direct UPDATE cannot forge completed_at to an arbitrary date, even on a genuine completion', async () => {
+      const [, createBody] = await http('POST', '/rest/v1/tasks', { patient_id: patientId, title: 'D04 forge task', status: 'pending' }, tok.caregiver);
+      const taskId = (createBody as { id: string }[])[0]!.id;
+      try {
+        const [status, body] = await http('PATCH', `/rest/v1/tasks?id=eq.${taskId}`, { status: 'completed', completed_at: '2000-01-01T00:00:00Z' }, tok.caregiver);
+        expect(status).toBe(200);
+        const row = (body as { completed_at: string }[])[0]!;
+        expect(new Date(row.completed_at).getUTCFullYear()).not.toBe(2000);
+        expect(Date.now() - new Date(row.completed_at).getTime()).toBeLessThan(10_000);
+      } finally {
+        sql(`DELETE FROM tasks WHERE id='${taskId}';`);
+      }
+    });
+
+    it('reverting a completed task to pending ("Not Completed") clears completed_at rather than leaving a stale timestamp', async () => {
+      const [, createBody] = await http('POST', '/rest/v1/tasks', { patient_id: patientId, title: 'D04 revert task', status: 'completed' }, tok.caregiver);
+      const taskId = (createBody as { id: string; completed_at: string | null }[])[0]!.id;
+      try {
+        expect(sql(`SELECT completed_at IS NOT NULL FROM tasks WHERE id='${taskId}';`)).toBe('t');
+        const [status, body] = await http('PATCH', `/rest/v1/tasks?id=eq.${taskId}`, { status: 'pending' }, tok.caregiver);
+        expect(status).toBe(200);
+        expect((body as { completed_at: string | null }[])[0]!.completed_at).toBeNull();
+      } finally {
+        sql(`DELETE FROM tasks WHERE id='${taskId}';`);
+      }
+    });
+
+    it('re-saving the same status (no real transition) preserves the original completion timestamp', async () => {
+      const [, createBody] = await http('POST', '/rest/v1/tasks', { patient_id: patientId, title: 'D04 noop task', status: 'completed' }, tok.caregiver);
+      const row0 = (createBody as { id: string; completed_at: string }[])[0]!;
+      try {
+        await new Promise((r) => setTimeout(r, 1100)); // ensure a resend would get a DIFFERENT now() if wrongly re-derived
+        const [status, body] = await http('PATCH', `/rest/v1/tasks?id=eq.${row0.id}`, { status: 'completed', refusal_reason: null }, tok.caregiver);
+        expect(status).toBe(200);
+        expect((body as { completed_at: string }[])[0]!.completed_at).toBe(row0.completed_at);
+      } finally {
+        sql(`DELETE FROM tasks WHERE id='${row0.id}';`);
+      }
+    });
+
+    it('declining a previously-completed task clears completed_at (never surfaces a stale completion time for a now-declined task)', async () => {
+      const [, createBody] = await http('POST', '/rest/v1/tasks', { patient_id: patientId, title: 'D04 decline task', status: 'completed' }, tok.caregiver);
+      const taskId = (createBody as { id: string }[])[0]!.id;
+      try {
+        const [status, body] = await http('PATCH', `/rest/v1/tasks?id=eq.${taskId}`, { status: 'skipped', refusal_reason: 'Patient declined' }, tok.caregiver);
+        expect(status).toBe(200);
+        expect((body as { completed_at: string | null }[])[0]!.completed_at).toBeNull();
+      } finally {
+        sql(`DELETE FROM tasks WHERE id='${taskId}';`);
+      }
+    });
   });
 
   it('FIX: direct impersonated INSERT/UPDATE on patients cannot forge code_status_updated_by or communication_needs_updated_by', async () => {

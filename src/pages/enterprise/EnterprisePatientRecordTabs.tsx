@@ -576,17 +576,25 @@ function TasksTab({ patientId }: { patientId: string }) {
   }, [patientId]);
   useEffect(() => { load(); }, [load]);
 
+  // MMA-ENT-CAREGIVER-MASTER-003 D04 (P1): status_updated_by/at and
+  // completed_at are no longer sent from here at all — migration 135
+  // extends the existing enforce_task_status_actor() trigger to derive
+  // completed_at server-side too (the SAME real transition moment
+  // status_updated_at already uses), so a client-supplied value for any
+  // of the three could never reach storage even if sent, and omitting
+  // completed_at here (the exact previously-reproduced "record Done
+  // stored NULL" defect) can no longer leave it unset on a genuine
+  // completion. `.select('id')` is checked for an actually-affected row
+  // — RLS silently matching zero rows (stale/unassigned task) is
+  // surfaced as an error here, never treated the same as success.
   const markStatus = async (taskId: string, status: TaskStatus) => {
     let refusalReason: string | null = null;
     if (status === 'skipped' || status === 'not_applicable') {
       refusalReason = window.prompt(status === 'skipped' ? 'Reason the patient declined (optional):' : 'Reason this task is not applicable (optional):') || null;
     }
-    const { data: userData } = await supabase.auth.getUser();
-    const { error } = await supabase.from('tasks').update({
-      status, refusal_reason: refusalReason,
-      status_updated_by: userData?.user?.id ?? null, status_updated_at: new Date().toISOString(),
-    }).eq('id', taskId).select('id');
+    const { data, error } = await supabase.from('tasks').update({ status, refusal_reason: refusalReason }).eq('id', taskId).select('id');
     if (error) { toast.error(error.message); return; }
+    if (!data || data.length === 0) { toast.error('This task could not be updated — it may no longer be assigned to you.'); return; }
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status, refusal_reason: refusalReason } : t)));
   };
 
@@ -608,6 +616,7 @@ function TasksTab({ patientId }: { patientId: string }) {
                 <button type="button" title="Completed" onClick={() => { void markStatus(t.id, 'completed'); }} className="px-2 py-1 rounded-lg bg-soft-sage/20 text-soft-sage text-xs font-semibold">Done</button>
                 <button type="button" title="Declined" onClick={() => { void markStatus(t.id, 'skipped'); }} className="px-2 py-1 rounded-lg bg-gentle-coral/20 text-gentle-coral text-xs font-semibold">Declined</button>
                 <button type="button" title="Not Applicable" onClick={() => { void markStatus(t.id, 'not_applicable'); }} className="px-2 py-1 rounded-lg bg-medium-gray/20 text-medium-gray text-xs font-bold">N/A</button>
+                <button type="button" title="Not Completed" onClick={() => { void markStatus(t.id, 'pending'); }} className="px-2 py-1 rounded-lg bg-warm-bronze/10 text-warm-bronze text-xs font-semibold">Not Completed</button>
               </div>
             </li>
           ))}

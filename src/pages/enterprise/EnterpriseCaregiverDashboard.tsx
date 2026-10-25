@@ -1073,7 +1073,6 @@ interface TaskRow { id: string; patient_id: string; title: string; status: TaskS
 function TasksView({ patients }: { patients: StaffPatient[] }) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const { state } = useApp();
 
   const load = useCallback(() => {
     if (patients.length === 0) { setLoading(false); return; }
@@ -1082,16 +1081,23 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
   }, [patients]);
   useEffect(() => { load(); }, [load]);
 
+  // MMA-ENT-CAREGIVER-MASTER-003 D04 (P1): completed_at/status_updated_by/
+  // status_updated_at are no longer sent from here — migration 135's
+  // enforce_task_status_actor() trigger derives all three server-side
+  // from the real transition, so a client-supplied value (this call site
+  // previously sent its own new Date().toISOString(), which a forged
+  // direct UPDATE could just as easily have substituted) can never reach
+  // storage. `.select('id')` is checked for an actually-affected row —
+  // RLS silently matching zero rows is surfaced as an error, never
+  // treated the same as success.
   const markStatus = async (taskId: string, status: TaskStatus) => {
     let refusalReason: string | null = null;
     if (status === 'skipped' || status === 'not_applicable') {
       refusalReason = window.prompt(status === 'skipped' ? 'Reason the patient declined (optional):' : 'Reason this task is not applicable (optional):') || null;
     }
-    const { error } = await supabase.from('tasks').update({
-      status, refusal_reason: refusalReason, completed_at: status === 'completed' ? new Date().toISOString() : null,
-      status_updated_by: state.currentUser?.id ?? null, status_updated_at: new Date().toISOString(),
-    }).eq('id', taskId).select('id');
+    const { data, error } = await supabase.from('tasks').update({ status, refusal_reason: refusalReason }).eq('id', taskId).select('id');
     if (error) { toast.error(error.message); return; }
+    if (!data || data.length === 0) { toast.error('This task could not be updated — it may no longer be assigned to you.'); return; }
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status, refusal_reason: refusalReason } : t)));
   };
 
@@ -1115,6 +1121,7 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
                 <button type="button" title="Completed" onClick={() => { void markStatus(t.id, 'completed'); }} className="p-1.5 rounded-lg bg-soft-sage/20 text-soft-sage"><CheckCircle2 className="w-4 h-4" /></button>
                 <button type="button" title="Declined" onClick={() => { void markStatus(t.id, 'skipped'); }} className="p-1.5 rounded-lg bg-gentle-coral/20 text-gentle-coral"><X className="w-4 h-4" /></button>
                 <button type="button" title="Not Applicable" onClick={() => { void markStatus(t.id, 'not_applicable'); }} className="p-1.5 rounded-lg bg-medium-gray/20 text-medium-gray text-xs font-bold">N/A</button>
+                <button type="button" title="Not Completed" onClick={() => { void markStatus(t.id, 'pending'); }} className="px-2 py-1.5 rounded-lg bg-warm-bronze/10 text-warm-bronze text-xs font-semibold">Not Completed</button>
               </div>
             </li>
           ))}
