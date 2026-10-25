@@ -22,7 +22,7 @@ import {
   AlertTriangle, CheckCircle2, PlayCircle, StopCircle, Sparkles, Flag, Moon, Upload,
 } from 'lucide-react';
 import {
-  getMyStaffPatients, getMyCareTeam, getMyOrgSupervisor, getMyOrganizations, coverPatientViaStaffRegistration,
+  getMyStaffPatients, getMyCareTeam, getMyOrgSupervisor, getMyOrganizations, coverPatientViaStaffRegistration, setStaffPatientLabel,
   type StaffPatient, type CareTeamMember,
 } from '@/services/organizationService';
 import { getMyPendingRegistrations, type PendingRegistrationSummary } from '@/services/caregiverRegistrationService';
@@ -952,26 +952,108 @@ function RegistrationAction({ orgId, onChanged, compact = false }: { orgId: stri
   );
 }
 
+// MMA-ENT-CAREGIVER-MASTER-004 D03: a short, stable, non-sensitive
+// reference derived from the patient's immutable UUID — the exact
+// pattern already established for residential caregivers
+// (caregiverRegistrationService.ts shortReferenceFor), reused here
+// rather than inventing a second convention. Display only; every real
+// access check still uses the full patientId.
+function staffPatientShortReference(patientId: string): string {
+  return patientId.replace(/-/g, '').slice(-8).toUpperCase();
+}
+
 function PatientsListView({ patients, onOpenPatient, title, orgId, onChanged }: { patients: StaffPatient[]; onOpenPatient: (id: string) => void; title?: string; orgId?: string; onChanged?: () => void }) {
+  // MMA-ENT-CAREGIVER-MASTER-004 D03 (P2) — independent runtime audit
+  // finding: "authenticated patient list has no search/filter/label
+  // controls." Search is client-side (the full assigned-patient list is
+  // already loaded for this view); labels persist server-side via
+  // migration 137, scoped to the caller's own assignment row exactly
+  // like the existing residential display_label pattern.
+  const [query, setQuery] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [labelDraft, setLabelDraft] = useState('');
+  const [savingLabel, setSavingLabel] = useState(false);
+  const [labels, setLabels] = useState<Record<string, string | null>>({});
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = normalizedQuery === '' ? patients : patients.filter((p) => {
+    const legalName = `${p.firstName} ${p.lastName}`.toLowerCase();
+    const label = (labels[p.assignmentId ?? ''] ?? p.displayLabel ?? '').toLowerCase();
+    const ref = staffPatientShortReference(p.patientId).toLowerCase();
+    return legalName.includes(normalizedQuery)
+      || (p.preferredName ?? '').toLowerCase().includes(normalizedQuery)
+      || label.includes(normalizedQuery)
+      || ref.includes(normalizedQuery);
+  });
+
+  const startEditingLabel = (p: StaffPatient) => {
+    if (!p.assignmentId) return; // a direct therapist connection has no assignment row to label
+    setEditingId(p.assignmentId);
+    setLabelDraft(labels[p.assignmentId] ?? p.displayLabel ?? '');
+  };
+
+  const saveLabel = async (assignmentId: string) => {
+    setSavingLabel(true);
+    try {
+      const { error } = await setStaffPatientLabel(assignmentId, labelDraft);
+      if (error) { toast.error(error); return; }
+      setLabels((prev) => ({ ...prev, [assignmentId]: labelDraft.trim() || null }));
+      setEditingId(null);
+    } finally {
+      setSavingLabel(false);
+    }
+  };
+
   return (
     <Card>
       <div className="flex items-center gap-2"><Users className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">{title || 'My Patients'}</h2></div>
+      {patients.length > 0 && (
+        <input
+          type="search" value={query} onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name, label, or reference…" aria-label="Search patients"
+          className="w-full px-3 py-2 rounded-xl border border-ent-line text-sm"
+        />
+      )}
       {patients.length === 0 ? (
         <p className="text-sm text-ent-muted">No patients are currently assigned to you.</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-ent-muted">No patients match &quot;{query}&quot;.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {patients.map((p) => {
+          {filtered.map((p) => {
             const legalName = `${p.firstName} ${p.lastName}`;
             const displayName = p.preferredName || legalName;
+            const label = p.assignmentId ? (labels[p.assignmentId] ?? p.displayLabel) : null;
+            const isEditing = p.assignmentId !== null && editingId === p.assignmentId;
             return (
-              <button key={p.patientId} type="button" onClick={() => onOpenPatient(p.patientId)} className="flex items-center gap-3 p-4 bg-ent-pale rounded-2xl border border-ent-line hover:shadow-md transition-all text-left">
-                <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">{patientInitials(p.firstName, p.lastName)}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-semibold text-ent-ink truncate text-sm">{displayName}</span>
-                  {displayName !== legalName && <span className="block text-[11px] text-ent-muted truncate">{legalName}</span>}
-                </span>
-                <ChevronRight className="w-4 h-4 text-ent-muted flex-shrink-0" />
-              </button>
+              <div key={`${p.assignmentId ?? 'direct'}-${p.patientId}`} className="flex flex-col gap-2 p-4 bg-ent-pale rounded-2xl border border-ent-line hover:shadow-md transition-all">
+                <div className="flex items-start gap-3">
+                  <button type="button" onClick={() => onOpenPatient(p.patientId)} className="flex items-center gap-3 min-w-0 flex-1 text-left">
+                    <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">{patientInitials(p.firstName, p.lastName)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-semibold text-ent-ink truncate text-sm">{label || displayName}</span>
+                      {label && <span className="block text-[11px] text-ent-muted truncate">{displayName}</span>}
+                      {displayName !== legalName && !label && <span className="block text-[11px] text-ent-muted truncate">{legalName}</span>}
+                      <span className="block text-[10px] text-ent-muted/70 truncate">Ref: {staffPatientShortReference(p.patientId)}</span>
+                    </span>
+                  </button>
+                  <ChevronRight className="w-4 h-4 text-ent-muted flex-shrink-0 mt-1" />
+                </div>
+                {isEditing && p.assignmentId ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      autoFocus value={labelDraft} onChange={(e) => setLabelDraft(e.target.value)} maxLength={60}
+                      placeholder="e.g. Room 4" aria-label="Patient label" className="flex-1 min-w-0 px-2 py-1 rounded-lg border border-ent-line text-xs"
+                    />
+                    <button type="button" disabled={savingLabel} onClick={() => { void saveLabel(p.assignmentId!); }} className="px-2 py-1 rounded-lg bg-ent-forest text-white text-[11px] font-semibold disabled:opacity-60 flex-shrink-0">Save</button>
+                    <button type="button" onClick={() => setEditingId(null)} className="px-2 py-1 rounded-lg text-ent-muted text-[11px] flex-shrink-0">Cancel</button>
+                  </div>
+                ) : p.assignmentId && (
+                  <button type="button" onClick={() => startEditingLabel(p)} className="self-start text-[11px] font-semibold text-ent-bronze hover:underline">
+                    {label ? 'Edit label' : '+ Add a label'}
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>

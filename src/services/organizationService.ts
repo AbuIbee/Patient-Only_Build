@@ -42,6 +42,14 @@ export interface StaffPatient {
   // schedule view needs this to render the patient's address/facility.
   address: string | null;
   location: string | null;
+  // MMA-ENT-CAREGIVER-MASTER-004 D03: null for the therapist_relationships
+  // branch (no staff_patient_assignments row exists there at all).
+  // assignmentId identifies the SPECIFIC row to target when setting
+  // displayLabel — a caller can hold two active assignments for the
+  // SAME patientId under two different organizations (migration 094),
+  // so patientId alone can't be used to address one.
+  assignmentId: string | null;
+  displayLabel: string | null;
 }
 
 export interface OrgMembershipRow {
@@ -130,7 +138,21 @@ export async function getMyStaffPatients(): Promise<StaffPatient[]> {
     orgRole: r.org_role as StaffRole,
     address: r.address,
     location: r.location,
+    assignmentId: r.assignment_id,
+    displayLabel: r.display_label,
   }));
+}
+
+// MMA-ENT-CAREGIVER-MASTER-004 D03: sets (or clears, with an empty
+// string) the caller's own display label for ONE staff_patient_assignments
+// row. Scoped entirely server-side by migration 137's RLS policy
+// (user_id = auth.uid()) and column grant (display_label/updated_at
+// ONLY) — a staff member can never rename or touch any other
+// assignment, their own org_role/patient_id/is_active included.
+export async function setStaffPatientLabel(assignmentId: string, label: string): Promise<{ error: string | null }> {
+  const trimmed = label.trim();
+  const { error } = await supabase.from('staff_patient_assignments').update({ display_label: trimmed === '' ? null : trimmed }).eq('id', assignmentId);
+  return { error: error ? errMsg(error, 'Could not save this label.') : null };
 }
 
 // MASTER ENTERPRISE IDENTITY DIRECTIVE §7 — create_organization() no

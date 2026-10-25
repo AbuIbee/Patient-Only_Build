@@ -1324,6 +1324,7 @@ export interface Database {
           assigned_by: string | null
           created_at: string
           updated_at: string
+          display_label: string | null
         }
         Insert: {
           id?: string
@@ -1335,6 +1336,7 @@ export interface Database {
           assigned_by?: string | null
           created_at?: string
           updated_at?: string
+          display_label?: string | null
         }
         Update: {
           id?: string
@@ -1346,6 +1348,7 @@ export interface Database {
           assigned_by?: string | null
           created_at?: string
           updated_at?: string
+          display_label?: string | null
         }
         Relationships: [
           {
@@ -5058,6 +5061,8 @@ export interface Database {
           org_role: string
           address: string | null
           location: string | null
+          assignment_id: string | null
+          display_label: string | null
         }[]
       }
       is_my_enterprise_coverage_active: {
