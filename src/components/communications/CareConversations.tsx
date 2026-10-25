@@ -11,7 +11,7 @@
 // accordingly this view never says a message was "delivered"; it shows
 // only verified per-person read/acknowledgment state, and the urgent
 // badge is worded as a flag the sender set, not a guarantee of receipt.
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   getMyConversations, getPatientCareCircle, createConversation, getConversationParticipants,
@@ -318,6 +318,17 @@ export function ConversationThread({
   const [showAddPerson, setShowAddPerson] = useState(false);
   const [creatorId, setCreatorId] = useState<string | null>(null);
   const [patientId, setPatientId] = useState<string | null>(null);
+  // MMA-ENT-CAREGIVER-MASTER-004 R17 (P2): independent runtime audit
+  // finding: an open thread never updated when the other side replied —
+  // reopening the inbox was the only way to see it. hadAccess tracks
+  // whether a completed load ever actually returned participants, so a
+  // LATER load returning zero of both (RLS silently filtering once
+  // revoked, same "empty means denied" pattern used throughout this
+  // app) can be told apart from "this conversation genuinely has no
+  // participants yet" at first mount, which never happens for a real
+  // conversation (the creator is always added as a participant).
+  const [revoked, setRevoked] = useState(false);
+  const hadAccessRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -327,6 +338,8 @@ export function ConversationThread({
         getConversationMessages(conversationId),
         getMyConversations().then((all) => all.find((c) => c.conversationId === conversationId) ?? null),
       ]);
+      if (p.length > 0) hadAccessRef.current = true;
+      else if (hadAccessRef.current) { setRevoked(true); return; }
       setParticipants(p);
       setMessages(m);
       if (conv) { setCreatorId(conv.createdBy); setPatientId(conv.patientId); }
@@ -339,6 +352,17 @@ export function ConversationThread({
   }, [conversationId, myId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // R17: poll for an incoming reply while this thread stays open,
+  // rather than only ever refreshing after the viewer's own action.
+  // Stops the moment revocation is detected — never keeps polling (and
+  // so never keeps calling markMessageRead) for a conversation the
+  // viewer has already lost access to.
+  useEffect(() => {
+    if (revoked) return;
+    const interval = setInterval(() => { void load(); }, 8000);
+    return () => clearInterval(interval);
+  }, [load, revoked]);
 
   const submitReply = async () => {
     if (!reply.trim()) return;
@@ -386,6 +410,17 @@ export function ConversationThread({
   };
 
   const isCreator = myId !== null && myId === creatorId;
+
+  if (revoked) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-4">
+        <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold text-medium-gray hover:text-charcoal -ml-2">
+          <ArrowLeft className="w-4 h-4" /> Back to Conversations
+        </button>
+        <p className="text-sm text-medium-gray">You no longer have access to this conversation.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-4">
