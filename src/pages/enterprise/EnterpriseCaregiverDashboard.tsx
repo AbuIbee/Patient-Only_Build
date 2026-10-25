@@ -19,7 +19,7 @@ import {
   LogOut, Users, Loader2, MessageSquare, Calendar, ClipboardList,
   ChevronRight, Menu, X, ShieldAlert, Clock, Building2,
   ClipboardCheck, FileText, UserCog, Settings as SettingsIcon, Send,
-  AlertTriangle, CheckCircle2, PlayCircle, StopCircle, Sparkles, Flag, Moon,
+  AlertTriangle, CheckCircle2, PlayCircle, StopCircle, Sparkles, Flag, Moon, Upload,
 } from 'lucide-react';
 import {
   getMyStaffPatients, getMyCareTeam, getMyOrgSupervisor, getMyOrganizations, coverPatientViaStaffRegistration,
@@ -36,10 +36,11 @@ import MFASettings from '@/components/MFASettings';
 import ActiveSessionsPanel from '@/components/ActiveSessionsPanel';
 import {
   getMyVisits, startCaregiverVisit, endCaregiverVisit, scheduleCaregiverVisit,
-  getPatientIncidentReports, fileIncidentReport,
+  getPatientIncidentReports, fileIncidentReport, uploadIncidentAttachment, getIncidentAttachments,
   reportScopeConcern, getMyCredentials, getPatientShiftHandoffs,
-  type CaregiverVisit, type IncidentReport, type CaregiverCredential,
+  type CaregiverVisit, type IncidentReport, type CaregiverCredential, type IncidentSeverity,
 } from '@/services/enterpriseCaregiverWorkToolsService';
+import { acknowledgeHelpActivation } from '@/services/patientClinicalRecordService';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
 
@@ -324,7 +325,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
                 </>
               )}
               {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id, 'handoffs')} title="Select a patient to record or review Shift Handoffs" />}
-              {nav === 'alerts' && <AlertsView patients={patients} orgId={orgId} />}
+              {nav === 'alerts' && <AlertsView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id, 'safety')} />}
               {nav === 'careTeam' && <CareTeamView orgId={orgId} patients={patients} />}
               {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view their Documents" />}
               {nav === 'organization' && <OrganizationView orgId={orgId} orgName={orgName} />}
@@ -1237,30 +1238,59 @@ function CommunicationsView() {
 }
 
 // H12/W07/N09 — file/view incidents across every assigned patient.
-interface HelpAlertRow { kind: 'help'; id: string; patientName: string; occurredAt: string; detail: string }
-interface IncidentAlertRow extends IncidentReport { kind: 'incident'; patientName: string }
+// MMA-ENT-CAREGIVER-MASTER-003 D08 (P1): patientId added to both row
+// kinds (needed for the actionable "View" link below), and HELP rows
+// now carry acknowledgedCount so an unacknowledged HELP activation can
+// be acknowledged directly from this feed, not only from deep inside
+// the patient record's Safety tab.
+interface HelpAlertRow { kind: 'help'; id: string; patientId: string; patientName: string; occurredAt: string; detail: string; acknowledgedCount: number }
+interface IncidentAlertRow extends IncidentReport { kind: 'incident'; patientName: string; attachmentCount: number }
 type AlertRow = HelpAlertRow | IncidentAlertRow;
+const SEVERITIES: IncidentSeverity[] = ['low', 'moderate', 'high', 'critical'];
+
+// A <input type="datetime-local"> value is always LOCAL wall-clock time
+// (no timezone suffix) — Date#toISOString() is UTC, so using it here
+// directly would set the wrong `max` in any timezone not already UTC
+// (e.g. rejecting the user's actual current local time as "too late",
+// or permitting several hours into their real future, depending on
+// offset direction).
+function localDatetimeNow(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 // H03/P17 — ROUND 6: merges HELP-button activations alongside
 // incident_reports into one feed — "never equate recording with
 // delivery or emergency dispatch" is preserved verbatim: the
 // notification_status text is shown as recorded, never translated into
 // a delivery/dispatch claim.
-function AlertsView({ patients, orgId }: { patients: StaffPatient[]; orgId: string }) {
+function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient[]; orgId: string; onOpenPatient: (patientId: string) => void }) {
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [patientId, setPatientId] = useState('');
   const [incidentType, setIncidentType] = useState<'fall' | 'injury' | 'behavioral' | 'medication_concern' | 'safety_event' | 'other'>('other');
+  const [severity, setSeverity] = useState<IncidentSeverity>('low');
+  const [occurredAt, setOccurredAt] = useState('');
   const [description, setDescription] = useState('');
+  const [attachment, setAttachment] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [acking, setAcking] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const incidentRows = (await Promise.all(patients.map(async (p) => (await getPatientIncidentReports(p.patientId)).map((i): IncidentAlertRow => ({ ...i, kind: 'incident', patientName: p.preferredName || p.firstName }))))).flat();
+    const incidentRows = (await Promise.all(patients.map(async (p) => {
+      const incidents = await getPatientIncidentReports(p.patientId);
+      return Promise.all(incidents.map(async (i): Promise<IncidentAlertRow> => ({
+        ...i, kind: 'incident', patientName: p.preferredName || p.firstName,
+        attachmentCount: (await getIncidentAttachments(i.id)).length,
+      })));
+    }))).flat();
     const helpRows = (await Promise.all(patients.map(async (p) => {
       const { entries } = await getHelpActivationHistory(p.patientId);
       return entries.map((e): HelpAlertRow => ({
-        kind: 'help', id: e.id, patientName: p.preferredName || p.firstName, occurredAt: e.createdAt,
+        kind: 'help', id: e.id, patientId: p.patientId, patientName: p.preferredName || p.firstName, occurredAt: e.createdAt,
         detail: `HELP button activated${e.phoneDialed ? ` — attempted call to ${e.phoneDialed}` : ''} (${e.notificationStatus.replace('_', ' ')})`,
+        acknowledgedCount: e.acknowledgedCount,
       }));
     }))).flat();
     const merged: AlertRow[] = [...incidentRows, ...helpRows];
@@ -1274,9 +1304,16 @@ function AlertsView({ patients, orgId }: { patients: StaffPatient[]; orgId: stri
     if (!patientId || !description.trim()) return;
     setSaving(true);
     try {
-      const { error } = await fileIncidentReport(orgId, patientId, incidentType, description);
-      if (error) { toast.error(error); return; }
-      setDescription('');
+      const { report, error } = await fileIncidentReport(
+        orgId, patientId, incidentType, description, severity,
+        occurredAt ? new Date(occurredAt).toISOString() : undefined,
+      );
+      if (error || !report) { toast.error(error || 'Could not file this incident report.'); return; }
+      if (attachment) {
+        const { error: attachErr } = await uploadIncidentAttachment(report.id, attachment);
+        if (attachErr) toast.error(attachErr);
+      }
+      setDescription(''); setSeverity('low'); setOccurredAt(''); setAttachment(null);
       await load();
     } finally {
       setSaving(false);
@@ -1291,6 +1328,17 @@ function AlertsView({ patients, orgId }: { patients: StaffPatient[]; orgId: stri
     setDescription('');
   };
 
+  const ackHelp = async (id: string) => {
+    setAcking(id);
+    try {
+      const { error } = await acknowledgeHelpActivation(id);
+      if (error) { toast.error(error); return; }
+      await load();
+    } finally {
+      setAcking(null);
+    }
+  };
+
   return (
     <Card>
       <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-gentle-coral" /><h2 className="font-bold text-charcoal">Alerts &amp; Incidents</h2></div>
@@ -1299,10 +1347,23 @@ function AlertsView({ patients, orgId }: { patients: StaffPatient[]; orgId: stri
           <option value="">Select patient…</option>
           {patients.map((p) => <option key={p.patientId} value={p.patientId}>{p.preferredName || p.firstName}</option>)}
         </select>
-        <select value={incidentType} onChange={(e) => setIncidentType(e.target.value as typeof incidentType)} className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm">
-          {['fall', 'injury', 'behavioral', 'medication_concern', 'safety_event', 'other'].map((t) => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
-        </select>
+        <div className="flex gap-2">
+          <select value={incidentType} onChange={(e) => setIncidentType(e.target.value as typeof incidentType)} className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm">
+            {['fall', 'injury', 'behavioral', 'medication_concern', 'safety_event', 'other'].map((t) => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
+          </select>
+          <select value={severity} onChange={(e) => setSeverity(e.target.value as IncidentSeverity)} className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm capitalize">
+            {SEVERITIES.map((s) => <option key={s} value={s} className="capitalize">{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="incident-occurred-at" className="block text-xs font-semibold text-medium-gray mb-1">When did this happen? (leave blank for now)</label>
+          <input id="incident-occurred-at" type="datetime-local" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} max={localDatetimeNow()} className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
+        </div>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe what happened…" rows={2} className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm resize-none" />
+        <label className="flex items-center gap-1.5 text-xs text-medium-gray">
+          <Upload className="w-3.5 h-3.5 flex-shrink-0" />
+          <input type="file" accept="image/*,application/pdf" onChange={(e) => setAttachment(e.target.files?.[0] ?? null)} className="text-xs" />
+        </label>
         <div className="flex gap-2">
           <button type="button" onClick={() => { void submit(); }} disabled={saving || !patientId || !description.trim()} className="flex-1 px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">
             {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'File Incident'}
@@ -1318,14 +1379,28 @@ function AlertsView({ patients, orgId }: { patients: StaffPatient[]; orgId: stri
         <ul className="space-y-2">
           {alerts.map((a) => a.kind === 'help' ? (
             <li key={`help-${a.id}`} className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
-              <p className="text-sm font-medium text-charcoal">{a.patientName} — {a.detail}</p>
+              <div className="flex items-start justify-between gap-2">
+                <button type="button" onClick={() => onOpenPatient(a.patientId)} className="text-left text-sm font-medium text-charcoal hover:underline">
+                  {a.patientName} — {a.detail}
+                </button>
+                {a.acknowledgedCount === 0 && (
+                  <button type="button" onClick={() => { void ackHelp(a.id); }} disabled={acking === a.id} className="flex-shrink-0 px-2 py-1 rounded-lg bg-warm-bronze hover:bg-deep-bronze text-white text-xs font-semibold disabled:opacity-60">
+                    {acking === a.id ? 'Acknowledging…' : 'Acknowledge'}
+                  </button>
+                )}
+              </div>
               <p className="text-[11px] text-medium-gray mt-1">{new Date(a.occurredAt).toLocaleString()} · recorded in app only, not a verified emergency dispatch</p>
             </li>
           ) : (
             <li key={`incident-${a.id}`} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
-              <p className="text-sm font-medium text-charcoal capitalize">{a.patientName} — {a.incidentType.replace('_', ' ')} ({a.severity})</p>
+              <button type="button" onClick={() => onOpenPatient(a.patientId)} className="text-left text-sm font-medium text-charcoal capitalize hover:underline">
+                {a.patientName} — {a.incidentType.replace('_', ' ')} ({a.severity})
+              </button>
               <p className="text-xs text-medium-gray">{a.description}</p>
-              <p className="text-[11px] text-medium-gray mt-1">{new Date(a.occurredAt).toLocaleString()} · <span className="capitalize">{a.resolutionStatus.replace('_', ' ')}</span></p>
+              <p className="text-[11px] text-medium-gray mt-1">
+                {new Date(a.occurredAt).toLocaleString()} · <span className="capitalize">{a.resolutionStatus.replace('_', ' ')}</span>
+                {a.attachmentCount > 0 && <> · {a.attachmentCount} attachment{a.attachmentCount === 1 ? '' : 's'}</>}
+              </p>
             </li>
           ))}
         </ul>

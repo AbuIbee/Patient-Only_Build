@@ -146,6 +146,19 @@ describe('H12/W07/N09 — incident reports', () => {
     expect(report).toMatchObject({ id: 'i1', severity: 'high', supervisorNotifiedAt: '2026-01-01' });
   });
 
+  // MMA-ENT-CAREGIVER-MASTER-003 D08 (P1): occurredAt is optional and
+  // must be sent as null (not simply omitted) when the caller leaves it
+  // blank, so the server-side COALESCE(p_occurred_at, now()) default
+  // behaves exactly as it did before this parameter existed.
+  it('fileIncidentReport sends p_occurred_at: null when no time is given, and the real value when one is', async () => {
+    rpcMock.mockResolvedValue({ data: incidentRow, error: null });
+    await fileIncidentReport('org1', 'p1', 'fall', 'd', 'high');
+    expect(rpcMock).toHaveBeenCalledWith('file_incident_report', expect.objectContaining({ p_occurred_at: null }));
+
+    await fileIncidentReport('org1', 'p1', 'fall', 'd', 'high', '2026-01-01T10:00:00.000Z');
+    expect(rpcMock).toHaveBeenCalledWith('file_incident_report', expect.objectContaining({ p_occurred_at: '2026-01-01T10:00:00.000Z' }));
+  });
+
   it('resolveIncidentReport relays a director-only rejection verbatim', async () => {
     rpcMock.mockResolvedValue({ data: null, error: { message: 'Only an organization director may resolve an incident report' } });
     const { report, error } = await resolveIncidentReport('i1', 'resolved');

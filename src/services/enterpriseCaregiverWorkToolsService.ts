@@ -142,14 +142,66 @@ function mapIncident(row: {
   };
 }
 
+// MMA-ENT-CAREGIVER-MASTER-003, D08 (P1): occurredAt is optional and
+// falls back to now() server-side exactly as before when omitted — no
+// existing caller needs to change. Passing it lets the UI record an
+// incident that happened earlier than when it was typed up.
 export async function fileIncidentReport(
   orgId: string, patientId: string, incidentType: IncidentType, description: string, severity: IncidentSeverity = 'low',
+  occurredAt?: string,
 ): Promise<{ report: IncidentReport | null; error: string | null }> {
   const { data, error } = await supabase.rpc('file_incident_report', {
     p_org_id: orgId, p_patient_id: patientId, p_incident_type: incidentType, p_description: description, p_severity: severity,
+    p_occurred_at: occurredAt ?? null,
   });
   if (error || !data) return { report: null, error: errMsg(error, 'Could not file this incident report.') };
   return { report: mapIncident(data), error: null };
+}
+
+// MMA-ENT-CAREGIVER-MASTER-003, D08 (P1) — incident attachments. Same
+// private-Storage + metadata-table pattern this app already uses for
+// patient_document_uploads/professional_application_documents: RLS-
+// governed directly (migration 136), no RPC wrapper. Orphaned storage
+// object is cleaned up immediately if the metadata insert fails, same
+// compensating pattern as uploadMessageAttachment/uploadApplicationDocument.
+const INCIDENT_ATTACHMENT_BUCKET = 'incident-attachments';
+export interface IncidentAttachment {
+  id: string;
+  storagePath: string;
+  fileName: string;
+  uploadedBy: string;
+  createdAt: string;
+}
+
+export async function uploadIncidentAttachment(incidentId: string, file: File): Promise<{ error: string | null }> {
+  const storagePath = `${incidentId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const { error: upErr } = await supabase.storage.from(INCIDENT_ATTACHMENT_BUCKET).upload(storagePath, file, { upsert: false, contentType: file.type });
+  if (upErr) return { error: errMsg(upErr, 'Could not upload this attachment.') };
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) {
+    await supabase.storage.from(INCIDENT_ATTACHMENT_BUCKET).remove([storagePath]);
+    return { error: 'You must be signed in to attach a file.' };
+  }
+  const { error: dbErr } = await supabase.from('incident_attachments').insert({
+    incident_id: incidentId, storage_path: storagePath, file_name: file.name, uploaded_by: userData.user.id,
+  });
+  if (dbErr) {
+    await supabase.storage.from(INCIDENT_ATTACHMENT_BUCKET).remove([storagePath]);
+    return { error: errMsg(dbErr, 'Could not attach this file.') };
+  }
+  return { error: null };
+}
+
+export async function getIncidentAttachments(incidentId: string): Promise<IncidentAttachment[]> {
+  const { data, error } = await supabase.from('incident_attachments').select('id, storage_path, file_name, uploaded_by, created_at').eq('incident_id', incidentId).order('created_at', { ascending: true });
+  if (error || !data) return [];
+  return data.map((r) => ({ id: r.id, storagePath: r.storage_path, fileName: r.file_name, uploadedBy: r.uploaded_by, createdAt: r.created_at }));
+}
+
+export async function getSignedIncidentAttachmentUrl(storagePath: string): Promise<string | null> {
+  const { data, error } = await supabase.storage.from(INCIDENT_ATTACHMENT_BUCKET).createSignedUrl(storagePath, 3600);
+  if (error || !data) return null;
+  return data.signedUrl;
 }
 
 export async function resolveIncidentReport(

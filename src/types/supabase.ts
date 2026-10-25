@@ -472,6 +472,42 @@ export interface Database {
           },
         ]
       }
+      // MMA-ENT-CAREGIVER-MASTER-003 D08 — migration 136.
+      incident_attachments: {
+        Row: {
+          id: string
+          incident_id: string
+          storage_path: string
+          file_name: string
+          uploaded_by: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          incident_id: string
+          storage_path: string
+          file_name: string
+          uploaded_by: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          incident_id?: string
+          storage_path?: string
+          file_name?: string
+          uploaded_by?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incident_attachments_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incident_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       incident_reports: {
         Row: {
           created_at: string
@@ -4659,6 +4695,7 @@ export interface Database {
         Args: {
           p_description: string
           p_incident_type: string
+          p_occurred_at?: string | null
           p_org_id: string
           p_patient_id: string
           p_severity?: string
