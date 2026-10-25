@@ -323,6 +323,25 @@ export async function getMyCredentials(): Promise<CaregiverCredential[]> {
   }));
 }
 
+// MMA-ENT-CAREGIVER-MASTER-005 D02-013: previously a failed credentials
+// fetch rendered "No credentials on file. Your organization's director
+// can record one for you" — implying the caregiver genuinely has none,
+// when the real state (including an expired/expiring credential that
+// matters for H17's "credential expiration and renewal") simply
+// couldn't be confirmed.
+export async function getMyCredentialsResult(): Promise<ServiceResult<CaregiverCredential[]>> {
+  const { data, error } = await supabase.rpc('get_my_credentials');
+  if (error) return { data: null, error: errMsg(error, 'Could not load your credentials.') };
+  if (!data) return { data: null, error: 'Could not load your credentials — unexpected empty response.' };
+  return {
+    data: data.map((r) => ({
+      id: r.id, userId: r.user_id, organizationId: r.organization_id, credentialName: r.credential_name, issuedAt: r.issued_at, expiresAt: r.expires_at,
+      status: r.status as CredentialStatus,
+    })),
+    error: null,
+  };
+}
+
 export async function recordStaffCredential(
   orgId: string, userId: string, credentialName: string, issuedAt?: string, expiresAt?: string,
 ): Promise<{ error: string | null }> {

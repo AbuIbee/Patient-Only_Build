@@ -37,8 +37,8 @@ import ActiveSessionsPanel from '@/components/ActiveSessionsPanel';
 import {
   startCaregiverVisit, endCaregiverVisit, scheduleCaregiverVisit,
   fileIncidentReport, uploadIncidentAttachment,
-  reportScopeConcern, getMyCredentials,
-  getMyVisitsResult, getPatientIncidentReportsResult, getPatientShiftHandoffsResult, getIncidentAttachmentsResult,
+  reportScopeConcern,
+  getMyVisitsResult, getPatientIncidentReportsResult, getPatientShiftHandoffsResult, getIncidentAttachmentsResult, getMyCredentialsResult,
   type CaregiverVisit, type IncidentReport, type CaregiverCredential, type IncidentSeverity,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import { acknowledgeHelpActivation } from '@/services/patientClinicalRecordService';
@@ -1088,6 +1088,12 @@ function MyDocumentationHistoryView() {
   const [amendedByCount, setAmendedByCount] = useState<Record<string, number>>({});
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
   const [loading, setLoading] = useState(true);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-011: every read here previously
+  // discarded its error (`n.data ?? []`, `i.data ?? []`, the amendments
+  // sub-query) and this card then `return null`'d regardless, so a
+  // failed load vanished the whole card rather than showing a failure —
+  // identical in effect to MyActivityCard's earlier defect.
+  const [loadError, setDocHistoryLoadError] = useState<string | null>(null);
   useEffect(() => {
     const myId = state.currentUser?.id;
     if (!myId) { setLoading(false); return; }
@@ -1095,6 +1101,9 @@ function MyDocumentationHistoryView() {
       supabase.from('patient_notes').select('id, note, created_at, note_type, amends_note_id').eq('author_id', myId).order('created_at', { ascending: false }).limit(20),
       supabase.from('incident_reports').select('id, patient_id, reported_by, incident_type, description, severity, occurred_at, resolution_status, resolution_notes, supervisor_notified_at').eq('reported_by', myId).order('occurred_at', { ascending: false }).limit(10),
     ]).then(async ([n, i]) => {
+      const errors: string[] = [];
+      if (n.error) errors.push(n.error.message);
+      if (i.error) errors.push(i.error.message);
       const myNotes = (n.data ?? []) as typeof notes;
       setNotes(myNotes);
       // Whether any of MY notes were later amended (by anyone — an
@@ -1103,7 +1112,8 @@ function MyDocumentationHistoryView() {
       // notes for patients I'm authorized for, same as the main query.
       const originalIds = myNotes.filter((row) => !row.amends_note_id).map((row) => row.id);
       if (originalIds.length > 0) {
-        const { data: amendments } = await supabase.from('patient_notes').select('amends_note_id').in('amends_note_id', originalIds);
+        const { data: amendments, error: amendErr } = await supabase.from('patient_notes').select('amends_note_id').in('amends_note_id', originalIds);
+        if (amendErr) errors.push(amendErr.message);
         const counts: Record<string, number> = {};
         for (const row of amendments ?? []) {
           if (row.amends_note_id) counts[row.amends_note_id] = (counts[row.amends_note_id] ?? 0) + 1;
@@ -1115,6 +1125,7 @@ function MyDocumentationHistoryView() {
         description: r.description, severity: r.severity as IncidentReport['severity'], occurredAt: r.occurred_at,
         resolutionStatus: r.resolution_status as IncidentReport['resolutionStatus'], resolutionNotes: r.resolution_notes, supervisorNotifiedAt: r.supervisor_notified_at,
       })));
+      setDocHistoryLoadError(errors.length > 0 ? errors[0] : null);
       setLoading(false);
     });
   }, [state.currentUser?.id]);
@@ -1130,7 +1141,16 @@ function MyDocumentationHistoryView() {
   return (
     <Card>
       <div className="flex items-center gap-2"><FileText className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Documentation History</h2></div>
-      {combined.length === 0 ? <p className="text-sm text-medium-gray">You have not authored any documentation yet.</p> : (
+      {loadError && (
+        <p className="text-sm text-gentle-coral font-medium">Some documentation history could not be loaded: {loadError}</p>
+      )}
+      {combined.length === 0 ? (
+        loadError ? (
+          <p className="text-sm text-medium-gray">Your documentation history could not be confirmed right now.</p>
+        ) : (
+          <p className="text-sm text-medium-gray">You have not authored any documentation yet.</p>
+        )
+      ) : (
         <ul className="space-y-1.5 max-h-72 overflow-y-auto">
           {combined.map((c, idx) => (
             <li key={idx} className="p-2 bg-warm-ivory rounded-lg border border-soft-taupe text-xs text-charcoal">
@@ -2191,6 +2211,9 @@ function MyInvitationsCard() {
   const [rows, setRows] = useState<{ id: string; org_role: string; status: string; created_at: string; organizations: { name: string } | null }[]>([]);
   const [sentTherapistInvites, setSentTherapistInvites] = useState<{ id: string; status: string; relationship_type: string; created_at: string; responded_at: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
+  // MMA-ENT-CAREGIVER-MASTER-005 D02-013: same return-null-on-failure
+  // defect as MyActivityCard/MyDocumentationHistoryView.
+  const [loadError, setInvitationsLoadError] = useState<string | null>(null);
   useEffect(() => {
     void Promise.all([
       supabase.from('organization_memberships').select('id, org_role, status, created_at, organizations(name)').order('created_at', { ascending: false }),
@@ -2201,6 +2224,8 @@ function MyInvitationsCard() {
     ]).then(([m, t]) => {
       setRows((m.data ?? []) as unknown as typeof rows);
       setSentTherapistInvites((t.data ?? []) as typeof sentTherapistInvites);
+      const errors = [m.error?.message, t.error?.message].filter((e): e is string => !!e);
+      setInvitationsLoadError(errors.length > 0 ? errors[0] : null);
       setLoading(false);
     });
   }, []);
@@ -2208,7 +2233,10 @@ function MyInvitationsCard() {
   return (
     <Card>
       <div className="flex items-center gap-2"><Send className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Invitations</h2></div>
-      {rows.length === 0 ? <p className="text-sm text-medium-gray">No invitation history.</p> : (
+      {loadError && <p className="text-sm text-gentle-coral font-medium">Some invitation history could not be loaded: {loadError}</p>}
+      {rows.length === 0 ? (
+        loadError ? <p className="text-sm text-medium-gray">Your invitation history could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No invitation history.</p>
+      ) : (
         <ul className="space-y-1.5">
           {rows.map((r) => (
             <li key={r.id} className="flex items-center justify-between p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
@@ -2443,17 +2471,21 @@ function MyAssignmentsCard({ orgId }: { orgId: string }) {
   const { state } = useApp();
   const [rows, setRows] = useState<{ id: string; patient_id: string; is_active: boolean; created_at: string; updated_at: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setAssignmentsLoadError] = useState<string | null>(null);
   useEffect(() => {
     const myId = state.currentUser?.id;
     if (!myId) { setLoading(false); return; }
     void supabase.from('staff_patient_assignments').select('id, patient_id, is_active, created_at, updated_at').eq('organization_id', orgId).eq('user_id', myId).order('created_at', { ascending: false })
-      .then(({ data }) => { setRows(data ?? []); setLoading(false); });
+      .then(({ data, error }) => { setRows(data ?? []); setAssignmentsLoadError(error ? (error.message || 'Could not load your assignment history.') : null); setLoading(false); });
   }, [orgId, state.currentUser?.id]);
   if (loading) return null;
   return (
     <Card>
       <div className="flex items-center gap-2"><Users className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Assignments</h2></div>
-      {rows.length === 0 ? <p className="text-sm text-medium-gray">No patient assignments on file.</p> : (
+      {loadError && <p className="text-sm text-gentle-coral font-medium">Some assignment history could not be loaded: {loadError}</p>}
+      {rows.length === 0 ? (
+        loadError ? <p className="text-sm text-medium-gray">Your assignment history could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No patient assignments on file.</p>
+      ) : (
         <ul className="space-y-1.5">
           {rows.map((r) => (
             <li key={r.id} className="flex items-center justify-between p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
@@ -2471,7 +2503,10 @@ function OrganizationView({ orgId, orgName, patients }: { orgId: string; orgName
   const { state } = useApp();
   const [allCredentials, setAllCredentials] = useState<CaregiverCredential[]>([]);
   const [loadingCreds, setLoadingCreds] = useState(true);
-  useEffect(() => { void getMyCredentials().then((c) => { setAllCredentials(c); setLoadingCreds(false); }); }, []);
+  const [credsLoadError, setCredsLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    void getMyCredentialsResult().then(({ data, error }) => { setAllCredentials(data ?? []); setCredsLoadError(error); setLoadingCreds(false); });
+  }, []);
   // D01: get_my_credentials() returns this caregiver's credentials
   // across every organization that has recorded one — scope the ones
   // shown on THIS org's own page to credentials THIS org recorded
@@ -2503,8 +2538,13 @@ function OrganizationView({ orgId, orgName, patients }: { orgId: string; orgName
           shown here read-only. */}
       <Card>
         <div className="flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Credentials &amp; Training</h2></div>
+        {credsLoadError && <p className="text-sm text-gentle-coral font-medium">Your credentials could not be loaded: {credsLoadError}</p>}
         {loadingCreds ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : credentials.length === 0 ? (
-          <p className="text-sm text-medium-gray">No credentials on file. Your organization's director can record one for you.</p>
+          credsLoadError ? (
+            <p className="text-sm text-medium-gray">Your credentials could not be confirmed right now.</p>
+          ) : (
+            <p className="text-sm text-medium-gray">No credentials on file. Your organization's director can record one for you.</p>
+          )
         ) : (
           <ul className="space-y-2">
             {credentials.map((c) => (
