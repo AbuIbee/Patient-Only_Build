@@ -738,6 +738,88 @@ describe('CLOSURE REGISTER — HELP acknowledgment requires a genuine staff resp
   });
 });
 
+// MMA-ENT-CAREGIVER-MASTER-003, R15 (P1) — independent runtime audit
+// finding: record_help_activation() resolved responders SOLELY from
+// caregiver_patients (residential). patientA in THIS file's own fixture
+// is the exact reproduction shape -- covered entirely through org ORG,
+// two active staff_patient_assignments (caregiverA, medicalA), ZERO
+// caregiver_patients rows -- so before migration 133's fix this
+// resolved caregiver_count_at_time=0 / notification_status=
+// no_caregiver_linked / conversation_id=null despite two real, active,
+// currently-assigned responders.
+describe('MMA-ENT-CAREGIVER-MASTER-003 R15 (P1) — Enterprise-only assigned staff are included in HELP routing (migration 133)', () => {
+  it('an Enterprise-only covered patient (zero caregiver_patients rows) routes to both active staff_patient_assignments responders, not zero', async () => {
+    const [status, help] = (await rpc('record_help_activation', { p_phone_dialed: '911' }, tok.patientA)) as [
+      number,
+      { id: string; caregiver_count_at_time: number; notification_status: string; conversation_id: string | null },
+    ];
+    expect(status).toBe(200);
+    expect(help.caregiver_count_at_time).toBe(2);
+    expect(help.notification_status).toBe('caregiver_notified');
+    expect(help.conversation_id).not.toBeNull();
+
+    // Not a fabricated recipient/conversation: the Enterprise staff
+    // member can actually read it through the ordinary authorized path.
+    const [convStatus, participants] = await http(
+      'GET',
+      `/rest/v1/conversation_participants?conversation_id=eq.${help.conversation_id}&select=user_id`,
+      undefined,
+      tok.caregiverA,
+    ) as [number, { user_id: string }[]];
+    expect(convStatus).toBe(200);
+    const participantIds = participants.map((p) => p.user_id);
+    expect(participantIds).toContain(ids.caregiverA);
+    expect(participantIds).toContain(ids.medicalA);
+    expect(participantIds).toContain(ids.patientA);
+
+    sql(`DELETE FROM help_activations WHERE id='${help.id}';`);
+  });
+
+  it('revoking one of the two staff_patient_assignments before activation routes only to the still-active responder', async () => {
+    sql(`UPDATE staff_patient_assignments SET is_active=false WHERE user_id='${ids.medicalA}' AND patient_id='${ids.patientA}';`);
+    try {
+      const [status, help] = (await rpc('record_help_activation', { p_phone_dialed: '911' }, tok.patientA)) as [
+        number,
+        { id: string; caregiver_count_at_time: number; notification_status: string; conversation_id: string | null },
+      ];
+      expect(status).toBe(200);
+      expect(help.caregiver_count_at_time).toBe(1);
+      expect(help.notification_status).toBe('caregiver_notified');
+
+      const [, participants] = await http(
+        'GET',
+        `/rest/v1/conversation_participants?conversation_id=eq.${help.conversation_id}&select=user_id`,
+        undefined,
+        tok.caregiverA,
+      ) as [number, { user_id: string }[]];
+      const participantIds = participants.map((p) => p.user_id);
+      expect(participantIds).toContain(ids.caregiverA);
+      expect(participantIds).not.toContain(ids.medicalA);
+
+      sql(`DELETE FROM help_activations WHERE id='${help.id}';`);
+    } finally {
+      sql(`UPDATE staff_patient_assignments SET is_active=true WHERE user_id='${ids.medicalA}' AND patient_id='${ids.patientA}';`);
+    }
+  });
+
+  it('zero active responders (both revoked) still records the event honestly as no_caregiver_linked, never a fabricated routing', async () => {
+    sql(`UPDATE staff_patient_assignments SET is_active=false WHERE patient_id='${ids.patientA}';`);
+    try {
+      const [status, help] = (await rpc('record_help_activation', { p_phone_dialed: '911' }, tok.patientA)) as [
+        number,
+        { id: string; caregiver_count_at_time: number; notification_status: string; conversation_id: string | null },
+      ];
+      expect(status).toBe(200);
+      expect(help.caregiver_count_at_time).toBe(0);
+      expect(help.notification_status).toBe('no_caregiver_linked');
+      expect(help.conversation_id).toBeNull();
+      sql(`DELETE FROM help_activations WHERE id='${help.id}';`);
+    } finally {
+      sql(`UPDATE staff_patient_assignments SET is_active=true WHERE patient_id='${ids.patientA}';`);
+    }
+  });
+});
+
 // Codex MMA-CODEX-06 — clinical provenance. patient_care_providers was
 // never included in migration 076's SEC-03 RESTRICTIVE-policy hardening
 // pass (which covered patient_diagnoses/patient_allergies/patient_vitals)

@@ -153,7 +153,23 @@ SELECT (public.respond_to_therapist_invite('${connectionId}',true)).status;
 COMMIT;`;
   const proc = spawn(
     'docker',
-    ['exec', '-i', DB_CONTAINER, 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1'],
+    [
+      'exec', '-i',
+      // -e PGPASSWORD: the audit's own diagnosed environment-adapter
+      // defect (RUNTIME_AUDIT.md "Test execution and intermittent
+      // failure diagnosis") — this exact connection is the only one of
+      // the shared helpers that authenticates as supabase_admin rather
+      // than postgres, and local Supabase CLI stacks (any of them,
+      // including a throwaway one from scripts/disposable_supabase.mjs)
+      // require a password for that role even though the plain
+      // `postgres` superuser connection sql() uses above does not.
+      // "postgres" is the standard local Supabase CLI demo password —
+      // publicly documented, identical across every default-config
+      // local stack, and meaningless against any real project (same
+      // category as the ANON/SERVICE demo JWTs above).
+      '-e', `PGPASSWORD=${process.env.MMA_TEST_DB_ADMIN_PASSWORD || 'postgres'}`,
+      DB_CONTAINER, 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1',
+    ],
     { stdio: ['pipe', 'pipe', 'pipe'] },
   );
   proc.stdin.write(statement);

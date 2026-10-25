@@ -24,8 +24,12 @@ export interface HelpActivationHistoryEntry {
 
 /**
  * Records a HELP activation for the signed-in patient and (if they have
- * any currently-linked caregiver) starts an urgent conversation with
- * them automatically. Returns `recorded: false` on ANY failure
+ * any currently authorized responder — a residential caregiver_patients
+ * link OR an active Enterprise staff_patient_assignments row;
+ * MMA-ENT-CAREGIVER-MASTER-003 R15 — previously only the residential
+ * link was consulted here, so an Enterprise-only covered patient always
+ * resolved zero responders) starts an urgent conversation with them
+ * automatically. Returns `recorded: false` on ANY failure
  * (including being offline) — callers must tell the patient the record
  * itself did not save, distinct from the telephone action, which this
  * function never touches. A messaging failure AFTER the record is
