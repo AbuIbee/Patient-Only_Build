@@ -290,7 +290,15 @@ function NewConversation({
   );
 }
 
-function ConversationThread({
+// CODEX F-18 FIX — exported so cross-patient inbox views (e.g.
+// EnterpriseCaregiverDashboard's Care Communications Inbox, which
+// lists conversations across MANY patients and therefore cannot use
+// this file's own per-patient default export) can reuse the exact
+// same, already-reviewed thread-opening UI rather than re-building a
+// second one. Fully self-contained: everything it needs (participants,
+// messages, the patient it belongs to) is derived from conversationId
+// alone.
+export function ConversationThread({
   conversationId, myId, onBack,
 }: { conversationId: string; myId: string | null; onBack: () => void }) {
   const [participants, setParticipants] = useState<ConversationParticipant[]>([]);

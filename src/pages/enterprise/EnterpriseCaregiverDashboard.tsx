@@ -28,6 +28,7 @@ import {
 import { getMyPendingRegistrations, type PendingRegistrationSummary } from '@/services/caregiverRegistrationService';
 import { RegisterPatientForm, IncompleteRegistrations } from '@/pages/caregiver/CaregiverPortal';
 import { getMyConversations, createConversation, searchMyConversations, type ConversationSummary } from '@/services/communicationsService';
+import { ConversationThread } from '@/components/communications/CareConversations';
 import { inviteTherapist } from '@/services/therapistConnectionService';
 import { getHelpActivationHistory } from '@/services/helpActivationService';
 import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDeletionRequests, type AccountDeletionRequest } from '@/services/accountDeletionService';
@@ -1121,19 +1122,24 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
 // client-side search filter over the already-authorized, already-
 // loaded list (filtering a correctly-scoped list is presentational
 // only; the authorization boundary is unchanged).
-function ConversationGroup({ title, conversations }: { title: string; conversations: ConversationSummary[] }) {
+function ConversationGroup({ title, conversations, onOpen }: { title: string; conversations: ConversationSummary[]; onOpen: (conversationId: string) => void }) {
   if (conversations.length === 0) return null;
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold text-medium-gray uppercase tracking-wide">{title}</p>
       <ul className="space-y-2">
         {conversations.map((c) => (
-          <li key={c.conversationId} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-charcoal">{c.patientName}{c.subject ? ` — ${c.subject}` : ''}</p>
-              {c.unreadCount > 0 && <span className="text-[11px] bg-warm-bronze text-white rounded-full px-2 py-0.5">{c.unreadCount}</span>}
-            </div>
-            {c.lastMessageBody && <p className="text-xs text-medium-gray mt-1 truncate">{c.lastMessageBody}</p>}
+          <li key={c.conversationId}>
+            <button
+              type="button" onClick={() => onOpen(c.conversationId)}
+              className="w-full text-left p-3 bg-warm-ivory rounded-xl border border-soft-taupe hover:border-warm-bronze transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-charcoal">{c.patientName}{c.subject ? ` — ${c.subject}` : ''}</p>
+                {c.unreadCount > 0 && <span className="text-[11px] bg-warm-bronze text-white rounded-full px-2 py-0.5">{c.unreadCount}</span>}
+              </div>
+              {c.lastMessageBody && <p className="text-xs text-medium-gray mt-1 truncate">{c.lastMessageBody}</p>}
+            </button>
           </li>
         ))}
       </ul>
@@ -1142,13 +1148,23 @@ function ConversationGroup({ title, conversations }: { title: string; conversati
 }
 
 function CommunicationsView() {
+  const { state } = useApp();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // CODEX F-18 FIX — inbox items were summaries only, with no way to
+  // actually open a thread (no click handler existed at all). Reuses
+  // CareConversations.tsx's own already-reviewed ConversationThread
+  // component rather than building a second one.
+  const [openThreadId, setOpenThreadId] = useState<string | null>(null);
+  const refreshList = useCallback(async () => {
+    setConversations(await getMyConversations());
+    setLoading(false);
+  }, []);
   // MASTER CORRECTIVE FUNC-04: ids whose full message HISTORY (not
   // just the latest message) matches the current search term.
   const [historicalMatchIds, setHistoricalMatchIds] = useState<Set<string>>(new Set());
-  useEffect(() => { void getMyConversations().then((c) => { setConversations(c); setLoading(false); }); }, []);
+  useEffect(() => { void refreshList(); }, [refreshList]);
   useEffect(() => {
     const term = search.trim();
     if (!term) { setHistoricalMatchIds(new Set()); return; }
@@ -1169,6 +1185,17 @@ function CommunicationsView() {
   const followUp = filtered.filter((c) => !c.lastMessageUrgent && c.hasOpenFollowUp);
   const routine = filtered.filter((c) => !c.lastMessageUrgent && !c.hasOpenFollowUp);
 
+  if (openThreadId) {
+    return (
+      <Card>
+        <ConversationThread
+          conversationId={openThreadId} myId={state.currentUser?.id ?? null}
+          onBack={() => { setOpenThreadId(null); void refreshList(); }}
+        />
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <div className="flex items-center gap-2"><MessageSquare className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Care Communications</h2></div>
@@ -1177,9 +1204,9 @@ function CommunicationsView() {
         <p className="text-sm text-medium-gray">{conversations.length === 0 ? "No conversations yet. Open a patient's record to start one." : 'No conversations match this search.'}</p>
       ) : (
         <>
-          <ConversationGroup title="Urgent" conversations={urgent} />
-          <ConversationGroup title="Needs a response" conversations={followUp} />
-          <ConversationGroup title="Routine" conversations={routine} />
+          <ConversationGroup title="Urgent" conversations={urgent} onOpen={setOpenThreadId} />
+          <ConversationGroup title="Needs a response" conversations={followUp} onOpen={setOpenThreadId} />
+          <ConversationGroup title="Routine" conversations={routine} onOpen={setOpenThreadId} />
         </>
       )}
     </Card>

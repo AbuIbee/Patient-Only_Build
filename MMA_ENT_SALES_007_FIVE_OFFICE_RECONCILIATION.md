@@ -55,7 +55,7 @@ Fully reconciled in commit `43fd170a`. Every one of the 24 constructible pairs (
 | My Schedule | none named | UNVERIFIED beyond historical 92-row evidence |
 | Care Plans & Tasks | F-14 (task attribution forgery on INSERT) | **RESOLVED** — migration 125, `codexF14TaskInsertAttribution.test.ts` |
 | Patient Health Records | F-14 | **RESOLVED** (same fix; `communication_needs`/`code_status` attribution also now forced on INSERT) |
-| Care Communications | F-01, F-18 | F-01 **RESOLVED**. F-18 (inbox items lack direct thread-opening) NOT fixed |
+| Care Communications | F-01, F-18 | **RESOLVED** (both) — F-18's inbox-items-lack-thread-opening defect fixed by reusing `ConversationThread` (exported from `CareConversations.tsx`); proven live clicking a real inbox item and reading the real message body, not an inert summary |
 | Care Notes & Observations | F-13 | **RESOLVED** — a non-credentialed user can no longer hold `therapist`/`medical_professional` at all |
 | Shift Handoffs | none named | UNVERIFIED beyond historical evidence |
 | Alerts & Incidents | none named | UNVERIFIED beyond historical evidence |
@@ -113,7 +113,7 @@ Fully reconciled in commit `43fd170a`. Every one of the 24 constructible pairs (
 | My Preferences | none named | UNVERIFIED |
 | Settings & Account | F-15 (verification needed) | PARTIALLY RESOLVED, same basis as above |
 
-**Aggregate**: of the destinations Codex specifically flagged with a named defect (roughly half of the 60), the defects mapping to F-01, F-13, F-14, F-16, and now F-18's false-zero reporting (4 destinations: Clinical/Therapy Dashboard and Reports & Outcomes) are RESOLVED and independently re-verified. F-02/F-03/F-04 (Director licensing) are RESOLVED. F-09's configure-vs-activation race is RESOLVED; its office-cap/per-role-seat model remains open. F-17, F-21 (Full Support capability, policy-blocked items), and F-18's remaining P2 UX items (inbox thread-opening, multi-org selection, personal-label filtering) are confirmed still open and are NOT claimed fixed. Destinations with no named defect remain at "renders," exactly as the pre-existing inventory already stated — this pass did not newly attempt feature-depth verification for destinations with no identified defect, in order to prioritize closing confirmed P0/P1 authorization gaps first, per the Platform Owner's own stated sequence.
+**Aggregate**: of the destinations Codex specifically flagged with a named defect (roughly half of the 60), the defects mapping to F-01, F-13, F-14, F-16, F-18's false-zero reporting (4 destinations: Clinical/Therapy Dashboard and Reports & Outcomes), and F-18's Caregiver inbox thread-opening defect are RESOLVED and independently re-verified. F-02/F-03/F-04 (Director licensing) are RESOLVED. F-09's configure-vs-activation race is RESOLVED; its office-cap/per-role-seat model remains open. F-17, F-21 (Full Support capability, policy-blocked items), and F-18's remaining P2 UX items (multi-org selection, personal-label filtering) are confirmed still open and are NOT claimed fixed. Destinations with no named defect remain at "renders," exactly as the pre-existing inventory already stated — this pass did not newly attempt feature-depth verification for destinations with no identified defect, in order to prioritize closing confirmed P0/P1 authorization gaps first, per the Platform Owner's own stated sequence.
 
 ## C. 92 Caregiver requirements — reconciliation
 
@@ -136,7 +136,7 @@ This reconciliation does not re-litigate the 2 rows the pre-existing CSV itself 
 **No office is being declared complete.** Every office has at least one open, named, P1-or-higher gap:
 
 - **Director**: F-09's office/seat entitlement cap model (a real missing feature, not an authorization defect in the narrow sense) open.
-- **Caregiver**: F-18 (P2 only — inbox thread-opening, multi-org selection, personal-label filtering) open — closest to complete of the five, consistent with its pre-existing 92-row depth of prior verification.
+- **Caregiver**: inbox thread-opening now RESOLVED; F-18's remaining P2 items (multi-org selection, personal-label filtering) open — closest to complete of the five, consistent with its pre-existing 92-row depth of prior verification.
 - **Medical / Therapy**: false-zero reporting (F-18) now RESOLVED; no other named defect open for either office beyond the shared cross-cutting items (F-05 through F-10, F-17, F-21) that apply platform-wide, not specifically to these offices.
 - **Patient**: F-17 (missing Full Support capability entry points) open.
 

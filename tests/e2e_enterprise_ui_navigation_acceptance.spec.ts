@@ -6,6 +6,11 @@
 // section for the exact fixture). Behavior assertions, not
 // screenshot-only acceptance, per the directive's own instruction.
 import { test, expect, type Page } from '@playwright/test';
+import { execSync } from 'node:child_process';
+
+function sql(statement: string): string {
+  return execSync('docker exec -i supabase_db_repo psql -U postgres -d postgres -At -q -v ON_ERROR_STOP=1', { input: statement }).toString().trim();
+}
 
 const EMAIL = 'ui-caregiver@local.test';
 const PASSWORD = 'UiVerify9!';
@@ -205,5 +210,47 @@ test.describe('15. Existing patient/caregiver interfaces remain functional', () 
     await page.goto('http://127.0.0.1:5180/');
     await expect(page.getByRole('button', { name: 'Sign In', exact: true }).first()).toBeVisible();
     expect(errors).toEqual([]);
+  });
+});
+
+// CODEX F-18 FIX — "Caregiver inbox items remain summaries without
+// direct thread opening." Confirmed live: ConversationGroup's list
+// items had no click handler at all. Fixed by reusing
+// CareConversations.tsx's own already-reviewed ConversationThread
+// component. Proves it against this suite's own real, externally
+// seeded caregiver/patient fixture -- a real conversation + message,
+// created and torn down by this test alone, never touching any other
+// test's state.
+test.describe('16. Care Communications inbox items open a real thread (CODEX F-18)', () => {
+  test('clicking an inbox item opens the real message thread, not an inert summary', async ({ page }) => {
+    const caregiverId = sql("SELECT id FROM auth.users WHERE email='ui-caregiver@local.test';");
+    const patientId = 'ee1ee1ee-1ee1-1ee1-1ee1-ee1ee1ee1ee1';
+    const convId = sql(`
+      INSERT INTO conversations (patient_id, subject, created_by) VALUES ('${patientId}', 'F18 thread-open probe', '${caregiverId}') RETURNING id;
+    `);
+    sql(`
+      INSERT INTO conversation_participants (conversation_id, user_id, participant_role, added_by) VALUES
+        ('${convId}', '${caregiverId}', 'caregiver', '${caregiverId}'),
+        ('${convId}', '${patientId}', 'patient', '${caregiverId}');
+      INSERT INTO messages (conversation_id, sender_id, sender_role, body) VALUES
+        ('${convId}', '${caregiverId}', 'caregiver', 'F18 probe message body, unique and real');
+    `);
+
+    try {
+      const errors: string[] = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await signIn(page);
+      await page.getByRole('button', { name: 'Care Communications', exact: true }).click();
+      await expect(page.getByText('F18 thread-open probe', { exact: false })).toBeVisible({ timeout: 10000 });
+      await page.getByText('F18 thread-open probe', { exact: false }).click();
+
+      // The real thread, not the inert summary: the full message body
+      // (truncated in the summary list) and a reply control.
+      await expect(page.getByText('F18 probe message body, unique and real', { exact: false })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByPlaceholder(/reply/i)).toBeVisible({ timeout: 5000 });
+      expect(errors, `Runtime errors: ${errors.join(' | ')}`).toEqual([]);
+    } finally {
+      sql(`DELETE FROM messages WHERE conversation_id='${convId}'; DELETE FROM conversation_participants WHERE conversation_id='${convId}'; DELETE FROM conversations WHERE id='${convId}';`);
+    }
   });
 });
