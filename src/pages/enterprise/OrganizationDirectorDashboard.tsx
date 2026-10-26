@@ -25,7 +25,7 @@ import {
   getApplicationDocuments, getSignedDocumentUrl,
 } from '@/services/professionalApplicationService';
 import {
-  getOrgVisits, getOrgIncidentReports, getOrgShiftHandoffs, resolveOrgIncidentReport,
+  getOrgVisitsResult, getOrgIncidentReportsResult, getOrgShiftHandoffsResult, resolveOrgIncidentReport,
   type OrgVisit, type OrgIncidentReport, type OrgShiftHandoff, type IncidentResolutionStatus,
 } from '@/services/organizationDirectorOpsService';
 import {
@@ -1185,12 +1185,16 @@ function ApplicationsReviewView({ organizationId }: { organizationId: string }) 
   );
 }
 
-function SchedulingOversightView({ visits }: { visits: OrgVisit[] }) {
+function SchedulingOversightView({ visits, loadError }: { visits: OrgVisit[]; loadError?: string | null }) {
   return (
     <OfficeCard>
       <div className="flex items-center gap-2"><CalendarClock className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Scheduling Oversight</h2></div>
       {visits.length === 0 ? (
-        <p className="text-sm text-ent-text">No visits have been scheduled yet across your organization.</p>
+        loadError ? (
+          <p className="text-sm text-gentle-coral font-semibold">Visits could not be confirmed right now — this is not a statement that none are scheduled.</p>
+        ) : (
+          <p className="text-sm text-ent-text">No visits have been scheduled yet across your organization.</p>
+        )
       ) : (
         <ul className="space-y-2">
           {visits.map((v) => (
@@ -1208,13 +1212,17 @@ function SchedulingOversightView({ visits }: { visits: OrgVisit[] }) {
   );
 }
 
-function CareOperationsView({ handoffs }: { handoffs: OrgShiftHandoff[] }) {
+function CareOperationsView({ handoffs, loadError }: { handoffs: OrgShiftHandoff[]; loadError?: string | null }) {
   return (
     <OfficeCard>
       <div className="flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Care Operations</h2></div>
       <p className="text-sm text-ent-text">Recent shift handoffs across your organization.</p>
       {handoffs.length === 0 ? (
-        <p className="text-sm text-ent-text">No shift handoffs recorded yet.</p>
+        loadError ? (
+          <p className="text-sm text-gentle-coral font-semibold">Shift handoffs could not be confirmed right now — this is not a statement that none are recorded.</p>
+        ) : (
+          <p className="text-sm text-ent-text">No shift handoffs recorded yet.</p>
+        )
       ) : (
         <ul className="space-y-2">
           {handoffs.map((h) => (
@@ -1232,7 +1240,7 @@ function CareOperationsView({ handoffs }: { handoffs: OrgShiftHandoff[] }) {
   );
 }
 
-function IncidentsView({ incidents, onResolved }: { incidents: OrgIncidentReport[]; onResolved: () => void }) {
+function IncidentsView({ incidents, onResolved, loadError }: { incidents: OrgIncidentReport[]; onResolved: () => void; loadError?: string | null }) {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
 
   const resolve = async (id: string, status: IncidentResolutionStatus) => {
@@ -1251,7 +1259,11 @@ function IncidentsView({ incidents, onResolved }: { incidents: OrgIncidentReport
     <OfficeCard>
       <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Incidents and Escalations</h2></div>
       {incidents.length === 0 ? (
-        <p className="text-sm text-ent-text">No incidents have been reported across your organization.</p>
+        loadError ? (
+          <p className="text-sm text-gentle-coral font-semibold">Incidents could not be confirmed right now — this is not a statement that none have been reported.</p>
+        ) : (
+          <p className="text-sm text-ent-text">No incidents have been reported across your organization.</p>
+        )
       ) : (
         <ul className="space-y-2">
           {incidents.map((i) => (
@@ -1346,6 +1358,14 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   const [loading, setLoading] = useState(true);
   const [nav, setNav] = useOfficeUrlSync<DirectorNavKey>(basePath, DIRECTOR_NAV_KEYS, 'dashboard');
   const [billingOpen, setBillingOpen] = useState(false);
+  // MMA-CODEX-011 finding 011-03 (NAV-06/F-18, P1): getOrgVisits/
+  // getOrgIncidentReports/getOrgShiftHandoffs (all plain) discarded
+  // their error and returned [] on failure, which Scheduling Oversight
+  // (and Incidents & Escalations / handoff-adjacent views) then
+  // rendered as an authoritative "no visits/incidents/handoffs" --
+  // independently reproduced by the audit: a known real visit existing,
+  // with the read faulted, still produced the successful-empty message.
+  const [loadError, setDirectorLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -1355,9 +1375,9 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
         getOrgMembers(organizationId),
         getMyOrganizations(),
         getOrgCoveredPatients(organizationId),
-        getOrgVisits(organizationId),
-        getOrgIncidentReports(organizationId),
-        getOrgShiftHandoffs(organizationId),
+        getOrgVisitsResult(organizationId),
+        getOrgIncidentReportsResult(organizationId),
+        getOrgShiftHandoffsResult(organizationId),
       ]);
       const org = orgs.find((o) => o.organizationId === organizationId);
       setLicense(lic);
@@ -1365,9 +1385,11 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       setOrgName(org?.organizationName ?? '');
       setPackageType(org?.packageType ?? 'integrated_care');
       setCoveredCount(covered.length);
-      setVisits(v);
-      setIncidents(inc);
-      setHandoffs(hoffs);
+      setVisits(v.data ?? []);
+      setIncidents(inc.data ?? []);
+      setHandoffs(hoffs.data ?? []);
+      const errors = [v.error, inc.error, hoffs.error].filter((e): e is string => !!e);
+      setDirectorLoadError(errors.length > 0 ? errors[0] : null);
     } finally {
       setLoading(false);
     }
@@ -1392,6 +1414,12 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       navItems={DIRECTOR_NAV_ITEMS} navGroups={DIRECTOR_NAV_GROUPS} activeNav={nav} onNavigate={navigate}
       onLogout={() => { void handleLogout(); }}
     >
+      {!loading && loadError && (nav === 'dashboard' || nav === 'scheduling' || nav === 'operations' || nav === 'incidents' || nav === 'reports') && (
+        <div role="alert" className="mb-4 p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm text-gentle-coral font-medium">Some organization data could not be loaded: {loadError} — counts/lists on this page may be incomplete, not confirmed empty.</p>
+          <button type="button" onClick={() => { void refresh(); }} className="text-sm font-semibold text-ent-forest hover:underline flex-shrink-0">Retry</button>
+        </div>
+      )}
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : nav === 'dashboard' ? (
@@ -1407,11 +1435,11 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       ) : nav === 'assignments' ? (
         <AssignmentsCard orgId={organizationId} members={members} />
       ) : nav === 'scheduling' ? (
-        <SchedulingOversightView visits={visits} />
+        <SchedulingOversightView visits={visits} loadError={loadError} />
       ) : nav === 'operations' ? (
-        <CareOperationsView handoffs={handoffs} />
+        <CareOperationsView handoffs={handoffs} loadError={loadError} />
       ) : nav === 'incidents' ? (
-        <IncidentsView incidents={incidents} onResolved={() => { void refresh(); }} />
+        <IncidentsView incidents={incidents} onResolved={() => { void refresh(); }} loadError={loadError} />
       ) : nav === 'communications' ? (
         <DirectorCommunicationsView orgId={organizationId} />
       ) : nav === 'reports' ? (
