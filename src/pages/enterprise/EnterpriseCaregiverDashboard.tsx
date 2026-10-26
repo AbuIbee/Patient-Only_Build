@@ -637,6 +637,15 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
   const [unacknowledgedHandoffs, setUnacknowledgedHandoffs] = useState(0);
   const [missingVisitNotes, setMissingVisitNotes] = useState(0);
   const [unfinishedCareLists, setUnfinishedCareLists] = useState(0);
+  // MMA-CODEX-011 011-10 (H02, P2): the locked requirement names FIVE
+  // Today's Overview counts -- "assigned patients, scheduled visits,
+  // unfinished tasks, unread messages, and outstanding alerts" -- but
+  // this view only ever rendered four tiles; a distinct, real
+  // unfinished-TASK count (as opposed to unfinishedCareLists above,
+  // which counts PATIENTS with at least one pending task, for the
+  // separate Incomplete Documentation panel) never existed anywhere in
+  // this component.
+  const [totalUnfinishedTasks, setTotalUnfinishedTasks] = useState(0);
   const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([]);
   const [loadingExtra, setLoadingExtra] = useState(true);
   // MMA-ENT-CAREGIVER-MASTER-004, D02 (P1) — independent runtime audit
@@ -692,12 +701,38 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
       const unacknowledgedHelp = helpByPatient.flatMap((h) => h.entries).filter((e) => e.acknowledgedCount === 0);
 
       // H09 — "overnight observations, authorized patient/family shared
-      // notes, condition changes... excluding Private Journal content."
-      // patient_notes' own RLS already excludes care_partner_personal
-      // (the Private Journal type); this reads only the general/
-      // professional types staff can already see.
-      const sinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      // notes, condition changes, AND CHANGES SINCE CAREGIVER'S LAST
+      // VISIT ... excluding Private Journal content." patient_notes' own
+      // RLS already excludes care_partner_personal (the Private Journal
+      // type); this reads only the general/professional types staff can
+      // already see.
+      //
+      // MMA-CODEX-011 011-10 (H09, P2): this previously used one flat
+      // 7-day lookback for every patient regardless of when THIS
+      // caregiver last actually visited THAT patient -- the locked
+      // requirement's own "since last visit" boundary, not a fixed
+      // window. A caregiver who last visited 10 days ago would wrongly
+      // miss a genuine update from 8 days ago (outside the 7-day
+      // window); one who visited yesterday would wrongly see a stale
+      // update from 5 days ago (before their last visit) relabeled as
+      // new. Fixed: per patient, the real boundary is this caregiver's
+      // own most recently COMPLETED visit to that patient (from the
+      // visits already fetched above -- no new query), falling back to
+      // the prior flat 7-day window only for a patient with no completed
+      // visit on record yet (first assignment, nothing to bound against).
+      const fallbackSinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const lastVisitEndByPatient = new Map<string, string>();
+      for (const v of myVisits) {
+        if (v.status !== 'completed') continue;
+        const endedAt = v.actualEnd || v.scheduledEnd;
+        if (!endedAt) continue;
+        const existing = lastVisitEndByPatient.get(v.patientId);
+        if (!existing || new Date(endedAt).getTime() > new Date(existing).getTime()) {
+          lastVisitEndByPatient.set(v.patientId, endedAt);
+        }
+      }
       const noteRows = (await Promise.all(patients.map(async (p) => {
+        const sinceIso = lastVisitEndByPatient.get(p.patientId) ?? fallbackSinceIso;
         const { data, error } = await supabase.from('patient_notes').select('note, created_at').eq('patient_id', p.patientId).gte('created_at', sinceIso).order('created_at', { ascending: false }).limit(5);
         if (error) { noteErrors.push(error.message); return []; }
         return (data ?? []).map((r) => ({ patientName: p.preferredName || p.firstName, note: r.note, at: r.created_at }));
@@ -741,6 +776,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
       }));
       if (taskErrors.length > 0) errors.push(`Could not load care-plan task counts for ${taskErrors.length} patient(s).`);
       const unfinishedCareListsCount = pendingTaskCounts.filter((c) => c > 0).length;
+      const totalUnfinishedTasksCount = pendingTaskCounts.reduce((sum, c) => sum + c, 0);
 
       if (!active) return;
       setConversations(convos);
@@ -753,6 +789,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
       setUnacknowledgedHandoffs(unackCount);
       setMissingVisitNotes(missingNotesCount);
       setUnfinishedCareLists(unfinishedCareListsCount);
+      setTotalUnfinishedTasks(totalUnfinishedTasksCount);
 
       // APPROVED ENTERPRISE UI DIRECTIVE §3 — "Needs Your Attention
       // panel": a single real, time-ordered feed combining unacknowledged
@@ -850,18 +887,25 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
         <RegistrationAction orgId={orgId} onChanged={onPatientRegistered} compact />
       </div>
 
-      {/* H02 — the four approved summary cards; each count navigates to
-          its underlying authorized record set, not just the sidebar.
+      {/* H02 — the FIVE approved summary counts ("assigned patients,
+          scheduled visits, unfinished tasks, unread messages, and
+          outstanding alerts"); each count navigates to its underlying
+          authorized record set, not just the sidebar.
           D02-INVARIANT-03: "Assigned patients" comes from the parent's
           already-verified org-scoped list (D01), unaffected by this
-          view's own fetches — only the other three can actually be
+          view's own fetches — only the other four can actually be
           partial, so only they get the "partial" caveat when loadError
           is set, rather than casting doubt on a count that is not
-          actually in question. */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          actually in question.
+          MMA-CODEX-011 011-10: "Unfinished tasks" (a distinct, named
+          metric in the locked requirement) was missing entirely —
+          previously only a per-patient-count variant of this existed,
+          feeding a different panel further down this page. */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {([
           { label: 'Assigned patients', sub: 'active', value: patients.length, nav: 'patients' as NavItem, mayBePartial: false },
           { label: 'Visits today', sub: 'scheduled', value: todayVisits.length, nav: 'schedule' as NavItem, mayBePartial: true },
+          { label: 'Unfinished tasks', sub: 'pending', value: totalUnfinishedTasks, nav: 'tasks' as NavItem, mayBePartial: true },
           { label: 'Needs attention', sub: 'updates', value: needsAttentionCount, nav: 'alerts' as NavItem, mayBePartial: true },
           { label: 'Unread messages', sub: 'care team', value: unreadCount, nav: 'communications' as NavItem, mayBePartial: true },
         ]).map((m) => (
@@ -961,6 +1005,23 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-ent-ink text-sm">{nextVisitPatient?.preferredName || nextVisitPatient?.firstName || 'Patient'}</p>
                   <p className="text-xs text-ent-muted">{nextVisit.status === 'in_progress' ? 'In progress' : new Date(nextVisit.scheduledStart ?? '').toLocaleTimeString()}{nextVisit.scheduledEnd ? ` – ${new Date(nextVisit.scheduledEnd).toLocaleTimeString()}` : ''}</p>
+                  {/* MMA-CODEX-011 011-10 (H07, P2): the locked requirement
+                      says "show late/change alerts" -- this card never
+                      showed either. "Late" is directly derivable (a
+                      still-'scheduled' visit whose start time has already
+                      passed) and added here. A genuine reschedule/"change"
+                      alert would need a dedicated audit of what the visit's
+                      time WAS before an edit -- caregiver_visits only
+                      stores the current scheduled_start/end, no prior
+                      value or a server-set "rescheduled" flag -- so that
+                      half is NOT fabricated from updated_at (which also
+                      changes on every ordinary status transition and would
+                      false-positive on every visit that starts/completes
+                      normally); it remains open, honestly, not silently
+                      claimed done. */}
+                  {nextVisit.status === 'scheduled' && nextVisit.scheduledStart && new Date(nextVisit.scheduledStart).getTime() < Date.now() && (
+                    <span className="inline-block mt-1 text-[11px] font-semibold text-gentle-coral bg-gentle-coral/10 px-2 py-0.5 rounded-full">Late — past scheduled start</span>
+                  )}
                   <button type="button" onClick={() => onNavigate('schedule')} className="text-xs font-semibold text-ent-forest hover:underline mt-2 inline-block">Open schedule →</button>
                 </div>
               </div>
