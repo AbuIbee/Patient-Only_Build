@@ -74,32 +74,72 @@ const returnUserToFreeTier = async (
  * routed here and can only ever write to enterprise_billing_accounts /
  * enterprise_billing_events. It never touches `subscriptions`, and a
  * consumer event (no such metadata) never reaches these functions.
+ *
+ * MMA-CODEX-011 finding 011-01 (F-06, P1): this used to insert the
+ * receipt and treat that insert succeeding as "go ahead and process".
+ * If processing then threw (e.g. no matching billing account yet), the
+ * receipt row already existed, so Stripe's automatic retry of the SAME
+ * event hit the unique_violation branch and was reported as an already-
+ * processed replay -- even though the event was never actually
+ * processed. 'new'/'retry' both mean "run the handler"; only 'skip'
+ * means a genuinely already-completed event. Callers must call
+ * markEnterpriseEventProcessed() after the handler actually succeeds.
  */
+type EnterpriseEventOutcome = 'new' | 'retry' | 'skip';
+
 const recordEnterpriseEventOnce = async (
   eventId: string,
   eventType: string,
   billingAccountId: string | null,
   payload: unknown,
-): Promise<boolean> => {
+): Promise<EnterpriseEventOutcome> => {
   const { error } = await supabase.from('enterprise_billing_events').insert({
     stripe_event_id: eventId,
     event_type: eventType,
     billing_account_id: billingAccountId,
     payload,
+    processed_at: null,
   });
 
-  if (error) {
-    // 23505 = unique_violation on stripe_event_id: this exact Stripe
-    // event was already processed (a retried/duplicated delivery).
-    // Replay-safe no-op, not an error.
-    if (error.code === '23505') {
-      console.log(`Enterprise billing event ${eventId} already processed -- skipping (replay).`);
-      return false;
+  if (!error) return 'new';
+
+  // 23505 = unique_violation on stripe_event_id: a receipt for this
+  // exact Stripe event already exists. Whether this is a genuine replay
+  // (skip) or a retried delivery of an event that was received but
+  // never finished processing (retry) depends entirely on whether that
+  // existing receipt was ever actually marked processed.
+  if (error.code === '23505') {
+    const { data: existing, error: lookupError } = await supabase
+      .from('enterprise_billing_events')
+      .select('processed_at')
+      .eq('stripe_event_id', eventId)
+      .maybeSingle();
+
+    if (lookupError) {
+      throw new Error(`Could not look up existing enterprise billing event receipt: ${lookupError.message}`);
     }
-    throw new Error(`Could not record enterprise billing event: ${error.message}`);
+
+    if (existing?.processed_at) {
+      console.log(`Enterprise billing event ${eventId} already processed -- skipping (replay).`);
+      return 'skip';
+    }
+
+    console.log(`Enterprise billing event ${eventId} was received but never finished processing -- retrying.`);
+    return 'retry';
   }
 
-  return true;
+  throw new Error(`Could not record enterprise billing event: ${error.message}`);
+};
+
+const markEnterpriseEventProcessed = async (eventId: string): Promise<void> => {
+  const { error } = await supabase
+    .from('enterprise_billing_events')
+    .update({ processed_at: new Date().toISOString() })
+    .eq('stripe_event_id', eventId);
+
+  if (error) {
+    throw new Error(`Could not mark enterprise billing event ${eventId} as processed: ${error.message}`);
+  }
 };
 
 const findEnterpriseBillingAccountByQuote = async (quoteId: string) => {
@@ -292,8 +332,8 @@ serve(async (req) => {
           const stripeCustomerId = typeof session.customer === 'string' ? session.customer : null;
           const stripeSubscriptionId = typeof session.subscription === 'string' ? session.subscription : null;
 
-          const isNewEvent = await recordEnterpriseEventOnce(event.id, event.type, metadataBillingAccountId, session);
-          if (!isNewEvent) break;
+          const eventOutcome = await recordEnterpriseEventOnce(event.id, event.type, metadataBillingAccountId, session);
+          if (eventOutcome === 'skip') break;
 
           if (!stripeSubscriptionId) {
             throw new Error('Enterprise checkout session is missing a Stripe subscription ID.');
@@ -317,6 +357,7 @@ serve(async (req) => {
           console.log(`Enterprise billing account ${billingAccountId} activated via checkout session ${session.id}.`);
           await tryActivateLicenseForQuote(quoteId);
           await tryApplyAmendmentForQuote(quoteId);
+          await markEnterpriseEventProcessed(event.id);
           break;
         }
 
@@ -376,8 +417,8 @@ serve(async (req) => {
           const billingAccountId = stripeSubscription.metadata?.billing_account_id ?? null;
           const quoteId = stripeSubscription.metadata?.quote_id ?? null;
 
-          const isNewEvent = await recordEnterpriseEventOnce(event.id, event.type, billingAccountId, stripeSubscription);
-          if (!isNewEvent) break;
+          const eventOutcome = await recordEnterpriseEventOnce(event.id, event.type, billingAccountId, stripeSubscription);
+          if (eventOutcome === 'skip') break;
 
           let resolvedAccountId = billingAccountId;
           if (!resolvedAccountId && quoteId) {
@@ -385,6 +426,7 @@ serve(async (req) => {
           }
           if (!resolvedAccountId) {
             console.warn(`Enterprise subscription ${stripeSubscription.id} has no resolvable billing account.`);
+            await markEnterpriseEventProcessed(event.id);
             break;
           }
 
@@ -404,6 +446,7 @@ serve(async (req) => {
           const mappedStatus = stripeStatusToOurs[stripeSubscription.status];
           if (!mappedStatus) {
             console.warn(`Enterprise subscription ${stripeSubscription.id} has unhandled Stripe status ${stripeSubscription.status} -- not changing stored status.`);
+            await markEnterpriseEventProcessed(event.id);
             break;
           }
 
@@ -414,6 +457,7 @@ serve(async (req) => {
           });
 
           console.log(`Enterprise billing account ${resolvedAccountId} set to ${mappedStatus} (Stripe status ${stripeSubscription.status}).`);
+          await markEnterpriseEventProcessed(event.id);
           break;
         }
 
@@ -470,8 +514,8 @@ serve(async (req) => {
           const billingAccountId = stripeSubscription.metadata?.billing_account_id ?? null;
           const quoteId = stripeSubscription.metadata?.quote_id ?? null;
 
-          const isNewEvent = await recordEnterpriseEventOnce(event.id, event.type, billingAccountId, stripeSubscription);
-          if (!isNewEvent) break;
+          const eventOutcome = await recordEnterpriseEventOnce(event.id, event.type, billingAccountId, stripeSubscription);
+          if (eventOutcome === 'skip') break;
 
           let resolvedAccountId = billingAccountId;
           if (!resolvedAccountId && quoteId) {
@@ -479,12 +523,14 @@ serve(async (req) => {
           }
           if (!resolvedAccountId) {
             console.warn(`Deleted enterprise subscription ${stripeSubscription.id} has no resolvable billing account.`);
+            await markEnterpriseEventProcessed(event.id);
             break;
           }
 
           await updateEnterpriseBillingAccount(resolvedAccountId, { status: 'canceled' });
           console.log(`Enterprise billing account ${resolvedAccountId} canceled after subscription deletion.`);
           await tryCancelLicenseForQuote(quoteId);
+          await markEnterpriseEventProcessed(event.id);
           break;
         }
 
@@ -525,10 +571,11 @@ serve(async (req) => {
 
         const enterpriseAccount = await findEnterpriseBillingAccountBySubscription(stripeSubscriptionId);
         if (enterpriseAccount) {
-          const isNewEvent = await recordEnterpriseEventOnce(event.id, event.type, enterpriseAccount.id, invoice);
-          if (isNewEvent) {
+          const eventOutcome = await recordEnterpriseEventOnce(event.id, event.type, enterpriseAccount.id, invoice);
+          if (eventOutcome !== 'skip') {
             await updateEnterpriseBillingAccount(enterpriseAccount.id, { status: 'past_due' });
             console.log(`Enterprise billing account ${enterpriseAccount.id} marked past_due after payment failure.`);
+            await markEnterpriseEventProcessed(event.id);
           }
           break;
         }
