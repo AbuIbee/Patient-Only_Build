@@ -540,6 +540,7 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
                 {v.pulseBpm != null && <span className="mr-2">Pulse {v.pulseBpm}</span>}
                 {v.temperatureF != null && <span className="mr-2">Temp {v.temperatureF}°F</span>}
                 {v.oxygenSaturation != null && <span className="mr-2">O2 {v.oxygenSaturation}%</span>}
+                {v.weightLbs != null && <span className="mr-2">Weight {v.weightLbs} lbs</span>}
                 {v.painLevel != null && <span className="mr-2">Pain {v.painLevel}/10</span>}
                 <span className="text-medium-gray block mt-0.5">{new Date(v.measuredAt).toLocaleString()}</span>
               </li>
@@ -588,7 +589,7 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
 
 // P04/P05 — current medications (structured) + history/dose log.
 function MedicationsTab({ patientId }: { patientId: string }) {
-  const [meds, setMeds] = useState<{ id: string; name: string; dosage: string; form: string | null; instructions: string; prescribed_by: string | null; prescription_date: string | null; is_active: boolean }[]>([]);
+  const [meds, setMeds] = useState<{ id: string; name: string; dosage: string; form: string | null; instructions: string; prescribed_by: string | null; prescription_date: string | null; is_active: boolean; side_effects: string[] | null }[]>([]);
   const [logs, setLogs] = useState<{ id: string; medication_id: string; status: string; scheduled_time: string; taken_time: string | null; date: string }[]>([]);
   const [loading, setLoading] = useState(true);
   // MMA-ENT-CAREGIVER-MASTER-005 D02-011: a failed medications or
@@ -600,7 +601,7 @@ function MedicationsTab({ patientId }: { patientId: string }) {
   const [loadError, setMedsLoadError] = useState<string | null>(null);
   useEffect(() => {
     void Promise.all([
-      supabase.from('medications').select('id, name, dosage, form, instructions, prescribed_by, prescription_date, is_active').eq('patient_id', patientId).order('is_active', { ascending: false }),
+      supabase.from('medications').select('id, name, dosage, form, instructions, prescribed_by, prescription_date, is_active, side_effects').eq('patient_id', patientId).order('is_active', { ascending: false }),
       supabase.from('medication_logs').select('id, medication_id, status, scheduled_time, taken_time, date').eq('patient_id', patientId).order('date', { ascending: false }).limit(30),
     ]).then(([m, l]) => {
       setMeds(m.data ?? []);
@@ -629,6 +630,9 @@ function MedicationsTab({ patientId }: { patientId: string }) {
                 <p className="font-medium text-charcoal text-sm">{m.name} — {m.dosage}{m.form ? ` (${m.form})` : ''}</p>
                 <p className="text-xs text-medium-gray">{m.instructions}</p>
                 {m.prescribed_by && <p className="text-[11px] text-medium-gray">Prescribed by {m.prescribed_by}{m.prescription_date ? ` on ${m.prescription_date}` : ''}</p>}
+                {m.side_effects != null && m.side_effects.length > 0 && (
+                  <p className="text-[11px] text-gentle-coral mt-1">Reported side effects: {m.side_effects.join(', ')}</p>
+                )}
               </li>
             ))}
           </ul>
