@@ -309,7 +309,7 @@ function OverviewTab({ patientId, patientHeader }: { patientId: string; patientH
   return (
     <>
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
           <p className="text-sm text-gentle-coral font-medium">
             Some information could not be loaded: {loadError}{!currentPlan ? ' — including whether a current care plan exists; do not treat its absence here as confirmed.' : ''}
           </p>
@@ -466,7 +466,7 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
   return (
     <>
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
           <p className="text-sm text-gentle-coral font-medium">Some medical information could not be loaded: {loadError}</p>
         </div>
       )}
@@ -615,7 +615,7 @@ function MedicationsTab({ patientId }: { patientId: string }) {
   return (
     <>
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
           <p className="text-sm text-gentle-coral font-medium">Medication information could not be fully loaded: {loadError}</p>
         </div>
       )}
@@ -906,7 +906,7 @@ function AGTab({ patientId }: { patientId: string }) {
   return (
     <>
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
           <p className="text-sm text-gentle-coral font-medium">Some A–G information could not be loaded: {loadError}</p>
         </div>
       )}
@@ -1054,7 +1054,7 @@ function AppointmentsTab({ patientId, orgId }: { patientId: string; orgId: strin
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
   return (
     <>
-      {loadError && <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30"><p className="text-sm text-gentle-coral font-medium">Appointments/visits could not be fully loaded: {loadError}</p></div>}
+      {loadError && <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30"><p className="text-sm text-gentle-coral font-medium">Appointments/visits could not be fully loaded: {loadError}</p></div>}
       <SectionCard title="Medical Appointments" icon={Calendar}>
         {appointments.length === 0 ? (
           loadError ? <p className="text-sm text-medium-gray">Appointments could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No appointments on file.</p>
@@ -1290,7 +1290,7 @@ function SafetyTab({ patientId, patientHeader, staffRole }: { patientId: string;
   return (
     <>
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
           <p className="text-sm text-gentle-coral font-medium">Safety information could not be fully loaded: {loadError}</p>
         </div>
       )}
@@ -1452,7 +1452,7 @@ function TimelineTab({ patientId, orgId }: { patientId: string; orgId: string })
   return (
     <SectionCard title="Patient Health Timeline" icon={Clock}>
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">{loadError} — this timeline is incomplete, not necessarily this quiet.</p>
         </div>
       )}

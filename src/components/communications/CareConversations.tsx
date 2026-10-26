@@ -154,7 +154,7 @@ export default function CareConversations({ patientId, patientName }: { patientI
       </div>
 
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Conversations could not be loaded: {loadError}</p>
           <button type="button" onClick={() => { void refreshList(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
         </div>
@@ -260,7 +260,7 @@ function NewConversation({
       <h2 className="font-bold text-charcoal">New Conversation</h2>
 
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Could not load authorized recipients: {loadError}</p>
           <button type="button" onClick={() => { void loadCircle(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
         </div>
@@ -490,7 +490,7 @@ export function ConversationThread({
       </button>
 
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">
             This conversation could not be refreshed: {loadError}. Showing the last successfully loaded version — not a sign your access was removed.
           </p>

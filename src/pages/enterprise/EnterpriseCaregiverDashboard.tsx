@@ -1056,7 +1056,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
             explicitly did NOT advance — never silently presented as
             "everything loaded, zero results." */}
         {loadError && (
-          <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+          <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
             <p className="text-sm text-gentle-coral font-medium">Some information could not be loaded: {loadError}</p>
             <button type="button" onClick={() => { setLoadingExtra(true); setReloadNonce((n) => n + 1); }} className="text-sm font-semibold text-ent-forest hover:underline flex-shrink-0">Retry</button>
           </div>
@@ -1435,7 +1435,7 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
         <input type="checkbox" checked={todayOnly} onChange={(e) => setTodayOnly(e.target.checked)} /> Today only
       </label>
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Your schedule could not be loaded: {loadError}</p>
           <button type="button" onClick={() => { setLoading(true); void load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
         </div>
@@ -1515,7 +1515,7 @@ function VisitsListView() {
     <Card>
       <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Visits &amp; Time Records</h2></div>
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Your visit history could not be loaded: {loadError}</p>
           <button type="button" onClick={() => { setLoading(true); void load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
         </div>
@@ -1605,7 +1605,7 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
     <Card>
       <div className="flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Care Plans &amp; Tasks</h2></div>
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Your care plan tasks could not be loaded: {loadError}</p>
           <button type="button" onClick={() => { setLoading(true); load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
         </div>
@@ -1774,7 +1774,7 @@ function CommunicationsView({ patients }: { patients: StaffPatient[] }) {
         <p className="text-xs text-gentle-coral font-medium">Message-history search could not be completed: {searchError} — only patient/subject/latest-message matches are shown below.</p>
       )}
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Your inbox could not be loaded: {loadError}</p>
           <button type="button" onClick={() => { setLoading(true); void refreshList(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
         </div>
@@ -2036,7 +2036,7 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
         )}
       </div>
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Some alerts or incidents could not be loaded: {loadError}{alerts.length > 0 ? ' — the list below may be incomplete.' : ''}</p>
           <button type="button" onClick={() => { setLoading(true); void load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
         </div>
@@ -2147,7 +2147,7 @@ function CareTeamView({ orgId, patients }: { orgId: string; patients: StaffPatie
     <Card>
       <div className="flex items-center gap-2"><UserCog className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Care Team</h2></div>
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Your care team could not be fully loaded: {loadError}</p>
           <button type="button" onClick={() => { setLoading(true); load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
         </div>
@@ -2310,7 +2310,7 @@ function MyActivityCard({ patients }: { patients: StaffPatient[] }) {
     <Card>
       <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Activity</h2></div>
       {loadError && (
-        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
           <p className="text-sm text-gentle-coral font-medium">Some activity could not be loaded: {loadError} — the counts below may be incomplete.</p>
         </div>
       )}
