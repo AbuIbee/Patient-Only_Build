@@ -165,4 +165,52 @@ describe('MMA-ENT-SALES-006 Phase I2 — enterprise notification center (migrati
     const executedNotif = sql(`SELECT notification_type FROM enterprise_notifications WHERE recipient_user_id='${ids.bilal}' AND related_entity_id='${contract.id}' AND notification_type='contract_executed';`);
     expect(executedNotif).toBe('contract_executed');
   });
+
+  // MMA-CODEX-011 011-11 (F-19, P2): migration 116's own comment
+  // honestly disclosed "invitation-issued ... events are NOT yet
+  // wired" -- independently reproduced: inviting real staff via
+  // invite_org_member() left enterprise_notifications completely empty
+  // for the invited user. Migration 141 adds the missing trigger.
+  it('inviting a staff member via the real invite_org_member() RPC notifies the invited user exactly once, and does not re-notify while still invited', async () => {
+    const director = `notify-f19-director-${stamp}@local.test`;
+    const staff = `notify-f19-staff-${stamp}@local.test`;
+    const directorId = await authSignUp(director, PW);
+    const staffId = await authSignUp(staff, PW);
+    sql(`UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id IN ('${directorId}','${staffId}');`);
+    const dirTok = await login(director, PW);
+
+    const orgId = sql(`INSERT INTO organizations (name, package_type, created_by) VALUES ('Notify F19 Org ${stamp}', 'integrated_care', '${directorId}') RETURNING id;`);
+    sql(`
+      INSERT INTO organization_memberships (organization_id, user_id, org_role, status) VALUES ('${orgId}', '${directorId}', 'director', 'active');
+      INSERT INTO organization_licenses (organization_id, licensed_seats, covered_patient_capacity, status) VALUES ('${orgId}', 10, 20, 'proposed');
+    `);
+    createdOrgIds.push(orgId);
+
+    const [inviteStatus] = await rpc('invite_org_member', { p_org_id: orgId, p_email: staff, p_org_role: 'caregiver' }, dirTok);
+    expect(inviteStatus).toBe(200);
+
+    const invitedNotif = sql(`SELECT notification_type, body FROM enterprise_notifications WHERE recipient_user_id='${staffId}' AND related_entity_type='organization_membership' AND notification_type='membership_invited';`);
+    expect(invitedNotif).toBe('membership_invited|Role: caregiver');
+
+    // Re-inviting the SAME still-invited membership (e.g. the director
+    // double-clicking Invite) must not create a second notification --
+    // the trigger's own WHEN condition only fires on a genuine
+    // transition INTO 'invited', and OLD.status is already 'invited'.
+    await rpc('invite_org_member', { p_org_id: orgId, p_email: staff, p_org_role: 'caregiver' }, dirTok);
+    const notifCountStillInvited = sql(`SELECT count(*) FROM enterprise_notifications WHERE recipient_user_id='${staffId}' AND notification_type='membership_invited';`);
+    expect(notifCountStillInvited).toBe('1');
+
+    // Revoke then re-invite -- a genuine SECOND real transition into
+    // 'invited' -- correctly produces a second, distinct notification
+    // (not deduped, because it is a real new event, not a duplicate
+    // fire of the same one).
+    sql(`UPDATE organization_memberships SET status='revoked' WHERE organization_id='${orgId}' AND user_id='${staffId}';`);
+    await rpc('invite_org_member', { p_org_id: orgId, p_email: staff, p_org_role: 'caregiver' }, dirTok);
+    const notifCountAfterReinvite = sql(`SELECT count(*) FROM enterprise_notifications WHERE recipient_user_id='${staffId}' AND notification_type='membership_invited';`);
+    expect(notifCountAfterReinvite).toBe('2');
+
+    sql(`DELETE FROM enterprise_notifications WHERE recipient_user_id IN ('${directorId}','${staffId}');`);
+    await authDeleteUser(directorId);
+    await authDeleteUser(staffId);
+  });
 });
