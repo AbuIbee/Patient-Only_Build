@@ -36,11 +36,11 @@ import {
   MessageSquare, BarChart3, Award, Settings as SettingsIcon, ChevronRight, Loader2,
 } from 'lucide-react';
 import {
-  getMyOrganizations, getMyStaffPatients,
+  getMyOrganizationsResult, getMyStaffPatientsResult,
   type MyOrganization, type StaffPatient, type StaffRole,
 } from '@/services/organizationService';
 import { getMyCredentials, type CaregiverCredential } from '@/services/enterpriseCaregiverWorkToolsService';
-import { getMyConversations } from '@/services/communicationsService';
+import { getMyConversationsResult } from '@/services/communicationsService';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
@@ -148,22 +148,34 @@ export default function ClinicalOfficeDashboard({ filterRole, basePath = null }:
   const [nav, setNav] = useOfficeUrlSync<ClinicalNavKey>(basePath, navKeys, 'dashboard');
   const [openPatient, setOpenPatient] = useState<{ orgId: string | null; patientId: string; tab?: TabKey } | null>(null);
 
+  // MMA-CODEX-011 finding 011-04 (NAV-28/NAV-40/F-18, P1): getMyOrganizations/
+  // getMyStaffPatients/getMyConversations (all plain) discarded their
+  // error, so a failed fetch rendered as an authoritative "no
+  // organization"/"no patients" for both the Medical and Therapist
+  // offices -- independently reproduced by the audit: faulting
+  // get_my_staff_patients with real rows present still showed "zero
+  // assignment" after the loader settled.
+  const [loadError, setClinicalLoadError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [orgs, allPatients] = await Promise.all([getMyOrganizations(), getMyStaffPatients()]);
-      const org = orgs.find((o) => o.orgRole === filterRole) ?? null;
+      const [orgs, allPatients] = await Promise.all([getMyOrganizationsResult(), getMyStaffPatientsResult()]);
+      const org = (orgs.data ?? []).find((o) => o.orgRole === filterRole) ?? null;
       setMyOrg(org);
-      setPatients(allPatients.filter((p) => p.orgRole === filterRole));
+      setPatients((allPatients.data ?? []).filter((p) => p.orgRole === filterRole));
       const [creds, myConversations] = await Promise.all([
         getMyCredentials(),
-        getMyConversations(),
+        getMyConversationsResult(),
       ]);
       setCredentials(creds);
+      const conversations = myConversations.data ?? [];
       setCommsOverview({
-        activeConversations: myConversations.length,
-        unresolvedFollowUps: myConversations.filter((c) => c.hasOpenFollowUp).length,
+        activeConversations: conversations.length,
+        unresolvedFollowUps: conversations.filter((c) => c.hasOpenFollowUp).length,
       });
+      const errors = [orgs.error, allPatients.error, myConversations.error].filter((e): e is string => !!e);
+      setClinicalLoadError(errors.length > 0 ? errors[0] : null);
     } finally {
       setLoading(false);
     }
@@ -189,6 +201,12 @@ export default function ClinicalOfficeDashboard({ filterRole, basePath = null }:
       fullName={fullName} initials={initials} navItems={navItems} navGroups={navGroups} activeNav={nav}
       onNavigate={navigate} onLogout={() => { void handleLogout(); }}
     >
+      {!loading && !openPatient && loadError && (
+        <div role="alert" className="mb-4 p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm text-gentle-coral font-medium">Some data could not be loaded: {loadError} — counts/lists on this page may be incomplete, not confirmed empty.</p>
+          <button type="button" onClick={() => { void refresh(); }} className="text-sm font-semibold text-ent-forest hover:underline flex-shrink-0">Retry</button>
+        </div>
+      )}
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : openPatient ? (
@@ -212,12 +230,13 @@ export default function ClinicalOfficeDashboard({ filterRole, basePath = null }:
           ) : undefined}
         />
       ) : nav === 'dashboard' ? (
-        <DashboardHome isTherapy={isTherapy} roleLabel={roleLabel} patients={patients} commsOverview={commsOverview} onOpenPatient={(p) => openPatientRecord(p)} />
+        <DashboardHome isTherapy={isTherapy} roleLabel={roleLabel} patients={patients} commsOverview={commsOverview} onOpenPatient={(p) => openPatientRecord(p)} loadError={loadError} />
       ) : PATIENT_PICKER_DESTINATIONS.includes(nav) ? (
         <PatientPicker
           patients={patients}
           title={navItems.find((n) => n.key === nav)?.label ?? 'Select a patient'}
           onOpenPatient={(p) => openPatientRecord(p, INITIAL_TAB[nav])}
+          loadError={loadError}
         />
       ) : nav === 'credentials' ? (
         <CredentialsView credentials={credentials} />
@@ -230,9 +249,9 @@ export default function ClinicalOfficeDashboard({ filterRole, basePath = null }:
   );
 }
 
-function DashboardHome({ isTherapy, roleLabel, patients, commsOverview, onOpenPatient }: {
+function DashboardHome({ isTherapy, roleLabel, patients, commsOverview, onOpenPatient, loadError }: {
   isTherapy: boolean; roleLabel: string; patients: StaffPatient[]; commsOverview: { activeConversations: number; unresolvedFollowUps: number } | null;
-  onOpenPatient: (p: StaffPatient) => void;
+  onOpenPatient: (p: StaffPatient) => void; loadError?: string | null;
 }) {
   return (
     <div className="space-y-5">
@@ -253,10 +272,14 @@ function DashboardHome({ isTherapy, roleLabel, patients, commsOverview, onOpenPa
           <span className="text-xs text-ent-muted">{patients.length} assigned</span>
         </div>
         {patients.length === 0 ? (
-          <p className="text-sm text-ent-text">
-            No patients are currently assigned to you{roleLabel ? ` as a ${roleLabel.toLowerCase()}` : ''}. Your organization&apos;s
-            director assigns coverage directly — you&apos;ll see patients here as soon as you&apos;re assigned.
-          </p>
+          loadError ? (
+            <p className="text-sm text-gentle-coral font-semibold">Your patient assignments could not be confirmed right now — this is not a statement that none are assigned.</p>
+          ) : (
+            <p className="text-sm text-ent-text">
+              No patients are currently assigned to you{roleLabel ? ` as a ${roleLabel.toLowerCase()}` : ''}. Your organization&apos;s
+              director assigns coverage directly — you&apos;ll see patients here as soon as you&apos;re assigned.
+            </p>
+          )
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {patients.map((p) => (
@@ -288,12 +311,16 @@ function MetricCard({ label, value, sub }: { label: string; value: string; sub: 
   );
 }
 
-function PatientPicker({ patients, title, onOpenPatient }: { patients: StaffPatient[]; title: string; onOpenPatient: (p: StaffPatient) => void }) {
+function PatientPicker({ patients, title, onOpenPatient, loadError }: { patients: StaffPatient[]; title: string; onOpenPatient: (p: StaffPatient) => void; loadError?: string | null }) {
   return (
     <OfficeCard>
       <div className="flex items-center gap-2"><Users className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">{title}</h2></div>
       {patients.length === 0 ? (
-        <p className="text-sm text-ent-text">No patients are currently assigned to you. Your organization&apos;s director assigns coverage directly.</p>
+        loadError ? (
+          <p className="text-sm text-gentle-coral font-semibold">Your patient assignments could not be confirmed right now — this is not a statement that none are assigned.</p>
+        ) : (
+          <p className="text-sm text-ent-text">No patients are currently assigned to you. Your organization&apos;s director assigns coverage directly.</p>
+        )
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {patients.map((p) => (
