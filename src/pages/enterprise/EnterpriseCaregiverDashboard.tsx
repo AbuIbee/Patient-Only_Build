@@ -1904,7 +1904,8 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
   const [loading, setLoading] = useState(true);
   const draft = myId ? loadIncidentDraft(draftKey, authorizedIds) : null;
   const [patientId, setPatientId] = useState(draft?.patientId ?? '');
-  const [incidentType, setIncidentType] = useState<'fall' | 'injury' | 'behavioral' | 'medication_concern' | 'safety_event' | 'other'>((draft?.incidentType as typeof incidentType) ?? 'other');
+  type IncidentTypeOption = 'fall' | 'injury' | 'behavioral' | 'medication_concern' | 'safety_event' | 'other';
+  const [incidentType, setIncidentType] = useState<IncidentTypeOption>((draft?.incidentType as IncidentTypeOption) ?? 'other');
   const [severity, setSeverity] = useState<IncidentSeverity>(draft?.severity ?? 'low');
   const [occurredAt, setOccurredAt] = useState(draft?.occurredAt ?? '');
   const [description, setDescription] = useState(draft?.description ?? '');
