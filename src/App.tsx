@@ -7,6 +7,7 @@ import ActivatePatientPage from '@/pages/common/ActivatePatientPage';
 import PublicPatientIntakePage from '@/pages/common/PublicPatientIntakePage';
 import AboutUsPage from '@/pages/common/AboutUsPage';
 import BusinessLandingPage from '@/pages/common/BusinessLandingPage';
+import ProfessionalLandingPage from '@/pages/professional/ProfessionalLandingPage';
 import PrivacyPage from '@/pages/privacy/PrivacyPage';
 import { Toaster } from '@/components/ui/sonner';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
@@ -82,6 +83,15 @@ function AppContent() {
   currentUserIdRef.current = state.currentUser?.id;
 
   const currentPath = useMemo(() => window.location.pathname, []);
+  // MyMemoriaProfessional_homepage patch — an Enterprise-only deployment
+  // (its own Vercel project/Preview environment, its own VITE_ENTERPRISE_SITE
+  // env var, consistent with this repo's existing per-branch/per-deployment
+  // VITE_SUPABASE_URL override pattern — see FIVE_OFFICE_GIT_AND_PREVIEW_REPORT.md)
+  // shows a dedicated Enterprise marketing homepage at "/" instead of the
+  // residential LandingPage. Unset/false (every other deployment, including
+  // the real consumer PatientOnlyBuild production site) leaves "/" completely
+  // unchanged — this flag defaults to false and is additive only.
+  const isEnterpriseLandingRoute = import.meta.env.VITE_ENTERPRISE_SITE === 'true' && currentPath === '/';
   const isPublicPatientIntakeRoute = currentPath === '/patient-intake';
   const isPrivacyRoute = currentPath === '/privacy';
   const isAboutUsRoute = currentPath === '/about-us';
@@ -138,7 +148,7 @@ function AppContent() {
   // public routes, which still pass through the ordinary
   // checkingSession/renderContent path.
   const isPublicRoute =
-    isPublicPatientIntakeRoute || isPrivacyRoute || isAboutUsRoute || isBusinessRoute || isProfessionalRoute || isLegacyOfficeRoute || isActivationRoute;
+    isEnterpriseLandingRoute || isPublicPatientIntakeRoute || isPrivacyRoute || isAboutUsRoute || isBusinessRoute || isProfessionalRoute || isLegacyOfficeRoute || isActivationRoute;
 
   // Canonicalize a legacy office alias (/admin, /caregiver, /medical,
   // /therapy) to its /Professional/<Office> equivalent BEFORE paint —
@@ -693,6 +703,10 @@ function AppContent() {
   }
 
   const renderContent = () => {
+    if (isEnterpriseLandingRoute) {
+      return <ProfessionalLandingPage />;
+    }
+
     if (isPrivacyRoute) {
       return <PrivacyPage />;
     }
