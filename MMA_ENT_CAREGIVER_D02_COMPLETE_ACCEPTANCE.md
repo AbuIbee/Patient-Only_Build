@@ -5,8 +5,10 @@ Not independently certified. Codex has not reviewed this work. This document rec
 
 **Original audited baseline:** `e09cbb57fe2dcc792a7120587c14284566f6b3f2`
 **HEAD before this D02 pass:** `68f4feaa78bf28acc0f23aba3ec3c8cdc4744eaa`
-**HEAD after this D02 pass:** `7994128c17ff4ae5c3d989c46f90f09073183fb7`
+**HEAD after the MASTER-005 D02 pass:** `7994128c17ff4ae5c3d989c46f90f09073183fb7`
+**HEAD after the MASTER-006 D02 closure pass (current):** `0b966496c8fe02001f702bbc96288f9d5276f80b`
 **Branch:** `remediation/mymemoria-functional-001`
+**See Section 7 below for the final MASTER-006 closure evidence.**
 
 ---
 
@@ -129,9 +131,64 @@ No new authorization logic was introduced in this pass (every fix is read-error-
 
 **Honest gap against criterion 11**: accessibility of the new error/retry UI was not independently verified this pass (no dedicated keyboard/screen-reader test). This should be verified before claiming full D13 closure.
 
-## 6. What is NOT claimed
+## 6. What is NOT claimed (as of MASTER-005)
 
 - This is **not** independent Codex certification.
 - This does not claim the 92-item original ledger is closed — that is Stage Two's work, not yet started as a formal ledger in this pass (see the master directive's Part V).
 - This does not claim accessibility verification for the new UI (§5, criterion 11).
 - This does not claim CareConversations' thread view is fully D02-compliant (§3.1).
+
+---
+
+## 7. MMA-ENT-CAREGIVER-MASTER-006 — final D02 closure
+
+**HEAD before this closure pass:** `d6b06529671bef38e76f94548193a31e7cf03e21`
+**HEAD after this closure pass:** `0b966496c8fe02001f702bbc96288f9d5276f80b`
+
+This section closes the three gaps disclosed in §3 and §5 above.
+
+### 7.1 CareConversations thread `load()` (§3.1, §5 criterion 2/5)
+
+**Fixed** — commit `81ee0593`. The disclosed concern was real: `ConversationThread`'s revocation heuristic (zero participants after previously having some ⇒ "You no longer have access") was applied to the plain `getConversationParticipants()`/`getConversationMessages()`, both of which collapse a genuine network/backend failure into the same empty `[]` as a real revocation. A dropped request during the 8-second R17 poll could therefore have told a caregiver their access was revoked when nothing had actually changed.
+
+Fix: added `getConversationParticipantsResult()`, `getConversationMessagesResult()`, and `getPatientCareCircleResult()` to `communicationsService.ts` (extracting shared `mapConversationParticipant`/`mapConversationMessage` helpers so the Result siblings don't duplicate mapping logic). `load()` now branches on these — a genuine fetch error sets a new, separate `loadError` state (a retryable banner that explicitly says this is not a sign of lost access) and never touches `hadAccessRef`/`revoked`, and never clears the last successfully loaded participants/messages. Only a read that actually succeeded and still came back empty is treated as revocation, exactly as before. Also fixed the two sibling call sites named in the directive (`NewConversation`'s and `AddParticipantPanel`'s care-circle loads).
+
+Evidence:
+- Real backend fault-injection + real revocation, same running seeded conversation: faulted `conversation_participants` for one full 8s poll cycle — confirmed the new "could not be refreshed" banner, confirmed "You no longer have access" did **not** appear, confirmed the original message stayed visible (state preserved). Then performed the actual revocation action (deleted the caregiver's own `conversation_participants` row — what `is_conversation_participant()` keys on) and confirmed "You no longer have access" **did** correctly appear. 6/6 browser checks passed across both directions.
+- New permanent integration test `tests/integration/r17ThreadRevocationVsFailure.test.ts` (4/4 passing): pins the backend contract (active participant reads real rows with no error; an outsider/revoked user gets an empty 200, never an error status; an unauthenticated request gets a real error status) that makes the frontend's `loadError`/`revoked` split sound.
+
+### 7.2 MFA status false-negative (§3.3)
+
+**Fixed** — commit `836a99f0`. `MFASettings.tsx` (shared across every office's Settings panel, reachable from the Caregiver's Settings & Account) previously logged a failed `listFactors()` call to the console only and left `factors` at `[]`, rendering "MFA is not enabled. Enable it to protect patient data." — a false security claim for an account that may already have MFA enabled. Now sets a `loadError` and renders a distinct "could not be confirmed" state instead, with Retry.
+
+Evidence: faulted `GET /auth/v1/user` (the actual endpoint `listFactors()` calls internally, confirmed by reading `node_modules/@supabase/auth-js`'s own `_listFactors` implementation) after establishing a real session, navigated to Settings & Account. Confirmed the new honest state renders, confirmed the old false "not enabled" text does not appear, confirmed Retry recovers. 3/3 checks passed.
+
+### 7.3 Accessibility of the error/retry UI (§5 criterion 11)
+
+**Partially closed** — commit `0b966496`. Added `role="alert"` to all 18 dynamically-appearing error/retry banners across `EnterpriseCaregiverDashboard.tsx`, `EnterprisePatientRecordTabs.tsx`, and `CareConversations.tsx`, so each is announced as an assertive live region the moment it appears, not just visually present.
+
+Real verification performed (not claimed without evidence):
+- Responsive: with a live error banner on screen, confirmed the Retry control stays visible and fully within the viewport and the page never overflows horizontally at 320/375/768/1024/1440px (Section 3.6's exact required breakpoints).
+- Keyboard: confirmed the Retry control is a real native `<button>` (not a div/span with an onClick handler), confirmed it is reachable via `.focus()` and becomes `document.activeElement`, and confirmed pressing Enter while it holds focus genuinely re-fires the underlying network request — not merely a visual state change.
+- Accessibility tree: confirmed via Playwright's own `getByRole('alert')` query that the banner is now exposed as a real alert live region containing the genuine error text.
+
+**Honest remaining gap, explicitly disclosed per Section 3.6's own instruction**: no actual assistive-technology testing (a human operator using NVDA, JAWS, or VoiceOver) was performed. The verification above is real automated/structural accessibility testing (landmark roles, live regions, keyboard operability, responsive layout) — it is not a substitute for AT testing and is not claimed to be. This is accurately scoped as **not fully closed**, not silently marked complete.
+
+### 7.4 Updated gate self-assessment
+
+| # | Criterion | MASTER-005 status | MASTER-006 status |
+|---|---|---|---|
+| 1 | Full affected-call-site inventory complete | Caregiver-dashboard-reachable surface | **Extended**: + CareConversations thread view, + shared MFA component |
+| 2 | Every affected service/caller addressed | One disclosed exception | **Exception closed** (§7.1) |
+| 5 | No false-empty presentation | One known gap (thread view) | **Gap closed** (§7.1); MFA false-negative also closed (§7.2) |
+| 11 | Accessibility requirements pass | Not independently re-audited | **Partially closed** (§7.3) — structural/automated verification done; AT testing still not performed, disclosed |
+| 15 | No regression of D01/security | No auth changes made | Still true — §7.1's fix only changes which empty-result case is treated as revocation (fewer false positives), never weakens the actual RLS-backed detection; integration suite (53 tests, including the new r17 file) still passing |
+
+All other criteria (3, 4, 6, 7, 8, 9, 10, 12, 13, 14) are unchanged from §5 and remain satisfied.
+
+### 7.5 What is still NOT claimed
+
+- Independent Codex certification.
+- The 92-item original ledger — Stage 2 of MASTER-006, not yet produced.
+- Full assistive-technology (screen-reader) verification (§7.3).
+- `ActiveSessionsPanel` was reviewed (§3.3's explicit mention) and found to have no data-loading read at all — it is a pure action control with its own correct error handling already in place; no change was needed, and none was made.
