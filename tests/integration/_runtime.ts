@@ -1,22 +1,45 @@
-// Shared helpers for tests/integration/**. Targets the local
-// supabase_db_repo stack reachable at 127.0.0.1:55321 via Docker by
-// DEFAULT. NEVER targets staging/production -- there is no
-// staging/production credential anywhere in this file.
+// Shared helpers for tests/integration/**.
 //
-// MMA-ENT-CAREGIVER-MASTER-003, Phase D: supabase_db_repo is the
-// owner's own persistent local dev database (confirmed: 1,190 real
-// auth.users rows, migration history frozen at 104 prior to this
-// branch's own migrations landing on it) -- NOT a disposable fixture
-// store, even though it happens to be what this suite has historically
-// targeted. MMA_TEST_API_BASE/MMA_TEST_DB_CONTAINER let a disposable,
-// throwaway stack (see scripts/disposable_supabase.mjs) be substituted
-// for both the REST/Auth base URL and the `docker exec` target WITHOUT
-// touching any call site below -- `npm run test:integration` keeps its
-// existing default behavior unchanged when neither is set.
+// MMA-SUPABASE-RECONCILIATION-AND-EXECUTION-012 Section 7 — this file
+// previously defaulted BASE/DB_CONTAINER to the owner's own persistent
+// local dev database (supabase_db_repo, confirmed: 1,190 real
+// auth.users rows, migration history frozen well ahead of this
+// branch's work) whenever MMA_TEST_API_BASE/MMA_TEST_DB_CONTAINER were
+// left unset -- meaning `npm run test:integration` run bare, with no
+// env vars, silently mutated the owner's real database. A separate,
+// narrower instance of this same defect (4 test files hardcoding
+// 'supabase_db_repo' directly, bypassing this module's env override
+// entirely) was found and fixed in commit 2fee49f8; THIS fix closes
+// the module-level default that made that pattern possible to write by
+// accident in the first place.
+//
+// Fail-closed from here on: both env vars are now REQUIRED (no
+// default), and the resolved target is validated — rejected outright
+// if it is, or resolves to, the owner's persistent database — before
+// any test file can use sql()/authSignUp()/http()/etc. A test suite
+// that doesn't set these explicitly now fails immediately, with an
+// actionable error, rather than silently running against real data.
+//
+// To run tests correctly: start a disposable stack (see
+// scripts/disposable_supabase.mjs) and pass its own API base URL and
+// Docker container name explicitly, e.g.:
+//   MMA_TEST_API_BASE=http://127.0.0.1:57321 \
+//   MMA_TEST_DB_CONTAINER=supabase_db_my-disposable-name \
+//   npm run test:integration
+//
+// Structural note on scope: every target this file can reach is a
+// LOCAL Docker container addressed via `docker exec` -- there is no
+// code path here that could ever reach a hosted/cloud Supabase
+// project (hosted Postgres is not a local container this machine can
+// `docker exec` into). The reachable risk is exactly one thing: the
+// owner's real local persistent stack vs. a disposable one, which is
+// what every check below is designed to tell apart.
 import { execSync, spawn } from 'node:child_process';
+import { requireEnv, assertDisposableTarget } from './_targetValidation';
 
-export const BASE = process.env.MMA_TEST_API_BASE || 'http://127.0.0.1:55321';
-export const DB_CONTAINER = process.env.MMA_TEST_DB_CONTAINER || 'supabase_db_repo';
+export const BASE = requireEnv('MMA_TEST_API_BASE');
+export const DB_CONTAINER = requireEnv('MMA_TEST_DB_CONTAINER');
+assertDisposableTarget(BASE, DB_CONTAINER);
 // Standard Supabase CLI local-dev demo keys (iss: "supabase-demo"), HS256,
 // publicly documented -- not a secret, and meaningless against any real
 // project. Every default-config local Supabase stack (disposable ones
