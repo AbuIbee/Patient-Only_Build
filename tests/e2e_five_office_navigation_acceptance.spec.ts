@@ -34,10 +34,12 @@
 // tests failed together) until pinned to one worker.
 import { test, expect, type Page } from '@playwright/test';
 import { execSync } from 'node:child_process';
+import { requireE2eEnv } from './_e2eTargetValidation';
 
 const PW = 'FiveOffice9!';
-const BASE = 'http://127.0.0.1:5180';
-const API_BASE = 'http://127.0.0.1:55321';
+const BASE = requireE2eEnv('MMA_E2E_FRONTEND_BASE');
+const API_BASE = requireE2eEnv('MMA_E2E_API_BASE');
+const DB_CONTAINER = requireE2eEnv('MMA_E2E_DB_CONTAINER');
 const SERVICE = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
 const stamp = Date.now();
 const ORG = 'ffffffff-5e5e-4e5e-8e5e-5e5e5e5e5e5e';
@@ -49,7 +51,7 @@ function sql(statement: string): string {
   // newline + tag -- confirmed live, this exact gap, this file's own
   // local sql() helper (established fix already applied to every
   // other test file's _runtime.ts).
-  return execSync('docker exec -i supabase_db_repo psql -U postgres -d postgres -At -q -v ON_ERROR_STOP=1', { input: statement }).toString().trim();
+  return execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -At -q -v ON_ERROR_STOP=1`, { input: statement }).toString().trim();
 }
 async function mkUser(email: string): Promise<string> {
   const r = await fetch(`${API_BASE}/auth/v1/admin/users`, {

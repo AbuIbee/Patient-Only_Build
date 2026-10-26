@@ -1,9 +1,24 @@
 name: Playwright Tests
+# MMA-CODEX-011 011-12 (F-20, P2): this previously ran `npx playwright
+# test` with no backend provisioned and no target configured at all --
+# playwright.config.ts's own testDir also swept in every vitest
+# *.test.ts file (fixed alongside this, in playwright.config.ts) and
+# every e2e spec hardcoded the owner's real local stack
+# (127.0.0.1:55321 / supabase_db_repo -- fixed in tests/e2e_*.spec.ts +
+# tests/_e2eTargetValidation.ts, same fail-closed env-var requirement
+# tests/integration/_runtime.ts already uses).
+#
+# Only the e2e specs that are genuinely self-contained (create and tear
+# down their own synthetic fixtures via admin signup + direct SQL --
+# confirmed by reading each one, not assumed) run here against a fresh
+# disposable Supabase stack with zero pre-existing data. The remaining
+# e2e specs document in their own header comments that they depend on
+# externally, manually pre-seeded fixtures not reproducible from a
+# clean migration -- they stay local-only, honestly, rather than being
+# force-included to fail for an unrelated reason or silently dropped.
 on:
   push:
-    branches: [ main, master ]
   pull_request:
-    branches: [ main, master ]
 jobs:
   test:
     timeout-minutes: 60
@@ -12,13 +27,48 @@ jobs:
     - uses: actions/checkout@v4
     - uses: actions/setup-node@v4
       with:
-        node-version: lts/*
+        node-version: 22
     - name: Install dependencies
       run: npm ci
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps
-    - name: Run Playwright tests
-      run: npx playwright test
+    - name: Start disposable Supabase stack
+      run: node scripts/disposable_supabase.mjs start
+    - name: Build and serve the frontend against the disposable stack
+      run: |
+        eval "$(node scripts/disposable_supabase.mjs env | sed 's/^/export /')"
+        export VITE_SUPABASE_URL="$MMA_TEST_API_BASE"
+        export VITE_SUPABASE_ANON_KEY='sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH'
+        export VITE_STRIPE_PRICE_FULL_SUPPORT_MONTHLY='price_test'
+        npm run build
+        npx vite preview --host 127.0.0.1 --port 5280 --strictPort &
+        echo $! > /tmp/vite_preview.pid
+        npx wait-on http://127.0.0.1:5280
+    - name: Run self-contained Playwright e2e specs against the disposable stack (explicit target, never a default)
+      run: |
+        eval "$(node scripts/disposable_supabase.mjs env | sed 's/^/export /')"
+        export MMA_E2E_FRONTEND_BASE=http://127.0.0.1:5280
+        export MMA_E2E_API_BASE="$MMA_TEST_API_BASE"
+        export MMA_E2E_DB_CONTAINER="$MMA_TEST_DB_CONTAINER"
+        npx playwright test \
+          tests/e2e_application_correction_flow.spec.ts \
+          tests/e2e_director_application_wizard.spec.ts \
+          tests/e2e_enterprise_billing_portal.spec.ts \
+          tests/e2e_enterprise_contract_management.spec.ts \
+          tests/e2e_enterprise_license_activation.spec.ts \
+          tests/e2e_five_office_navigation_acceptance.spec.ts \
+          tests/e2e_invitation_redemption_bridge.spec.ts \
+          tests/e2e_notification_bell.spec.ts \
+          tests/e2e_organization_amendment_requests.spec.ts \
+          tests/e2e_professional_access_states.spec.ts \
+          tests/e2e_sales_pipeline_platform_owner.spec.ts \
+          tests/e2e_sales_pipeline_review_tools.spec.ts \
+          tests/e2e_wizard_responsive_accessibility.spec.ts
+    - name: Stop the preview server and disposable Supabase stack
+      if: always()
+      run: |
+        kill "$(cat /tmp/vite_preview.pid)" 2>/dev/null || true
+        node scripts/disposable_supabase.mjs stop
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:

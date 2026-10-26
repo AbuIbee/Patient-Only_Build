@@ -13,6 +13,15 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './tests',
+  // MMA-CODEX-011 011-12 (F-20): testDir alone swept in every vitest
+  // unit/integration *.test.ts file too (e.g. tests/unit/weatherMessage.test.ts,
+  // tests/integration/_runtimeFailClosedTargetValidation.test.ts) --
+  // Playwright tried to load them as its own tests and crashed on
+  // their vitest-only describe()/import.meta.env usage before any real
+  // e2e spec could run. Every real Playwright spec in this repo follows
+  // the *.spec.ts naming convention; vitest tests use *.test.ts --
+  // scoping to the former fixes the collision without renaming anything.
+  testMatch: '**/*.spec.ts',
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */

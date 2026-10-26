@@ -1,0 +1,57 @@
+name: CI
+
+# MMA-CODEX-011 011-12 (F-20, P2): independent audit finding "complete
+# safe acceptance gate absent" -- neither existing workflow ran
+# typecheck, lint, unit tests, or integration tests at all, and
+# playwright.yml ran `npx playwright test` with no backend configured
+# and no explicit target (see playwright.yml's own fix in this same
+# change for the browser leg). This workflow is the real gate: it runs
+# on every push and pull_request (not just push to main, so it actually
+# gates merges), and the integration job provisions its OWN disposable
+# Supabase stack via the already-established scripts/disposable_supabase.mjs
+# (a non-"repo" project id/ports, torn down after the job) and passes
+# MMA_TEST_API_BASE/MMA_TEST_DB_CONTAINER explicitly -- the same
+# fail-closed target validation (tests/integration/_targetValidation.ts)
+# that governs local runs rejects an unset or unsafe target here too.
+on:
+  push:
+  pull_request:
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test:unit
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Start disposable Supabase stack
+        run: node scripts/disposable_supabase.mjs start
+      - name: Run integration tests against the disposable stack (explicit target, never a default)
+        run: |
+          eval "$(node scripts/disposable_supabase.mjs env | sed 's/^/export /')"
+          npm run test:integration
+      - name: Upload integration test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Stop disposable Supabase stack
+        if: always()
+        run: node scripts/disposable_supabase.mjs stop

@@ -7,9 +7,14 @@
 // screenshot-only acceptance, per the directive's own instruction.
 import { test, expect, type Page } from '@playwright/test';
 import { execSync } from 'node:child_process';
+import { requireE2eEnv } from './_e2eTargetValidation';
+
+const BASE = requireE2eEnv('MMA_E2E_FRONTEND_BASE');
+const API_BASE = requireE2eEnv('MMA_E2E_API_BASE');
+const DB_CONTAINER = requireE2eEnv('MMA_E2E_DB_CONTAINER');
 
 function sql(statement: string): string {
-  return execSync('docker exec -i supabase_db_repo psql -U postgres -d postgres -At -q -v ON_ERROR_STOP=1', { input: statement }).toString().trim();
+  return execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -At -q -v ON_ERROR_STOP=1`, { input: statement }).toString().trim();
 }
 
 const EMAIL = 'ui-caregiver@local.test';
@@ -21,7 +26,7 @@ const TOOLS_ITEMS = ['Visits & Time Records', 'My Care Team', 'Documents', 'My O
 const ALL_14 = [...WORKSPACE_ITEMS, ...COLLAB_ITEMS, ...TOOLS_ITEMS];
 
 async function signIn(page: Page) {
-  await page.goto('http://127.0.0.1:5180/business');
+  await page.goto(`${BASE}/business`);
   await page.getByRole('button', { name: 'Caregiver Sign In', exact: true }).first().click();
   await page.getByRole('button', { name: 'Sign In', exact: true }).first().click();
   await page.getByPlaceholder('you@example.com').fill(EMAIL);
@@ -135,7 +140,7 @@ test.describe('9. Correct data isolation', () => {
     // must never be reachable as a reason to weaken RLS; this just
     // re-confirms the boundary this UI work sits on top of still holds.
     const ANON = 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH';
-    const resp = await request.get('http://127.0.0.1:55321/rest/v1/patients?id=eq.e54b94db-4d6f-45ce-a1ef-b2f225cc763d', {
+    const resp = await request.get(`${API_BASE}/rest/v1/patients?id=eq.e54b94db-4d6f-45ce-a1ef-b2f225cc763d`, {
       headers: { apikey: ANON, Authorization: `Bearer ${ANON}` },
     });
     expect(resp.status()).toBe(200);
@@ -172,7 +177,7 @@ test.describe('13. Valid registration permissions', () => {
 
 test.describe('14. Secure denied access for unauthorized users', () => {
   test('visiting /business while signed out shows the public business landing page, never the dashboard', async ({ page }) => {
-    await page.goto('http://127.0.0.1:5180/business');
+    await page.goto(`${BASE}/business`);
     await expect(page.getByRole('button', { name: 'Caregiver Sign In', exact: true })).toBeVisible();
     await expect(page.getByText('WORKSPACE', { exact: true })).toHaveCount(0);
   });
@@ -207,7 +212,7 @@ test.describe('15. Existing patient/caregiver interfaces remain functional', () 
   test('the residential caregiver sign-in path is untouched and still reachable from the root landing page', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
-    await page.goto('http://127.0.0.1:5180/');
+    await page.goto(`${BASE}/`);
     await expect(page.getByRole('button', { name: 'Sign In', exact: true }).first()).toBeVisible();
     expect(errors).toEqual([]);
   });
