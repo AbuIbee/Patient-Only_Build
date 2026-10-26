@@ -19,7 +19,7 @@
 // `npm run test:integration`.
 import { spawn } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
+import { authDeleteUser, authSignUp, login, rpc, sql, DB_CONTAINER } from './_runtime';
 
 const PW = 'AssignRace9!';
 const stamp = Date.now();
@@ -64,7 +64,14 @@ SELECT id FROM public.organization_memberships WHERE organization_id='${orgId}' 
 SELECT pg_sleep(${sleepSeconds});
 UPDATE public.organization_memberships SET status='revoked', updated_at=now() WHERE organization_id='${orgId}' AND user_id='${userId}';
 COMMIT;`;
-  const proc = spawn('docker', ['exec', '-i', 'supabase_db_repo', 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1'], { stdio: ['pipe', 'pipe', 'pipe'] });
+  // MMA-ENTERPRISE-ULTIMATE-MASTER-010 Section 3.3/16.4: see
+  // lastSeatApprovalConcurrency.test.ts for the full rationale -- this
+  // hardcoded 'supabase_db_repo' regardless of MMA_TEST_DB_CONTAINER,
+  // spawning an unwanted session (including an UPDATE statement,
+  // matching zero real rows only because the UUIDs are synthetic)
+  // against the owner's real database whenever it happened to be
+  // running. Fixed to use DB_CONTAINER.
+  const proc = spawn('docker', ['exec', '-i', '-e', `PGPASSWORD=${process.env.MMA_TEST_DB_ADMIN_PASSWORD || 'postgres'}`, DB_CONTAINER, 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1'], { stdio: ['pipe', 'pipe', 'pipe'] });
   proc.stdin.write(statement);
   proc.stdin.end();
   let stderrBuf = '';

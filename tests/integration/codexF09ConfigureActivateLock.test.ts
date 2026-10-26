@@ -15,7 +15,7 @@
 // After the fix, org_configure_license() blocks on the same row lock
 // and correctly rejects once it sees status='active'.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
+import { authDeleteUser, authSignUp, login, rpc, sql, DB_CONTAINER } from './_runtime';
 import { spawn } from 'node:child_process';
 
 const PW = 'CodexF09Fix9!';
@@ -36,9 +36,16 @@ SELECT id FROM organization_licenses WHERE organization_id='${targetOrgId}' FOR 
 SELECT pg_sleep(${sleepSeconds});
 SELECT (activate_enterprise_license_from_quote('${targetQuoteId}')).status;
 COMMIT;`;
+  // MMA-ENTERPRISE-ULTIMATE-MASTER-010 Section 3.3/16.4: see
+  // lastSeatApprovalConcurrency.test.ts for the full rationale -- this
+  // hardcoded 'supabase_db_repo' regardless of MMA_TEST_DB_CONTAINER,
+  // spawning an unwanted session (including a real RPC call, which
+  // raised "quote not found" and rolled back only because the UUID is
+  // synthetic) against the owner's real database whenever it happened
+  // to be running. Fixed to use DB_CONTAINER.
   const proc = spawn(
     'docker',
-    ['exec', '-i', 'supabase_db_repo', 'psql', '-U', 'postgres', '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1'],
+    ['exec', '-i', DB_CONTAINER, 'psql', '-U', 'postgres', '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1'],
     { stdio: ['pipe', 'pipe', 'pipe'] },
   );
   proc.stdin.write(statement);

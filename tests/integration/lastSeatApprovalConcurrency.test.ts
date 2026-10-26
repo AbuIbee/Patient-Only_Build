@@ -21,7 +21,7 @@
 // `npm run test:integration`.
 import { spawn } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
+import { authDeleteUser, authSignUp, login, rpc, sql, DB_CONTAINER } from './_runtime';
 
 const PW = 'LastSeatRace9!';
 const stamp = Date.now();
@@ -88,7 +88,18 @@ SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','${ids.director}',true);
 SELECT (public.director_approve_application('${appA}')).status;
 COMMIT;`;
-    const proc = spawn('docker', ['exec', '-i', 'supabase_db_repo', 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    // MMA-ENTERPRISE-ULTIMATE-MASTER-010 Section 3.3/16.4 — this hardcoded
+    // 'supabase_db_repo' regardless of MMA_TEST_DB_CONTAINER, so running
+    // this suite against a disposable stack silently spawned a second
+    // psql session against the OWNER'S REAL persistent database instead
+    // (confirmed running concurrently during this investigation) rather
+    // than the intended disposable target -- the exact thing this
+    // engagement's standing rules absolutely prohibit. No real row was
+    // at risk (the organization/quote UUIDs only exist in the disposable
+    // stack, so the FOR UPDATE matched zero rows there), but the
+    // connection itself should never have been made. Fixed to use the
+    // same env-aware DB_CONTAINER every other helper in this file uses.
+    const proc = spawn('docker', ['exec', '-i', '-e', `PGPASSWORD=${process.env.MMA_TEST_DB_ADMIN_PASSWORD || 'postgres'}`, DB_CONTAINER, 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1'], { stdio: ['pipe', 'pipe', 'pipe'] });
     proc.stdin.write(statement);
     proc.stdin.end();
     let stderrBuf = '';

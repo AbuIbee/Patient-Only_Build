@@ -20,7 +20,7 @@
 // `npm run test:integration`.
 import { spawn } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
+import { authDeleteUser, authSignUp, login, rpc, sql, DB_CONTAINER } from './_runtime';
 
 const PW = 'CarePlanRace9!';
 const stamp = Date.now();
@@ -69,7 +69,12 @@ function holdAdvisoryLockThenRecordPlan(patientIdForLock: string, sleepSeconds: 
 SELECT pg_advisory_xact_lock(hashtextextended('patient_care_plans:${patientIdForLock}', 0));
 SELECT pg_sleep(${sleepSeconds});
 COMMIT;`;
-  const proc = spawn('docker', ['exec', '-i', 'supabase_db_repo', 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1'], { stdio: ['pipe', 'pipe', 'pipe'] });
+  // MMA-ENTERPRISE-ULTIMATE-MASTER-010 Section 3.3/16.4: see
+  // lastSeatApprovalConcurrency.test.ts for the full rationale -- this
+  // hardcoded 'supabase_db_repo' regardless of MMA_TEST_DB_CONTAINER,
+  // spawning an unwanted session against the owner's real database
+  // whenever it happened to be running. Fixed to use DB_CONTAINER.
+  const proc = spawn('docker', ['exec', '-i', '-e', `PGPASSWORD=${process.env.MMA_TEST_DB_ADMIN_PASSWORD || 'postgres'}`, DB_CONTAINER, 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1'], { stdio: ['pipe', 'pipe', 'pipe'] });
   proc.stdin.write(statement);
   proc.stdin.end();
   let stderrBuf = '';

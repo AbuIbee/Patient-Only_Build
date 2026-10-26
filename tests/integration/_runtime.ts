@@ -16,7 +16,7 @@
 import { execSync, spawn } from 'node:child_process';
 
 export const BASE = process.env.MMA_TEST_API_BASE || 'http://127.0.0.1:55321';
-const DB_CONTAINER = process.env.MMA_TEST_DB_CONTAINER || 'supabase_db_repo';
+export const DB_CONTAINER = process.env.MMA_TEST_DB_CONTAINER || 'supabase_db_repo';
 // Standard Supabase CLI local-dev demo keys (iss: "supabase-demo"), HS256,
 // publicly documented -- not a secret, and meaningless against any real
 // project. Every default-config local Supabase stack (disposable ones
