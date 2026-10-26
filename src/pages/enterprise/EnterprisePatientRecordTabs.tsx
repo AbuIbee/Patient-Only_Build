@@ -851,6 +851,13 @@ function SleepOvernightCard({ patientId }: { patientId: string }) {
   const [rows, setRows] = useState<{ at: string; sleep: string | null; submittedByName: string | null }[]>([]);
   const [overnightHelp, setOvernightHelp] = useState<HelpActivationHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  // MMA-ENT-CAREGIVER-MASTER-006 Stage 3 (BL-006 follow-on): discovered
+  // while confirming P12/P13 coverage — this card had the same D02
+  // silent-failure pattern already fixed throughout the rest of this
+  // file (discarded `c.error`/`h.error`, `return null` on any
+  // completion regardless of error), missed in the earlier sweep
+  // because it is a sub-component of AGTab rather than a top-level tab.
+  const [loadError, setSleepLoadError] = useState<string | null>(null);
   useEffect(() => {
     void Promise.all([
       supabase.from('care_partner_checkins').select('check_in_date, mo_sleep, submitted_by_name').eq('patient_id', patientId).order('check_in_date', { ascending: false }).limit(10),
@@ -858,13 +865,18 @@ function SleepOvernightCard({ patientId }: { patientId: string }) {
     ]).then(([c, h]) => {
       setRows((c.data ?? []).filter((r) => r.mo_sleep).map((r) => ({ at: r.check_in_date, sleep: r.mo_sleep, submittedByName: r.submitted_by_name })));
       setOvernightHelp(h.entries.filter((e) => { const hr = new Date(e.createdAt).getHours(); return hr >= 20 || hr < 6; }));
+      const errors = [c.error?.message, h.error].filter((e): e is string => !!e);
+      setSleepLoadError(errors.length > 0 ? errors[0] : null);
       setLoading(false);
     });
   }, [patientId]);
   if (loading) return null;
   return (
     <SectionCard title="Sleep & Overnight Reports" icon={Clock}>
-      {rows.length === 0 && overnightHelp.length === 0 ? <p className="text-sm text-medium-gray">No overnight observations recorded.</p> : (
+      {loadError && <p className="text-sm text-gentle-coral font-medium">Overnight observations could not be fully loaded: {loadError}</p>}
+      {rows.length === 0 && overnightHelp.length === 0 ? (
+        loadError ? <p className="text-sm text-medium-gray">Overnight observations could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No overnight observations recorded.</p>
+      ) : (
         <ul className="space-y-1.5">
           {overnightHelp.map((h) => (
             <li key={h.id} className="p-2 bg-gentle-coral/5 border border-gentle-coral/30 rounded-lg text-xs text-charcoal">
