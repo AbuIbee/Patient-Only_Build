@@ -34,6 +34,14 @@ export default function MFASettings() {
   const [factorId,     setFactorId]     = useState('');
   const [step,         setStep]         = useState<'view' | 'enroll' | 'verify'>('view');
   const [copied,       setCopied]       = useState(false);
+  // MMA-ENT-CAREGIVER-MASTER-006 Section 3.3: a failed listFactors()
+  // call previously only logged to the console and left `factors` at
+  // its initial [], which this component then renders as "MFA is not
+  // enabled. Enable it to protect patient data." -- a false security
+  // claim for an account that may genuinely have MFA enabled already.
+  // Shared across every office's Settings panel; fixed here once since
+  // the defect (and the fix) is identical everywhere it's reachable.
+  const [loadError, setMfaLoadError] = useState<string | null>(null);
 
   useEffect(() => { loadFactors(); }, []);
 
@@ -43,8 +51,9 @@ export default function MFASettings() {
       const { data, error } = await supabase.auth.mfa.listFactors();
       if (error) throw error;
       setFactors(data?.totp || []);
+      setMfaLoadError(null);
     } catch (err) {
-      console.error('MFA load error:', getErrorMessage(err));
+      setMfaLoadError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -129,6 +138,22 @@ export default function MFASettings() {
       <span className="text-sm text-medium-gray">Loading MFA status...</span>
     </div>
   );
+
+  if (loadError) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <Shield className="w-6 h-6 text-medium-gray" />
+          <div>
+            <h3 className="font-semibold text-charcoal">Two-Factor Authentication (MFA)</h3>
+            <p className="text-sm text-gentle-coral font-medium">Your current MFA status could not be confirmed: {loadError}</p>
+          </div>
+        </div>
+        <p className="text-xs text-medium-gray">This is not a statement that MFA is off — your real status is unknown until this loads successfully.</p>
+        <button onClick={loadFactors} className="px-3 py-1.5 rounded-lg border border-soft-taupe text-charcoal text-xs font-semibold hover:bg-warm-ivory">Retry</button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
