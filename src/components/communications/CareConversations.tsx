@@ -14,8 +14,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import {
-  getMyConversations, getMyConversationsResult, getPatientCareCircle, createConversation, getConversationParticipants,
-  getConversationMessages, sendMessage, markMessageRead, acknowledgeMessage, resolveFollowUp,
+  getMyConversationsResult, getPatientCareCircleResult, createConversation, getConversationParticipantsResult,
+  getConversationMessagesResult, sendMessage, markMessageRead, acknowledgeMessage, resolveFollowUp,
   addConversationParticipant, removeConversationParticipant, uploadMessageAttachment, downloadMessageAttachment,
   type ConversationSummary, type CareCircleMember, type ConversationParticipant, type ConversationMessage,
 } from '@/services/communicationsService';
@@ -207,15 +207,21 @@ function NewConversation({
   const [submitting, setSubmitting] = useState(false);
   const [myId, setMyId] = useState<string | null>(null);
   const [attachFile, setAttachFile] = useState<File | null>(null);
+  // MMA-ENT-CAREGIVER-MASTER-006 Section 3.2: a failed care-circle read
+  // previously rendered as "no eligible recipients," silently blocking
+  // this composer with no indication anything failed.
+  const [loadError, setCircleLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void (async () => {
-      const { data } = await supabase.auth.getUser();
-      setMyId(data?.user?.id ?? null);
-      setCircle(await getPatientCareCircle(patientId));
-      setLoading(false);
-    })();
+  const loadCircle = useCallback(async () => {
+    setLoading(true);
+    const { data: userData } = await supabase.auth.getUser();
+    setMyId(userData?.user?.id ?? null);
+    const { data, error } = await getPatientCareCircleResult(patientId);
+    setCircle(data ?? []);
+    setCircleLoadError(error);
+    setLoading(false);
   }, [patientId]);
+  useEffect(() => { void loadCircle(); }, [loadCircle]);
 
   const toggle = (userId: string) => {
     setSelected((prev) => {
@@ -253,6 +259,12 @@ function NewConversation({
       </button>
       <h2 className="font-bold text-charcoal">New Conversation</h2>
 
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm text-gentle-coral font-medium">Could not load authorized recipients: {loadError}</p>
+          <button type="button" onClick={() => { void loadCircle(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
+        </div>
+      )}
       {loading ? (
         <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-warm-bronze" /></div>
       ) : (
@@ -260,7 +272,11 @@ function NewConversation({
           <div>
             <p className="text-xs font-semibold text-charcoal mb-2">Select recipients</p>
             {selectable.length === 0 ? (
-              <p className="text-sm text-medium-gray">No one else is currently authorized for this patient to include in a conversation.</p>
+              loadError ? (
+                <p className="text-sm text-medium-gray">Authorized recipients could not be confirmed right now.</p>
+              ) : (
+                <p className="text-sm text-medium-gray">No one else is currently authorized for this patient to include in a conversation.</p>
+              )
             ) : (
               <ul className="space-y-1.5">
                 {selectable.map((m) => (
@@ -346,22 +362,48 @@ export function ConversationThread({
   // app) can be told apart from "this conversation genuinely has no
   // participants yet" at first mount, which never happens for a real
   // conversation (the creator is always added as a participant).
+  //
+  // MMA-ENT-CAREGIVER-MASTER-006 Section 3.2 — independent review
+  // correctly flagged that this heuristic was applied to the PLAIN
+  // getConversationParticipants()/getConversationMessages() results,
+  // which collapse a genuine network/backend FAILURE into the exact
+  // same empty [] as a real revocation. A dropped request on the 8s
+  // poll (see below) could therefore have told a caregiver "you no
+  // longer have access to this conversation" for a reason that had
+  // nothing to do with authorization. Switched to the *Result siblings
+  // so a failed read is now its own, separate, retryable state
+  // (loadError) that NEVER touches hadAccessRef/revoked and NEVER
+  // clears the last successfully loaded participants/messages — only a
+  // read that genuinely SUCCEEDED and still came back with zero
+  // participants (after previously having some) is treated as
+  // revocation.
   const [revoked, setRevoked] = useState(false);
+  const [loadError, setThreadLoadError] = useState<string | null>(null);
   const hadAccessRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, m, conv] = await Promise.all([
-        getConversationParticipants(conversationId),
-        getConversationMessages(conversationId),
-        getMyConversations().then((all) => all.find((c) => c.conversationId === conversationId) ?? null),
+      const [pResult, mResult, convResult] = await Promise.all([
+        getConversationParticipantsResult(conversationId),
+        getConversationMessagesResult(conversationId),
+        getMyConversationsResult().then((r) => ({ data: (r.data ?? []).find((c) => c.conversationId === conversationId) ?? null, error: r.error })),
       ]);
+      // A genuine fetch failure is a temporary-unavailable state, never
+      // a revocation signal, and never a reason to discard the last
+      // good render.
+      if (pResult.error || mResult.error) {
+        setThreadLoadError(pResult.error || mResult.error);
+        return;
+      }
+      setThreadLoadError(null);
+      const p = pResult.data ?? [];
+      const m = mResult.data ?? [];
       if (p.length > 0) hadAccessRef.current = true;
       else if (hadAccessRef.current) { setRevoked(true); return; }
       setParticipants(p);
       setMessages(m);
-      if (conv) { setCreatorId(conv.createdBy); setPatientId(conv.patientId); }
+      if (convResult.data) { setCreatorId(convResult.data.createdBy); setPatientId(convResult.data.patientId); }
       await Promise.all(
         m.filter((msg) => msg.senderId !== myId).map((msg) => markMessageRead(msg.id)),
       );
@@ -446,6 +488,15 @@ export function ConversationThread({
       <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold text-medium-gray hover:text-charcoal -ml-2">
         <ArrowLeft className="w-4 h-4" /> Back to Conversations
       </button>
+
+      {loadError && (
+        <div className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm text-gentle-coral font-medium">
+            This conversation could not be refreshed: {loadError}. Showing the last successfully loaded version — not a sign your access was removed.
+          </p>
+          <button type="button" onClick={() => { void load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
+        </div>
+      )}
 
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -639,10 +690,13 @@ function AddParticipantPanel({
   const [circle, setCircle] = useState<CareCircleMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState<string | null>(null);
+  const [loadError, setAddCircleLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void getPatientCareCircle(patientId).then((c) => { setCircle(c); setLoading(false); });
+  const loadCircle = useCallback(() => {
+    setLoading(true);
+    void getPatientCareCircleResult(patientId).then(({ data, error }) => { setCircle(data ?? []); setAddCircleLoadError(error); setLoading(false); });
   }, [patientId]);
+  useEffect(() => { loadCircle(); }, [loadCircle]);
 
   const addable = circle.filter((m) => !existingUserIds.includes(m.userId));
 
@@ -659,10 +713,20 @@ function AddParticipantPanel({
 
   return (
     <div className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe space-y-1.5">
+      {loadError && (
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-xs text-gentle-coral font-medium">Could not load authorized people: {loadError}</p>
+          <button type="button" onClick={loadCircle} className="text-xs font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
+        </div>
+      )}
       {loading ? (
         <Loader2 className="w-4 h-4 animate-spin text-warm-bronze mx-auto" />
       ) : addable.length === 0 ? (
-        <p className="text-xs text-medium-gray">Everyone currently authorized for this patient is already in this conversation.</p>
+        loadError ? (
+          <p className="text-xs text-medium-gray">Authorized people could not be confirmed right now.</p>
+        ) : (
+          <p className="text-xs text-medium-gray">Everyone currently authorized for this patient is already in this conversation.</p>
+        )
       ) : (
         addable.map((m) => (
           <button

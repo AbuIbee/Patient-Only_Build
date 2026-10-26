@@ -103,6 +103,24 @@ export async function getPatientCareCircle(patientId: string): Promise<CareCircl
   }));
 }
 
+// MMA-ENT-CAREGIVER-MASTER-006 Section 3.2 — "new-conversation recipient
+// loading" / "add-participant recipient loading": a failed care-circle
+// read previously rendered as "no eligible recipients," silently
+// blocking a caregiver from starting or adding to a conversation with
+// someone who is actually authorized, with no indication anything
+// failed.
+export async function getPatientCareCircleResult(patientId: string): Promise<{ data: CareCircleMember[] | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('get_patient_care_circle', { p_patient_id: patientId });
+  if (error) return { data: null, error: errMsg(error, 'Could not load the people authorized for this patient.') };
+  if (!data) return { data: null, error: 'Could not load the people authorized for this patient — unexpected empty response.' };
+  return {
+    data: data.map((r) => ({
+      userId: r.user_id, firstName: r.first_name, lastName: r.last_name, participantRole: r.participant_role as ParticipantRole,
+    })),
+    error: null,
+  };
+}
+
 function mapConversationSummary(r: {
   conversation_id: string; patient_id: string; patient_name: string; subject: string | null; created_by: string;
   created_at: string; updated_at: string; last_message_body: string | null; last_message_at: string | null;
@@ -183,22 +201,44 @@ export async function createConversation(
   return { conversationId: data.id, error: null };
 }
 
+function mapConversationParticipant(r: { id: string; user_id: string; participant_role: string; profiles: unknown }): ConversationParticipant {
+  const profile = r.profiles as unknown as { first_name: string; last_name: string } | null;
+  return {
+    id: r.id,
+    userId: r.user_id,
+    participantRole: r.participant_role as ParticipantRole,
+    firstName: profile?.first_name ?? '',
+    lastName: profile?.last_name ?? '',
+  };
+}
+
 export async function getConversationParticipants(conversationId: string): Promise<ConversationParticipant[]> {
   const { data, error } = await supabase
     .from('conversation_participants')
     .select('id, user_id, participant_role, profiles:user_id(first_name, last_name)')
     .eq('conversation_id', conversationId);
   if (error || !data) return [];
-  return data.map((r) => {
-    const profile = r.profiles as unknown as { first_name: string; last_name: string } | null;
-    return {
-      id: r.id,
-      userId: r.user_id,
-      participantRole: r.participant_role as ParticipantRole,
-      firstName: profile?.first_name ?? '',
-      lastName: profile?.last_name ?? '',
-    };
-  });
+  return data.map(mapConversationParticipant);
+}
+
+// MMA-ENT-CAREGIVER-MASTER-006 Section 3.2 — the critical defect this
+// directive names by name: ConversationThread's revocation heuristic
+// (zero participants after previously having some => "revoked") relied
+// on this function's plain [] return, which is ALSO what a genuine
+// network/backend failure produces. That made a transient fetch error
+// indistinguishable from real access revocation -- a caregiver could be
+// told "you no longer have access to this conversation" because of a
+// dropped request, not because anything was actually revoked. This
+// Result sibling lets the caller apply the revocation heuristic only
+// when the read genuinely succeeded and still came back empty.
+export async function getConversationParticipantsResult(conversationId: string): Promise<{ data: ConversationParticipant[] | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from('conversation_participants')
+    .select('id, user_id, participant_role, profiles:user_id(first_name, last_name)')
+    .eq('conversation_id', conversationId);
+  if (error) return { data: null, error: errMsg(error, 'Could not load conversation participants.') };
+  if (!data) return { data: null, error: 'Could not load conversation participants — unexpected empty response.' };
+  return { data: data.map(mapConversationParticipant), error: null };
 }
 
 export async function addConversationParticipant(conversationId: string, userId: string): Promise<{ error: string | null }> {
@@ -211,46 +251,68 @@ export async function removeConversationParticipant(conversationId: string, user
   return { error: error ? errMsg(error, 'Could not remove this person from the conversation.') : null };
 }
 
+function mapConversationMessage(r: {
+  id: string; conversation_id: string; sender_id: string; sender_role: string; body: string; is_urgent: boolean;
+  message_type: string; reply_to_message_id: string | null; created_at: string; profiles: unknown;
+  message_acknowledgments: unknown; message_attachments: unknown;
+}): ConversationMessage {
+  const sender = r.profiles as unknown as { first_name: string; last_name: string } | null;
+  const acks = (r.message_acknowledgments as unknown as {
+    user_id: string; read_at: string | null; acknowledged_at: string | null;
+    follow_up_requested: boolean; follow_up_note: string | null; follow_up_resolved: boolean;
+    follow_up_due_date: string | null; follow_up_assigned_to: string | null;
+  }[]) || [];
+  const attachmentRows = (r.message_attachments as unknown as {
+    id: string; storage_path: string; file_name: string; uploaded_by: string; created_at: string;
+  }[]) || [];
+  return {
+    id: r.id,
+    conversationId: r.conversation_id,
+    senderId: r.sender_id,
+    senderRole: r.sender_role as ParticipantRole,
+    senderFirstName: sender?.first_name ?? '',
+    senderLastName: sender?.last_name ?? '',
+    body: r.body,
+    isUrgent: r.is_urgent,
+    messageType: r.message_type as 'message' | 'care_update',
+    replyToMessageId: r.reply_to_message_id,
+    createdAt: r.created_at,
+    acknowledgments: acks.map((a) => ({
+      userId: a.user_id, readAt: a.read_at, acknowledgedAt: a.acknowledged_at,
+      followUpRequested: a.follow_up_requested, followUpNote: a.follow_up_note, followUpResolved: a.follow_up_resolved,
+      followUpDueDate: a.follow_up_due_date, followUpAssignedTo: a.follow_up_assigned_to,
+    })),
+    attachments: attachmentRows.map((a) => ({
+      id: a.id, storagePath: a.storage_path, fileName: a.file_name, uploadedBy: a.uploaded_by, createdAt: a.created_at,
+    })),
+  };
+}
+
+const CONVERSATION_MESSAGE_SELECT = 'id, conversation_id, sender_id, sender_role, body, is_urgent, message_type, reply_to_message_id, created_at, profiles:sender_id(first_name, last_name), message_acknowledgments(user_id, read_at, acknowledged_at, follow_up_requested, follow_up_note, follow_up_resolved, follow_up_due_date, follow_up_assigned_to), message_attachments(id, storage_path, file_name, uploaded_by, created_at)';
+
 export async function getConversationMessages(conversationId: string): Promise<ConversationMessage[]> {
   const { data, error } = await supabase
     .from('messages')
-    .select('id, conversation_id, sender_id, sender_role, body, is_urgent, message_type, reply_to_message_id, created_at, profiles:sender_id(first_name, last_name), message_acknowledgments(user_id, read_at, acknowledged_at, follow_up_requested, follow_up_note, follow_up_resolved, follow_up_due_date, follow_up_assigned_to), message_attachments(id, storage_path, file_name, uploaded_by, created_at)')
+    .select(CONVERSATION_MESSAGE_SELECT)
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: true });
   if (error || !data) return [];
+  return data.map(mapConversationMessage);
+}
 
-  return data.map((r) => {
-    const sender = r.profiles as unknown as { first_name: string; last_name: string } | null;
-    const acks = (r.message_acknowledgments as unknown as {
-      user_id: string; read_at: string | null; acknowledged_at: string | null;
-      follow_up_requested: boolean; follow_up_note: string | null; follow_up_resolved: boolean;
-      follow_up_due_date: string | null; follow_up_assigned_to: string | null;
-    }[]) || [];
-    const attachmentRows = (r.message_attachments as unknown as {
-      id: string; storage_path: string; file_name: string; uploaded_by: string; created_at: string;
-    }[]) || [];
-    return {
-      id: r.id,
-      conversationId: r.conversation_id,
-      senderId: r.sender_id,
-      senderRole: r.sender_role as ParticipantRole,
-      senderFirstName: sender?.first_name ?? '',
-      senderLastName: sender?.last_name ?? '',
-      body: r.body,
-      isUrgent: r.is_urgent,
-      messageType: r.message_type as 'message' | 'care_update',
-      replyToMessageId: r.reply_to_message_id,
-      createdAt: r.created_at,
-      acknowledgments: acks.map((a) => ({
-        userId: a.user_id, readAt: a.read_at, acknowledgedAt: a.acknowledged_at,
-        followUpRequested: a.follow_up_requested, followUpNote: a.follow_up_note, followUpResolved: a.follow_up_resolved,
-        followUpDueDate: a.follow_up_due_date, followUpAssignedTo: a.follow_up_assigned_to,
-      })),
-      attachments: attachmentRows.map((a) => ({
-        id: a.id, storagePath: a.storage_path, fileName: a.file_name, uploadedBy: a.uploaded_by, createdAt: a.created_at,
-      })),
-    };
-  });
+// See getConversationParticipantsResult() above — same rationale: a
+// failed message read must not be mistaken for a conversation that has
+// (impossibly) lost all its history, and must not feed the thread's
+// revocation heuristic.
+export async function getConversationMessagesResult(conversationId: string): Promise<{ data: ConversationMessage[] | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from('messages')
+    .select(CONVERSATION_MESSAGE_SELECT)
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true });
+  if (error) return { data: null, error: errMsg(error, 'Could not load conversation messages.') };
+  if (!data) return { data: null, error: 'Could not load conversation messages — unexpected empty response.' };
+  return { data: data.map(mapConversationMessage), error: null };
 }
 
 export async function sendMessage(
