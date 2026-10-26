@@ -427,12 +427,20 @@ function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: Or
   const [seats, setSeats] = useState(license?.licensedSeats?.toString() ?? '');
   const [capacity, setCapacity] = useState(license?.coveredPatientCapacity?.toString() ?? '');
   const [fee, setFee] = useState(license?.annualLicenseFee?.toString() ?? '');
+  const [maxCaregiver, setMaxCaregiver] = useState(license?.maxCaregiverSeats?.toString() ?? '');
+  const [maxMedical, setMaxMedical] = useState(license?.maxMedicalProfessionalSeats?.toString() ?? '');
+  const [maxTherapist, setMaxTherapist] = useState(license?.maxTherapistSeats?.toString() ?? '');
+  const [maxBillingAdmin, setMaxBillingAdmin] = useState(license?.maxBillingAdminSeats?.toString() ?? '');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setSeats(license?.licensedSeats?.toString() ?? '');
     setCapacity(license?.coveredPatientCapacity?.toString() ?? '');
     setFee(license?.annualLicenseFee?.toString() ?? '');
+    setMaxCaregiver(license?.maxCaregiverSeats?.toString() ?? '');
+    setMaxMedical(license?.maxMedicalProfessionalSeats?.toString() ?? '');
+    setMaxTherapist(license?.maxTherapistSeats?.toString() ?? '');
+    setMaxBillingAdmin(license?.maxBillingAdminSeats?.toString() ?? '');
   }, [license]);
 
   const save = async () => {
@@ -443,6 +451,12 @@ function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: Or
         seats.trim() === '' ? null : Number(seats),
         capacity.trim() === '' ? null : Number(capacity),
         fee.trim() === '' ? null : Number(fee),
+        {
+          maxCaregiverSeats: maxCaregiver.trim() === '' ? null : Number(maxCaregiver),
+          maxMedicalProfessionalSeats: maxMedical.trim() === '' ? null : Number(maxMedical),
+          maxTherapistSeats: maxTherapist.trim() === '' ? null : Number(maxTherapist),
+          maxBillingAdminSeats: maxBillingAdmin.trim() === '' ? null : Number(maxBillingAdmin),
+        },
       );
       if (error) { toast.error(error); return; }
       toast.success('License configuration updated.');
@@ -496,6 +510,27 @@ function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: Or
               </label>
             </div>
           </div>
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-ent-ink">Optional per-office seat caps (within the pool above — leave blank for no separate cap)</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <label className="block text-xs text-ent-muted">
+                Caregivers
+                <input type="number" min={0} value={maxCaregiver} onChange={(e) => setMaxCaregiver(e.target.value)} placeholder="No cap" className={`${inputCls} mt-1`} />
+              </label>
+              <label className="block text-xs text-ent-muted">
+                Medical Professionals
+                <input type="number" min={0} value={maxMedical} onChange={(e) => setMaxMedical(e.target.value)} placeholder="No cap" className={`${inputCls} mt-1`} />
+              </label>
+              <label className="block text-xs text-ent-muted">
+                Therapists
+                <input type="number" min={0} value={maxTherapist} onChange={(e) => setMaxTherapist(e.target.value)} placeholder="No cap" className={`${inputCls} mt-1`} />
+              </label>
+              <label className="block text-xs text-ent-muted">
+                Billing Admins
+                <input type="number" min={0} value={maxBillingAdmin} onChange={(e) => setMaxBillingAdmin(e.target.value)} placeholder="No cap" className={`${inputCls} mt-1`} />
+              </label>
+            </div>
+          </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => { void save(); }} disabled={saving} className="px-4 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
               {saving ? 'Saving…' : 'Save'}
@@ -509,6 +544,17 @@ function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: Or
             <p>Seats: <strong>{license?.licensedSeats ?? 'Not configured'}</strong></p>
             <p>Patient capacity: <strong>{license?.coveredPatientCapacity ?? 'Not configured'}</strong></p>
             <p>Proposed annual fee: <strong>{license?.annualLicenseFee != null ? `$${license.annualLicenseFee.toFixed(2)}` : 'Not configured'}</strong></p>
+            {(license?.maxCaregiverSeats != null || license?.maxMedicalProfessionalSeats != null || license?.maxTherapistSeats != null || license?.maxBillingAdminSeats != null) && (
+              <p className="text-xs text-ent-muted">
+                Per-office caps:{' '}
+                {[
+                  license?.maxCaregiverSeats != null && `Caregivers ${license.maxCaregiverSeats}`,
+                  license?.maxMedicalProfessionalSeats != null && `Medical ${license.maxMedicalProfessionalSeats}`,
+                  license?.maxTherapistSeats != null && `Therapists ${license.maxTherapistSeats}`,
+                  license?.maxBillingAdminSeats != null && `Billing Admins ${license.maxBillingAdminSeats}`,
+                ].filter(Boolean).join(' · ')}
+              </p>
+            )}
           </div>
           {license?.status === 'active' ? (
             <EnterpriseBillingManagementSection orgId={orgId} />

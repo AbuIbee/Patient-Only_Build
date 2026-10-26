@@ -73,6 +73,15 @@ export interface OrgLicense {
   // migration 111) -- null for a 'proposed' license and for any license
   // activated only via the staging-only admin switch below.
   licenseNumber: string | null;
+  // MMA-CODEX-011 011-05 (F-09/ENT-013, migration 140): optional caps on
+  // one specific office's headcount WITHIN the aggregate licensedSeats
+  // pool above. null means "no separate cap for this role" -- the
+  // aggregate pool is the only limit, exactly as before this feature
+  // existed.
+  maxCaregiverSeats: number | null;
+  maxMedicalProfessionalSeats: number | null;
+  maxTherapistSeats: number | null;
+  maxBillingAdminSeats: number | null;
 }
 
 export interface StaffPatientAssignment {
@@ -221,9 +230,17 @@ export async function createOrganization(name: string, packageType: OrgPackageTy
 
 export async function orgConfigureLicense(
   orgId: string, licensedSeats: number | null, coveredPatientCapacity: number | null, annualLicenseFee: number | null,
+  perRoleCaps?: {
+    maxCaregiverSeats: number | null; maxMedicalProfessionalSeats: number | null;
+    maxTherapistSeats: number | null; maxBillingAdminSeats: number | null;
+  },
 ): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('org_configure_license', {
     p_org_id: orgId, p_licensed_seats: licensedSeats, p_covered_patient_capacity: coveredPatientCapacity, p_annual_license_fee: annualLicenseFee,
+    p_max_caregiver_seats: perRoleCaps?.maxCaregiverSeats ?? null,
+    p_max_medical_professional_seats: perRoleCaps?.maxMedicalProfessionalSeats ?? null,
+    p_max_therapist_seats: perRoleCaps?.maxTherapistSeats ?? null,
+    p_max_billing_admin_seats: perRoleCaps?.maxBillingAdminSeats ?? null,
   });
   return { error: error ? errMsg(error, 'Could not update the license configuration.') : null };
 }
@@ -231,7 +248,7 @@ export async function orgConfigureLicense(
 export async function getOrgLicense(orgId: string): Promise<OrgLicense | null> {
   const { data, error } = await supabase
     .from('organization_licenses')
-    .select('licensed_seats, covered_patient_capacity, annual_license_fee, status, activated_at, license_number')
+    .select('licensed_seats, covered_patient_capacity, annual_license_fee, status, activated_at, license_number, max_caregiver_seats, max_medical_professional_seats, max_therapist_seats, max_billing_admin_seats')
     .eq('organization_id', orgId)
     .maybeSingle();
   if (error || !data) return null;
@@ -242,6 +259,10 @@ export async function getOrgLicense(orgId: string): Promise<OrgLicense | null> {
     status: data.status,
     activatedAt: data.activated_at,
     licenseNumber: data.license_number,
+    maxCaregiverSeats: data.max_caregiver_seats,
+    maxMedicalProfessionalSeats: data.max_medical_professional_seats,
+    maxTherapistSeats: data.max_therapist_seats,
+    maxBillingAdminSeats: data.max_billing_admin_seats,
   };
 }
 

@@ -1274,6 +1274,10 @@ export interface Database {
           activated_by: string | null
           activated_at: string | null
           license_number: string | null
+          max_caregiver_seats: number | null
+          max_medical_professional_seats: number | null
+          max_therapist_seats: number | null
+          max_billing_admin_seats: number | null
           created_at: string
           updated_at: string
         }
@@ -1287,6 +1291,10 @@ export interface Database {
           activated_by?: string | null
           activated_at?: string | null
           license_number?: string | null
+          max_caregiver_seats?: number | null
+          max_medical_professional_seats?: number | null
+          max_therapist_seats?: number | null
+          max_billing_admin_seats?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -1300,6 +1308,10 @@ export interface Database {
           activated_by?: string | null
           activated_at?: string | null
           license_number?: string | null
+          max_caregiver_seats?: number | null
+          max_medical_professional_seats?: number | null
+          max_therapist_seats?: number | null
+          max_billing_admin_seats?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -4995,6 +5007,10 @@ export interface Database {
           p_licensed_seats: number | null
           p_covered_patient_capacity: number | null
           p_annual_license_fee: number | null
+          p_max_caregiver_seats?: number | null
+          p_max_medical_professional_seats?: number | null
+          p_max_therapist_seats?: number | null
+          p_max_billing_admin_seats?: number | null
         }
         Returns: Database['public']['Tables']['organization_licenses']['Row']
       }
