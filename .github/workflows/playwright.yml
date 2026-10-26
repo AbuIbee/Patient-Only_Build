@@ -31,12 +31,33 @@ on:
   workflow_run:
     workflows: ['CI']
     types: [completed]
+
+# MMA-ENTERPRISE-FINAL-CLOSURE-MASTER-014 Part IV 9.3 -- this repository
+# is PUBLIC (confirmed via `gh repo view`), and a workflow_run-triggered
+# job always executes in the BASE repository's privileged context
+# (default GITHUB_TOKEN, any secrets), never the triggering commit's own
+# restricted fork context -- the documented "pwn request" pattern if
+# that commit came from an external contributor's pull_request. Two
+# independent mitigations, not one:
+#   1. contents: read is the only permission this job needs (it never
+#      pushes or writes to the repo) -- declared explicitly rather than
+#      relying on the org/repo default, which can be read/write.
+#   2. The job additionally requires the triggering CI run's own event
+#      to have been 'push', never 'pull_request' -- only a collaborator
+#      with real write access to THIS repository can push to one of its
+#      branches at all; an external contributor can only ever open a
+#      pull_request, which can never satisfy this condition. Belt and
+#      suspenders: either control alone would already block the
+#      escalation this repo's public visibility would otherwise permit.
+permissions:
+  contents: read
+
 jobs:
   test:
-    # Only run for a CI run that actually succeeded, and check out the
-    # exact commit that CI run tested (workflow_run otherwise checks out
-    # the default branch, not the pushed/PR commit).
-    if: github.event.workflow_run.conclusion == 'success'
+    # Only run for a CI run that actually succeeded AND was itself
+    # triggered by a push (not a pull_request from a fork) -- see the
+    # security note above.
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:

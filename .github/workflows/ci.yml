@@ -17,6 +17,16 @@ on:
   push:
   pull_request:
 
+# Neither job here ever pushes or writes to the repo -- declared
+# explicitly rather than relying on the org/repo default (which can be
+# read/write). This workflow's own triggers (push, pull_request) are
+# not the workflow_run privilege-escalation pattern (see playwright.yml's
+# security note) since GitHub already runs a fork's pull_request here
+# with a read-only token and no secrets by default; minimal permissions
+# is still correct defense-in-depth regardless.
+permissions:
+  contents: read
+
 jobs:
   static-checks:
     runs-on: ubuntu-latest
