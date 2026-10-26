@@ -17,14 +17,32 @@ name: Playwright Tests
 # clean migration -- they stay local-only, honestly, rather than being
 # force-included to fail for an unrelated reason or silently dropped.
 on:
-  push:
-  pull_request:
+  # Deliberately NOT push/pull_request directly: that triggered this
+  # workflow and ci.yml at the same instant, both pulling the same
+  # dozen Supabase images from the same public registry at once --
+  # observed for real in GitHub Actions as "toomanyrequests: Data limit
+  # exceeded" on the image pulls (not a logic or target-safety defect;
+  # the identical scripts/disposable_supabase.mjs succeeded in ci.yml's
+  # integration job seconds earlier). Running only after ci.yml's own
+  # push run completes avoids the concurrent-pull collision AND means
+  # the comparatively expensive multi-browser e2e suite never even
+  # starts for a change that already failed the cheaper typecheck/lint/
+  # unit/integration gate.
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
 jobs:
   test:
+    # Only run for a CI run that actually succeeded, and check out the
+    # exact commit that CI run tested (workflow_run otherwise checks out
+    # the default branch, not the pushed/PR commit).
+    if: github.event.workflow_run.conclusion == 'success'
     timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.workflow_run.head_sha }}
     - uses: actions/setup-node@v4
       with:
         node-version: 22
