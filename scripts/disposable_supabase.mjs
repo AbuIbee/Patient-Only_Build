@@ -3,6 +3,25 @@
 // non-production testing setup that does not depend on deleting or
 // altering the owner's existing local database."
 //
+// MMA-ENTERPRISE-FINAL-CLOSURE-MASTER-014 Part IV — real GitHub Actions
+// run 40338362967's integration job failed during this exact `supabase
+// start` call with (confirmed from the actual failing run's own logs,
+// not assumed): "failed to pull docker image: Error response from
+// daemon: toomanyrequests: Data limit exceeded" against
+// public.ecr.aws/supabase/* -- AWS ECR Public's anonymous-pull data-
+// transfer quota, shared across every GitHub-hosted runner's egress
+// pool, not a defect in this script's logic (an identical call
+// succeeded in two earlier runs the same session). The Supabase CLI's
+// own internal retry (2 attempts, ~4s/8s backoff) is far too short for
+// a quota that can take real wall-clock time to reset. startWithRetry()
+// below adds a longer, bounded, OUTER retry specifically keyed to that
+// confirmed transient signature -- it never retries a genuine
+// configuration/migration failure (anything not matching the known
+// transient-registry text fails immediately, loud, on the first
+// attempt), and it never silently swallows a failure that persists
+// past the bound: the real underlying error is always re-thrown and
+// the process always exits non-zero if every attempt is exhausted.
+//
 // supabase_db_repo (127.0.0.1:55321/55322) is the owner's own persistent
 // local dev database -- confirmed to hold 1,190 real auth.users rows
 // with migration history frozen at 104 before this branch's own
@@ -70,6 +89,53 @@ function rewriteConfig(configText) {
     .replace(/^(inspector_port = )8083$/m, `$1${PORTS.inspector}`);
 }
 
+// The exact, confirmed-transient signature from the real failing run
+// (GitHub Actions run 40338362967, Docker daemon's own error text) --
+// deliberately narrow. Anything else (a bad migration, a port
+// conflict, a config error) is a real defect and must fail loud on the
+// very first attempt, never silently retried.
+const TRANSIENT_REGISTRY_ERROR_PATTERNS = [/toomanyrequests/i, /Data limit exceeded/i, /TLS handshake timeout/i, /i\/o timeout/i, /connection reset by peer/i];
+
+function isTransientRegistryError(output) {
+  return TRANSIENT_REGISTRY_ERROR_PATTERNS.some((p) => p.test(output));
+}
+
+function startSupabaseWithRetry() {
+  const MAX_ATTEMPTS = 4;
+  const BACKOFF_MS = [30_000, 60_000, 120_000];
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    console.log(`[disposable_supabase] supabase start attempt ${attempt}/${MAX_ATTEMPTS}`);
+    const result = spawnSync('npx', ['supabase', 'start', '--workdir', WORKDIR], { encoding: 'utf8', shell: true });
+    const combined = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+    // Still echo the real output to the CI log even though we captured
+    // it instead of inheriting stdio -- never hide what actually happened.
+    process.stdout.write(result.stdout ?? '');
+    process.stderr.write(result.stderr ?? '');
+    if (result.status === 0) {
+      if (attempt > 1) console.log(`[disposable_supabase] supabase start succeeded on attempt ${attempt}/${MAX_ATTEMPTS}`);
+      return;
+    }
+    const transient = isTransientRegistryError(combined);
+    if (!transient || attempt === MAX_ATTEMPTS) {
+      console.error(
+        `[disposable_supabase] supabase start failed on attempt ${attempt}/${MAX_ATTEMPTS} ` +
+          `(${transient ? 'transient registry error, retries exhausted' : 'non-transient failure, not retrying'}).`,
+      );
+      throw new Error(`supabase start failed (exit ${result.status}): see captured output above.`);
+    }
+    const delay = BACKOFF_MS[attempt - 1] ?? BACKOFF_MS[BACKOFF_MS.length - 1];
+    console.warn(
+      `[disposable_supabase] supabase start hit a confirmed transient registry error (toomanyrequests / data limit) ` +
+        `on attempt ${attempt}/${MAX_ATTEMPTS}. Cleaning up and retrying in ${delay / 1000}s...`,
+    );
+    spawnSync('npx', ['supabase', 'stop', '--workdir', WORKDIR, '--no-backup'], { encoding: 'utf8', shell: true });
+    // Blocking sleep without a CPU-spinning busy-loop -- this is a
+    // short-lived, single-purpose CLI script (not a server), so there
+    // is no event loop work to protect by staying async here.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay);
+  }
+}
+
 function start() {
   // Windows occasionally holds a brief handle on the workdir right
   // after a prior `supabase stop` (antivirus scan / docker bind-mount
@@ -96,7 +162,7 @@ function start() {
   writeFileSync(join(WORKDIR, 'supabase', 'config.toml'), rewriteConfig(config));
 
   console.log(`[disposable_supabase] starting disposable project "${PROJECT_ID}" at ${WORKDIR}`);
-  execFileSync('npx', ['supabase', 'start', '--workdir', WORKDIR], { stdio: 'inherit', shell: true });
+  startSupabaseWithRetry();
 
   console.log(`[disposable_supabase] applying all repository migrations (db reset)`);
   execFileSync('npx', ['supabase', 'db', 'reset', '--workdir', WORKDIR, '--local'], { stdio: 'inherit', shell: true });
