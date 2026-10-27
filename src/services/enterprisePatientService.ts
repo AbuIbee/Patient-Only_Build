@@ -1,9 +1,11 @@
 // FIVE-OFFICE ENTERPRISE PLATFORM — Office E (Enterprise Patient) reads.
-// Every function here is scoped to the calling patient's own auth.uid()
-// only — there is no patientId parameter anywhere in this file, by
-// design, because nothing here is ever meant to read another patient's
-// data. See supabase/migrations/082_r9_enterprise_patient_office.sql for
-// the backend this wraps.
+// See supabase/migrations/082_r9_enterprise_patient_office.sql for the
+// backend this wraps. MMA-P1-FINAL-CLOSURE Priority 1 (migration 155):
+// every function here now accepts an optional explicit patientId,
+// defaulting to the caller's own auth.uid(), so an Authorized Patient
+// Representative's session can resolve the PATIENT they represent
+// rather than always their own identity — authorized server-side by
+// has_patient_access(), never by the client-supplied id alone.
 import { supabase } from '@/lib/supabase';
 
 export interface MyEnterpriseOrganization {
@@ -12,8 +14,8 @@ export interface MyEnterpriseOrganization {
   packageType: 'therapist' | 'integrated_care';
 }
 
-export async function getMyEnterpriseOrganization(): Promise<MyEnterpriseOrganization | null> {
-  const { data, error } = await supabase.rpc('get_my_enterprise_organization');
+export async function getMyEnterpriseOrganization(patientId?: string): Promise<MyEnterpriseOrganization | null> {
+  const { data, error } = await supabase.rpc('get_my_enterprise_organization', { p_patient_id: patientId ?? null });
   if (error || !data || data.length === 0) return null;
   const r = data[0];
   return { organizationId: r.organization_id, organizationName: r.organization_name, packageType: r.package_type as 'therapist' | 'integrated_care' };
@@ -28,8 +30,8 @@ export interface MyEnterpriseCareTeamMember {
   orgRole: 'caregiver' | 'therapist' | 'medical_professional';
 }
 
-export async function getMyEnterpriseCareTeam(): Promise<MyEnterpriseCareTeamMember[]> {
-  const { data, error } = await supabase.rpc('get_my_enterprise_care_team');
+export async function getMyEnterpriseCareTeam(patientId?: string): Promise<MyEnterpriseCareTeamMember[]> {
+  const { data, error } = await supabase.rpc('get_my_enterprise_care_team', { p_patient_id: patientId ?? null });
   if (error || !data) return [];
   return data.map((r) => ({
     userId: r.user_id, firstName: r.first_name, lastName: r.last_name, email: r.email, phone: r.phone,

@@ -132,6 +132,49 @@ describe('MMA-P1-CODEX-002 P1-01 (migration 154 + frontend wiring) — APR Patie
     expect((tasks as unknown[]).length).toBe(1);
   });
 
+  it('MMA-P1-FINAL-CLOSURE Priority 1 (migration 155): organization and Enterprise care-team info are visible to the verified representative', async () => {
+    const staff = await authSignUp(`codex002p101-staff-${stamp}@local.test`, PW);
+    sql(`
+      UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${staff}';
+      INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${ORG}','${staff}','caregiver','active');
+      INSERT INTO staff_patient_assignments(organization_id,user_id,patient_id,org_role,is_active,assigned_by) VALUES('${ORG}','${staff}','${patient}','caregiver',true,'${ids.director}');
+      INSERT INTO caregiver_patients(caregiver_id,patient_id) VALUES('${staff}','${patient}');
+    `);
+
+    // Called with the RESOLVED subject explicitly, exactly as
+    // EnterprisePatientDashboard.tsx now does (it passes the id
+    // get_my_patient_office_subject() resolved, never relying on the
+    // RPC's own auth.uid() fallback, which would resolve to the
+    // representative's own non-patient identity).
+    const [orgStatus, org] = (await rpc('get_my_enterprise_organization', { p_patient_id: patient }, tok.rep)) as [number, Array<{ organization_id: string }>];
+    expect(orgStatus).toBe(200);
+    expect(org.length).toBe(1);
+    expect(org[0].organization_id).toBe(ORG);
+
+    const [teamStatus, team] = (await rpc('get_my_enterprise_care_team', { p_patient_id: patient }, tok.rep)) as [number, Array<{ user_id: string }>];
+    expect(teamStatus).toBe(200);
+    expect(team.some((m) => m.user_id === staff)).toBe(true);
+
+    const [caregiverLinkStatus, caregiverLinks] = await http('GET', `/rest/v1/caregiver_patients?patient_id=eq.${patient}`, undefined, tok.rep);
+    expect(caregiverLinkStatus).toBe(200);
+    expect((caregiverLinks as unknown[]).length).toBe(1);
+
+    sql(`DELETE FROM caregiver_patients WHERE caregiver_id='${staff}'; DELETE FROM staff_patient_assignments WHERE user_id='${staff}'; DELETE FROM organization_memberships WHERE user_id='${staff}';`);
+    await authDeleteUser(staff);
+  });
+
+  it("the Director's own session (unrelated to the patient) cannot resolve this patient's organization info through the same RPC", async () => {
+    const otherPatient = await authSignUp(`codex002p101-otherpatient-${stamp}@local.test`, PW);
+    sql(`
+      UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${otherPatient}';
+      INSERT INTO patients(id,first_name,last_name,preferred_name,address,location) VALUES('${otherPatient}','Codex002','Other','Codex002 Other','1 Ave','Facility');
+    `);
+    const [, org] = (await rpc('get_my_enterprise_organization', { p_patient_id: otherPatient }, tok.rep)) as [number, unknown[]];
+    expect(org.length).toBe(0);
+    sql(`DELETE FROM patients WHERE id='${otherPatient}';`);
+    await authDeleteUser(otherPatient);
+  });
+
   it('revocation immediately removes the representative\'s resolved subject and medication visibility, using the same already-issued session', async () => {
     const [revokeStatus] = await rpc('revoke_patient_representative', { p_representative_id: repRecordId, p_reason: 'No longer authorized' }, tok.director);
     expect(revokeStatus).toBe(200);

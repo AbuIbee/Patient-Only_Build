@@ -21,17 +21,13 @@ interface TeamMember {
   source: 'residential' | 'enterprise';
 }
 
-// MMA-P1-CODEX-002 P1-01 — optional patientId lets EnterprisePatientDashboard
-// pass the correct SUBJECT for an Authorized Patient Representative.
-// KNOWN REMAINING GAP, documented rather than silently left: the
-// residential caregiver_patients/therapist_relationships lookups below
-// and getMyEnterpriseCareTeam() are not yet re-authorized for an explicit
-// non-self subject (caregiver_patients in particular has no patient-self
-// SELECT policy at all today, a PRE-EXISTING gap unrelated to APR). This
-// prop plumbing is correct and ready for when those table/RPC-level
-// authorizations are extended; until then this view may still under-
-// populate for a representative even though its router entry/medication/
-// documents access now works.
+// MMA-P1-CODEX-002 P1-01 / MMA-P1-FINAL-CLOSURE Priority 1 — optional
+// patientId lets EnterprisePatientDashboard pass the correct SUBJECT for
+// an Authorized Patient Representative. caregiver_patients/
+// therapist_relationships (migration 155) and getMyEnterpriseCareTeam()
+// (migration 155) are now re-authorized via has_patient_access() for an
+// explicit non-self subject — this view fully populates for a verified
+// representative, not only office entry/medications/documents.
 export default function PatientCareTeam({ patientId: subjectPatientId }: { patientId?: string } = {}) {
   const { state }           = useApp();
   const [team, setTeam]     = useState<TeamMember[]>([]);
@@ -64,7 +60,7 @@ export default function PatientCareTeam({ patientId: subjectPatientId }: { patie
         allIds.length > 0
           ? supabase.from('profiles').select('id, first_name, last_name, email, phone, role').in('id', allIds)
           : Promise.resolve({ data: [] as { id: string; first_name: string; last_name: string; email: string; phone: string | null; role: string }[] }),
-        getMyEnterpriseCareTeam(),
+        getMyEnterpriseCareTeam(patientId),
       ]);
 
       const residentialMembers: TeamMember[] = (profilesResult.data || []).map((p) => ({

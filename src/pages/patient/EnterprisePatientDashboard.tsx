@@ -120,8 +120,8 @@ export default function EnterprisePatientDashboard({ basePath = null, subjectPat
     setLoading(true);
     try {
       const [o, t, appts, v, convos, plans, taskRows, patientRow] = await Promise.all([
-        getMyEnterpriseOrganization(),
-        getMyEnterpriseCareTeam(),
+        getMyEnterpriseOrganization(patientId),
+        getMyEnterpriseCareTeam(patientId),
         patientId ? getMyAppointments(patientId) : Promise.resolve([]),
         patientId ? getMyVisits(patientId) : Promise.resolve([]),
         getMyConversations(patientId),
