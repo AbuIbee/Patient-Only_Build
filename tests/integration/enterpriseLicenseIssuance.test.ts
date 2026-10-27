@@ -213,7 +213,7 @@ describe('MMA-ENT-SALES-005 Phase G — enterprise license issuance engine (migr
     expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('canceled');
   });
 
-  it('migration 112: once active under a confirmed payment, a Director can no longer self-edit seats/capacity/fee via org_configure_license', async () => {
+  it('migration 112 (superseded by PACKAGE-1 migration 143): an active license was already locked against Director self-edit by its own 400 business-logic check; org_configure_license is now unreachable by any authenticated Director at all, active or not', async () => {
     const quoteId = await makeQuote(emails.bilal, `Locked Org ${stamp}`, 'integrated_care', 13000);
     const appId = await submitApplication(ids.bilal, tok.bilal, `Locked Org ${stamp}`, 'integrated_care', quoteId);
     markBillingAccountActive(quoteId, 'billing@locked.test', 1300000);
@@ -222,27 +222,42 @@ describe('MMA-ENT-SALES-005 Phase G — enterprise license issuance engine (migr
     createdOrgIds.push(org.id);
     expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('active');
 
+    // PACKAGE 1 (migration 143): the EXECUTE grant itself is now
+    // revoked from authenticated -- PostgREST maps Postgres's
+    // insufficient_privilege to 403, before the function's own
+    // internal "active license is locked" 400 check (migration 112)
+    // ever runs. Migration 112's check still exists in the function
+    // body (defense in depth, exercised directly by a service_role/
+    // SQL-level call elsewhere) but is no longer reachable via the
+    // client at all, for any license status.
     const [tamperStatus] = await rpc('org_configure_license', {
       p_org_id: org.id, p_licensed_seats: 999, p_covered_patient_capacity: 999, p_annual_license_fee: 1,
     }, tok.bilal);
-    expect(tamperStatus).toBe(400);
+    expect(tamperStatus).toBe(403);
 
     const unchanged = sql(`SELECT licensed_seats, covered_patient_capacity, annual_license_fee FROM organization_licenses WHERE organization_id='${org.id}';`);
     expect(unchanged).toBe('6|30|13000.00');
   });
 
-  it('a PROPOSED (not yet paid) license can still be freely configured by its Director, exactly as before', async () => {
+  it('PACKAGE 1 migration 143: a PROPOSED (not yet paid) license can no longer be self-configured by its Director either -- the real path is the commercial quote/contract pipeline, never a direct client call', async () => {
     const quoteId = await makeQuote(emails.bilal, `StillProposed Org ${stamp}`, 'integrated_care', 5000);
     const appId = await submitApplication(ids.bilal, tok.bilal, `StillProposed Org ${stamp}`, 'integrated_care', quoteId);
     const [, org] = (await rpc('platform_owner_approve_director_application', { p_application_id: appId }, tok.owner)) as [number, { id: string }];
     createdOrgIds.push(org.id);
     expect(sql(`SELECT status FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('proposed');
 
+    // Before migration 143, this title was literally true ("can still
+    // be freely configured... exactly as before") -- a Director could
+    // self-declare their own org's seats/capacity/fee with no real
+    // payment, quote, or Platform Owner review behind the numbers.
+    // That is exactly the "self-service license capacity change"
+    // Codex/the senior architect's hosted migration closes. Now
+    // rejected outright, before the function body even runs.
     const [status] = await rpc('org_configure_license', {
       p_org_id: org.id, p_licensed_seats: 3, p_covered_patient_capacity: 10, p_annual_license_fee: 1200,
     }, tok.bilal);
-    expect(status).toBe(200);
-    expect(sql(`SELECT licensed_seats, covered_patient_capacity FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('3|10');
+    expect(status).toBe(403);
+    expect(sql(`SELECT licensed_seats, covered_patient_capacity FROM organization_licenses WHERE organization_id='${org.id}';`)).toBe('|');
   });
 
   it('neither new RPC is reachable by an authenticated client -- service_role only', async () => {

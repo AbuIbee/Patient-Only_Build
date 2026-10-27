@@ -125,16 +125,44 @@ afterAll(async () => {
 });
 
 describe('CODEX F-09 FIX (migration 129) — org_configure_license() is serialized against activation, not racy', () => {
-  it('FIX: a configure call that starts while activation holds the row lock blocks, then correctly rejects once activation has committed', async () => {
+  it('PACKAGE 1 migration 143 superseded this race entirely: org_configure_license is rejected on authorization grounds alone, before the row lock (or the Director identity check it depends on) is ever reached by any reachable caller', async () => {
+    // This test originally proved: a configure call that starts while
+    // activation holds the row lock blocks, then correctly rejects once
+    // activation has committed (migration 129's fix). That proof
+    // required calling org_configure_license as the real, authenticated
+    // Director (tok.bilal) -- the only way the function's own internal
+    // `is_active_org_director(p_org_id)` check (which reads auth.uid())
+    // could ever pass far enough to reach the FOR UPDATE lock line at
+    // all.
+    //
+    // PACKAGE 1 (migration 143) revoked the authenticated EXECUTE grant
+    // entirely, so that path now 403s before the function body runs --
+    // confirmed first, not assumed. An attempt was made to preserve the
+    // race proof by calling as service_role instead (service_role still
+    // has EXECUTE) -- empirically verified NOT to work: service_role
+    // has no real auth.uid(), so is_active_org_director() returns false
+    // and the function raises its OWN "Only an active director..."
+    // exception in ~8ms, never reaching the lock either. Directly
+    // confirmed via raw SQL (SET ROLE service_role; SELECT
+    // org_configure_license(...)) outside this test file before
+    // settling on this honest resolution, rather than leaving a test
+    // that looked like it proved concurrency safety but silently didn't.
+    //
+    // The underlying FOR UPDATE lock in the function body is UNCHANGED
+    // and remains real defense-in-depth -- it is simply no longer
+    // reachable by ANY caller this test harness can legitimately
+    // authenticate as, which is itself the correct, intended outcome of
+    // migration 143 (there is no longer a legitimate authenticated
+    // caller for this function at all). Also confirmed directly: even a
+    // raw SQL `SET ROLE authenticated` session gets a real Postgres
+    // "permission denied for function org_configure_license" -- the
+    // grant boundary holds beneath the HTTP/PostgREST layer too, not
+    // only at the API gateway.
     const holder = runConcurrentActivateHoldingLock(orgId, quoteId, 2);
     await holder.waitForSleep(5000);
 
-    // While the holder is asleep (still pre-activation), fire the
-    // configure call. It must BLOCK on the same row lock -- not race
-    // past it -- and only resolve after the holder's activation has
-    // committed, at which point it must see status='active' and reject.
     const startedAt = Date.now();
-    const [configureStatus, configureBody] = await rpc('org_configure_license', {
+    const [configureStatus] = await rpc('org_configure_license', {
       p_org_id: orgId, p_licensed_seats: 999, p_covered_patient_capacity: 999, p_annual_license_fee: 1,
     }, tok.bilal);
     const elapsedMs = Date.now() - startedAt;
@@ -142,14 +170,16 @@ describe('CODEX F-09 FIX (migration 129) — org_configure_license() is serializ
     await holder.waitForExit();
     expect(holder.stderr()).toBe('');
 
-    // Proves it actually waited on the lock (the holder's pg_sleep(2))
-    // rather than completing instantly before activation committed.
-    expect(elapsedMs).toBeGreaterThanOrEqual(1500);
-    expect(configureStatus).toBe(400);
-    expect(JSON.stringify(configureBody)).toContain('active under a confirmed commercial agreement');
+    // Rejected on authorization grounds alone -- instantly, never
+    // blocking on the activation holder's lock (there is nothing left
+    // to race: the Director path never reaches the lock at all now).
+    expect(configureStatus).toBe(403);
+    expect(elapsedMs).toBeLessThan(1000);
 
-    // The license carries the REAL, quote-derived terms -- never the
-    // Director's attempted 999/999/1 overwrite.
+    // The holder's activation still runs to completion in the
+    // background and the license still carries the REAL, quote-derived
+    // terms -- confirms this migration didn't silently break the
+    // activation path itself.
     const final = sql(`SELECT status, licensed_seats, covered_patient_capacity, annual_license_fee FROM organization_licenses WHERE organization_id='${orgId}';`);
     expect(final).toBe('active|8|40|30000.00');
   });

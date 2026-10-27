@@ -1,0 +1,39 @@
+-- PACKAGE 1 — Security and Database Completion, Workstream 1/5.
+--
+-- Reconciles against the Enterprise staging project
+-- (axurszlibxwwptkczztt)'s real, already-applied migration
+-- `enterprise_block_director_self_service_license_capacity_changes`
+-- (version 20261026231844, the directive's "migration 15") -- confirmed
+-- by direct read-only introspection (information_schema.routine_privileges
+-- via `supabase db query --linked`): org_configure_license is
+-- service_role-only on staging (no authenticated grant at all), for
+-- the 4-arg legacy signature that exists there.
+--
+-- This repository's own org_configure_license (migration 140) has
+-- since grown to 8 args (the 4 original plus optional per-role seat
+-- caps) and, until this migration, still granted EXECUTE to
+-- authenticated -- a Director's own "License & Capacity" card called
+-- it directly to self-declare licensed_seats/covered_patient_capacity/
+-- annual_license_fee/per-role caps for their own organization, with no
+-- real payment, quote, or Platform Owner review behind the numbers.
+-- That is precisely the "self-service license capacity change" this
+-- finding targets: a Director could set their own org's entitlement
+-- (how many patients/staff it is allowed to cover) to any value with
+-- no commercial backing. This is independent of, and in addition to,
+-- the already-existing (migration 112/129) protection against editing
+-- an ACTIVE license -- this closes self-service for a 'proposed' one
+-- too, which previously had no such protection at all.
+--
+-- The function body itself is UNCHANGED -- this is a grant-only
+-- migration. The real, intended path for setting these numbers going
+-- forward is the existing commercial pipeline this repository already
+-- built and tested (sales_quotes -> enterprise_billing_accounts ->
+-- enterprise_contracts -> activate_enterprise_license_from_quote(),
+-- and the already-existing director_request_organization_amendment()
+-- flow for a CHANGE to an active license) -- never a direct,
+-- unreviewed client call. The Director-facing UI's now-dead "Configure"
+-- control for a 'proposed' license is removed in the same commit as
+-- this migration (src/pages/enterprise/OrganizationDirectorDashboard.tsx),
+-- replaced with honest guidance rather than a button that would now
+-- always fail with a permission error.
+REVOKE EXECUTE ON FUNCTION public.org_configure_license(UUID, INTEGER, INTEGER, NUMERIC, INTEGER, INTEGER, INTEGER, INTEGER) FROM authenticated;

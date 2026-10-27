@@ -228,6 +228,14 @@ export async function createOrganization(name: string, packageType: OrgPackageTy
   return { applicationId: data.id, error: null };
 }
 
+// PACKAGE 1 (migration 143): org_configure_license()'s EXECUTE grant
+// was revoked from authenticated -- this wrapper has no remaining
+// caller in src/ (the Director UI's "Configure" control was removed
+// in the same change) and will always receive a 403 from any
+// authenticated client. Kept, not deleted, only as a thin, correctly-
+// typed reference for a future genuine service_role-driven caller
+// (e.g. an Edge Function acting on behalf of the commercial pipeline);
+// it is not a usable client-side API any more.
 export async function orgConfigureLicense(
   orgId: string, licensedSeats: number | null, coveredPatientCapacity: number | null, annualLicenseFee: number | null,
   perRoleCaps?: {

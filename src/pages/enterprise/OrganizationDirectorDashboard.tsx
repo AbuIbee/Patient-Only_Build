@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import {
   getMyOrganizations, getOrgMembers, getOrgLicense, getOrgCoveredPatients,
-  orgConfigureLicense, inviteOrgMember, removeOrgMember, createOrganization,
+  inviteOrgMember, removeOrgMember, createOrganization,
   getOrgStaffPatientAssignments, assignStaffToPatient, unassignStaffFromPatient,
   getOrgCommunicationsOverview,
   type OrgLicense, type OrgRole, type OrgMembershipRow, type OrgPackageType,
@@ -422,51 +422,20 @@ function AmendmentRequestSection({ orgId }: { orgId: string }) {
   );
 }
 
-function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: OrgLicense | null; onUpdated: () => void }) {
-  const [editing, setEditing] = useState(false);
-  const [seats, setSeats] = useState(license?.licensedSeats?.toString() ?? '');
-  const [capacity, setCapacity] = useState(license?.coveredPatientCapacity?.toString() ?? '');
-  const [fee, setFee] = useState(license?.annualLicenseFee?.toString() ?? '');
-  const [maxCaregiver, setMaxCaregiver] = useState(license?.maxCaregiverSeats?.toString() ?? '');
-  const [maxMedical, setMaxMedical] = useState(license?.maxMedicalProfessionalSeats?.toString() ?? '');
-  const [maxTherapist, setMaxTherapist] = useState(license?.maxTherapistSeats?.toString() ?? '');
-  const [maxBillingAdmin, setMaxBillingAdmin] = useState(license?.maxBillingAdminSeats?.toString() ?? '');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setSeats(license?.licensedSeats?.toString() ?? '');
-    setCapacity(license?.coveredPatientCapacity?.toString() ?? '');
-    setFee(license?.annualLicenseFee?.toString() ?? '');
-    setMaxCaregiver(license?.maxCaregiverSeats?.toString() ?? '');
-    setMaxMedical(license?.maxMedicalProfessionalSeats?.toString() ?? '');
-    setMaxTherapist(license?.maxTherapistSeats?.toString() ?? '');
-    setMaxBillingAdmin(license?.maxBillingAdminSeats?.toString() ?? '');
-  }, [license]);
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const { error } = await orgConfigureLicense(
-        orgId,
-        seats.trim() === '' ? null : Number(seats),
-        capacity.trim() === '' ? null : Number(capacity),
-        fee.trim() === '' ? null : Number(fee),
-        {
-          maxCaregiverSeats: maxCaregiver.trim() === '' ? null : Number(maxCaregiver),
-          maxMedicalProfessionalSeats: maxMedical.trim() === '' ? null : Number(maxMedical),
-          maxTherapistSeats: maxTherapist.trim() === '' ? null : Number(maxTherapist),
-          maxBillingAdminSeats: maxBillingAdmin.trim() === '' ? null : Number(maxBillingAdmin),
-        },
-      );
-      if (error) { toast.error(error); return; }
-      toast.success('License configuration updated.');
-      setEditing(false);
-      onUpdated();
-    } finally {
-      setSaving(false);
-    }
-  };
-
+// PACKAGE 1 (migration 143) — org_configure_license() is now
+// service_role-only; a Director can no longer self-declare their own
+// org's licensed seats/capacity/fee/per-role caps with no real
+// payment, quote, or Platform Owner review behind the numbers. This
+// card used to offer a "Configure" control calling that RPC directly
+// for a 'proposed' (not-yet-active) license -- removed entirely (it
+// would now always fail with a permission error) rather than left as
+// a dead button. The real, intended path for these numbers is the
+// commercial pipeline this organization's EnterpriseActivationSection
+// below already surfaces (the originating quote, billing status,
+// required agreements, checkout) for a NEW license, and the existing
+// director_request_organization_amendment() flow for a CHANGE to an
+// ALREADY-active one -- never a direct, unreviewed client call.
+function LicenseCard({ orgId, license }: { orgId: string; license: OrgLicense | null }) {
   return (
     <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -485,86 +454,28 @@ function LicenseCard({ orgId, license, onUpdated }: { orgId: string; license: Or
       )}
       <p className="text-xs text-ent-muted">
         {license?.status === 'active'
-          ? 'This license is active under a confirmed commercial agreement. Seats, capacity, and fee are locked and can no longer be edited here — use "Expansion, Renewal & Cancellation" below to request a change from the Platform Owner.'
-          : 'Seats, capacity and fee are proposed, configurable commercial terms — setting them here never activates the license or creates a charge. Activation happens automatically once Enterprise payment is confirmed (or, for synthetic integration testing only, via a separate admin-only mechanism); this status also controls whether covered patients actually receive Full Support.'}
+          ? 'This license is active under a confirmed commercial agreement. Seats, capacity, and fee are set from that agreement and cannot be self-edited — use "Expansion, Renewal & Cancellation" below to request a change from the Platform Owner.'
+          : 'Seats, capacity, and fee are proposed commercial terms set from your originating quote and cannot be self-edited here. Activation happens automatically once Enterprise payment and the required agreements are confirmed — see below; this status also controls whether covered patients actually receive Full Support.'}
       </p>
-      {editing ? (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-ent-ink">
-                Licensed Staff Seats
-                <input type="number" min={0} value={seats} onChange={(e) => setSeats(e.target.value)} placeholder="e.g. 5" className={`${inputCls} mt-1`} />
-              </label>
-            </div>
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-ent-ink">
-                Covered Patient Capacity
-                <input type="number" min={0} value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="e.g. 20" className={`${inputCls} mt-1`} />
-              </label>
-            </div>
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-ent-ink">
-                Proposed Annual Fee ($)
-                <input type="number" min={0} step="0.01" value={fee} onChange={(e) => setFee(e.target.value)} placeholder="e.g. 999.00" className={`${inputCls} mt-1`} />
-              </label>
-            </div>
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-ent-ink">Optional per-office seat caps (within the pool above — leave blank for no separate cap)</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <label className="block text-xs text-ent-muted">
-                Caregivers
-                <input type="number" min={0} value={maxCaregiver} onChange={(e) => setMaxCaregiver(e.target.value)} placeholder="No cap" className={`${inputCls} mt-1`} />
-              </label>
-              <label className="block text-xs text-ent-muted">
-                Medical Professionals
-                <input type="number" min={0} value={maxMedical} onChange={(e) => setMaxMedical(e.target.value)} placeholder="No cap" className={`${inputCls} mt-1`} />
-              </label>
-              <label className="block text-xs text-ent-muted">
-                Therapists
-                <input type="number" min={0} value={maxTherapist} onChange={(e) => setMaxTherapist(e.target.value)} placeholder="No cap" className={`${inputCls} mt-1`} />
-              </label>
-              <label className="block text-xs text-ent-muted">
-                Billing Admins
-                <input type="number" min={0} value={maxBillingAdmin} onChange={(e) => setMaxBillingAdmin(e.target.value)} placeholder="No cap" className={`${inputCls} mt-1`} />
-              </label>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => { void save(); }} disabled={saving} className="px-4 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-            <button type="button" onClick={() => setEditing(false)} className="px-4 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold">Cancel</button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="text-sm text-ent-ink space-y-0.5">
-            <p>Seats: <strong>{license?.licensedSeats ?? 'Not configured'}</strong></p>
-            <p>Patient capacity: <strong>{license?.coveredPatientCapacity ?? 'Not configured'}</strong></p>
-            <p>Proposed annual fee: <strong>{license?.annualLicenseFee != null ? `$${license.annualLicenseFee.toFixed(2)}` : 'Not configured'}</strong></p>
-            {(license?.maxCaregiverSeats != null || license?.maxMedicalProfessionalSeats != null || license?.maxTherapistSeats != null || license?.maxBillingAdminSeats != null) && (
-              <p className="text-xs text-ent-muted">
-                Per-office caps:{' '}
-                {[
-                  license?.maxCaregiverSeats != null && `Caregivers ${license.maxCaregiverSeats}`,
-                  license?.maxMedicalProfessionalSeats != null && `Medical ${license.maxMedicalProfessionalSeats}`,
-                  license?.maxTherapistSeats != null && `Therapists ${license.maxTherapistSeats}`,
-                  license?.maxBillingAdminSeats != null && `Billing Admins ${license.maxBillingAdminSeats}`,
-                ].filter(Boolean).join(' · ')}
-              </p>
-            )}
-          </div>
-          {license?.status === 'active' ? (
-            <EnterpriseBillingManagementSection orgId={orgId} />
-          ) : (
-            <button type="button" onClick={() => setEditing(true)} className="px-3 py-2 rounded-lg border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">
-              Configure
-            </button>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="text-sm text-ent-ink space-y-0.5">
+          <p>Seats: <strong>{license?.licensedSeats ?? 'Not configured'}</strong></p>
+          <p>Patient capacity: <strong>{license?.coveredPatientCapacity ?? 'Not configured'}</strong></p>
+          <p>Proposed annual fee: <strong>{license?.annualLicenseFee != null ? `$${license.annualLicenseFee.toFixed(2)}` : 'Not configured'}</strong></p>
+          {(license?.maxCaregiverSeats != null || license?.maxMedicalProfessionalSeats != null || license?.maxTherapistSeats != null || license?.maxBillingAdminSeats != null) && (
+            <p className="text-xs text-ent-muted">
+              Per-office caps:{' '}
+              {[
+                license?.maxCaregiverSeats != null && `Caregivers ${license.maxCaregiverSeats}`,
+                license?.maxMedicalProfessionalSeats != null && `Medical ${license.maxMedicalProfessionalSeats}`,
+                license?.maxTherapistSeats != null && `Therapists ${license.maxTherapistSeats}`,
+                license?.maxBillingAdminSeats != null && `Billing Admins ${license.maxBillingAdminSeats}`,
+              ].filter(Boolean).join(' · ')}
+            </p>
           )}
         </div>
-      )}
+        {license?.status === 'active' && <EnterpriseBillingManagementSection orgId={orgId} />}
+      </div>
       {license?.status === 'proposed' && <EnterpriseActivationSection orgId={orgId} />}
     </div>
   );
@@ -1498,7 +1409,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
           </div>
         ) : (
           <div className="space-y-4">
-            <LicenseCard orgId={organizationId} license={license} onUpdated={() => { void refresh(); }} />
+            <LicenseCard orgId={organizationId} license={license} />
             {license?.status === 'active' && <AmendmentRequestSection orgId={organizationId} />}
             <button type="button" onClick={() => setBillingOpen(true)} className="flex items-center gap-1.5 text-sm font-semibold text-ent-bronze hover:underline">
               Open Billing &amp; Add-Ons <ChevronRight className="w-3.5 h-3.5" />

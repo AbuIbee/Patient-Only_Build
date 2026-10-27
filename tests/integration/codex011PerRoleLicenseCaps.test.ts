@@ -74,14 +74,22 @@ describe('MMA-CODEX-011 011-05 (F-09/ENT-013, P1) — per-role license seat caps
     expect(statusBilling).toBe(200);
   });
 
-  it('org_configure_license rejects lowering a per-role cap below the role\'s current headcount', async () => {
+  it('org_configure_license is unreachable by an authenticated Director at all (PACKAGE 1 migration 143) -- the per-role-cap-below-headcount business rule still exists in the function body but is no longer client-exercisable', async () => {
     // caregiverA is already invited above -- one caregiver headcount exists.
-    const [status, body] = (await rpc('org_configure_license', {
+    // Before PACKAGE 1 migration 143 revoked the authenticated EXECUTE
+    // grant entirely, this call would reach the function body's own
+    // "cannot be set below the current caregiver headcount" check
+    // (>=400, business-logic rejection). Now it is rejected purely on
+    // authorization grounds (403, insufficient_privilege) before the
+    // function body ever runs -- that business rule remains real and
+    // correct (defense in depth for any future service_role-driven
+    // caller) but has no authenticated-client-reachable test surface
+    // left to exercise it through.
+    const [status] = (await rpc('org_configure_license', {
       p_org_id: ORG, p_licensed_seats: 10, p_covered_patient_capacity: 20, p_annual_license_fee: 9999,
       p_max_caregiver_seats: 0,
     }, tok.director)) as [number, { message?: string }];
-    expect(status).toBeGreaterThanOrEqual(400);
-    expect(body.message).toContain('cannot be set below the current caregiver headcount');
+    expect(status).toBe(403);
   });
 
   it('a concurrent invite racing for the SAME last per-role seat blocks on the real license-row lock, then correctly fails once the seat is gone', async () => {
