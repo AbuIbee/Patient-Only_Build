@@ -8,6 +8,11 @@
 // an admin's call now writes a real account_management_audit row
 // capturing actor, organization, and the exact before/after status
 // values.
+//
+// MMA-P1-CODEX-002 P1-07 (migration 150): a justification is now a
+// mandatory third argument, persisted as the audit row's `reason` --
+// updated here to the new three-argument signature; a missing
+// justification is additionally proven to be rejected.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
 
@@ -46,20 +51,25 @@ afterAll(async () => {
 
 describe('PACKAGE 1 (migration 147) — Platform Owner exceptional intervention audit', () => {
   it('a Director cannot exceptionally change license status', async () => {
-    const [status] = (await rpc('admin_set_organization_license_status', { p_org_id: ORG, p_status: 'active' }, tok.director)) as [number, unknown];
+    const [status] = (await rpc('admin_set_organization_license_status', { p_org_id: ORG, p_status: 'active', p_justification: 'Director attempt' }, tok.director)) as [number, unknown];
     expect(status).toBeGreaterThanOrEqual(400);
   });
 
-  it("the Platform Owner's exceptional status change is fully audited with before/after state", async () => {
-    const [status] = await rpc('admin_set_organization_license_status', { p_org_id: ORG, p_status: 'active' }, tok.admin);
+  it('a missing justification is rejected even for a real admin', async () => {
+    const [status] = (await rpc('admin_set_organization_license_status', { p_org_id: ORG, p_status: 'active', p_justification: '' }, tok.admin)) as [number, unknown];
+    expect(status).toBeGreaterThanOrEqual(400);
+  });
+
+  it("the Platform Owner's exceptional status change is fully audited with before/after state and justification", async () => {
+    const [status] = await rpc('admin_set_organization_license_status', { p_org_id: ORG, p_status: 'active', p_justification: 'Confirmed payment received outside normal quote flow' }, tok.admin);
     expect(status).toBe(200);
 
     const auditRow = sql(`
-      SELECT actor_user_id || '|' || organization_id || '|' || (previous_value->>'status') || '|' || (new_value->>'status')
+      SELECT actor_user_id || '|' || organization_id || '|' || (previous_value->>'status') || '|' || (new_value->>'status') || '|' || reason
       FROM account_management_audit
       WHERE organization_id='${ORG}' AND action_type='platform_owner_exceptional_license_status_change'
       ORDER BY created_at DESC LIMIT 1;
     `);
-    expect(auditRow).toBe(`${ids.admin}|${ORG}|proposed|active`);
+    expect(auditRow).toBe(`${ids.admin}|${ORG}|proposed|active|Confirmed payment received outside normal quote flow`);
   });
 });
