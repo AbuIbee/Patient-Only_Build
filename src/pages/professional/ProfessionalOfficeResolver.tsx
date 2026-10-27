@@ -264,7 +264,18 @@ export default function ProfessionalOfficeResolver() {
   const { dispatch } = useApp();
   const [loading, setLoading] = useState(true);
   const [orgs, setOrgs] = useState<MyOrganization[]>([]);
-  const [patientCovered, setPatientCovered] = useState(false);
+  // P1 CODEX-002 CORRECTIVE ORDER (P1-01) — this used to be a plain
+  // `is_my_enterprise_coverage_active()` boolean, which only ever asks
+  // "am I personally a covered patient." An Authorized Patient
+  // Representative's own auth.uid() is the REPRESENTATIVE's identity,
+  // never a patients(id) row — that check was always false for them,
+  // which is exactly why an approved, active representative saw
+  // "Organization access required" instead of the Patient Office.
+  // get_my_patient_office_subject() (migration 154) resolves the correct
+  // PATIENT id regardless of whether the caller is the patient
+  // themselves or their active representative; every downstream fetch
+  // must use THIS id, never the caller's own, for the Patient Office.
+  const [patientOfficeSubjectId, setPatientOfficeSubjectId] = useState<string | null>(null);
   const [requestedOffice, setRequestedOffice] = useState<ProfessionalOfficeKey | null>(() => parseRequestedOffice());
   const [manualSelection, setManualSelection] = useState<ProfessionalOfficeKey | null>(null);
   const [myApplication, setMyApplication] = useState<ProfessionalApplication | null>(null);
@@ -272,11 +283,11 @@ export default function ProfessionalOfficeResolver() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [o, coverageResult, app, invites] = await Promise.all([
-      getMyOrganizations(), supabase.rpc('is_my_enterprise_coverage_active'), getMyApplication(), getMyPendingOrgInvites(),
+    const [o, subjectResult, app, invites] = await Promise.all([
+      getMyOrganizations(), supabase.rpc('get_my_patient_office_subject'), getMyApplication(), getMyPendingOrgInvites(),
     ]);
     setOrgs(o);
-    setPatientCovered(coverageResult.data === true);
+    setPatientOfficeSubjectId(typeof subjectResult.data === 'string' ? subjectResult.data : null);
     setMyApplication(app);
     setPendingInvites(invites);
     setLoading(false);
@@ -317,7 +328,7 @@ export default function ProfessionalOfficeResolver() {
     ...(therapist ? [{ key: 'therapy' as const, orgName: therapist.organizationName }] : []),
     ...(medical ? [{ key: 'medical' as const, orgName: medical.organizationName }] : []),
     ...(caregiver ? [{ key: 'caregiver' as const, orgName: caregiver.organizationName }] : []),
-    ...(patientCovered ? [{ key: 'patient' as const, orgName: 'Your Care Organization' }] : []),
+    ...(patientOfficeSubjectId ? [{ key: 'patient' as const, orgName: 'Your Care Organization' }] : []),
   ];
 
   if (availableOffices.length === 0) {
@@ -390,7 +401,7 @@ export default function ProfessionalOfficeResolver() {
       {effective === 'caregiver' && <EnterpriseCaregiverDashboard basePath={officeBasePath} />}
       {effective === 'medical' && <ClinicalOfficeDashboard filterRole="medical_professional" basePath={officeBasePath} />}
       {effective === 'therapy' && <ClinicalOfficeDashboard filterRole="therapist" basePath={officeBasePath} />}
-      {effective === 'patient' && <EnterprisePatientDashboard basePath={officeBasePath} />}
+      {effective === 'patient' && patientOfficeSubjectId && <EnterprisePatientDashboard basePath={officeBasePath} subjectPatientId={patientOfficeSubjectId} />}
     </div>
   );
 }

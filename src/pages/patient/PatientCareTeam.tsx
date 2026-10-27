@@ -21,13 +21,24 @@ interface TeamMember {
   source: 'residential' | 'enterprise';
 }
 
-export default function PatientCareTeam() {
+// MMA-P1-CODEX-002 P1-01 — optional patientId lets EnterprisePatientDashboard
+// pass the correct SUBJECT for an Authorized Patient Representative.
+// KNOWN REMAINING GAP, documented rather than silently left: the
+// residential caregiver_patients/therapist_relationships lookups below
+// and getMyEnterpriseCareTeam() are not yet re-authorized for an explicit
+// non-self subject (caregiver_patients in particular has no patient-self
+// SELECT policy at all today, a PRE-EXISTING gap unrelated to APR). This
+// prop plumbing is correct and ready for when those table/RPC-level
+// authorizations are extended; until then this view may still under-
+// populate for a representative even though its router entry/medication/
+// documents access now works.
+export default function PatientCareTeam({ patientId: subjectPatientId }: { patientId?: string } = {}) {
   const { state }           = useApp();
   const [team, setTeam]     = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadTeam = useCallback(async () => {
-    const patientId = state.currentUser?.id;
+    const patientId = subjectPatientId || state.currentUser?.id;
     if (!patientId) { setLoading(false); return; }
 
     try {
@@ -76,7 +87,7 @@ export default function PatientCareTeam() {
     } finally {
       setLoading(false);
     }
-  }, [state.currentUser?.id]);
+  }, [subjectPatientId, state.currentUser?.id]);
 
   useEffect(() => { loadTeam(); }, [loadTeam]);
 
@@ -155,9 +166,9 @@ export default function PatientCareTeam() {
         <p className="text-xs text-medium-gray mt-1">Your care team is here to support you every day</p>
       </div>
 
-      {state.currentUser?.id && (
+      {(subjectPatientId || state.currentUser?.id) && (
         <CareConversations
-          patientId={state.currentUser.id}
+          patientId={subjectPatientId || state.currentUser!.id}
           patientName={state.patient?.preferredName || state.patient?.firstName || 'you'}
         />
       )}

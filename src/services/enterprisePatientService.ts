@@ -41,9 +41,19 @@ export interface MyAppointment {
   id: string; title: string; provider: string; location: string | null; date: string; time: string;
 }
 
-export async function getMyAppointments(): Promise<MyAppointment[]> {
-  const { data: userData } = await supabase.auth.getUser();
-  const patientId = userData?.user?.id;
+// MMA-P1-CODEX-002 P1-01 — an optional explicit patientId lets the
+// Patient Office resolve the correct SUBJECT (the represented patient,
+// for an Authorized Patient Representative) rather than always the
+// caller's own auth.uid(); falls back to the caller's own id when
+// omitted, preserving every existing call site's exact prior behavior.
+// migration 154 added a has_patient_access()-based SELECT policy on
+// `appointments` specifically so a representative's query for the
+// patient they represent is authorized.
+export async function getMyAppointments(patientId?: string): Promise<MyAppointment[]> {
+  if (!patientId) {
+    const { data: userData } = await supabase.auth.getUser();
+    patientId = userData?.user?.id;
+  }
   if (!patientId) return [];
   const { data, error } = await supabase
     .from('appointments')
@@ -65,9 +75,14 @@ export interface MyVisit {
   id: string; caregiverId: string; scheduledStart: string | null; scheduledEnd: string | null; status: string;
 }
 
-export async function getMyVisits(): Promise<MyVisit[]> {
-  const { data: userData } = await supabase.auth.getUser();
-  const patientId = userData?.user?.id;
+// MMA-P1-CODEX-002 P1-01 — same optional-subject pattern as
+// getMyAppointments() above; migration 154 added the matching
+// has_patient_access()-based SELECT policy on `caregiver_visits`.
+export async function getMyVisits(patientId?: string): Promise<MyVisit[]> {
+  if (!patientId) {
+    const { data: userData } = await supabase.auth.getUser();
+    patientId = userData?.user?.id;
+  }
   if (!patientId) return [];
   const { data, error } = await supabase
     .from('caregiver_visits')

@@ -391,9 +391,14 @@ function DoseRow({
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
-export default function PatientMedications() {
+// MMA-P1-CODEX-002 P1-01 — optional patientId lets EnterprisePatientDashboard
+// pass the correct SUBJECT for an Authorized Patient Representative
+// (whose own auth.uid() is never the patient). Defaults to the caller's
+// own id, so PatientLayout's existing self-service usage (no prop
+// passed) is byte-for-byte unchanged.
+export default function PatientMedications({ patientId: subjectPatientId }: { patientId?: string } = {}) {
   const { state, dispatch } = useApp();
-  const patientId = state.currentUser?.id || '';
+  const patientId = subjectPatientId || state.currentUser?.id || '';
 
   const [localMeds,   setLocalMeds]   = useState<LocalMed[]>([]);
   const [localLogs,   setLocalLogs]   = useState<LocalLog[]>([]);

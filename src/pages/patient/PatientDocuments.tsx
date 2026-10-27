@@ -85,9 +85,11 @@ function fileTypeIcon(fileType: string) {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function PatientDocuments() {
+// MMA-P1-CODEX-002 P1-01 — same optional-subject pattern as
+// PatientMedications above.
+export default function PatientDocuments({ patientId: subjectPatientId }: { patientId?: string } = {}) {
   const { state } = useApp();
-  const patientId = state.currentUser?.id || state.patient?.id || '';
+  const patientId = subjectPatientId || state.currentUser?.id || state.patient?.id || '';
 
   // Care Partner Papers state
   const [logs, setLogs] = useState<LogRow[]>([]);

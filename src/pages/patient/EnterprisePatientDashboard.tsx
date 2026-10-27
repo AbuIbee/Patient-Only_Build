@@ -78,7 +78,20 @@ const PATIENT_NAV_KEYS = NAV_ITEMS.map((n) => n.key) as PatientNavKey[];
 // unchanged — only an explicit basePath (passed by
 // ProfessionalOfficeResolver.tsx under /Professional/Patient) turns on
 // nested-route URL sync (P1 CORRECTIVE ORDER §7).
-export default function EnterprisePatientDashboard({ basePath = null }: { basePath?: string | null } = {}) {
+//
+// subjectPatientId (MMA-P1-CODEX-002 P1-01): the ACTUAL patient this
+// office is about. Defaults to undefined so EnterprisePatientRouter's
+// existing call site (no prop passed, the ordinary covered-patient path)
+// keeps resolving the subject from state.currentUser?.id exactly as
+// before — only ProfessionalOfficeResolver.tsx passes this explicitly,
+// with the id get_my_patient_office_subject() resolved (the caller's own
+// id if they are the patient, or the patient they actively represent if
+// they are an Authorized Patient Representative). Every fetch below uses
+// THIS id, never state.currentUser?.id directly, so the office works
+// correctly for both identities without impersonating the patient — the
+// signed-in actor remains the representative (auth.uid()), only the
+// DATA SUBJECT changes.
+export default function EnterprisePatientDashboard({ basePath = null, subjectPatientId }: { basePath?: string | null; subjectPatientId?: string } = {}) {
   const { state, dispatch } = useApp();
   // CONFIRMED DEFECT, found during live verification: `state.patient` is
   // only ever populated by PatientLayout's own mount-time fetch — a
@@ -101,16 +114,17 @@ export default function EnterprisePatientDashboard({ basePath = null }: { basePa
   const [loading, setLoading] = useState(true);
   const [nav, setNav] = useOfficeUrlSync<PatientNavKey>(basePath, PATIENT_NAV_KEYS, 'dashboard');
 
+  const patientId = subjectPatientId ?? state.currentUser?.id;
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const patientId = state.currentUser?.id;
       const [o, t, appts, v, convos, plans, taskRows, patientRow] = await Promise.all([
         getMyEnterpriseOrganization(),
         getMyEnterpriseCareTeam(),
-        getMyAppointments(),
-        getMyVisits(),
-        getMyConversations(),
+        patientId ? getMyAppointments(patientId) : Promise.resolve([]),
+        patientId ? getMyVisits(patientId) : Promise.resolve([]),
+        getMyConversations(patientId),
         patientId ? getPatientCarePlans(patientId) : Promise.resolve([]),
         patientId
           ? supabase.from('tasks').select('id, title, status').eq('patient_id', patientId).eq('is_active', true).then((r) => r.data ?? [])
@@ -124,7 +138,7 @@ export default function EnterprisePatientDashboard({ basePath = null }: { basePa
     } finally {
       setLoading(false);
     }
-  }, [state.currentUser?.id]);
+  }, [patientId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -137,7 +151,6 @@ export default function EnterprisePatientDashboard({ basePath = null }: { basePa
   const displayName = preferredDisplayName || state.patient?.preferredName || state.patient?.firstName || state.currentUser?.firstName || 'there';
   const initials = (displayName[0] ?? 'P').toUpperCase();
   const patientName = displayName;
-  const patientId = state.currentUser?.id ?? '';
 
   const nextAppointment = appointments.find((a) => new Date(a.date) >= new Date());
   const openTasks = tasks.filter((t) => t.status === 'pending');
@@ -162,17 +175,17 @@ export default function EnterprisePatientDashboard({ basePath = null }: { basePa
       ) : nav === 'appointments' ? (
         <AppointmentsView appointments={appointments} visits={visits} team={team} />
       ) : nav === 'health' ? (
-        <HealthInfoView patientId={patientId} />
+        <HealthInfoView patientId={patientId ?? ''} />
       ) : nav === 'medications' ? (
-        <PatientMedications />
+        <PatientMedications patientId={patientId} />
       ) : nav === 'messages' ? (
         patientId ? <CareConversations patientId={patientId} patientName={patientName} /> : null
       ) : nav === 'careteam' ? (
-        <PatientCareTeam />
+        <PatientCareTeam patientId={patientId} />
       ) : nav === 'documents' ? (
-        <PatientDocuments />
+        <PatientDocuments patientId={patientId} />
       ) : nav === 'preferences' ? (
-        <PreferencesView patientId={patientId} />
+        <PreferencesView patientId={patientId ?? ''} />
       ) : nav === 'settings' ? (
         <SettingsView onLogout={() => { void handleLogout(); }} />
       ) : null}
