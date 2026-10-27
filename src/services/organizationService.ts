@@ -369,17 +369,43 @@ export async function unassignStaffFromPatient(orgId: string, userId: string, pa
   return { error: error ? errMsg(error, 'Could not unassign this staff member.') : null };
 }
 
-export async function getOrgCoveredPatients(orgId: string): Promise<{ patientId: string; firstName: string; lastName: string; preferredName: string | null }[]> {
+export interface OrgCoveredPatient {
+  patientId: string;
+  firstName: string;
+  lastName: string;
+  preferredName: string | null;
+  status: 'active' | 'ended' | 'closed' | 'archived';
+  closureReason: string | null;
+  closureNotes: string | null;
+  closedAt: string | null;
+  scheduledArchivalAt: string | null;
+  archivedAt: string | null;
+}
+
+// MMA-P1-FINAL-CLOSURE Priority 3 — no longer filters to status='active'
+// only: the Director closure UI needs to show closed/archived patients
+// too (closure status, scheduled archival date, archived status), not
+// just currently-active coverage. Existing callers that only ever
+// rendered the active set now filter client-side where needed.
+export async function getOrgCoveredPatients(orgId: string): Promise<OrgCoveredPatient[]> {
   const { data, error } = await supabase
     .from('covered_patient_memberships')
-    .select('patient_id, patients:patient_id(first_name, last_name, preferred_name)')
-    .eq('organization_id', orgId)
-    .eq('status', 'active');
+    .select('patient_id, status, closure_reason, closure_notes, closed_at, scheduled_archival_at, archived_at, patients:patient_id(first_name, last_name, preferred_name)')
+    .eq('organization_id', orgId);
   if (error || !data) return [];
   return data.map((r) => {
     const p = r.patients as unknown as { first_name: string; last_name: string; preferred_name: string | null } | null;
-    return { patientId: r.patient_id, firstName: p?.first_name ?? '', lastName: p?.last_name ?? '', preferredName: p?.preferred_name ?? null };
+    return {
+      patientId: r.patient_id, firstName: p?.first_name ?? '', lastName: p?.last_name ?? '', preferredName: p?.preferred_name ?? null,
+      status: r.status as OrgCoveredPatient['status'], closureReason: r.closure_reason, closureNotes: r.closure_notes,
+      closedAt: r.closed_at, scheduledArchivalAt: r.scheduled_archival_at, archivedAt: r.archived_at,
+    };
   });
+}
+
+export async function closePatientCoverage(orgId: string, patientId: string, reason: string, notes: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('close_patient_coverage', { p_org_id: orgId, p_patient_id: patientId, p_reason: reason, p_notes: notes });
+  return { error: error ? errMsg(error, 'Could not close this patient\'s coverage.') : null };
 }
 
 // ROUND 5 — H16/O04/N11 (Care Team Directory) + W09 (Supervisor
@@ -463,4 +489,45 @@ export async function findSimilarOrganizations(name: string): Promise<{ id: stri
     .limit(10);
   if (error || !data) return [];
   return data;
+}
+
+// MMA-P1-FINAL-CLOSURE Priority 2 — Organization Owner self-assignment
+// UI. Wraps migration 144's org_owner_self_assign_capability()/
+// org_owner_revoke_own_capability() RPCs and migration 157's
+// am_i_org_owner(). Every mutation is still re-verified server-side by
+// those RPCs; this file never decides authorization on its own.
+export type OwnerCapability = 'caregiver' | 'therapist' | 'medical_professional' | 'billing_admin';
+export const OWNER_CAPABILITIES: OwnerCapability[] = ['caregiver', 'therapist', 'medical_professional', 'billing_admin'];
+
+export interface OwnerCapabilityGrant {
+  id: string;
+  capability: OwnerCapability;
+  status: 'active' | 'revoked';
+  grantedAt: string;
+  revokedAt: string | null;
+}
+
+export async function amIOrgOwner(orgId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('am_i_org_owner', { p_org_id: orgId });
+  return !error && data === true;
+}
+
+export async function getMyOwnerCapabilityGrants(orgId: string): Promise<OwnerCapabilityGrant[]> {
+  const { data, error } = await supabase
+    .from('organization_owner_capability_grants')
+    .select('id, capability, status, created_at, revoked_at')
+    .eq('organization_id', orgId)
+    .order('created_at', { ascending: true });
+  if (error || !data) return [];
+  return data.map((r) => ({ id: r.id, capability: r.capability as OwnerCapability, status: r.status as 'active' | 'revoked', grantedAt: r.created_at, revokedAt: r.revoked_at }));
+}
+
+export async function ownerSelfAssignCapability(orgId: string, capability: OwnerCapability): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('org_owner_self_assign_capability', { p_org_id: orgId, p_capability: capability });
+  return { error: error ? errMsg(error, 'Could not self-assign that capability.') : null };
+}
+
+export async function ownerRevokeOwnCapability(orgId: string, capability: OwnerCapability): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('org_owner_revoke_own_capability', { p_org_id: orgId, p_capability: capability });
+  return { error: error ? errMsg(error, 'Could not revoke that capability.') : null };
 }

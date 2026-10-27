@@ -86,6 +86,13 @@ describe('PACKAGE 1 (migration 144) — Organization Owner self-assignment', () 
     expect(authorized).toBe(false);
   });
 
+  it('MMA-P1-FINAL-CLOSURE Priority 2 (migration 157): am_i_org_owner() correctly identifies the real Owner, scoped per organization, and denies a non-owner', async () => {
+    const [, ownerOwnsA] = await rpc('am_i_org_owner', { p_org_id: ORG_A }, tok.ownerA);
+    expect(ownerOwnsA).toBe(true);
+    const [, directorOwnsA] = await rpc('am_i_org_owner', { p_org_id: ORG_A }, tok.directorA);
+    expect(directorOwnsA).toBe(false);
+  });
+
   it('a non-owner Director cannot self-assign capability for the organization', async () => {
     const [status] = (await rpc('org_owner_self_assign_capability', { p_org_id: ORG_A, p_capability: 'medical_professional' }, tok.directorA)) as [number, unknown];
     expect(status).toBeGreaterThanOrEqual(400);

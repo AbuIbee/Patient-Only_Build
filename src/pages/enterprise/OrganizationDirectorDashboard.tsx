@@ -13,12 +13,15 @@ import {
   ClipboardCheck, ShieldAlert, BarChart3, Settings as SettingsIcon, ChevronRight, CheckCircle2,
 } from 'lucide-react';
 import {
-  getMyOrganizations, getOrgMembers, getOrgLicense, getOrgCoveredPatients,
+  getMyOrganizations, getOrgMembers, getOrgLicense, getOrgCoveredPatients, closePatientCoverage,
   inviteOrgMember, removeOrgMember, createOrganization,
   getOrgStaffPatientAssignments, assignStaffToPatient, unassignStaffFromPatient,
   getOrgCommunicationsOverview,
+  amIOrgOwner, getMyOwnerCapabilityGrants, ownerSelfAssignCapability, ownerRevokeOwnCapability,
+  OWNER_CAPABILITIES,
   type OrgLicense, type OrgRole, type OrgMembershipRow, type OrgPackageType,
-  type StaffPatientAssignment, type StaffRole, type OrgCommunicationsOverview,
+  type StaffPatientAssignment, type StaffRole, type OrgCommunicationsOverview, type OrgCoveredPatient,
+  type OwnerCapability, type OwnerCapabilityGrant,
 } from '@/services/organizationService';
 import {
   directorApproveApplication, requestApplicationCorrections, rejectApplication, recordCredentialVerification,
@@ -568,34 +571,136 @@ function StaffCard({ orgId, members, onChanged }: {
   );
 }
 
-function CoveredPatientsCard({ orgId }: { orgId: string }) {
-  const [patients, setPatients] = useState<{ patientId: string; firstName: string; lastName: string; preferredName: string | null }[]>([]);
-  const [loading, setLoading] = useState(true);
+// MMA-P1-FINAL-CLOSURE Priority 3 — the Director closure workflow lives
+// here: mandatory reason + notes, routed exclusively through
+// close_patient_coverage() (the one authoritative RPC — see migration
+// 148's retirement of the legacy end_patient_coverage() bypass; this UI
+// never calls that legacy path). Closed/archived patients remain
+// visible below, read-only, with their closure/archival state — never
+// silently removed from view.
+function CloseCoverageDialog({ orgId, patientId, patientName, onClose, onClosed }: {
+  orgId: string; patientId: string; patientName: string; onClose: () => void; onClosed: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [notes, setNotes] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    getOrgCoveredPatients(orgId).then((rows) => { if (!cancelled) { setPatients(rows); setLoading(false); } });
-    return () => { cancelled = true; };
+  const submit = async () => {
+    if (!reason.trim() || !notes.trim()) { toast.error('A closure reason and explanatory notes are both required.'); return; }
+    setSaving(true);
+    try {
+      const { error } = await closePatientCoverage(orgId, patientId, reason.trim(), notes.trim());
+      if (error) { toast.error(error); return; }
+      toast.success(`Coverage for ${patientName} has been closed.`);
+      onClosed();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div className="bg-ent-panel rounded-2xl shadow-lg border border-ent-line p-5 sm:p-6 space-y-3 max-w-md w-full">
+        <h2 className="font-bold text-ent-ink">Close coverage for {patientName}</h2>
+        <p className="text-xs text-ent-muted">
+          This ends your organization&apos;s active coverage of this patient. The patient&apos;s record is preserved, never deleted,
+          and is automatically archived after the approved retention interval. Closing one organization&apos;s coverage never
+          affects this patient&apos;s relationship with any other organization.
+        </p>
+        <label className="block text-xs font-semibold text-ent-muted">Closure reason (required)</label>
+        <input value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls} placeholder="e.g. Care no longer needed" />
+        <label className="block text-xs font-semibold text-ent-muted">Explanatory notes (required)</label>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className={`${inputCls} min-h-[80px]`} placeholder="Describe the circumstances of this closure" />
+        {!confirming ? (
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="px-3 py-1.5 rounded-lg border border-ent-line text-ent-ink text-xs font-semibold hover:bg-ent-ivory">Cancel</button>
+            <button
+              type="button"
+              onClick={() => { if (!reason.trim() || !notes.trim()) { toast.error('A closure reason and explanatory notes are both required.'); return; } setConfirming(true); }}
+              className="px-3 py-1.5 rounded-lg bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold"
+            >
+              Continue
+            </button>
+          </div>
+        ) : (
+          <div className="p-3 bg-red-50 rounded-xl border border-red-200 space-y-2">
+            <p className="text-sm text-ent-ink">Confirm closing coverage for {patientName}? This cannot be undone from this screen.</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setConfirming(false)} className="px-3 py-1.5 rounded-lg border border-ent-line text-ent-ink text-xs font-semibold hover:bg-ent-ivory">Back</button>
+              <button type="button" onClick={() => { void submit(); }} disabled={saving} className="px-3 py-1.5 rounded-lg border border-red-300 text-red-600 text-xs font-semibold hover:bg-red-50 disabled:opacity-60">
+                {saving ? 'Closing…' : 'Confirm closure'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CoveredPatientsCard({ orgId }: { orgId: string }) {
+  const [patients, setPatients] = useState<OrgCoveredPatient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [closingTarget, setClosingTarget] = useState<OrgCoveredPatient | null>(null);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    getOrgCoveredPatients(orgId).then((rows) => { setPatients(rows); setLoading(false); });
   }, [orgId]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const active = patients.filter((p) => p.status === 'active');
+  const closedOrArchived = patients.filter((p) => p.status === 'closed' || p.status === 'archived');
 
   return (
     <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
       <div className="flex items-center gap-2">
         <ClipboardList className="w-5 h-5 text-ent-bronze" />
-        <h2 className="font-bold text-ent-ink">Covered Patients ({patients.length})</h2>
+        <h2 className="font-bold text-ent-ink">Covered Patients ({active.length})</h2>
       </div>
       {loading ? (
         <Loader2 className="w-5 h-5 animate-spin text-ent-bronze" />
-      ) : patients.length === 0 ? (
+      ) : active.length === 0 ? (
         <p className="text-sm text-ent-muted">No patients are currently covered by this organization. Caregiver staff register and automatically cover patients from their own dashboard.</p>
       ) : (
         <ul className="space-y-2">
-          {patients.map((p) => (
-            <li key={p.patientId} className="p-3 bg-ent-bg rounded-xl border border-ent-line text-sm font-medium text-ent-ink">
-              {p.preferredName || `${p.firstName} ${p.lastName}`}
+          {active.map((p) => (
+            <li key={p.patientId} className="flex items-center justify-between gap-2 p-3 bg-ent-bg rounded-xl border border-ent-line text-sm font-medium text-ent-ink">
+              <span>{p.preferredName || `${p.firstName} ${p.lastName}`}</span>
+              <button type="button" onClick={() => setClosingTarget(p)} className="px-2.5 py-1 rounded-lg border border-ent-line text-xs font-semibold text-ent-rust hover:bg-red-50 flex-shrink-0">
+                Close coverage
+              </button>
             </li>
           ))}
         </ul>
+      )}
+      {closedOrArchived.length > 0 && (
+        <div className="pt-2 border-t border-ent-line space-y-2">
+          <p className="text-xs font-semibold text-ent-muted uppercase tracking-wide">Closed / Archived</p>
+          <ul className="space-y-1.5">
+            {closedOrArchived.map((p) => (
+              <li key={p.patientId} className="p-2.5 bg-ent-bg rounded-xl border border-ent-line text-xs text-ent-muted">
+                <span className="font-semibold text-ent-ink">{p.preferredName || `${p.firstName} ${p.lastName}`}</span>
+                {' — '}
+                <span className="capitalize">{p.status}</span>
+                {p.closedAt ? ` · closed ${new Date(p.closedAt).toLocaleDateString()}` : ''}
+                {p.status === 'closed' && p.scheduledArchivalAt ? ` · scheduled archival ${new Date(p.scheduledArchivalAt).toLocaleDateString()}` : ''}
+                {p.status === 'archived' && p.archivedAt ? ` · archived ${new Date(p.archivedAt).toLocaleDateString()}` : ''}
+                {p.closureReason ? ` · reason: ${p.closureReason}` : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {closingTarget && (
+        <CloseCoverageDialog
+          orgId={orgId} patientId={closingTarget.patientId}
+          patientName={closingTarget.preferredName || `${closingTarget.firstName} ${closingTarget.lastName}`}
+          onClose={() => setClosingTarget(null)}
+          onClosed={() => { setClosingTarget(null); refresh(); }}
+        />
       )}
     </div>
   );
@@ -660,7 +765,10 @@ function DirectorCommunicationsView({ orgId }: { orgId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    getOrgCoveredPatients(orgId).then((rows) => { if (!cancelled) { setPatients(rows); setLoading(false); } });
+    // MMA-P1-FINAL-CLOSURE Priority 3: getOrgCoveredPatients() now
+    // returns every lifecycle status; a closed/archived patient is never
+    // a valid target to open or start a NEW conversation about here.
+    getOrgCoveredPatients(orgId).then((rows) => { if (!cancelled) { setPatients(rows.filter((r) => r.status === 'active')); setLoading(false); } });
     return () => { cancelled = true; };
   }, [orgId]);
 
@@ -722,7 +830,8 @@ function AssignmentsCard({ orgId, members }: {
     try {
       const [a, p] = await Promise.all([getOrgStaffPatientAssignments(orgId), getOrgCoveredPatients(orgId)]);
       setAssignments(a);
-      setCoveredPatients(p);
+      // A closed/archived patient is never a valid NEW assignment target.
+      setCoveredPatients(p.filter((r) => r.status === 'active'));
     } finally {
       setLoading(false);
     }
@@ -812,7 +921,7 @@ function AssignmentsCard({ orgId, members }: {
 // `is_active_org_director()` RLS — no new authorization surface.
 type DirectorNavKey =
   | 'dashboard' | 'overview' | 'applications' | 'staff' | 'patients' | 'assignments' | 'scheduling'
-  | 'operations' | 'incidents' | 'communications' | 'reports' | 'licensing' | 'settings';
+  | 'operations' | 'incidents' | 'communications' | 'reports' | 'licensing' | 'ownership' | 'settings';
 
 const DIRECTOR_NAV_ITEMS: OfficeNavItem<DirectorNavKey>[] = [
   { key: 'dashboard', label: 'Director Dashboard', icon: LayoutDashboard },
@@ -827,12 +936,19 @@ const DIRECTOR_NAV_ITEMS: OfficeNavItem<DirectorNavKey>[] = [
   { key: 'communications', label: 'Care Communications', icon: MessageSquare },
   { key: 'reports', label: 'Reports and Insights', icon: BarChart3 },
   { key: 'licensing', label: 'Licensing and Entitlements', icon: CreditCard },
+  // MMA-P1-FINAL-CLOSURE Priority 2 — always present in the nav (so the
+  // tab's own content can explain, to a non-owner, why it is empty),
+  // but its content is gated inside OwnershipView on am_i_org_owner() —
+  // never by hiding the tab, which would just be a different way of
+  // "a hidden button is not authorization" (this directive's own
+  // standard applies equally to showing a denial message vs an action).
+  { key: 'ownership', label: 'Organization Ownership', icon: ShieldAlert },
   { key: 'settings', label: 'Organization Settings', icon: SettingsIcon },
 ];
 const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ORGANIZATION', items: ['dashboard', 'overview', 'applications', 'staff', 'patients'] },
   { label: 'CARE OPERATIONS', items: ['assignments', 'scheduling', 'operations', 'incidents', 'communications'] },
-  { label: 'ADMINISTRATION', items: ['reports', 'licensing', 'settings'] },
+  { label: 'ADMINISTRATION', items: ['reports', 'licensing', 'ownership', 'settings'] },
 ];
 
 function DashboardHome({ orgName, members, license, visits, incidents, handoffs, onNavigate }: {
@@ -1276,6 +1392,101 @@ function ReportsInsightsView({ members, visits, incidents, license }: {
   );
 }
 
+// MMA-P1-FINAL-CLOSURE Priority 2 — Organization Owner controls.
+// Backend (migration 144) has existed since the prior session; this is
+// its first application UI. Gated on am_i_org_owner(), re-verified
+// server-side by every mutation this view performs — a non-owner seeing
+// this tab (everyone does; see the nav-item comment above) gets an
+// explanatory denial, never a disabled-looking action.
+const CAPABILITY_LABEL: Record<OwnerCapability, string> = {
+  caregiver: 'Caregiver', therapist: 'Therapist', medical_professional: 'Medical Professional', billing_admin: 'Billing Admin',
+};
+
+function OwnershipView({ orgId }: { orgId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [isOwner, setIsOwner] = useState(false);
+  const [grants, setGrants] = useState<OwnerCapabilityGrant[]>([]);
+  const [busy, setBusy] = useState<OwnerCapability | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const owner = await amIOrgOwner(orgId);
+      setIsOwner(owner);
+      setGrants(owner ? await getMyOwnerCapabilityGrants(orgId) : []);
+    } finally {
+      setLoading(false);
+    }
+  }, [orgId]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const activeFor = (capability: OwnerCapability) => grants.find((g) => g.capability === capability && g.status === 'active');
+
+  const toggle = async (capability: OwnerCapability, currentlyActive: boolean) => {
+    setBusy(capability);
+    try {
+      const { error } = currentlyActive ? await ownerRevokeOwnCapability(orgId, capability) : await ownerSelfAssignCapability(orgId, capability);
+      if (error) { toast.error(error); return; }
+      toast.success(currentlyActive ? `${CAPABILITY_LABEL[capability]} capability revoked.` : `${CAPABILITY_LABEL[capability]} capability self-assigned.`);
+      void refresh();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>;
+
+  if (!isOwner) {
+    return (
+      <OfficeCard>
+        <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Organization Ownership</h2></div>
+        <p className="text-sm text-ent-text">
+          This section is available only to this organization&apos;s Owner. Director authority and Owner authority are
+          distinct — holding Director access does not, by itself, grant Owner capability self-assignment.
+        </p>
+      </OfficeCard>
+    );
+  }
+
+  return (
+    <OfficeCard>
+      <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Organization Ownership</h2></div>
+      <p className="text-sm text-ent-text">
+        As this organization&apos;s Owner, you may explicitly self-assign operational capability within this organization.
+        Ownership alone grants no clinical access — each capability below must be deliberately assigned, is scoped to
+        this organization only, remains subject to active patient coverage and license status, and is fully auditable.
+      </p>
+      <ul className="space-y-2">
+        {OWNER_CAPABILITIES.map((capability) => {
+          const grant = activeFor(capability);
+          const active = !!grant;
+          return (
+            <li key={capability} className="flex items-center justify-between gap-3 p-3 bg-ent-bg rounded-xl border border-ent-line">
+              <div>
+                <p className="font-semibold text-ent-ink">{CAPABILITY_LABEL[capability]}</p>
+                <p className="text-xs text-ent-muted">
+                  {active ? `Self-assigned ${new Date(grant.grantedAt).toLocaleDateString()}` : 'Not currently self-assigned'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { void toggle(capability, active); }}
+                disabled={busy === capability}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 ${
+                  active ? 'border border-red-300 text-red-600 hover:bg-red-50' : 'bg-ent-bronze hover:opacity-90 text-white'
+                }`}
+              >
+                {busy === capability ? 'Working…' : active ? 'Revoke' : 'Self-assign'}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </OfficeCard>
+  );
+}
+
 function OrganizationSettingsView({ orgName, packageType, onOpenBilling }: { orgName: string; packageType: OrgPackageType; onOpenBilling: () => void }) {
   return (
     <OfficeCard>
@@ -1341,7 +1552,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       setMembers(mem);
       setOrgName(org?.organizationName ?? '');
       setPackageType(org?.packageType ?? 'integrated_care');
-      setCoveredCount(covered.length);
+      setCoveredCount(covered.filter((r) => r.status === 'active').length);
       setVisits(v.data ?? []);
       setIncidents(inc.data ?? []);
       setHandoffs(hoffs.data ?? []);
@@ -1416,6 +1627,8 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
             </button>
           </div>
         )
+      ) : nav === 'ownership' ? (
+        <OwnershipView orgId={organizationId} />
       ) : nav === 'settings' ? (
         <OrganizationSettingsView orgName={orgName} packageType={packageType} onOpenBilling={() => { setNav('licensing'); setBillingOpen(true); }} />
       ) : null}
