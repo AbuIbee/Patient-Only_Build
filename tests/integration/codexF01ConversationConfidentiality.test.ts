@@ -53,6 +53,7 @@ beforeAll(async () => {
   sql(`
     BEGIN;
     INSERT INTO organizations(id,name,package_type,created_by) VALUES('${ORG}','F01 Confidentiality Org ${stamp}','integrated_care','${ids.director1}');
+    INSERT INTO organization_licenses(organization_id,licensed_seats,covered_patient_capacity,annual_license_fee,status) VALUES('${ORG}',10,10,999,'active');
     INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES
       ('${ORG}','${ids.director1}','director','active'),
       ('${ORG}','${ids.director2}','director','active'),
