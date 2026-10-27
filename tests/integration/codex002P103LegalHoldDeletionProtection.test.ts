@@ -5,6 +5,24 @@
 // reproduction no longer succeeds, that deletion works normally when no
 // hold exists, that an unrelated patient's notes are unaffected, and that
 // non-destructive UPDATE remains permitted under an active hold.
+//
+// MMA-P1-FINAL-CLOSURE Priority 5 — CRITICAL BUG FOUND AND FIXED while
+// re-verifying this exact finding: this test's "caregiver" identity was
+// previously ALSO granted role='admin' (needed to call
+// place_patient_legal_hold(), which requires is_platform_owner()) --
+// which silently masked a real defect. patient_legal_holds' own RLS
+// (Platform-Owner-only SELECT) meant migration 149's RESTRICTIVE
+// policies, which queried it via a raw subquery, were evaluated under
+// the SAME role as the caller -- for a genuine non-admin caregiver, that
+// subquery saw zero rows regardless of whether a hold was actually
+// active, making the policy provide NO real protection. Confirmed
+// empirically: `SET ROLE authenticated` as an ordinary (non-admin) user
+// against a row with a real active hold returned EXISTS=false. Fixed in
+// migrations 158/159 (patient_has_active_legal_hold(), a SECURITY
+// DEFINER wrapper unaffected by the caller's own RLS). This test now
+// uses a GENUINELY separate admin identity to place/release the hold,
+// so the caregiver under test is the real, ordinary-Caregiver threat
+// model the original finding named -- not an admin masquerading as one.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { authDeleteUser, authSignUp, login, http, rpc, sql } from './_runtime';
 
@@ -13,6 +31,7 @@ const stamp = Date.now();
 
 const emails = {
   caregiver: `codex002p103-caregiver-${stamp}@local.test`,
+  admin: `codex002p103-admin-${stamp}@local.test`,
   patientHeld: `codex002p103-patientHeld-${stamp}@local.test`,
   patientFree: `codex002p103-patientFree-${stamp}@local.test`,
 };
@@ -26,7 +45,7 @@ beforeAll(async () => {
   for (const [name, email] of Object.entries(emails)) ids[name] = await authSignUp(email, PW);
   sql(`
     UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id IN ('${Object.values(ids).join("','")}');
-    UPDATE profiles SET role='admin' WHERE id='${ids.caregiver}';
+    UPDATE profiles SET role='admin' WHERE id='${ids.admin}';
     BEGIN;
     INSERT INTO patients(id,first_name,last_name,preferred_name,address,location) VALUES
       ('${ids.patientHeld}','Codex002','Held','Codex002 Held','1 Ave','Facility'),
@@ -41,7 +60,7 @@ beforeAll(async () => {
   noteHeldId = sql(`INSERT INTO patient_notes(patient_id, caregiver_id, note_type, note) VALUES ('${ids.patientHeld}','${ids.caregiver}','general','Pre-hold synthetic note') RETURNING id;`);
   noteFreeId = sql(`INSERT INTO patient_notes(patient_id, caregiver_id, note_type, note) VALUES ('${ids.patientFree}','${ids.caregiver}','general','No-hold synthetic note') RETURNING id;`);
 
-  const [, hold] = (await rpc('place_patient_legal_hold', { p_patient_id: ids.patientHeld, p_reason: 'Pending litigation hold' }, tok.caregiver)) as [number, { id: string }];
+  const [, hold] = (await rpc('place_patient_legal_hold', { p_patient_id: ids.patientHeld, p_reason: 'Pending litigation hold' }, tok.admin)) as [number, { id: string }];
   holdId = hold.id;
 });
 
@@ -77,7 +96,7 @@ describe('MMA-P1-CODEX-002 P1-03 (migration 149) — legal hold blocks note dele
   });
 
   it('once the hold is released, the previously-protected note can be deleted', async () => {
-    const [releaseStatus] = await rpc('release_patient_legal_hold', { p_hold_id: holdId }, tok.caregiver);
+    const [releaseStatus] = await rpc('release_patient_legal_hold', { p_hold_id: holdId }, tok.admin);
     expect(releaseStatus).toBe(200);
 
     await http('DELETE', `/rest/v1/patient_notes?id=eq.${noteHeldId}`, undefined, tok.caregiver);
