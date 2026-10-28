@@ -142,11 +142,23 @@ const markEnterpriseEventProcessed = async (eventId: string): Promise<void> => {
   }
 };
 
-const findEnterpriseBillingAccountByQuote = async (quoteId: string) => {
+/*
+ * MMA-PROF-ONBOARD-004 -- migration 164 split one billing account per
+ * quote into TWO (billing_component 'annual_license' / 'monthly_patients'),
+ * each with its own independent Stripe subscription. A quote_id-only
+ * lookup with .maybeSingle() would now throw ("multiple rows returned")
+ * the moment a quote has both components. billingComponent defaults to
+ * 'annual_license' for backward compatibility: a Stripe object created
+ * BEFORE this migration never carries a billing_component metadata key
+ * at all, and every such pre-existing object was always the annual
+ * component (the only kind that existed yet).
+ */
+const findEnterpriseBillingAccountByQuote = async (quoteId: string, billingComponent: string = 'annual_license') => {
   const { data, error } = await supabase
     .from('enterprise_billing_accounts')
     .select('id')
     .eq('quote_id', quoteId)
+    .eq('billing_component', billingComponent)
     .maybeSingle();
 
   if (error) {
@@ -328,6 +340,7 @@ serve(async (req) => {
 
         if (session.metadata?.billing_type === 'enterprise') {
           const quoteId = session.metadata?.quote_id ?? null;
+          const billingComponent = session.metadata?.billing_component ?? 'annual_license';
           const metadataBillingAccountId = session.metadata?.billing_account_id ?? null;
           const stripeCustomerId = typeof session.customer === 'string' ? session.customer : null;
           const stripeSubscriptionId = typeof session.subscription === 'string' ? session.subscription : null;
@@ -341,7 +354,7 @@ serve(async (req) => {
 
           let billingAccountId = metadataBillingAccountId;
           if (!billingAccountId && quoteId) {
-            billingAccountId = (await findEnterpriseBillingAccountByQuote(quoteId))?.id ?? null;
+            billingAccountId = (await findEnterpriseBillingAccountByQuote(quoteId, billingComponent))?.id ?? null;
           }
           if (!billingAccountId) {
             throw new Error(`Enterprise checkout session ${session.id} has no matching billing account (quote_id ${quoteId}).`);
@@ -416,13 +429,14 @@ serve(async (req) => {
         if (stripeSubscription.metadata?.billing_type === 'enterprise') {
           const billingAccountId = stripeSubscription.metadata?.billing_account_id ?? null;
           const quoteId = stripeSubscription.metadata?.quote_id ?? null;
+          const billingComponent = stripeSubscription.metadata?.billing_component ?? 'annual_license';
 
           const eventOutcome = await recordEnterpriseEventOnce(event.id, event.type, billingAccountId, stripeSubscription);
           if (eventOutcome === 'skip') break;
 
           let resolvedAccountId = billingAccountId;
           if (!resolvedAccountId && quoteId) {
-            resolvedAccountId = (await findEnterpriseBillingAccountByQuote(quoteId))?.id ?? null;
+            resolvedAccountId = (await findEnterpriseBillingAccountByQuote(quoteId, billingComponent))?.id ?? null;
           }
           if (!resolvedAccountId) {
             console.warn(`Enterprise subscription ${stripeSubscription.id} has no resolvable billing account.`);
@@ -513,13 +527,14 @@ serve(async (req) => {
         if (stripeSubscription.metadata?.billing_type === 'enterprise') {
           const billingAccountId = stripeSubscription.metadata?.billing_account_id ?? null;
           const quoteId = stripeSubscription.metadata?.quote_id ?? null;
+          const billingComponent = stripeSubscription.metadata?.billing_component ?? 'annual_license';
 
           const eventOutcome = await recordEnterpriseEventOnce(event.id, event.type, billingAccountId, stripeSubscription);
           if (eventOutcome === 'skip') break;
 
           let resolvedAccountId = billingAccountId;
           if (!resolvedAccountId && quoteId) {
-            resolvedAccountId = (await findEnterpriseBillingAccountByQuote(quoteId))?.id ?? null;
+            resolvedAccountId = (await findEnterpriseBillingAccountByQuote(quoteId, billingComponent))?.id ?? null;
           }
           if (!resolvedAccountId) {
             console.warn(`Deleted enterprise subscription ${stripeSubscription.id} has no resolvable billing account.`);
