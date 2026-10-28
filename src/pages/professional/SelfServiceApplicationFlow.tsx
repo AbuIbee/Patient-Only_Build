@@ -41,12 +41,25 @@ function CheckField({ label, checked, onChange }: { label: string; checked: bool
 
 type FlowStep = 'tier' | 'starter' | 'pricing' | 'submitting' | 'result';
 
-export default function SelfServiceApplicationFlow({ legalName, contactEmail }: { legalName: string; contactEmail: string }) {
+// legalName/contactEmail are PRE-FILL defaults only (from whatever the
+// calling page already knows about the signed-in user -- which varies
+// by entry point: ProfessionalRegisterPage's own AccountStep collects
+// a first/last name explicitly, but a user reaching this flow through
+// ProfessionalOfficeResolver or the residential "/business Start an
+// Organization" fallback may have no firstName/lastName on their
+// profile at all). This component always collects and submits its OWN
+// authoritative copy (fullLegalName/applicantEmail below), editable on
+// the starter step, so a self-service submission never silently fails
+// with "Legal name is required" just because an upstream page had
+// nothing to pre-fill.
+export default function SelfServiceApplicationFlow({ legalName, contactEmail, onSubmitted }: { legalName: string; contactEmail: string; onSubmitted?: () => void }) {
   const [step, setStep] = useState<FlowStep>('tier');
   const [tiers, setTiers] = useState<LicenseTier[]>([]);
   const [selectedTier, setSelectedTier] = useState<LicenseTierCode | null>(null);
   const [initialPatients, setInitialPatients] = useState('');
 
+  const [fullLegalName, setFullLegalName] = useState(legalName);
+  const [applicantEmail, setApplicantEmail] = useState(contactEmail);
   const [legalBusinessName, setLegalBusinessName] = useState('');
   const [legalForm, setLegalForm] = useState('');
   const [businessClassification, setBusinessClassification] = useState('');
@@ -109,11 +122,11 @@ export default function SelfServiceApplicationFlow({ legalName, contactEmail }: 
       const { result: r, error } = await startSelfServiceApplication({
         selectedTierCode: selectedTier,
         initialExpectedActivePatients: Number(initialPatients),
-        legalName,
-        contactEmail,
+        legalName: fullLegalName,
+        contactEmail: applicantEmail,
         applicationDetails: {
-          step1: { legalBusinessName, legalForm, businessClassification, formationJurisdiction, registeredAddress, businessPhone, businessEmail: contactEmail },
-          step2: { fullLegalName: legalName, verifiedBusinessEmail: contactEmail, mobile, title, relationshipToEntity, authorizedSignatory, authorityAttestation },
+          step1: { legalBusinessName, legalForm, businessClassification, formationJurisdiction, registeredAddress, businessPhone, businessEmail: applicantEmail },
+          step2: { fullLegalName, verifiedBusinessEmail: applicantEmail, mobile, title, relationshipToEntity, authorizedSignatory, authorityAttestation },
           step5: { billingContact, billingAddress, billingEmail },
           step6: { accuracyAttestation, authorizedSignatoryConfirmed, privacyAck, signatureName },
         },
@@ -122,12 +135,18 @@ export default function SelfServiceApplicationFlow({ legalName, contactEmail }: 
       if (error || !r) { setSubmitError(error ?? 'Could not submit your application.'); setStep('pricing'); return; }
       setResult(r);
       setStep('result');
+      // Lets a caller that polls/refreshes its own application state
+      // (ProfessionalOfficeResolver, EnterpriseDashboardRouter) pick up
+      // the newly-created application and swap to the full
+      // ApplicationStatusPage, instead of leaving this component's own
+      // brief inline result screen as the permanent, settled view.
+      onSubmitted?.();
     } finally {
       setSubmitting(false);
     }
   };
 
-  const starterComplete = legalBusinessName.trim() && legalForm.trim() && businessClassification.trim() && formationJurisdiction.trim()
+  const starterComplete = fullLegalName.trim() && applicantEmail.trim() && legalBusinessName.trim() && legalForm.trim() && businessClassification.trim() && formationJurisdiction.trim()
     && registeredAddress.trim() && businessPhone.trim() && mobile.trim() && title.trim() && relationshipToEntity.trim()
     && authorizedSignatory && authorityAttestation && billingContact.trim() && billingAddress.trim() && billingEmail.trim()
     && initialPatients.trim() !== '' && !Number.isNaN(Number(initialPatients)) && Number(initialPatients) >= 0;
@@ -183,6 +202,10 @@ export default function SelfServiceApplicationFlow({ legalName, contactEmail }: 
         <Field label="Registered address" required><input value={registeredAddress} onChange={(e) => setRegisteredAddress(e.target.value)} className={inputCls} /></Field>
 
         <p className="text-xs font-bold text-ent-ink uppercase tracking-wide pt-2">You, as the authorized representative</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Your full legal name" required><input value={fullLegalName} onChange={(e) => setFullLegalName(e.target.value)} className={inputCls} /></Field>
+          <Field label="Your email" required><input type="email" value={applicantEmail} onChange={(e) => setApplicantEmail(e.target.value)} className={inputCls} /></Field>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Mobile number" required><input value={mobile} onChange={(e) => setMobile(e.target.value)} className={inputCls} /></Field>
           <Field label="Title" required><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Founder, Owner…" className={inputCls} /></Field>

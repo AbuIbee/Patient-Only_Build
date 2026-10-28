@@ -129,6 +129,58 @@ export default function ApplicationStatusPage({ application, onRefresh }: { appl
     );
   }
 
+  // MMA-PROF-ONBOARD-004 -- the self-service lifecycle states
+  // start_self_service_application()/run_automated_application_verification()
+  // can leave an application in. A returning applicant signing back in
+  // later (not just the one-time inline result screen
+  // SelfServiceApplicationFlow itself shows right after submission) must
+  // see the SAME honest information, not the generic fallback below.
+  if (application.status === 'manual_review') {
+    return (
+      <Shell>
+        <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-3">
+          <AlertCircle className="w-10 h-10 text-amber-500 mx-auto" />
+          <h1 className="text-lg font-bold text-ent-ink">Application received — under review</h1>
+          <p className="text-sm text-ent-text">
+            {application.exceptionReviewReason ?? 'A Platform Owner needs to review a detail on your application before it can proceed.'}
+          </p>
+          <p className="text-xs text-ent-muted">Reference: {application.applicationReference}</p>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (application.status === 'agreements_pending' || application.status === 'agreements_executed' || application.status === 'payment_authorization_pending') {
+    return (
+      <Shell>
+        <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-3">
+          <Clock className="w-10 h-10 text-ent-forest mx-auto" />
+          <h1 className="text-lg font-bold text-ent-ink">Application verified — agreements and billing next</h1>
+          <p className="text-sm text-ent-text">
+            Your application passed automated verification. Legal agreement execution and payment authorization are the next
+            steps before your license activates.
+          </p>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 text-left">
+            Electronic signature capture for your license and BAA agreement is not yet connected to a live provider in this
+            environment — a Platform Owner will contact you to complete agreement execution and initiate billing.
+          </div>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (application.status === 'payment_verified' || application.status === 'provisioning_pending') {
+    return (
+      <Shell>
+        <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-3">
+          <Clock className="w-10 h-10 text-ent-forest mx-auto" />
+          <h1 className="text-lg font-bold text-ent-ink">Payment confirmed — provisioning your organization</h1>
+          <p className="text-sm text-ent-text">Your license is being issued. You will receive an activation email shortly.</p>
+        </div>
+      </Shell>
+    );
+  }
+
   return (
     <Shell>
       <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-3">

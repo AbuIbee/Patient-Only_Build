@@ -9,7 +9,11 @@ import type { Json } from '@/types/supabase';
 export type RequestedOffice = 'director' | 'caregiver' | 'medical_professional' | 'therapist';
 export type ApplicationStatus =
   | 'draft' | 'submitted' | 'pending_review' | 'info_required' | 'resubmitted'
-  | 'approved' | 'rejected' | 'withdrawn' | 'suspended' | 'revoked';
+  | 'approved' | 'rejected' | 'withdrawn' | 'suspended' | 'revoked'
+  // MMA-PROF-ONBOARD-004 (migration 162) -- the additional self-service
+  // lifecycle values, additive to the SAME column, never a second status field.
+  | 'auto_verification_pending' | 'manual_review' | 'agreements_pending' | 'agreements_executed'
+  | 'payment_authorization_pending' | 'payment_verified' | 'provisioning_pending' | 'active' | 'canceled';
 export type CredentialVerificationStatus =
   | 'not_submitted' | 'submitted' | 'pending_review' | 'insufficient' | 'independently_verified' | 'expired' | 'rejected' | 'requires_reverification';
 
@@ -37,6 +41,14 @@ export interface ProfessionalApplication {
   platformOwnerApprovalRequired: boolean;
   createdAt: string;
   updatedAt: string;
+  // MMA-PROF-ONBOARD-004 (migrations 162-163)
+  entryMethod: 'public_website' | 'invitation' | 'manual_quote' | null;
+  selectedTierCode: 'essential' | 'plus' | 'complete' | null;
+  initialExpectedActivePatients: number | null;
+  annualLicenseFeeSnapshotCents: number | null;
+  autoVerificationResult: Record<string, unknown> | null;
+  exceptionReviewReason: string | null;
+  applicationReference: string;
 }
 
 function mapApplication(r: Record<string, unknown>): ProfessionalApplication {
@@ -51,6 +63,13 @@ function mapApplication(r: Record<string, unknown>): ProfessionalApplication {
     correctionRequestedFields: r.correction_requested_fields as Record<string, unknown> | null, rejectionReason: r.rejection_reason as string | null,
     reviewedAt: r.reviewed_at as string | null, platformOwnerApprovalRequired: r.platform_owner_approval_required as boolean,
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
+    entryMethod: (r.entry_method as 'public_website' | 'invitation' | 'manual_quote' | null) ?? null,
+    selectedTierCode: (r.selected_tier_code as 'essential' | 'plus' | 'complete' | null) ?? null,
+    initialExpectedActivePatients: (r.initial_expected_active_patients as number | null) ?? null,
+    annualLicenseFeeSnapshotCents: (r.annual_license_fee_snapshot_cents as number | null) ?? null,
+    autoVerificationResult: (r.auto_verification_result as Record<string, unknown> | null) ?? null,
+    exceptionReviewReason: (r.exception_review_reason as string | null) ?? null,
+    applicationReference: r.application_reference as string,
   };
 }
 

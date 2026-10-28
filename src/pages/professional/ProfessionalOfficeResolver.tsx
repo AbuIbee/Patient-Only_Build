@@ -19,7 +19,8 @@ import { getMyOrganizations, getMyPendingOrgInvites, type MyOrganization, type P
 import { getMyApplication, getMyApplicationDraft, type ProfessionalApplication } from '@/services/professionalApplicationService';
 import { redeemQuoteInvitation, quoteTermsFromDraft, type RedemptionOutcome, type RedeemedQuoteTerms } from '@/services/salesService';
 import DirectorApplicationWizard from './DirectorApplicationWizard';
-import OrganizationDirectorDashboard, { CreateOrgCard } from '@/pages/enterprise/OrganizationDirectorDashboard';
+import OrganizationDirectorDashboard from '@/pages/enterprise/OrganizationDirectorDashboard';
+import SelfServiceApplicationFlow from './SelfServiceApplicationFlow';
 import { PendingInvitesBanner } from '@/pages/enterprise/EnterpriseDashboardRouter';
 import EnterpriseCaregiverDashboard from '@/pages/enterprise/EnterpriseCaregiverDashboard';
 import ClinicalOfficeDashboard from '@/pages/enterprise/ClinicalOfficeDashboard';
@@ -168,11 +169,15 @@ function AccessRequiredState({
   pendingInvites,
   onInviteResolved,
   onApplicationStarted,
+  legalName,
+  contactEmail,
 }: {
   onLogout: () => void;
   pendingInvites: PendingOrgInvite[];
   onInviteResolved: () => void;
   onApplicationStarted: () => void;
+  legalName: string;
+  contactEmail: string;
 }) {
   const hasInvites = pendingInvites.length > 0;
   return (
@@ -206,7 +211,16 @@ function AccessRequiredState({
             <div className="flex items-center gap-2 justify-center text-xs font-semibold text-ent-muted uppercase tracking-wide">
               <span className="h-px flex-1 bg-ent-line" /> New to Enterprise? <span className="h-px flex-1 bg-ent-line" />
             </div>
-            <CreateOrgCard onCreated={onApplicationStarted} />
+            {/* MMA-PROF-ONBOARD-004 -- the second of the three originally-
+                fragmented Director entry paths this directive names
+                explicitly. Converges into the SAME canonical self-service
+                flow /Professional/Register and the residential /business
+                fallback both now use, instead of the old two-field
+                CreateOrgCard quick-create with no pricing/tier/billing
+                step. */}
+            <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6">
+              <SelfServiceApplicationFlow legalName={legalName} contactEmail={contactEmail} onSubmitted={onApplicationStarted} />
+            </div>
           </div>
         )}
       </main>
@@ -261,7 +275,7 @@ function OfficeSwitcherBar({ offices, selected, onSelect }: { offices: { key: Pr
 }
 
 export default function ProfessionalOfficeResolver() {
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
   const [loading, setLoading] = useState(true);
   const [orgs, setOrgs] = useState<MyOrganization[]>([]);
   // P1 CODEX-002 CORRECTIVE ORDER (P1-01) — this used to be a plain
@@ -356,7 +370,20 @@ export default function ProfessionalOfficeResolver() {
       // somehow predates the wizard (no quote snapshot) -- the original,
       // simpler 3-field correction form remains the fallback, unchanged.
     }
-    if (myApplication && ['pending_review', 'info_required', 'resubmitted', 'rejected'].includes(myApplication.status)) {
+    // MMA-PROF-ONBOARD-004 -- extended with the self-service lifecycle's
+    // own non-terminal/informative states (migration 162), additive to
+    // the original list. 'active'/'approved' are deliberately excluded:
+    // by the time a license is active, provisioning has already
+    // created a real organization + Director membership, so
+    // getMyOrganizations() picks the user up before this fallback is
+    // ever reached at all. 'draft'/'withdrawn' stay excluded too --
+    // falling through to AccessRequiredState lets the applicant start
+    // over, unchanged from the original behavior.
+    if (myApplication && [
+      'pending_review', 'info_required', 'resubmitted', 'rejected',
+      'auto_verification_pending', 'manual_review', 'agreements_pending', 'agreements_executed',
+      'payment_authorization_pending', 'payment_verified', 'provisioning_pending', 'canceled',
+    ].includes(myApplication.status)) {
       return <ApplicationStatusPage application={myApplication} onRefresh={() => { void refresh(); }} />;
     }
     return (
@@ -365,6 +392,8 @@ export default function ProfessionalOfficeResolver() {
         pendingInvites={pendingInvites}
         onInviteResolved={() => { void refresh(); }}
         onApplicationStarted={() => { void refresh(); }}
+        legalName={[state.currentUser?.firstName, state.currentUser?.lastName].filter(Boolean).join(' ').trim()}
+        contactEmail={state.currentUser?.email ?? ''}
       />
     );
   }

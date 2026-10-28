@@ -8,8 +8,11 @@
 // which grants access by itself:
 //   1. A prospective founding Director with NO invite and NO
 //      application reaches "Organization access required" and can
-//      submit the reused CreateOrgCard, landing on the pending-review
-//      application status page immediately after — never a dashboard.
+//      complete the canonical self-service tier-selection/starter-
+//      application flow (MMA-PROF-ONBOARD-004 -- superseding the old
+//      two-field CreateOrgCard quick-create this test originally
+//      drove), landing on the real agreements_pending status page
+//      immediately after — never a dashboard.
 //   2. A real invited staff member (organization_memberships
 //      status='invited') reaches "You have a pending invitation"
 //      instead, and Accept actually grants the office, reusing the
@@ -56,32 +59,66 @@ async function signIn(page: Page, email: string) {
 }
 
 test.describe('Professional access-required states (Phase B)', () => {
-  test('a founding Director prospect with no invite/application can apply, and lands on a pending-review status, never a dashboard', async ({ page }) => {
+  test('a founding Director prospect with no invite/application can complete the canonical self-service flow, and lands on a real agreements_pending status, never a dashboard', async ({ page }) => {
     const email = `access-founder-${stamp}@local.test`;
+    const orgName = `Access States Org ${stamp}`;
     const id = await mkUser(email);
     try {
       sql(`UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${id}';`);
       await signIn(page, email);
       await expect(page.getByRole('heading', { name: 'Organization access required' })).toBeVisible({ timeout: 15000 });
-      await expect(page.getByRole('heading', { name: 'Apply to Start Your Organization' })).toBeVisible();
+      await expect(page.getByText('Choose your license tier')).toBeVisible();
 
-      await page.getByPlaceholder('Riverside Home Care').fill(`Access States Org ${stamp}`);
-      await page.getByRole('button', { name: 'Submit for Review' }).click();
+      await page.getByText('Essential').first().click();
+      // This user signed in directly (no AccountStep), so the "Your full
+      // legal name"/"Your email" fields have no pre-fill from
+      // state.currentUser.firstName/lastName -- fill them explicitly.
+      await page.getByLabel('Your full legal name *').fill('Access Founder');
+      await page.getByLabel('Your email *').fill(email);
+      await page.getByLabel('Legal business name *').fill(orgName);
+      await page.getByLabel('Legal entity type *').fill('LLC');
+      await page.getByLabel('Business classification *').fill('Home care agency');
+      await page.getByLabel('Formation jurisdiction *').fill('Texas');
+      await page.getByLabel('Business phone *').fill('512-555-0100');
+      await page.getByLabel('Registered address *').fill('100 Main St, Austin, TX');
+      await page.getByLabel('Mobile number *').fill('512-555-0101');
+      await page.getByLabel('Title *').fill('Founder');
+      await page.getByLabel('Your relationship to this business *').fill('Owner');
+      await page.getByText('I am an authorized representative').click();
+      await page.getByText('I have the authority to enter').click();
+      await page.getByLabel('Billing contact name *').fill('Access Founder');
+      await page.getByLabel('Billing address *').fill('100 Main St, Austin, TX');
+      await page.getByLabel('Billing email *').fill(email);
+      await page.getByLabel('Initial expected active patients *').fill('5');
+      await page.getByRole('button', { name: 'Continue to pricing' }).click();
 
-      // The resolver's own refresh() (triggered by CreateOrgCard's onCreated)
-      // picks up the new pending_review application and immediately swaps to
-      // the full ApplicationStatusPage -- superseding CreateOrgCard's own
-      // brief inline "Application submitted" confirmation before it is ever
-      // the settled state, which is the correct, intended behavior.
-      await expect(page.getByRole('heading', { name: 'Your application is under review' })).toBeVisible({ timeout: 10000 });
-      await expect(page.getByText(`Access States Org ${stamp}`)).toBeVisible();
-      // The application exists and is pending_review, not an active membership/org -- no dashboard chrome anywhere.
-      const appStatus = sql(`SELECT status FROM public.professional_applications WHERE proposed_organization_name='Access States Org ${stamp}';`);
-      expect(appStatus).toBe('pending_review');
-      expect(sql(`SELECT count(*) FROM public.organizations WHERE name='Access States Org ${stamp}';`)).toBe('0');
+      await expect(page.getByText('Pricing and agreements')).toBeVisible();
+      await page.getByText('I confirm the information in this application is accurate').click();
+      await page.getByText('I confirm I am authorized to sign').click();
+      await page.getByText('I acknowledge the privacy practices').click();
+      await page.getByLabel('Typed signature').fill('Access Founder');
+      await page.getByRole('button', { name: 'Submit application' }).click();
+
+      // The resolver's own refresh() picks up the new agreements_pending
+      // application and immediately swaps to the full ApplicationStatusPage
+      // -- superseding SelfServiceApplicationFlow's own brief inline result
+      // screen before it is ever the settled state, which is the correct,
+      // intended behavior (same pattern CreateOrgCard originally had here).
+      await expect(page.getByRole('heading', { name: 'Application verified — agreements and billing next' })).toBeVisible({ timeout: 15000 });
+      // The application exists and is agreements_pending, not an active membership/org -- no dashboard chrome anywhere.
+      const appStatus = sql(`SELECT status FROM public.professional_applications WHERE proposed_organization_name='${orgName}';`);
+      expect(appStatus).toBe('agreements_pending');
+      const entryMethod = sql(`SELECT entry_method FROM public.professional_applications WHERE proposed_organization_name='${orgName}';`);
+      expect(entryMethod).toBe('public_website');
+      expect(sql(`SELECT count(*) FROM public.organizations WHERE name='${orgName}';`)).toBe('0');
       await expect(page.getByText('Director Dashboard')).toHaveCount(0);
     } finally {
-      sql(`DELETE FROM public.professional_applications WHERE proposed_organization_name='Access States Org ${stamp}';`);
+      const quoteId = sql(`SELECT (application_details->>'originatingQuoteId')::uuid FROM public.professional_applications WHERE proposed_organization_name='${orgName}';`);
+      sql(`
+        DELETE FROM public.professional_application_events WHERE application_id IN (SELECT id FROM public.professional_applications WHERE proposed_organization_name='${orgName}');
+        DELETE FROM public.professional_applications WHERE proposed_organization_name='${orgName}';
+        DELETE FROM public.sales_quotes WHERE id='${quoteId}';
+      `);
       await deleteUser(id);
     }
   });

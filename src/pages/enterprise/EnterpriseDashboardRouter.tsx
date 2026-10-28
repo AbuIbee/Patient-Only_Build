@@ -9,6 +9,7 @@
 // residential and patient features."
 import { useEffect, useState, useCallback } from 'react';
 import { Loader2, Building2, Check, X } from 'lucide-react';
+import { useApp } from '@/store/useApp';
 import {
   getMyOrganizations, getMyPendingOrgInvites, respondToOrgInvite,
   type MyOrganization, type PendingOrgInvite,
@@ -19,10 +20,11 @@ import {
 } from '@/services/therapistConnectionService';
 import { toast } from 'sonner';
 import CaregiverPortal from '@/pages/caregiver/CaregiverPortal';
-import OrganizationDirectorDashboard, { CreateOrgCard } from './OrganizationDirectorDashboard';
+import OrganizationDirectorDashboard from './OrganizationDirectorDashboard';
 import ClinicalOfficeDashboard from './ClinicalOfficeDashboard';
 import ResidentialTherapistDashboard from './ResidentialTherapistDashboard';
 import EnterpriseCaregiverDashboard from './EnterpriseCaregiverDashboard';
+import SelfServiceApplicationFlow from '@/pages/professional/SelfServiceApplicationFlow';
 
 export function PendingInvitesBanner({ invites, onResolved }: { invites: PendingOrgInvite[]; onResolved: () => void }) {
   const [respondingId, setRespondingId] = useState<string | null>(null);
@@ -176,6 +178,7 @@ function OfficeSwitcher({ offices, selected, onSelect }: { offices: { key: Offic
 // non-/business authenticated path is completely unchanged — residential
 // caregivers keep their existing experience exactly as before.
 export default function EnterpriseDashboardRouter({ businessWorkspace = false }: { businessWorkspace?: boolean } = {}) {
+  const { state } = useApp();
   const [orgs, setOrgs] = useState<MyOrganization[]>([]);
   const [invites, setInvites] = useState<PendingOrgInvite[]>([]);
   const [therapistInvites, setTherapistInvites] = useState<PendingTherapistInvite[]>([]);
@@ -328,13 +331,26 @@ export default function EnterpriseDashboardRouter({ businessWorkspace = false }:
     );
   }
 
+  // MMA-PROF-ONBOARD-004 -- this residential "/business Start an
+  // Organization" fallback used to render CreateOrgCard, a two-field
+  // quick-create form with no pricing, tier, or billing step at all
+  // (migration 083's own create_organization() RPC, which still submits
+  // a real pending Director application -- never self-approval -- but
+  // never collected a license tier or commercial terms). "Logged-in
+  // accounts with no organization enter or resume that same
+  // application" now routes this entry point into the SAME canonical
+  // self-service flow /Professional/Register uses, rather than leaving
+  // a second, lower-fidelity path alive.
+  const legalName = [state.currentUser?.firstName, state.currentUser?.lastName].filter(Boolean).join(' ').trim();
   return (
-    <div className="min-h-screen bg-warm-ivory flex flex-col items-center justify-center p-4 gap-4">
-      <div className="flex items-center gap-2 text-warm-bronze">
+    <div className="min-h-screen bg-warm-ivory flex flex-col items-center p-4 gap-4">
+      <div className="flex items-center gap-2 text-warm-bronze mt-6">
         <Building2 className="w-6 h-6" />
         <h1 className="text-xl font-bold text-charcoal">Start an Organization</h1>
       </div>
-      <CreateOrgCard onCreated={() => { void refresh(); }} />
+      <div className="w-full max-w-xl bg-white rounded-2xl shadow-card border border-soft-taupe p-6 sm:p-7">
+        <SelfServiceApplicationFlow legalName={legalName} contactEmail={state.currentUser?.email ?? ''} onSubmitted={() => { void refresh(); }} />
+      </div>
       <button type="button" onClick={() => setShowCreateOrg(false)} className="text-sm text-medium-gray hover:text-charcoal underline">
         Back to my dashboard
       </button>
