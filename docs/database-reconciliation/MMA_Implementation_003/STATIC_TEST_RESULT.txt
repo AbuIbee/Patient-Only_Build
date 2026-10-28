@@ -1,0 +1,3 @@
+PASS STATIC CHECKS: 21 source-only table creations distributed across 4 batches; new tables RLS-enabled; no destructive keywords; four staging-only tables untouched.
+Function candidates: 82; policy candidates: 78.
+NOT A POSTGRES EXECUTION TEST. NOT AN AUTHORIZATION TEST. NOT SAFE FOR HOSTED DEPLOYMENT WITHOUT RECONSTRUCTION/REVIEW.

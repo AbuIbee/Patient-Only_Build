@@ -1,0 +1,7 @@
+# Independent Codex verification — Professional SQL batch implementation
+
+Audit the actual resulting branch changes and local staging reconstruction, not Claude's narrative. Independently compute before/after object and privilege diffs; verify all new table columns/types/defaults, FK/unique/check/index dependencies, triggers, RLS policies, all function signatures and body security, caller identity resolution, authenticated role-grant behavior and storage/Edge Function integration.
+
+Run negative and positive tests with synthetic users for five offices; no cross-org visibility, deleted/revoked staff access, inactive memberships or licenses, mismatched patient coverage, untrusted clinical provenance, spoofed completion, anonymous function invocation, missing payment state, contract signature evidence, APR grant/revoke and legal hold deletion denial. Specifically retest previous stale Medical/Therapy goal-update authorization bug and interoffice communication failures. Preserve consumer production and existing Professional staging hardening.
+
+Independently rerun all applicable ENT-001–028, 92 Caregiver requirements, 60 navigation destinations and 25 communications flows. Explicitly classify Passed/Failed/Blocked/Not Verified; don't aggregate unverified as passes. Verify durable billing/webhook idempotency without making provider calls unless appropriate credentials and owner approval exist. Record each defect with severity, evidence, file and reproduction. Gate remote promotion on owner approval and a GO, never on migration-count equality.

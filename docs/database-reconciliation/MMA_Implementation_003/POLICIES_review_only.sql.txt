@@ -1,0 +1,299 @@
+-- POLICY CANDIDATES. REVIEW ONLY; REQUIRE ROLE TESTING.
+
+-- document_access_audit A caller may log their own document access
+CREATE POLICY "A caller may log their own document access" ON public.document_access_audit FOR INSERT WITH CHECK ((accessed_by = auth.uid()));
+
+-- document_access_audit A caller may view their own document access entries
+CREATE POLICY "A caller may view their own document access entries" ON public.document_access_audit FOR SELECT USING ((accessed_by = auth.uid()));
+
+-- caregiver_notification_preferences A user can set their own notification preferences
+CREATE POLICY "A user can set their own notification preferences" ON public.caregiver_notification_preferences FOR INSERT WITH CHECK ((user_id = auth.uid()));
+
+-- caregiver_notification_preferences A user can update their own notification preferences
+CREATE POLICY "A user can update their own notification preferences" ON public.caregiver_notification_preferences FOR UPDATE USING ((user_id = auth.uid())) WITH CHECK ((user_id = auth.uid()));
+
+-- account_deletion_requests A user can view their own deletion requests
+CREATE POLICY "A user can view their own deletion requests" ON public.account_deletion_requests FOR SELECT USING (((target_user_id = auth.uid()) OR (requested_by = auth.uid())));
+
+-- caregiver_notification_preferences A user can view their own notification preferences
+CREATE POLICY "A user can view their own notification preferences" ON public.caregiver_notification_preferences FOR SELECT USING ((user_id = auth.uid()));
+
+-- enterprise_notifications A user can view their own notifications
+CREATE POLICY "A user can view their own notifications" ON public.enterprise_notifications FOR SELECT TO authenticated USING ((recipient_user_id = auth.uid()));
+
+-- organization_memberships Active auditor can view memberships in their own org
+CREATE POLICY "Active auditor can view memberships in their own org" ON public.organization_memberships FOR SELECT TO authenticated USING (public.is_active_org_auditor(organization_id));
+
+-- organization_licenses Active auditor can view their own org's license
+CREATE POLICY "Active auditor can view their own org's license" ON public.organization_licenses FOR SELECT TO authenticated USING (public.is_active_org_auditor(organization_id));
+
+-- staff_patient_assignments Active clinical authority can view assignments in their own org
+CREATE POLICY "Active clinical authority can view assignments in their own org" ON public.staff_patient_assignments FOR SELECT TO authenticated USING (public.is_active_org_clinical_authority(organization_id));
+
+-- covered_patient_memberships Active clinical authority can view coverage in their org
+CREATE POLICY "Active clinical authority can view coverage in their org" ON public.covered_patient_memberships FOR SELECT TO authenticated USING (public.is_active_org_clinical_authority(organization_id));
+
+-- profiles Active clinical authority can view member profiles in org
+CREATE POLICY "Active clinical authority can view member profiles in org" ON public.profiles FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM (public.organization_memberships om_target
+     JOIN public.organization_memberships om_self ON ((om_self.organization_id = om_target.organization_id)))
+  WHERE ((om_target.user_id = profiles.id) AND (om_target.status = 'active'::text) AND (om_self.user_id = auth.uid()) AND (om_self.org_role = 'clinical_supervisor'::text) AND (om_self.status = 'active'::text)))));
+
+-- organization_memberships Active clinical authority can view memberships in org
+CREATE POLICY "Active clinical authority can view memberships in org" ON public.organization_memberships FOR SELECT TO authenticated USING (public.is_active_org_clinical_authority(organization_id));
+
+-- patients Active clinical authority can view patients in their org
+CREATE POLICY "Active clinical authority can view patients in their org" ON public.patients FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.covered_patient_memberships cpm
+  WHERE ((cpm.patient_id = patients.id) AND (cpm.status = 'active'::text) AND public.is_active_org_clinical_authority(cpm.organization_id)))));
+
+-- incident_attachments Active directors can view attachments on incidents in their own
+CREATE POLICY "Active directors can view attachments on incidents in their own" ON public.incident_attachments FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM public.incident_reports ir
+  WHERE ((ir.id = incident_attachments.incident_id) AND public.is_active_org_director(ir.organization_id)))));
+
+-- medication_logs Active legal hold blocks medication_logs deletion
+CREATE POLICY "Active legal hold blocks medication_logs deletion" ON public.medication_logs AS RESTRICTIVE FOR DELETE USING ((NOT public.patient_has_active_legal_hold(patient_id)));
+
+-- medications Active legal hold blocks medications deletion
+CREATE POLICY "Active legal hold blocks medications deletion" ON public.medications AS RESTRICTIVE FOR DELETE USING ((NOT public.patient_has_active_legal_hold(patient_id)));
+
+-- patient_document_uploads Active legal hold blocks patient_document_uploads deletion
+CREATE POLICY "Active legal hold blocks patient_document_uploads deletion" ON public.patient_document_uploads AS RESTRICTIVE FOR DELETE USING ((NOT public.patient_has_active_legal_hold(patient_id)));
+
+-- patient_notes Active legal hold blocks patient_notes deletion
+CREATE POLICY "Active legal hold blocks patient_notes deletion" ON public.patient_notes AS RESTRICTIVE FOR DELETE USING ((NOT public.patient_has_active_legal_hold(patient_id)));
+
+-- professional_applications Active org directors can view applications targeting their org
+CREATE POLICY "Active org directors can view applications targeting their org" ON public.professional_applications FOR SELECT TO authenticated USING (((target_organization_id IS NOT NULL) AND public.is_active_org_director(target_organization_id)));
+
+-- profiles Active org directors can view member profiles in their own org
+CREATE POLICY "Active org directors can view member profiles in their own org" ON public.profiles FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.organization_memberships om_target
+  WHERE ((om_target.user_id = profiles.id) AND (om_target.status = 'active'::text) AND public.is_active_org_director(om_target.organization_id)))));
+
+-- patients Active org directors can view patients covered by their own org
+CREATE POLICY "Active org directors can view patients covered by their own org" ON public.patients FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.covered_patient_memberships cpm
+  WHERE ((cpm.patient_id = patients.id) AND (cpm.status = 'active'::text) AND public.is_active_org_director(cpm.organization_id)))));
+
+-- organization_amendment_requests Active org directors can view their own amendment requests
+CREATE POLICY "Active org directors can view their own amendment requests" ON public.organization_amendment_requests FOR SELECT TO authenticated USING (public.is_active_org_director(organization_id));
+
+-- enterprise_contracts An applicant or amendment-org director can view a presented con
+CREATE POLICY "An applicant or amendment-org director can view a presented con" ON public.enterprise_contracts FOR SELECT TO authenticated USING (((status <> 'draft'::text) AND ((EXISTS ( SELECT 1
+   FROM public.professional_applications pa
+  WHERE ((pa.applicant_user_id = auth.uid()) AND ((pa.application_details ->> 'originatingQuoteId'::text) = (enterprise_contracts.quote_id)::text)))) OR (EXISTS ( SELECT 1
+   FROM public.organization_amendment_requests oar
+  WHERE ((oar.resulting_quote_id = enterprise_contracts.quote_id) AND public.is_active_org_director(oar.organization_id)))))));
+
+-- enterprise_billing_accounts An applicant or amendment-org director can view the billing acc
+CREATE POLICY "An applicant or amendment-org director can view the billing acc" ON public.enterprise_billing_accounts FOR SELECT TO authenticated USING (((EXISTS ( SELECT 1
+   FROM public.professional_applications pa
+  WHERE ((pa.applicant_user_id = auth.uid()) AND ((pa.application_details ->> 'originatingQuoteId'::text) = (enterprise_billing_accounts.quote_id)::text)))) OR (EXISTS ( SELECT 1
+   FROM public.organization_amendment_requests oar
+  WHERE ((oar.resulting_quote_id = enterprise_billing_accounts.quote_id) AND (oar.status = 'quoted'::text) AND public.is_active_org_director(oar.organization_id))))));
+
+-- professional_application_documents Applicant can attach documents to their own pending application
+CREATE POLICY "Applicant can attach documents to their own pending application" ON public.professional_application_documents FOR INSERT WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.professional_applications a
+  WHERE ((a.id = professional_application_documents.application_id) AND (a.applicant_user_id = auth.uid()) AND (a.status = ANY (ARRAY['pending_review'::text, 'info_required'::text, 'resubmitted'::text]))))));
+
+-- professional_applications Applicant can view their own application
+CREATE POLICY "Applicant can view their own application" ON public.professional_applications FOR SELECT USING ((applicant_user_id = auth.uid()));
+
+-- professional_application_documents Applicant can view their own application documents
+CREATE POLICY "Applicant can view their own application documents" ON public.professional_application_documents FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM public.professional_applications a
+  WHERE ((a.id = professional_application_documents.application_id) AND (a.applicant_user_id = auth.uid())))));
+
+-- professional_application_events Applicant can view their own application history
+CREATE POLICY "Applicant can view their own application history" ON public.professional_application_events FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM public.professional_applications a
+  WHERE ((a.id = professional_application_events.application_id) AND (a.applicant_user_id = auth.uid())))));
+
+-- care_partner_notes Assigned staff can create Care Partner notes for their patients
+CREATE POLICY "Assigned staff can create Care Partner notes for their patients" ON public.care_partner_notes FOR INSERT WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.staff_patient_assignments spa
+  WHERE ((spa.patient_id = care_partner_notes.patient_id) AND (spa.user_id = auth.uid()) AND (spa.is_active = true)))));
+
+-- care_partner_checkins Assigned staff can submit check-ins for their patients
+CREATE POLICY "Assigned staff can submit check-ins for their patients" ON public.care_partner_checkins FOR INSERT WITH CHECK (((submitted_by = auth.uid()) AND (EXISTS ( SELECT 1
+   FROM public.staff_patient_assignments spa
+  WHERE ((spa.patient_id = care_partner_checkins.patient_id) AND (spa.user_id = auth.uid()) AND (spa.is_active = true))))));
+
+-- care_partner_notes Assigned staff can update Care Partner notes for their patients
+CREATE POLICY "Assigned staff can update Care Partner notes for their patients" ON public.care_partner_notes FOR UPDATE USING ((EXISTS ( SELECT 1
+   FROM public.staff_patient_assignments spa
+  WHERE ((spa.patient_id = care_partner_notes.patient_id) AND (spa.user_id = auth.uid()) AND (spa.is_active = true))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.staff_patient_assignments spa
+  WHERE ((spa.patient_id = care_partner_notes.patient_id) AND (spa.user_id = auth.uid()) AND (spa.is_active = true)))));
+
+-- incident_attachments Assigned staff can view attachments on incidents for their pati
+CREATE POLICY "Assigned staff can view attachments on incidents for their pati" ON public.incident_attachments FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM (public.incident_reports ir
+     JOIN public.staff_patient_assignments spa ON (((spa.organization_id = ir.organization_id) AND (spa.patient_id = ir.patient_id))))
+  WHERE ((ir.id = incident_attachments.incident_id) AND (spa.user_id = auth.uid()) AND (spa.is_active = true)))));
+
+-- patient_care_providers Authorized caregivers/staff can record a patient's providers
+CREATE POLICY "Authorized caregivers/staff can record a patient's providers" ON public.patient_care_providers FOR INSERT TO authenticated WITH CHECK (((author_id = auth.uid()) AND public.has_patient_access(patient_id)));
+
+-- patient_care_providers Authorized caregivers/staff can view a patient's providers
+CREATE POLICY "Authorized caregivers/staff can view a patient's providers" ON public.patient_care_providers FOR SELECT TO authenticated USING (public.has_patient_access(patient_id));
+
+-- patient_intake Authorized caregivers/staff can view their patient's intake rec
+CREATE POLICY "Authorized caregivers/staff can view their patient's intake rec" ON public.patient_intake FOR SELECT USING (((patient_profile_id IS NOT NULL) AND ((EXISTS ( SELECT 1
+   FROM public.caregiver_patients cp
+  WHERE ((cp.patient_id = patient_intake.patient_profile_id) AND (cp.caregiver_id = auth.uid())))) OR (EXISTS ( SELECT 1
+   FROM public.staff_patient_assignments spa
+  WHERE ((spa.patient_id = patient_intake.patient_profile_id) AND (spa.user_id = auth.uid()) AND (spa.is_active = true)))))));
+
+-- professional_application_documents Authorized reviewers can view application documents
+CREATE POLICY "Authorized reviewers can view application documents" ON public.professional_application_documents FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.professional_applications a
+  WHERE ((a.id = professional_application_documents.application_id) AND (((a.target_organization_id IS NOT NULL) AND public.is_active_org_director(a.target_organization_id)) OR public.is_platform_owner())))));
+
+-- professional_application_events Authorized reviewers can view application history
+CREATE POLICY "Authorized reviewers can view application history" ON public.professional_application_events FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.professional_applications a
+  WHERE ((a.id = professional_application_events.application_id) AND (((a.target_organization_id IS NOT NULL) AND public.is_active_org_director(a.target_organization_id)) OR public.is_platform_owner())))));
+
+-- care_partner_checkins Caller must be the check-in's own patient, linked caregiver, or
+CREATE POLICY "Caller must be the check-in's own patient, linked caregiver, or" ON public.care_partner_checkins AS RESTRICTIVE FOR INSERT WITH CHECK (((patient_id = auth.uid()) OR (EXISTS ( SELECT 1
+   FROM public.caregiver_patients cp
+  WHERE ((cp.patient_id = care_partner_checkins.patient_id) AND (cp.caregiver_id = auth.uid())))) OR (EXISTS ( SELECT 1
+   FROM public.staff_patient_assignments spa
+  WHERE ((spa.patient_id = care_partner_checkins.patient_id) AND (spa.user_id = auth.uid()) AND (spa.is_active = true))))));
+
+-- patients Direct-connection therapists can view their patients
+CREATE POLICY "Direct-connection therapists can view their patients" ON public.patients FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.therapist_relationships tr
+  WHERE ((tr.patient_id = patients.id) AND (tr.therapist_id = auth.uid()) AND (tr.is_active = true)))));
+
+-- medications Direct-connection therapists can view their patients' meds
+CREATE POLICY "Direct-connection therapists can view their patients' meds" ON public.medications FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.therapist_relationships tr
+  WHERE ((tr.patient_id = medications.patient_id) AND (tr.therapist_id = auth.uid()) AND (tr.is_active = true)))));
+
+-- mood_entries Direct-connection therapists can view their patients' moods
+CREATE POLICY "Direct-connection therapists can view their patients' moods" ON public.mood_entries FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.therapist_relationships tr
+  WHERE ((tr.patient_id = mood_entries.patient_id) AND (tr.therapist_id = auth.uid()) AND (tr.is_active = true)))));
+
+-- care_partner_notes Direct-connection therapists can view their patients' notes
+CREATE POLICY "Direct-connection therapists can view their patients' notes" ON public.care_partner_notes FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.therapist_relationships tr
+  WHERE ((tr.patient_id = care_partner_notes.patient_id) AND (tr.therapist_id = auth.uid()) AND (tr.is_active = true)))));
+
+-- organization_licenses Only organization directors can view their organization's licen
+CREATE POLICY "Only organization directors can view their organization's licen" ON public.organization_licenses FOR SELECT TO authenticated USING (public.is_active_org_director(organization_id));
+
+-- patient_care_plans Only professional staff may author or supersede a care plan
+CREATE POLICY "Only professional staff may author or supersede a care plan" ON public.patient_care_plans AS RESTRICTIVE FOR INSERT TO authenticated WITH CHECK (public.is_professional_staff_for_patient(patient_id));
+
+-- patient_allergies Only professional staff may claim a verified or professional_ob
+CREATE POLICY "Only professional staff may claim a verified or professional_ob" ON public.patient_allergies AS RESTRICTIVE FOR INSERT TO authenticated WITH CHECK (((source <> ALL (ARRAY['verified_source'::text, 'professional_observation'::text])) OR public.is_professional_staff_for_patient(patient_id)));
+
+-- patient_care_providers Only professional staff may claim a verified or professional_ob
+CREATE POLICY "Only professional staff may claim a verified or professional_ob" ON public.patient_care_providers AS RESTRICTIVE FOR INSERT TO authenticated WITH CHECK (((source <> ALL (ARRAY['verified_source'::text, 'professional_observation'::text])) OR public.is_professional_staff_for_patient(patient_id)));
+
+-- patient_diagnoses Only professional staff may claim a verified or professional_ob
+CREATE POLICY "Only professional staff may claim a verified or professional_ob" ON public.patient_diagnoses AS RESTRICTIVE FOR INSERT TO authenticated WITH CHECK (((source <> ALL (ARRAY['verified_source'::text, 'professional_observation'::text])) OR public.is_professional_staff_for_patient(patient_id)));
+
+-- patient_vitals Only professional staff may claim a verified or professional_ob
+CREATE POLICY "Only professional staff may claim a verified or professional_ob" ON public.patient_vitals AS RESTRICTIVE FOR INSERT TO authenticated WITH CHECK (((source <> ALL (ARRAY['verified_source'::text, 'professional_observation'::text])) OR public.is_professional_staff_for_patient(patient_id)));
+
+-- patient_legal_holds Only the Platform Owner can view legal holds
+CREATE POLICY "Only the Platform Owner can view legal holds" ON public.patient_legal_holds FOR SELECT USING (public.is_platform_owner());
+
+-- organization_owner_capability_grants Owner, the grantee, or the Platform Owner can view capability g
+CREATE POLICY "Owner, the grantee, or the Platform Owner can view capability g" ON public.organization_owner_capability_grants FOR SELECT USING (((user_id = ( SELECT auth.uid() AS uid)) OR (EXISTS ( SELECT 1
+   FROM public.organizations o
+  WHERE ((o.id = organization_owner_capability_grants.organization_id) AND (o.owner_user_id = ( SELECT auth.uid() AS uid))))) OR public.is_platform_owner()));
+
+-- memories Patients can manage their own memories
+CREATE POLICY "Patients can manage their own memories" ON public.memories USING ((patient_id = auth.uid())) WITH CHECK ((patient_id = auth.uid()));
+
+-- memories Patients can view their own memories
+CREATE POLICY "Patients can view their own memories" ON public.memories FOR SELECT USING ((patient_id = auth.uid()));
+
+-- organization_amendment_requests Platform Owner can view all amendment requests
+CREATE POLICY "Platform Owner can view all amendment requests" ON public.organization_amendment_requests FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- enterprise_billing_accounts Platform Owner can view all enterprise billing accounts
+CREATE POLICY "Platform Owner can view all enterprise billing accounts" ON public.enterprise_billing_accounts FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- enterprise_billing_events Platform Owner can view all enterprise billing events
+CREATE POLICY "Platform Owner can view all enterprise billing events" ON public.enterprise_billing_events FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- enterprise_contracts Platform Owner can view all enterprise contracts
+CREATE POLICY "Platform Owner can view all enterprise contracts" ON public.enterprise_contracts FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- enterprise_notifications Platform Owner can view all notifications
+CREATE POLICY "Platform Owner can view all notifications" ON public.enterprise_notifications FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- organization_memberships Platform Owner can view all organization memberships
+CREATE POLICY "Platform Owner can view all organization memberships" ON public.organization_memberships FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- organizations Platform Owner can view all organizations
+CREATE POLICY "Platform Owner can view all organizations" ON public.organizations FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- sales_quote_invitations Platform Owner can view all quote invitations
+CREATE POLICY "Platform Owner can view all quote invitations" ON public.sales_quote_invitations FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- sales_prospects Platform Owner can view all sales prospects
+CREATE POLICY "Platform Owner can view all sales prospects" ON public.sales_prospects FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- sales_quotes Platform Owner can view all sales quotes
+CREATE POLICY "Platform Owner can view all sales quotes" ON public.sales_quotes FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- professional_applications Platform Owner can view every application
+CREATE POLICY "Platform Owner can view every application" ON public.professional_applications FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- account_deletion_requests Platform Owner can view every deletion request
+CREATE POLICY "Platform Owner can view every deletion request" ON public.account_deletion_requests FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- account_management_audit Platform Owner can view the account management audit
+CREATE POLICY "Platform Owner can view the account management audit" ON public.account_management_audit FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- incident_attachments Reporter can attach a file to their own incident report
+CREATE POLICY "Reporter can attach a file to their own incident report" ON public.incident_attachments FOR INSERT WITH CHECK (((uploaded_by = auth.uid()) AND (EXISTS ( SELECT 1
+   FROM public.incident_reports ir
+  WHERE ((ir.id = incident_attachments.incident_id) AND (ir.reported_by = auth.uid()))))));
+
+-- incident_attachments Reporter can view attachments on their own incident reports
+CREATE POLICY "Reporter can view attachments on their own incident reports" ON public.incident_attachments FOR SELECT USING ((EXISTS ( SELECT 1
+   FROM public.incident_reports ir
+  WHERE ((ir.id = incident_attachments.incident_id) AND (ir.reported_by = auth.uid())))));
+
+-- patient_representatives Representative, their org's active staff, or the Platform Owner
+CREATE POLICY "Representative, their org's active staff, or the Platform Owner" ON public.patient_representatives FOR SELECT USING (((representative_user_id = ( SELECT auth.uid() AS uid)) OR (EXISTS ( SELECT 1
+   FROM public.organization_memberships m
+  WHERE ((m.organization_id = patient_representatives.organization_id) AND (m.user_id = ( SELECT auth.uid() AS uid)) AND (m.status = 'active'::text)))) OR public.is_platform_owner()));
+
+-- staff_patient_assignments Staff can set their own display label for an assignment
+CREATE POLICY "Staff can set their own display label for an assignment" ON public.staff_patient_assignments FOR UPDATE USING ((user_id = auth.uid())) WITH CHECK ((user_id = auth.uid()));
+
+-- document_access_audit The Platform Owner may review the full document access log
+CREATE POLICY "The Platform Owner may review the full document access log" ON public.document_access_audit FOR SELECT TO authenticated USING (public.is_platform_owner());
+
+-- pending_therapist_connections The inviting caregiver or invited therapist can view their own 
+CREATE POLICY "The inviting caregiver or invited therapist can view their own " ON public.pending_therapist_connections FOR SELECT USING (((caregiver_id = auth.uid()) OR (therapist_id = auth.uid())));
+
+-- appointments has_patient_access covers appointments (APR/Owner/staff, migrat
+CREATE POLICY "has_patient_access covers appointments (APR/Owner/staff, migrat" ON public.appointments FOR SELECT TO authenticated USING (public.has_patient_access(patient_id));
+
+-- caregiver_patients has_patient_access covers caregiver_patients (closure, migratio
+CREATE POLICY "has_patient_access covers caregiver_patients (closure, migratio" ON public.caregiver_patients FOR SELECT TO authenticated USING (public.has_patient_access(patient_id));
+
+-- caregiver_visits has_patient_access covers caregiver_visits (APR/Owner/staff, mi
+CREATE POLICY "has_patient_access covers caregiver_visits (APR/Owner/staff, mi" ON public.caregiver_visits FOR SELECT TO authenticated USING (public.has_patient_access(patient_id));
+
+-- medications has_patient_access covers medications (APR/Owner/staff, migrati
+CREATE POLICY "has_patient_access covers medications (APR/Owner/staff, migrati" ON public.medications FOR SELECT TO authenticated USING (public.has_patient_access(patient_id));
+
+-- tasks has_patient_access covers tasks (APR/Owner/staff, migration 154
+CREATE POLICY "has_patient_access covers tasks (APR/Owner/staff, migration 154" ON public.tasks FOR SELECT TO authenticated USING (public.has_patient_access(patient_id));
+
+-- therapist_relationships has_patient_access covers therapist_relationships (closure, mig
+CREATE POLICY "has_patient_access covers therapist_relationships (closure, mig" ON public.therapist_relationships FOR SELECT TO authenticated USING (public.has_patient_access(patient_id));

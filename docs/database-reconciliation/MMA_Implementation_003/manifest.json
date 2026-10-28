@@ -1,0 +1,41 @@
+{
+  "reference_sha256": "709e6c81f14692e89c89327597ae0e193a676d83f5eb217a2ec05dd814a5cd5b",
+  "staging_sha256": "a80c63ee70b20a5757a093c2fc0434f0777cb3339d7dea6984b5b52d8c91db6c",
+  "source_tables": 80,
+  "staging_tables": 63,
+  "missing_tables": 21,
+  "batch_tables": {
+    "1": [
+      "organization_owner_capability_grants",
+      "professional_application_documents",
+      "professional_application_events",
+      "professional_applications"
+    ],
+    "2": [
+      "enterprise_billing_accounts",
+      "enterprise_billing_events",
+      "enterprise_contracts",
+      "enterprise_license_sequences",
+      "organization_amendment_requests",
+      "sales_prospects",
+      "sales_quote_invitations",
+      "sales_quotes"
+    ],
+    "3": [
+      "account_deletion_requests",
+      "account_management_audit",
+      "patient_legal_holds",
+      "patient_representatives"
+    ],
+    "4": [
+      "caregiver_notification_preferences",
+      "document_access_audit",
+      "enterprise_notifications",
+      "incident_attachments",
+      "patient_care_providers"
+    ]
+  },
+  "new_function_candidates": 82,
+  "new_policy_candidates": 78,
+  "status": "LOCAL_REVIEW_AND_TEST_ONLY_NO_DB_EXECUTION"
+}

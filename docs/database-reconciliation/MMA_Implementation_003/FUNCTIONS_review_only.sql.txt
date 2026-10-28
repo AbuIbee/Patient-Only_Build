@@ -1,0 +1,2616 @@
+-- FUNCTION CANDIDATES. REVIEW ONLY, DO NOT APPLY AS A WHOLE.
+-- Existing SECURITY DEFINER grants and search_path require review.
+
+-- acknowledge_help_activation(uuid)
+CREATE FUNCTION public.acknowledge_help_activation(p_help_activation_id uuid) RETURNS public.help_activations
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row help_activations;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Authentication required'; END IF;
+  SELECT * INTO v_row FROM help_activations WHERE id = p_help_activation_id FOR UPDATE;
+  IF v_row.id IS NULL THEN RAISE EXCEPTION 'No such HELP activation'; END IF;
+
+  IF auth.uid() = v_row.patient_id THEN
+    RAISE EXCEPTION 'A patient cannot acknowledge their own HELP activation as staff';
+  END IF;
+
+  IF NOT (
+    EXISTS (SELECT 1 FROM caregiver_patients WHERE patient_id = v_row.patient_id AND caregiver_id = auth.uid())
+    OR EXISTS (SELECT 1 FROM staff_patient_assignments WHERE patient_id = v_row.patient_id AND user_id = auth.uid() AND is_active = true)
+    OR EXISTS (SELECT 1 FROM therapist_relationships WHERE patient_id = v_row.patient_id AND therapist_id = auth.uid() AND is_active = true)
+    OR public.is_org_director_for_patient(auth.uid(), v_row.patient_id)
+  ) THEN
+    RAISE EXCEPTION 'Not authorized for this patient';
+  END IF;
+
+  -- Idempotent: the first real acknowledgment wins; a later call (a
+  -- second responder, a retried request) returns it unchanged rather
+  -- than overwriting who actually responded.
+  IF v_row.staff_acknowledged_by IS NOT NULL THEN
+    RETURN v_row;
+  END IF;
+
+  UPDATE help_activations SET staff_acknowledged_by = auth.uid(), staff_acknowledged_at = now()
+  WHERE id = p_help_activation_id
+  RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+-- activate_enterprise_license_from_quote(uuid)
+CREATE FUNCTION public.activate_enterprise_license_from_quote(p_quote_id uuid) RETURNS public.organization_licenses
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $_$
+DECLARE
+  v_quote sales_quotes;
+  v_app professional_applications;
+  v_license organization_licenses;
+  v_prefix TEXT;
+  v_year INTEGER;
+  v_seq INTEGER;
+  v_license_number TEXT;
+  v_required_type TEXT;
+BEGIN
+  SELECT * INTO v_quote FROM sales_quotes WHERE id = p_quote_id;
+  IF v_quote.id IS NULL THEN
+    RAISE EXCEPTION 'No such quote (%)', p_quote_id;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM enterprise_billing_accounts eba WHERE eba.quote_id = p_quote_id AND eba.status = 'active'
+  ) THEN
+    RAISE EXCEPTION 'No confirmed-paid Enterprise billing account exists for quote % -- license cannot activate without confirmed payment', p_quote_id;
+  END IF;
+
+  FOREACH v_required_type IN ARRAY ARRAY['saas_license', 'baa'] LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM enterprise_contracts ec
+      WHERE ec.quote_id = p_quote_id AND ec.contract_type = v_required_type AND ec.status = 'executed'
+        AND NOT EXISTS (SELECT 1 FROM enterprise_contracts ec2 WHERE ec2.supersedes_contract_id = ec.id)
+    ) THEN
+      RAISE EXCEPTION 'A required % agreement for quote % has not yet been executed -- license cannot activate until it is', v_required_type, p_quote_id;
+    END IF;
+  END LOOP;
+
+  SELECT * INTO v_app FROM professional_applications
+  WHERE application_details->>'originatingQuoteId' = p_quote_id::text
+    AND status = 'approved' AND target_organization_id IS NOT NULL
+  ORDER BY platform_owner_approved_at DESC
+  LIMIT 1;
+  IF v_app.id IS NULL THEN
+    RAISE EXCEPTION 'No approved Director application with an organization references quote % yet -- license cannot activate before approval', p_quote_id;
+  END IF;
+
+  SELECT * INTO v_license FROM organization_licenses WHERE organization_id = v_app.target_organization_id FOR UPDATE;
+  IF v_license.id IS NULL THEN
+    RAISE EXCEPTION 'No license configuration row exists for organization %', v_app.target_organization_id;
+  END IF;
+
+  IF v_license.status = 'active' AND v_license.license_number IS NOT NULL THEN
+    RETURN v_license;
+  END IF;
+
+  v_prefix := CASE v_quote.package_type
+    WHEN 'integrated_care' THEN 'MMA-FE'
+    WHEN 'therapist' THEN 'MMA-TE'
+    ELSE NULL
+  END;
+  IF v_prefix IS NULL THEN
+    RAISE EXCEPTION 'Unrecognized package type % on quote % -- cannot issue a license number', v_quote.package_type, p_quote_id;
+  END IF;
+
+  v_year := EXTRACT(YEAR FROM now())::INTEGER;
+  SELECT COALESCE(MAX((regexp_match(license_number, '-(\d{6})$'))[1]::INTEGER), 0) + 1 INTO v_seq
+  FROM organization_licenses WHERE license_number LIKE v_prefix || '-' || v_year || '-%';
+  v_license_number := v_prefix || '-' || v_year || '-' || lpad(v_seq::text, 6, '0');
+
+  UPDATE organization_licenses SET
+    status = 'active', license_number = v_license_number,
+    licensed_seats = v_quote.proposed_licensed_seats, covered_patient_capacity = v_quote.proposed_covered_patient_capacity,
+    annual_license_fee = v_quote.annual_license_fee, activated_by = v_app.applicant_user_id, activated_at = now(), updated_at = now()
+  WHERE id = v_license.id
+  RETURNING * INTO v_license;
+
+  INSERT INTO professional_application_events (application_id, event_type, actor_user_id, actor_role, from_status, to_status, notes)
+  VALUES (v_app.id, 'enterprise_license_activated', v_app.applicant_user_id, 'system', 'approved', 'approved', 'License activated: ' || v_license_number);
+
+  RETURN v_license;
+END;
+$_$;
+
+-- am_i_org_owner(uuid)
+CREATE FUNCTION public.am_i_org_owner(p_org_id uuid) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT EXISTS (SELECT 1 FROM organizations WHERE id = p_org_id AND owner_user_id = auth.uid());
+$$;
+
+-- apply_organization_amendment_from_quote(uuid)
+CREATE FUNCTION public.apply_organization_amendment_from_quote(p_quote_id uuid) RETURNS public.organization_amendment_requests
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_request organization_amendment_requests;
+  v_quote sales_quotes;
+  v_license organization_licenses;
+  v_required_type TEXT;
+BEGIN
+  SELECT * INTO v_request FROM organization_amendment_requests WHERE resulting_quote_id = p_quote_id AND status = 'quoted' FOR UPDATE;
+  IF v_request.id IS NULL THEN
+    RAISE EXCEPTION 'No quoted amendment request references quote %', p_quote_id;
+  END IF;
+  IF v_request.request_type = 'cancellation' THEN
+    RAISE EXCEPTION 'Cancellation requests are applied directly by the Platform Owner, never through a paid checkout';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM enterprise_billing_accounts eba WHERE eba.quote_id = p_quote_id AND eba.status = 'active'
+  ) THEN
+    RAISE EXCEPTION 'No confirmed-paid Enterprise billing account exists for amendment quote % -- cannot apply without confirmed payment', p_quote_id;
+  END IF;
+
+  FOREACH v_required_type IN ARRAY ARRAY['saas_license', 'baa'] LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM enterprise_contracts ec
+      WHERE ec.quote_id = p_quote_id AND ec.contract_type = v_required_type AND ec.status = 'executed'
+        AND NOT EXISTS (SELECT 1 FROM enterprise_contracts ec2 WHERE ec2.supersedes_contract_id = ec.id)
+    ) THEN
+      RAISE EXCEPTION 'A required % agreement for amendment quote % has not yet been executed -- cannot apply until it is', v_required_type, p_quote_id;
+    END IF;
+  END LOOP;
+
+  SELECT * INTO v_quote FROM sales_quotes WHERE id = p_quote_id;
+  IF v_quote.id IS NULL THEN RAISE EXCEPTION 'No such quote %', p_quote_id; END IF;
+
+  SELECT * INTO v_license FROM organization_licenses WHERE organization_id = v_request.organization_id FOR UPDATE;
+  IF v_license.id IS NULL THEN RAISE EXCEPTION 'No license configuration row exists for organization %', v_request.organization_id; END IF;
+
+  UPDATE organization_licenses SET
+    licensed_seats = v_quote.proposed_licensed_seats,
+    covered_patient_capacity = v_quote.proposed_covered_patient_capacity,
+    annual_license_fee = v_quote.annual_license_fee,
+    status = 'active',
+    updated_at = now()
+  WHERE id = v_license.id;
+
+  UPDATE organization_amendment_requests SET status = 'completed', completed_at = now(), updated_at = now()
+  WHERE id = v_request.id RETURNING * INTO v_request;
+
+  RETURN v_request;
+END;
+$$;
+
+-- archival_interval()
+CREATE FUNCTION public.archival_interval() RETURNS interval
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT COALESCE(
+    (SELECT current_setting('app.settings.archival_test_interval', true))::interval,
+    INTERVAL '45 days'
+  );
+$$;
+
+-- archive_eligible_closed_patients()
+CREATE FUNCTION public.archive_eligible_closed_patients() RETURNS TABLE(out_patient_id uuid, out_organization_id uuid, archived boolean, detail text)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN SELECT * FROM covered_patient_memberships WHERE status = 'closed' AND scheduled_archival_at <= now() LOOP
+    BEGIN
+      IF EXISTS (SELECT 1 FROM patient_legal_holds h WHERE h.patient_id = r.patient_id AND h.status = 'active') THEN
+        INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, reason)
+        VALUES (r.patient_id, r.organization_id, 'patient_archival_skipped_legal_hold', NULL, 'Active legal hold prevents archival');
+        out_patient_id := r.patient_id; out_organization_id := r.organization_id; archived := false; detail := 'active legal hold';
+        RETURN NEXT;
+        CONTINUE;
+      END IF;
+
+      UPDATE covered_patient_memberships SET status = 'archived', archived_at = now()
+      WHERE id = r.id AND status = 'closed';
+
+      INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id)
+      VALUES (r.patient_id, r.organization_id, 'patient_coverage_archived', NULL);
+      out_patient_id := r.patient_id; out_organization_id := r.organization_id; archived := true; detail := NULL;
+      RETURN NEXT;
+    EXCEPTION WHEN OTHERS THEN
+      INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, reason)
+      VALUES (r.patient_id, r.organization_id, 'patient_archival_failed', NULL, SQLERRM);
+      out_patient_id := r.patient_id; out_organization_id := r.organization_id; archived := false; detail := SQLERRM;
+      RETURN NEXT;
+    END;
+  END LOOP;
+  RETURN;
+END;
+$$;
+
+-- assign_application_reference()
+CREATE FUNCTION public.assign_application_reference() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.application_reference IS NULL THEN
+    NEW.application_reference := 'APP-' || to_char(now(), 'YYYY') || '-' || lpad(nextval('professional_applications_ref_seq')::text, 6, '0');
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- cancel_account_deletion_request(uuid)
+CREATE FUNCTION public.cancel_account_deletion_request(p_request_id uuid) RETURNS public.account_deletion_requests
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row account_deletion_requests;
+BEGIN
+  SELECT * INTO v_row FROM account_deletion_requests WHERE id = p_request_id FOR UPDATE;
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'No such deletion request';
+  END IF;
+  IF v_row.requested_by != auth.uid() THEN
+    RAISE EXCEPTION 'Only the requester may cancel this request';
+  END IF;
+  IF v_row.status NOT IN ('requested', 'under_review') THEN
+    RAISE EXCEPTION 'This request has already been decided and can no longer be cancelled';
+  END IF;
+
+  UPDATE account_deletion_requests SET status = 'cancelled', updated_at = now()
+  WHERE id = p_request_id
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+-- close_patient_coverage(uuid, uuid, text, text)
+CREATE FUNCTION public.close_patient_coverage(p_org_id uuid, p_patient_id uuid, p_reason text, p_notes text) RETURNS public.covered_patient_memberships
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE v_row covered_patient_memberships;
+BEGIN
+  IF NOT public.is_active_org_director(p_org_id) THEN
+    RAISE EXCEPTION 'Only an active director of this organization may close a patient''s coverage';
+  END IF;
+  IF p_reason IS NULL OR char_length(btrim(p_reason)) = 0 THEN
+    RAISE EXCEPTION 'A closure reason is required';
+  END IF;
+  IF p_notes IS NULL OR char_length(btrim(p_notes)) = 0 THEN
+    RAISE EXCEPTION 'Explanatory closure notes are required';
+  END IF;
+
+  SELECT * INTO v_row FROM covered_patient_memberships WHERE organization_id = p_org_id AND patient_id = p_patient_id FOR UPDATE;
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'No coverage relationship found for this organization and patient';
+  END IF;
+
+  IF v_row.status IN ('closed', 'archived') THEN
+    RETURN v_row; -- idempotent: already closed, no-op
+  END IF;
+  IF v_row.status <> 'active' THEN
+    RAISE EXCEPTION 'Coverage is not active (current status: %) and cannot be closed', v_row.status;
+  END IF;
+
+  UPDATE covered_patient_memberships SET
+    status = 'closed', closed_by = auth.uid(), closure_reason = btrim(p_reason), closure_notes = btrim(p_notes),
+    closed_at = now(), scheduled_archival_at = now() + public.archival_interval()
+  WHERE id = v_row.id
+  RETURNING * INTO v_row;
+
+  INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, new_value, reason)
+  VALUES (p_patient_id, p_org_id, 'patient_coverage_closed', auth.uid(), jsonb_build_object('scheduled_archival_at', v_row.scheduled_archival_at, 'notes', p_notes), p_reason);
+
+  RETURN v_row;
+END;
+$$;
+
+-- create_enterprise_billing_account(uuid, text)
+CREATE FUNCTION public.create_enterprise_billing_account(p_quote_id uuid, p_billing_contact_email text) RETURNS public.enterprise_billing_accounts
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_quote sales_quotes;
+  v_interval TEXT;
+  v_amount_cents INTEGER;
+  v_row enterprise_billing_accounts;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentication required';
+  END IF;
+  IF btrim(coalesce(p_billing_contact_email, '')) = '' THEN
+    RAISE EXCEPTION 'Billing contact email is required';
+  END IF;
+
+  SELECT * INTO v_quote FROM sales_quotes WHERE id = p_quote_id AND status = 'sent';
+  IF v_quote.id IS NULL THEN
+    RAISE EXCEPTION 'No sent quote found for that id';
+  END IF;
+
+  -- Ownership: the caller must either be the applicant whose own
+  -- application references this exact quote (initial activation), or
+  -- an active director of the organization whose quoted amendment
+  -- request references it (expansion/renewal/downgrade) -- never
+  -- trust a client-supplied organization/application/request id for
+  -- this check.
+  IF NOT EXISTS (
+    SELECT 1 FROM professional_applications pa
+    WHERE pa.applicant_user_id = auth.uid() AND pa.application_details->>'originatingQuoteId' = p_quote_id::text
+  ) AND NOT EXISTS (
+    SELECT 1 FROM organization_amendment_requests oar
+    WHERE oar.resulting_quote_id = p_quote_id AND oar.status = 'quoted' AND is_active_org_director(oar.organization_id)
+  ) THEN
+    RAISE EXCEPTION 'You do not have an application or amendment request referencing this quote';
+  END IF;
+
+  IF v_quote.annual_license_fee IS NULL THEN
+    RAISE EXCEPTION 'This quote has no price yet -- the Platform Owner has not entered commercial terms';
+  END IF;
+
+  -- billing_cadence is deliberately free-text (migration 107 -- no
+  -- invented fixed vocabulary); map only the two values Stripe's
+  -- `recurring.interval` actually accepts, and fail closed rather than
+  -- guess for anything else.
+  v_interval := CASE lower(btrim(coalesce(v_quote.billing_cadence, '')))
+    WHEN 'monthly' THEN 'month' WHEN 'month' THEN 'month'
+    WHEN 'annual' THEN 'year' WHEN 'annually' THEN 'year' WHEN 'yearly' THEN 'year' WHEN 'year' THEN 'year'
+    ELSE NULL
+  END;
+  IF v_interval IS NULL THEN
+    RAISE EXCEPTION 'This quote''s billing cadence (%) is not one Stripe checkout can bill -- the Platform Owner must set it to monthly or annual', v_quote.billing_cadence;
+  END IF;
+
+  v_amount_cents := ROUND(v_quote.annual_license_fee * 100)::INTEGER;
+
+  INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, currency, unit_amount_cents, billing_interval, created_by)
+  VALUES (p_quote_id, lower(btrim(p_billing_contact_email)), 'usd', v_amount_cents, v_interval, auth.uid())
+  ON CONFLICT (quote_id) DO UPDATE SET
+    billing_contact_email = EXCLUDED.billing_contact_email,
+    currency = EXCLUDED.currency,
+    unit_amount_cents = EXCLUDED.unit_amount_cents,
+    billing_interval = EXCLUDED.billing_interval,
+    updated_at = now()
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+-- director_approve_application(uuid)
+CREATE FUNCTION public.director_approve_application(p_application_id uuid) RETURNS public.professional_applications
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_app professional_applications;
+  v_seats INTEGER;
+  v_active_count INTEGER;
+  v_package TEXT;
+  v_role_cap INTEGER;
+  v_role_count INTEGER;
+BEGIN
+  SELECT * INTO v_app FROM professional_applications WHERE id = p_application_id FOR UPDATE;
+  IF v_app.id IS NULL THEN RAISE EXCEPTION 'No such application'; END IF;
+  IF v_app.requested_office = 'director' THEN
+    RAISE EXCEPTION 'Director applications are approved by the Platform Owner, not an organization director';
+  END IF;
+  IF v_app.status NOT IN ('pending_review', 'resubmitted') THEN RAISE EXCEPTION 'This application is not open for approval'; END IF;
+  IF NOT public.is_active_org_director(v_app.target_organization_id) THEN
+    RAISE EXCEPTION 'Only an active director of the target organization may approve this application';
+  END IF;
+  IF v_app.applicant_user_id = auth.uid() THEN
+    RAISE EXCEPTION 'You cannot approve your own application';
+  END IF;
+  IF v_app.credential_verification_status != 'independently_verified' THEN
+    RAISE EXCEPTION 'This application cannot be approved until its credential has been independently verified (current status: %). Call record_credential_verification() first.', v_app.credential_verification_status;
+  END IF;
+
+  SELECT package_type INTO v_package FROM organizations WHERE id = v_app.target_organization_id;
+  IF v_package = 'therapist' AND v_app.requested_office IN ('caregiver', 'medical_professional') THEN
+    RAISE EXCEPTION 'This organization''s Therapist Enterprise package does not include caregiver or medical professional offices';
+  END IF;
+
+  PERFORM licensed_seats FROM organization_licenses WHERE organization_id = v_app.target_organization_id FOR UPDATE;
+  SELECT licensed_seats INTO v_seats FROM organization_licenses WHERE organization_id = v_app.target_organization_id;
+  IF v_seats IS NOT NULL THEN
+    SELECT count(*) INTO v_active_count FROM organization_memberships WHERE organization_id = v_app.target_organization_id AND status = 'active';
+    IF v_active_count >= v_seats THEN
+      RAISE EXCEPTION 'This organization has no remaining licensed seats. Increase licensed seats before approving this application.';
+    END IF;
+  END IF;
+
+  v_role_cap := CASE v_app.requested_office
+    WHEN 'caregiver' THEN (SELECT max_caregiver_seats FROM organization_licenses WHERE organization_id = v_app.target_organization_id)
+    WHEN 'medical_professional' THEN (SELECT max_medical_professional_seats FROM organization_licenses WHERE organization_id = v_app.target_organization_id)
+    WHEN 'therapist' THEN (SELECT max_therapist_seats FROM organization_licenses WHERE organization_id = v_app.target_organization_id)
+    ELSE NULL
+  END;
+  IF v_role_cap IS NOT NULL THEN
+    SELECT count(*) INTO v_role_count FROM organization_memberships
+      WHERE organization_id = v_app.target_organization_id AND status = 'active' AND org_role = v_app.requested_office;
+    IF v_role_count >= v_role_cap THEN
+      RAISE EXCEPTION 'This organization has no remaining licensed % seats. Increase the per-role cap before approving this application.', v_app.requested_office;
+    END IF;
+  END IF;
+
+  INSERT INTO organization_memberships (organization_id, user_id, org_role, status, invited_by)
+  VALUES (v_app.target_organization_id, v_app.applicant_user_id, v_app.requested_office, 'active', auth.uid())
+  ON CONFLICT (organization_id, user_id) DO UPDATE SET org_role = EXCLUDED.org_role, status = 'active', updated_at = now();
+
+  UPDATE professional_applications SET
+    status = 'approved', approved_office = v_app.requested_office, reviewed_by = auth.uid(), reviewed_at = now(), updated_at = now()
+  WHERE id = p_application_id RETURNING * INTO v_app;
+
+  INSERT INTO professional_application_events (application_id, event_type, actor_user_id, actor_role, from_status, to_status)
+  VALUES (p_application_id, 'approved', auth.uid(), 'director', 'pending_review', 'approved');
+
+  RETURN v_app;
+END;
+$$;
+
+-- director_request_organization_amendment(uuid, text, jsonb, text)
+CREATE FUNCTION public.director_request_organization_amendment(p_organization_id uuid, p_request_type text, p_requested_details jsonb, p_director_notes text) RETURNS public.organization_amendment_requests
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row organization_amendment_requests;
+BEGIN
+  IF NOT is_active_org_director(p_organization_id) THEN
+    RAISE EXCEPTION 'Only an active director of this organization may request an amendment';
+  END IF;
+  IF p_request_type NOT IN ('expansion', 'renewal', 'downgrade', 'cancellation') THEN
+    RAISE EXCEPTION 'Invalid request type: %', p_request_type;
+  END IF;
+
+  INSERT INTO organization_amendment_requests (organization_id, requested_by, request_type, requested_details, director_notes)
+  VALUES (p_organization_id, auth.uid(), p_request_type, coalesce(p_requested_details, '{}'::jsonb), p_director_notes)
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+-- director_withdraw_amendment_request(uuid)
+CREATE FUNCTION public.director_withdraw_amendment_request(p_request_id uuid) RETURNS public.organization_amendment_requests
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row organization_amendment_requests;
+BEGIN
+  SELECT * INTO v_row FROM organization_amendment_requests WHERE id = p_request_id FOR UPDATE;
+  IF v_row.id IS NULL THEN RAISE EXCEPTION 'No such request'; END IF;
+  IF v_row.requested_by <> auth.uid() THEN RAISE EXCEPTION 'You may only withdraw your own request'; END IF;
+  IF v_row.status <> 'pending' THEN RAISE EXCEPTION 'Only a pending request can be withdrawn'; END IF;
+
+  UPDATE organization_amendment_requests SET status = 'withdrawn', updated_at = now() WHERE id = p_request_id RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+-- discard_application_draft(uuid)
+CREATE FUNCTION public.discard_application_draft(p_draft_id uuid) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+BEGIN
+  DELETE FROM professional_applications WHERE id = p_draft_id AND applicant_user_id = auth.uid() AND status = 'draft';
+  RETURN FOUND;
+END;
+$$;
+
+-- enforce_patient_safety_plan_provenance()
+CREATE FUNCTION public.enforce_patient_safety_plan_provenance() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_code_status_touch BOOLEAN;
+  v_comm_touch BOOLEAN;
+BEGIN
+  v_code_status_touch := TG_OP = 'INSERT' OR NEW.code_status IS DISTINCT FROM OLD.code_status OR NEW.code_status_source IS DISTINCT FROM OLD.code_status_source;
+  IF v_code_status_touch THEN
+    IF (
+      NEW.code_status_source IN ('verified_source', 'professional_observation')
+      OR (TG_OP = 'UPDATE' AND OLD.code_status_source IN ('verified_source', 'professional_observation'))
+    ) AND NOT public.is_professional_staff_for_patient(NEW.id) THEN
+      RAISE EXCEPTION 'Only an assigned therapist or medical professional may set or modify a verified code status';
+    END IF;
+    NEW.code_status_updated_by := auth.uid();
+  END IF;
+
+  v_comm_touch := TG_OP = 'INSERT' OR NEW.communication_needs IS DISTINCT FROM OLD.communication_needs OR NEW.communication_needs_source IS DISTINCT FROM OLD.communication_needs_source;
+  IF v_comm_touch THEN
+    IF (
+      COALESCE(NEW.communication_needs_source, 'unknown') IN ('verified_source', 'professional_observation')
+      OR (TG_OP = 'UPDATE' AND COALESCE(OLD.communication_needs_source, 'unknown') IN ('verified_source', 'professional_observation'))
+    ) AND NOT public.is_professional_staff_for_patient(NEW.id) THEN
+      RAISE EXCEPTION 'Only an assigned therapist or medical professional may record or modify a professionally-sourced communication need';
+    END IF;
+    NEW.communication_needs_updated_by := auth.uid();
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- find_organization_for_application(text)
+CREATE FUNCTION public.find_organization_for_application(p_name text) RETURNS TABLE(id uuid, name text, package_type text)
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT o.id, o.name, o.package_type FROM organizations o WHERE lower(btrim(o.name)) = lower(btrim(p_name)) LIMIT 1;
+$$;
+
+-- get_my_account_deletion_requests()
+CREATE FUNCTION public.get_my_account_deletion_requests() RETURNS SETOF public.account_deletion_requests
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT * FROM account_deletion_requests WHERE target_user_id = auth.uid() OR requested_by = auth.uid() ORDER BY created_at DESC;
+$$;
+
+-- get_my_application_draft()
+CREATE FUNCTION public.get_my_application_draft() RETURNS SETOF public.professional_applications
+    LANGUAGE sql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT * FROM professional_applications WHERE applicant_user_id = auth.uid() AND status = 'draft';
+$$;
+
+-- get_my_enterprise_billing_status(uuid)
+CREATE FUNCTION public.get_my_enterprise_billing_status(p_quote_id uuid) RETURNS SETOF public.enterprise_billing_accounts
+    LANGUAGE sql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT eba.* FROM enterprise_billing_accounts eba
+  WHERE eba.quote_id = p_quote_id
+    AND (
+      EXISTS (
+        SELECT 1 FROM professional_applications pa
+        WHERE pa.application_details->>'originatingQuoteId' = eba.quote_id::text AND pa.applicant_user_id = auth.uid()
+      )
+      OR EXISTS (
+        SELECT 1 FROM organization_amendment_requests oar
+        WHERE oar.resulting_quote_id = eba.quote_id AND oar.status = 'quoted' AND is_active_org_director(oar.organization_id)
+      )
+    );
+$$;
+
+-- get_my_patient_office_subject()
+CREATE FUNCTION public.get_my_patient_office_subject() RETURNS uuid
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE v_rep_patient UUID;
+BEGIN
+  IF public.is_my_enterprise_coverage_active() THEN
+    RETURN auth.uid();
+  END IF;
+
+  SELECT r.patient_id INTO v_rep_patient
+  FROM patient_representatives r
+  JOIN covered_patient_memberships c ON c.organization_id = r.organization_id AND c.patient_id = r.patient_id AND c.status = 'active'
+  JOIN organization_licenses l ON l.organization_id = r.organization_id AND l.status = 'active'
+  WHERE r.representative_user_id = auth.uid() AND r.status = 'active'
+  LIMIT 1;
+
+  RETURN v_rep_patient;
+END;
+$$;
+
+-- get_my_quoted_amendment_for_org(uuid)
+CREATE FUNCTION public.get_my_quoted_amendment_for_org(p_organization_id uuid) RETURNS SETOF public.organization_amendment_requests
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT * FROM organization_amendment_requests
+  WHERE organization_id = p_organization_id AND status = 'quoted' AND is_active_org_director(p_organization_id)
+  ORDER BY created_at DESC;
+$$;
+
+-- get_organization_coverage_status(uuid)
+CREATE FUNCTION public.get_organization_coverage_status(p_org_id uuid) RETURNS TABLE(status text, covered_patient_capacity integer)
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT ol.status, ol.covered_patient_capacity FROM organization_licenses ol
+  WHERE ol.organization_id = p_org_id AND public.is_active_org_member(p_org_id);
+$$;
+
+-- get_pending_account_deletion_requests()
+CREATE FUNCTION public.get_pending_account_deletion_requests() RETURNS SETOF public.account_deletion_requests
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+BEGIN
+  IF NOT public.is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may review deletion requests';
+  END IF;
+  RETURN QUERY SELECT * FROM account_deletion_requests WHERE status IN ('requested', 'under_review') ORDER BY created_at ASC;
+END;
+$$;
+
+-- is_active_org_auditor(uuid)
+CREATE FUNCTION public.is_active_org_auditor(p_org_id uuid) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM organization_memberships
+    WHERE organization_id = p_org_id AND user_id = auth.uid()
+      AND org_role = 'auditor' AND status = 'active'
+  );
+$$;
+
+-- is_active_org_clinical_authority(uuid)
+CREATE FUNCTION public.is_active_org_clinical_authority(p_org_id uuid) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM organization_memberships
+    WHERE organization_id = p_org_id AND user_id = auth.uid()
+      AND org_role IN ('director', 'co_director', 'clinical_supervisor') AND status = 'active'
+  );
+$$;
+
+-- is_org_director_for_patient(uuid, uuid)
+CREATE FUNCTION public.is_org_director_for_patient(p_user_id uuid, p_patient_id uuid) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM organization_memberships om
+    JOIN covered_patient_memberships cpm ON cpm.organization_id = om.organization_id
+    WHERE om.user_id = p_user_id
+      AND om.org_role = 'director'
+      AND om.status = 'active'
+      AND cpm.patient_id = p_patient_id
+      AND cpm.status = 'active'
+  );
+$$;
+
+-- is_platform_owner()
+CREATE FUNCTION public.is_platform_owner() RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role IN ('admin', 'superadmin'));
+$$;
+
+-- mark_notification_read(uuid)
+CREATE FUNCTION public.mark_notification_read(p_notification_id uuid) RETURNS public.enterprise_notifications
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row enterprise_notifications;
+BEGIN
+  SELECT * INTO v_row FROM enterprise_notifications WHERE id = p_notification_id FOR UPDATE;
+  IF v_row.id IS NULL THEN RAISE EXCEPTION 'No such notification'; END IF;
+  IF v_row.recipient_user_id <> auth.uid() THEN RAISE EXCEPTION 'You may only mark your own notifications read'; END IF;
+
+  UPDATE enterprise_notifications SET read_at = now() WHERE id = p_notification_id RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+-- my_patient_has_paid_entitlement()
+CREATE FUNCTION public.my_patient_has_paid_entitlement() RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT public.patient_has_paid_entitlement(auth.uid());
+$$;
+
+-- my_patient_office_access_active()
+CREATE FUNCTION public.my_patient_office_access_active() RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT public.get_my_patient_office_subject() IS NOT NULL;
+$$;
+
+-- notify_platform_owners(text, text, text, text, uuid, text)
+CREATE FUNCTION public.notify_platform_owners(p_notification_type text, p_title text, p_body text, p_related_entity_type text, p_related_entity_id uuid, p_dedup_key text DEFAULT NULL::text) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_recipient_id UUID;
+BEGIN
+  FOR v_recipient_id IN SELECT id FROM profiles WHERE role IN ('admin', 'superadmin') LOOP
+    BEGIN
+      INSERT INTO enterprise_notifications (recipient_user_id, notification_type, title, body, related_entity_type, related_entity_id, dedup_key)
+      VALUES (v_recipient_id, p_notification_type, p_title, p_body, p_related_entity_type, p_related_entity_id, p_dedup_key)
+      ON CONFLICT (recipient_user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING;
+    EXCEPTION WHEN OTHERS THEN
+      NULL;
+    END;
+  END LOOP;
+END;
+$$;
+
+-- org_owner_revoke_own_capability(uuid, text)
+CREATE FUNCTION public.org_owner_revoke_own_capability(p_org_id uuid, p_capability text) RETURNS public.organization_owner_capability_grants
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row organization_owner_capability_grants;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM organizations WHERE id = p_org_id AND owner_user_id = auth.uid()) THEN
+    RAISE EXCEPTION 'Only this organization''s Owner may revoke their own capability';
+  END IF;
+
+  UPDATE organization_owner_capability_grants
+  SET status = 'revoked', revoked_by = auth.uid(), revoked_at = now()
+  WHERE organization_id = p_org_id AND user_id = auth.uid() AND capability = p_capability
+  RETURNING * INTO v_row;
+
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'No active self-assigned capability % found for this organization', p_capability;
+  END IF;
+
+  INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, new_value, reason)
+  VALUES (auth.uid(), p_org_id, 'organization_owner_revoke_own_capability', auth.uid(), jsonb_build_object('capability', p_capability), 'Organization Owner self-revocation');
+
+  RETURN v_row;
+END;
+$$;
+
+-- org_owner_self_assign_capability(uuid, text)
+CREATE FUNCTION public.org_owner_self_assign_capability(p_org_id uuid, p_capability text) RETURNS public.organization_owner_capability_grants
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row organization_owner_capability_grants;
+BEGIN
+  IF p_capability NOT IN ('caregiver', 'therapist', 'medical_professional', 'billing_admin') THEN
+    RAISE EXCEPTION 'Invalid capability: %', p_capability;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM organizations WHERE id = p_org_id AND owner_user_id = auth.uid()) THEN
+    RAISE EXCEPTION 'Only this organization''s Owner may self-assign capability';
+  END IF;
+
+  INSERT INTO organization_owner_capability_grants (organization_id, user_id, capability, status, granted_by)
+  VALUES (p_org_id, auth.uid(), p_capability, 'active', auth.uid())
+  ON CONFLICT (organization_id, user_id, capability)
+  DO UPDATE SET status = 'active', granted_by = auth.uid(), revoked_by = NULL, revoked_at = NULL
+  RETURNING * INTO v_row;
+
+  INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, new_value, reason)
+  VALUES (auth.uid(), p_org_id, 'organization_owner_self_assign_capability', auth.uid(), jsonb_build_object('capability', p_capability), 'Organization Owner self-assignment');
+
+  RETURN v_row;
+END;
+$$;
+
+-- organizations_default_owner_to_creator()
+CREATE FUNCTION public.organizations_default_owner_to_creator() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.owner_user_id IS NULL THEN
+    NEW.owner_user_id := NEW.created_by;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- patient_has_active_legal_hold(uuid)
+CREATE FUNCTION public.patient_has_active_legal_hold(p_patient_id uuid) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT EXISTS (SELECT 1 FROM patient_legal_holds h WHERE h.patient_id = p_patient_id AND h.status = 'active');
+$$;
+
+-- place_patient_legal_hold(uuid, text)
+CREATE FUNCTION public.place_patient_legal_hold(p_patient_id uuid, p_reason text) RETURNS public.patient_legal_holds
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE v_row patient_legal_holds;
+BEGIN
+  IF NOT public.is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may place a legal hold';
+  END IF;
+  INSERT INTO patient_legal_holds (patient_id, reason, placed_by) VALUES (p_patient_id, btrim(p_reason), auth.uid()) RETURNING * INTO v_row;
+  INSERT INTO account_management_audit (target_user_id, action_type, actor_user_id, new_value, reason)
+  VALUES (p_patient_id, 'patient_legal_hold_placed', auth.uid(), jsonb_build_object('hold_id', v_row.id), p_reason);
+  RETURN v_row;
+END;
+$$;
+
+-- platform_owner_approve_cancellation_request(uuid, text)
+CREATE FUNCTION public.platform_owner_approve_cancellation_request(p_request_id uuid, p_notes text) RETURNS public.organization_amendment_requests
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_request organization_amendment_requests;
+BEGIN
+  IF NOT is_platform_owner() THEN RAISE EXCEPTION 'Only the Platform Owner may approve a cancellation'; END IF;
+
+  SELECT * INTO v_request FROM organization_amendment_requests WHERE id = p_request_id FOR UPDATE;
+  IF v_request.id IS NULL THEN RAISE EXCEPTION 'No such request'; END IF;
+  IF v_request.request_type <> 'cancellation' THEN RAISE EXCEPTION 'This request is not a cancellation request'; END IF;
+  IF v_request.status <> 'pending' THEN RAISE EXCEPTION 'Only a pending request can be approved'; END IF;
+
+  UPDATE organization_licenses SET status = 'canceled', updated_at = now()
+  WHERE organization_id = v_request.organization_id;
+
+  UPDATE organization_amendment_requests SET
+    status = 'completed', platform_owner_notes = p_notes, reviewed_by = auth.uid(), reviewed_at = now(), completed_at = now(), updated_at = now()
+  WHERE id = p_request_id RETURNING * INTO v_request;
+
+  RETURN v_request;
+END;
+$$;
+
+-- platform_owner_approve_director_application(uuid)
+CREATE FUNCTION public.platform_owner_approve_director_application(p_application_id uuid) RETURNS public.organizations
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_app professional_applications;
+  v_org organizations;
+  v_quote_id UUID;
+BEGIN
+  IF NOT public.is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may approve a Director application';
+  END IF;
+
+  SELECT * INTO v_app FROM professional_applications WHERE id = p_application_id FOR UPDATE;
+  IF v_app.id IS NULL THEN RAISE EXCEPTION 'No such application'; END IF;
+  IF v_app.requested_office <> 'director' THEN RAISE EXCEPTION 'This is not a Director application'; END IF;
+  IF v_app.status NOT IN ('pending_review', 'resubmitted') THEN RAISE EXCEPTION 'This application is not open for approval'; END IF;
+
+  INSERT INTO organizations (name, package_type, created_by)
+  VALUES (v_app.proposed_organization_name, v_app.proposed_package_type, v_app.applicant_user_id)
+  RETURNING * INTO v_org;
+
+  INSERT INTO organization_memberships (organization_id, user_id, org_role, status, invited_by)
+  VALUES (v_org.id, v_app.applicant_user_id, 'director', 'active', auth.uid());
+
+  INSERT INTO organization_licenses (organization_id, licensed_seats, covered_patient_capacity, status)
+  VALUES (v_org.id, NULL, NULL, 'proposed');
+
+  UPDATE professional_applications SET
+    status = 'approved', approved_office = 'director', target_organization_id = v_org.id,
+    platform_owner_approved_by = auth.uid(), platform_owner_approved_at = now(),
+    reviewed_by = auth.uid(), reviewed_at = now(), updated_at = now()
+  WHERE id = p_application_id;
+
+  INSERT INTO professional_application_events (application_id, event_type, actor_user_id, actor_role, from_status, to_status, notes)
+  VALUES (p_application_id, 'platform_owner_approved', auth.uid(), 'platform_owner', v_app.status, 'approved', 'Organization ' || v_org.name || ' created and Director activated');
+
+  BEGIN
+    v_quote_id := (v_app.application_details->>'originatingQuoteId')::uuid;
+    IF v_quote_id IS NOT NULL THEN
+      PERFORM public.activate_enterprise_license_from_quote(v_quote_id);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    -- Not yet paid (the common case), not an Enterprise-billed
+    -- application at all, or a malformed originatingQuoteId -- the
+    -- license simply stays 'proposed' until the Stripe webhook
+    -- activates it later. Never fails approval itself over this.
+    NULL;
+  END;
+
+  RETURN v_org;
+END;
+$$;
+
+-- platform_owner_correct_office_classification(uuid, uuid, text, text, text)
+CREATE FUNCTION public.platform_owner_correct_office_classification(p_user_id uuid, p_organization_id uuid, p_new_org_role text, p_new_status text, p_reason text) RETURNS public.organization_memberships
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_before organization_memberships;
+  v_after organization_memberships;
+  v_deactivated_count INTEGER;
+BEGIN
+  IF NOT public.is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may correct an office classification';
+  END IF;
+  IF p_new_org_role NOT IN ('director', 'caregiver', 'therapist', 'medical_professional', 'billing_admin') THEN
+    RAISE EXCEPTION 'Invalid office classification: %', p_new_org_role;
+  END IF;
+  IF p_new_status NOT IN ('invited', 'active', 'revoked', 'declined') THEN
+    RAISE EXCEPTION 'Invalid status: %', p_new_status;
+  END IF;
+
+  SELECT * INTO v_before FROM organization_memberships WHERE organization_id = p_organization_id AND user_id = p_user_id FOR UPDATE;
+  IF v_before.id IS NULL THEN RAISE EXCEPTION 'No such organization membership'; END IF;
+
+  UPDATE organization_memberships SET org_role = p_new_org_role, status = p_new_status, updated_at = now()
+  WHERE id = v_before.id RETURNING * INTO v_after;
+
+  INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, previous_value, new_value, reason)
+  VALUES (p_user_id, p_organization_id, 'office_classification_corrected', auth.uid(),
+    jsonb_build_object('org_role', v_before.org_role, 'status', v_before.status),
+    jsonb_build_object('org_role', v_after.org_role, 'status', v_after.status), p_reason);
+
+  IF p_new_status != 'active' OR p_new_org_role != v_before.org_role THEN
+    UPDATE staff_patient_assignments SET is_active = false, updated_at = now()
+    WHERE organization_id = p_organization_id AND user_id = p_user_id AND is_active = true;
+    GET DIAGNOSTICS v_deactivated_count = ROW_COUNT;
+    IF v_deactivated_count > 0 THEN
+      INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, previous_value, new_value, reason)
+      VALUES (p_user_id, p_organization_id, 'office_classification_corrected_assignments_deactivated', auth.uid(),
+        jsonb_build_object('active_assignment_count', v_deactivated_count), jsonb_build_object('active_assignment_count', 0),
+        'Office classification correction (' || p_reason || ') deactivated ' || v_deactivated_count || ' stale patient assignment(s) recorded under the prior classification');
+    END IF;
+  END IF;
+
+  RETURN v_after;
+END;
+$$;
+
+-- platform_owner_create_contract(uuid, text, text, text, text, uuid)
+CREATE FUNCTION public.platform_owner_create_contract(p_quote_id uuid, p_contract_type text, p_template_version text, p_signatory_name text, p_signatory_title text, p_supersedes_contract_id uuid DEFAULT NULL::uuid) RETURNS public.enterprise_contracts
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row enterprise_contracts;
+  v_predecessor enterprise_contracts;
+  v_existing_head enterprise_contracts;
+BEGIN
+  IF NOT is_platform_owner() THEN RAISE EXCEPTION 'Only the Platform Owner may create a contract record'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM sales_quotes WHERE id = p_quote_id) THEN RAISE EXCEPTION 'No such quote'; END IF;
+  IF btrim(coalesce(p_template_version, '')) = '' THEN RAISE EXCEPTION 'A template version is required -- never left blank or invented by this system'; END IF;
+  IF btrim(coalesce(p_signatory_name, '')) = '' THEN RAISE EXCEPTION 'A signatory name is required'; END IF;
+
+  IF p_supersedes_contract_id IS NOT NULL THEN
+    SELECT * INTO v_predecessor FROM enterprise_contracts WHERE id = p_supersedes_contract_id FOR UPDATE;
+    IF v_predecessor.id IS NULL THEN RAISE EXCEPTION 'No such contract to supersede'; END IF;
+    IF v_predecessor.quote_id <> p_quote_id OR v_predecessor.contract_type <> p_contract_type THEN
+      RAISE EXCEPTION 'A contract may only supersede a prior contract of the same quote and type';
+    END IF;
+    IF v_predecessor.status <> 'void' THEN
+      RAISE EXCEPTION 'Only a voided contract may be superseded -- void it first if it needs to be replaced';
+    END IF;
+  ELSE
+    -- No explicit supersession requested: refuse a second LIVE
+    -- (non-void) contract for the same quote+type, preserving the
+    -- original UNIQUE constraint's real intent.
+    SELECT * INTO v_existing_head FROM enterprise_contracts
+    WHERE quote_id = p_quote_id AND contract_type = p_contract_type AND status <> 'void'
+    LIMIT 1;
+    IF v_existing_head.id IS NOT NULL THEN
+      RAISE EXCEPTION 'A live % contract already exists for this quote (status %) -- void it first, then create a superseding one', p_contract_type, v_existing_head.status;
+    END IF;
+  END IF;
+
+  -- "Organization and legal signatory identities match": the
+  -- signatory name on the contract must correspond to a real,
+  -- verifiable identity already on file for this commercial
+  -- relationship -- either the applicant's own legal_name (initial
+  -- activation) or the amendment-requesting director's own profile
+  -- name (expansion/renewal/downgrade) -- never an arbitrary string
+  -- the owner could type without it tracing back to anyone real.
+  IF NOT EXISTS (
+    SELECT 1 FROM professional_applications pa
+    WHERE pa.application_details->>'originatingQuoteId' = p_quote_id::text
+      AND lower(btrim(pa.legal_name)) = lower(btrim(p_signatory_name))
+  ) AND NOT EXISTS (
+    SELECT 1 FROM organization_amendment_requests oar
+    JOIN profiles pr ON pr.id = oar.requested_by
+    WHERE oar.resulting_quote_id = p_quote_id
+      AND lower(btrim(coalesce(pr.first_name, '') || ' ' || coalesce(pr.last_name, ''))) = lower(btrim(p_signatory_name))
+  ) THEN
+    RAISE EXCEPTION 'Signatory name "%" does not match any known legal identity for this quote (the applicant''s legal name or the requesting director''s own profile name) -- correct the name or verify the identity before proceeding', p_signatory_name;
+  END IF;
+
+  INSERT INTO enterprise_contracts (quote_id, contract_type, template_version, signatory_name, signatory_title, created_by, supersedes_contract_id)
+  VALUES (p_quote_id, p_contract_type, p_template_version, p_signatory_name, p_signatory_title, auth.uid(), p_supersedes_contract_id)
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+-- platform_owner_create_prospect(text, text, text, text, text)
+CREATE FUNCTION public.platform_owner_create_prospect(p_contact_name text, p_contact_email text, p_contact_phone text, p_prospective_organization_name text, p_notes text) RETURNS public.sales_prospects
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE v_row sales_prospects;
+BEGIN
+  IF NOT is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may create a sales prospect';
+  END IF;
+  IF btrim(coalesce(p_contact_name,'')) = '' OR btrim(coalesce(p_contact_email,'')) = '' OR btrim(coalesce(p_prospective_organization_name,'')) = '' THEN
+    RAISE EXCEPTION 'Contact name, contact email, and prospective organization name are required';
+  END IF;
+  INSERT INTO sales_prospects (contact_name, contact_email, contact_phone, prospective_organization_name, notes, created_by)
+  VALUES (btrim(p_contact_name), lower(btrim(p_contact_email)), p_contact_phone, btrim(p_prospective_organization_name), p_notes, auth.uid())
+  RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+-- platform_owner_create_quote(uuid, text, integer, integer, numeric, text, integer, text, timestamp with time zone)
+CREATE FUNCTION public.platform_owner_create_quote(p_prospect_id uuid, p_package_type text, p_proposed_licensed_seats integer, p_proposed_covered_patient_capacity integer, p_annual_license_fee numeric, p_billing_cadence text, p_quote_term_months integer, p_discount_notes text, p_valid_until timestamp with time zone) RETURNS public.sales_quotes
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE v_row sales_quotes;
+BEGIN
+  IF NOT is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may create a quote';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM sales_prospects WHERE id = p_prospect_id) THEN
+    RAISE EXCEPTION 'No such prospect';
+  END IF;
+  INSERT INTO sales_quotes (
+    prospect_id, package_type, proposed_licensed_seats, proposed_covered_patient_capacity,
+    annual_license_fee, billing_cadence, quote_term_months, discount_notes, valid_until, created_by
+  ) VALUES (
+    p_prospect_id, p_package_type, p_proposed_licensed_seats, p_proposed_covered_patient_capacity,
+    p_annual_license_fee, p_billing_cadence, p_quote_term_months, p_discount_notes, p_valid_until, auth.uid()
+  ) RETURNING * INTO v_row;
+  UPDATE sales_prospects SET status = 'quoted', updated_at = now() WHERE id = p_prospect_id AND status NOT IN ('won','lost');
+  RETURN v_row;
+END;
+$$;
+
+-- platform_owner_delete_patient_exceptionally(uuid, text)
+CREATE FUNCTION public.platform_owner_delete_patient_exceptionally(p_patient_id uuid, p_justification text) RETURNS jsonb
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_patient_snapshot JSONB;
+  v_representatives_snapshot JSONB;
+  v_holds_snapshot JSONB;
+  v_affected_orgs UUID[];
+BEGIN
+  IF NOT public.is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may perform this exceptional deletion';
+  END IF;
+  IF p_justification IS NULL OR char_length(btrim(p_justification)) = 0 THEN
+    RAISE EXCEPTION 'A justification is required for this exceptional deletion';
+  END IF;
+  IF EXISTS (SELECT 1 FROM patient_legal_holds h WHERE h.patient_id = p_patient_id AND h.status = 'active') THEN
+    RAISE EXCEPTION 'An active legal hold prevents deletion of this patient''s records';
+  END IF;
+
+  SELECT to_jsonb(p.*) INTO v_patient_snapshot FROM patients p WHERE p.id = p_patient_id;
+  IF v_patient_snapshot IS NULL THEN
+    RAISE EXCEPTION 'Patient record not found';
+  END IF;
+
+  SELECT array_agg(DISTINCT organization_id) INTO v_affected_orgs FROM covered_patient_memberships WHERE patient_id = p_patient_id;
+  SELECT coalesce(jsonb_agg(to_jsonb(r.*)), '[]'::jsonb) INTO v_representatives_snapshot FROM patient_representatives r WHERE r.patient_id = p_patient_id;
+  SELECT coalesce(jsonb_agg(to_jsonb(h.*)), '[]'::jsonb) INTO v_holds_snapshot FROM patient_legal_holds h WHERE h.patient_id = p_patient_id;
+
+  -- Written BEFORE the destructive action, into a table with no FK into
+  -- patients/patient_representatives/patient_legal_holds at all -- this
+  -- record survives everything deleted below. "Audit evidence must
+  -- remain available after the target records are deleted."
+  INSERT INTO account_management_audit (target_user_id, action_type, actor_user_id, previous_value, new_value, reason)
+  VALUES (
+    p_patient_id, 'platform_owner_exceptional_patient_deletion', auth.uid(), v_patient_snapshot,
+    jsonb_build_object('affected_organizations', v_affected_orgs, 'deleted_representatives', v_representatives_snapshot, 'deleted_legal_holds', v_holds_snapshot),
+    p_justification
+  );
+
+  DELETE FROM patient_representatives WHERE patient_id = p_patient_id;
+  DELETE FROM patient_legal_holds WHERE patient_id = p_patient_id;
+  DELETE FROM patients WHERE id = p_patient_id;
+
+  RETURN jsonb_build_object('deleted_patient_id', p_patient_id, 'affected_organizations', v_affected_orgs);
+END;
+$$;
+
+-- platform_owner_issue_quote_invitation(uuid, text, integer)
+CREATE FUNCTION public.platform_owner_issue_quote_invitation(p_quote_id uuid, p_recipient_email text, p_expires_in_hours integer DEFAULT 168) RETURNS TABLE(invitation_id uuid, raw_token text, expires_at timestamp with time zone)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE v_quote sales_quotes; v_raw_token TEXT; v_hash TEXT; v_id UUID; v_expires TIMESTAMP WITH TIME ZONE;
+BEGIN
+  IF NOT is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may issue an invitation';
+  END IF;
+  IF btrim(coalesce(p_recipient_email,'')) = '' THEN
+    RAISE EXCEPTION 'Recipient email is required';
+  END IF;
+  IF p_expires_in_hours IS NULL OR p_expires_in_hours <= 0 OR p_expires_in_hours > 720 THEN
+    RAISE EXCEPTION 'expires_in_hours must be between 1 and 720 (30 days)';
+  END IF;
+  SELECT * INTO v_quote FROM sales_quotes WHERE id = p_quote_id;
+  IF v_quote.id IS NULL OR v_quote.status <> 'sent' THEN
+    RAISE EXCEPTION 'Only a sent quote may have an invitation issued against it';
+  END IF;
+
+  -- 256-bit random token, hex-encoded; only its SHA-256 hash is ever
+  -- persisted. Returned exactly once, in this RPC's own response, for
+  -- the Platform Owner to copy and deliver out of band -- this
+  -- migration builds no email-send pipeline (none is approved; see the
+  -- Phase A baseline's billing/notification findings), so delivery stays
+  -- an explicit, disclosed manual step rather than a fabricated one.
+  -- pgcrypto's functions live in the `extensions` schema in this
+  -- project (confirmed live), not `public` -- explicitly schema-qualified
+  -- rather than widening this function's own SET search_path.
+  v_raw_token := encode(extensions.gen_random_bytes(32), 'hex');
+  v_hash := encode(extensions.digest(v_raw_token, 'sha256'), 'hex');
+  v_expires := now() + (p_expires_in_hours || ' hours')::interval;
+
+  INSERT INTO sales_quote_invitations (quote_id, recipient_email, token_hash, expires_at, created_by)
+  VALUES (p_quote_id, lower(btrim(p_recipient_email)), v_hash, v_expires, auth.uid())
+  RETURNING id INTO v_id;
+
+  RETURN QUERY SELECT v_id, v_raw_token, v_expires;
+END;
+$$;
+
+-- platform_owner_present_contract(uuid)
+CREATE FUNCTION public.platform_owner_present_contract(p_contract_id uuid) RETURNS public.enterprise_contracts
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row enterprise_contracts;
+BEGIN
+  IF NOT is_platform_owner() THEN RAISE EXCEPTION 'Only the Platform Owner may present a contract'; END IF;
+  SELECT * INTO v_row FROM enterprise_contracts WHERE id = p_contract_id FOR UPDATE;
+  IF v_row.id IS NULL THEN RAISE EXCEPTION 'No such contract'; END IF;
+  IF v_row.status <> 'draft' THEN RAISE EXCEPTION 'Only a draft contract can be presented'; END IF;
+
+  UPDATE enterprise_contracts SET status = 'presented', presented_at = now(), updated_at = now()
+  WHERE id = p_contract_id RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+-- platform_owner_quote_amendment_request(uuid, text, text, text, integer, integer, numeric, text, integer, text)
+CREATE FUNCTION public.platform_owner_quote_amendment_request(p_request_id uuid, p_contact_name text, p_contact_email text, p_package_type text, p_proposed_licensed_seats integer, p_proposed_covered_patient_capacity integer, p_annual_license_fee numeric, p_billing_cadence text, p_quote_term_months integer, p_notes text) RETURNS public.organization_amendment_requests
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_request organization_amendment_requests;
+  v_org organizations;
+  v_prospect sales_prospects;
+  v_quote sales_quotes;
+BEGIN
+  IF NOT is_platform_owner() THEN RAISE EXCEPTION 'Only the Platform Owner may quote an amendment request'; END IF;
+
+  SELECT * INTO v_request FROM organization_amendment_requests WHERE id = p_request_id FOR UPDATE;
+  IF v_request.id IS NULL THEN RAISE EXCEPTION 'No such request'; END IF;
+  IF v_request.status <> 'pending' THEN RAISE EXCEPTION 'Only a pending request can be quoted'; END IF;
+  IF v_request.request_type = 'cancellation' THEN
+    RAISE EXCEPTION 'A cancellation request is approved directly, not quoted -- use platform_owner_approve_cancellation_request';
+  END IF;
+
+  SELECT * INTO v_org FROM organizations WHERE id = v_request.organization_id;
+  IF v_org.id IS NULL THEN RAISE EXCEPTION 'No such organization'; END IF;
+
+  INSERT INTO sales_prospects (contact_name, contact_email, contact_phone, prospective_organization_name, notes, status, created_by)
+  VALUES (p_contact_name, p_contact_email, NULL, v_org.name, p_notes, 'quoted', auth.uid())
+  RETURNING * INTO v_prospect;
+
+  INSERT INTO sales_quotes (
+    prospect_id, package_type, proposed_licensed_seats, proposed_covered_patient_capacity,
+    annual_license_fee, billing_cadence, quote_term_months, discount_notes, status, created_by
+  ) VALUES (
+    v_prospect.id, p_package_type, p_proposed_licensed_seats, p_proposed_covered_patient_capacity,
+    p_annual_license_fee, p_billing_cadence, p_quote_term_months, p_notes, 'sent', auth.uid()
+  ) RETURNING * INTO v_quote;
+
+  UPDATE organization_amendment_requests SET
+    status = 'quoted', resulting_quote_id = v_quote.id, platform_owner_notes = p_notes,
+    reviewed_by = auth.uid(), reviewed_at = now(), updated_at = now()
+  WHERE id = p_request_id RETURNING * INTO v_request;
+
+  RETURN v_request;
+END;
+$$;
+
+-- platform_owner_record_contract_execution(uuid, text, text)
+CREATE FUNCTION public.platform_owner_record_contract_execution(p_contract_id uuid, p_execution_method text, p_execution_evidence_reference text) RETURNS public.enterprise_contracts
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row enterprise_contracts;
+BEGIN
+  IF NOT is_platform_owner() THEN RAISE EXCEPTION 'Only the Platform Owner may record a contract execution'; END IF;
+  IF btrim(coalesce(p_execution_method, '')) = '' THEN RAISE EXCEPTION 'An execution method is required -- this system never fabricates one'; END IF;
+  IF btrim(coalesce(p_execution_evidence_reference, '')) = '' THEN RAISE EXCEPTION 'An evidence reference is required -- this system never fabricates one'; END IF;
+
+  SELECT * INTO v_row FROM enterprise_contracts WHERE id = p_contract_id FOR UPDATE;
+  IF v_row.id IS NULL THEN RAISE EXCEPTION 'No such contract'; END IF;
+  IF v_row.status <> 'presented' THEN RAISE EXCEPTION 'Only a presented contract can be marked executed'; END IF;
+
+  UPDATE enterprise_contracts SET
+    status = 'executed', execution_method = p_execution_method, execution_evidence_reference = p_execution_evidence_reference,
+    executed_by = auth.uid(), executed_at = now(), updated_at = now()
+  WHERE id = p_contract_id RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+-- platform_owner_reject_amendment_request(uuid, text)
+CREATE FUNCTION public.platform_owner_reject_amendment_request(p_request_id uuid, p_notes text) RETURNS public.organization_amendment_requests
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row organization_amendment_requests;
+BEGIN
+  IF NOT is_platform_owner() THEN RAISE EXCEPTION 'Only the Platform Owner may reject an amendment request'; END IF;
+  SELECT * INTO v_row FROM organization_amendment_requests WHERE id = p_request_id FOR UPDATE;
+  IF v_row.id IS NULL THEN RAISE EXCEPTION 'No such request'; END IF;
+  IF v_row.status <> 'pending' THEN RAISE EXCEPTION 'Only a pending request can be rejected'; END IF;
+
+  UPDATE organization_amendment_requests SET
+    status = 'rejected', platform_owner_notes = p_notes, reviewed_by = auth.uid(), reviewed_at = now(), updated_at = now()
+  WHERE id = p_request_id RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+-- platform_owner_review_account_deletion(uuid, boolean, text)
+CREATE FUNCTION public.platform_owner_review_account_deletion(p_request_id uuid, p_approve boolean, p_notes text) RETURNS public.account_deletion_requests
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row account_deletion_requests;
+  v_membership RECORD;
+BEGIN
+  IF NOT public.is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may review deletion requests';
+  END IF;
+
+  SELECT * INTO v_row FROM account_deletion_requests WHERE id = p_request_id FOR UPDATE;
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'No such deletion request';
+  END IF;
+  IF v_row.status NOT IN ('requested', 'under_review') THEN
+    RAISE EXCEPTION 'This request has already been decided';
+  END IF;
+
+  IF NOT p_approve THEN
+    UPDATE account_deletion_requests
+    SET status = 'denied', reviewed_by = auth.uid(), reviewed_at = now(), review_notes = p_notes, updated_at = now()
+    WHERE id = p_request_id
+    RETURNING * INTO v_row;
+    RETURN v_row;
+  END IF;
+
+  FOR v_membership IN SELECT * FROM organization_memberships WHERE user_id = v_row.target_user_id AND status = 'active' LOOP
+    UPDATE organization_memberships SET status = 'revoked', updated_at = now() WHERE id = v_membership.id;
+    INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, previous_value, new_value, reason)
+    VALUES (v_row.target_user_id, v_membership.organization_id, 'account_deletion_approved_membership_revoked', auth.uid(),
+      jsonb_build_object('org_role', v_membership.org_role, 'status', v_membership.status),
+      jsonb_build_object('org_role', v_membership.org_role, 'status', 'revoked'),
+      'Account deletion request ' || p_request_id || ' approved');
+  END LOOP;
+
+  -- Codex MMA-CODEX-08: cancel every pending invitation too, not only
+  -- active memberships, so none can be stale-accepted later.
+  FOR v_membership IN SELECT * FROM organization_memberships WHERE user_id = v_row.target_user_id AND status = 'invited' LOOP
+    UPDATE organization_memberships SET status = 'declined', updated_at = now() WHERE id = v_membership.id;
+    INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, previous_value, new_value, reason)
+    VALUES (v_row.target_user_id, v_membership.organization_id, 'account_deletion_approved_invitation_cancelled', auth.uid(),
+      jsonb_build_object('org_role', v_membership.org_role, 'status', v_membership.status),
+      jsonb_build_object('org_role', v_membership.org_role, 'status', 'declined'),
+      'Account deletion request ' || p_request_id || ' approved ΓÇö pending invitation cancelled so it cannot be accepted after closure');
+  END LOOP;
+
+  UPDATE staff_patient_assignments SET is_active = false, updated_at = now()
+  WHERE user_id = v_row.target_user_id AND is_active = true;
+
+  UPDATE therapist_relationships SET is_active = false, updated_at = now()
+  WHERE therapist_id = v_row.target_user_id AND is_active = true;
+
+  INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, previous_value, new_value, reason)
+  VALUES (v_row.target_user_id, NULL, 'account_deletion_approved_deactivation_completed', auth.uid(), NULL, NULL,
+    'Account deletion request ' || p_request_id || ' approved and safely deactivated (memberships/assignments/relationships/pending invitations revoked; no clinical record or auth identity was deleted)');
+
+  UPDATE account_deletion_requests
+  SET status = 'completed', reviewed_by = auth.uid(), reviewed_at = now(), review_notes = p_notes, updated_at = now()
+  WHERE id = p_request_id
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+-- platform_owner_revise_quote(uuid, text, integer, integer, numeric, text, integer, text, timestamp with time zone)
+CREATE FUNCTION public.platform_owner_revise_quote(p_quote_id uuid, p_package_type text, p_proposed_licensed_seats integer, p_proposed_covered_patient_capacity integer, p_annual_license_fee numeric, p_billing_cadence text, p_quote_term_months integer, p_discount_notes text, p_valid_until timestamp with time zone) RETURNS public.sales_quotes
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE v_old sales_quotes; v_new sales_quotes;
+BEGIN
+  IF NOT is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may revise a quote';
+  END IF;
+  SELECT * INTO v_old FROM sales_quotes WHERE id = p_quote_id FOR UPDATE;
+  IF v_old.id IS NULL THEN RAISE EXCEPTION 'No such quote'; END IF;
+  IF v_old.status NOT IN ('draft','sent') THEN
+    RAISE EXCEPTION 'Only a draft or sent quote may be revised (current status: %)', v_old.status;
+  END IF;
+  INSERT INTO sales_quotes (
+    prospect_id, package_type, proposed_licensed_seats, proposed_covered_patient_capacity,
+    annual_license_fee, billing_cadence, quote_term_months, discount_notes, valid_until,
+    supersedes_quote_id, created_by
+  ) VALUES (
+    v_old.prospect_id, p_package_type, p_proposed_licensed_seats, p_proposed_covered_patient_capacity,
+    p_annual_license_fee, p_billing_cadence, p_quote_term_months, p_discount_notes, p_valid_until,
+    v_old.id, auth.uid()
+  ) RETURNING * INTO v_new;
+  UPDATE sales_quotes SET status = 'superseded', updated_at = now() WHERE id = v_old.id;
+  -- Any still-pending invitation against the superseded quote is revoked;
+  -- it must not go on to redeem obsolete terms.
+  UPDATE sales_quote_invitations SET status = 'revoked' WHERE quote_id = v_old.id AND status = 'pending';
+  RETURN v_new;
+END;
+$$;
+
+-- platform_owner_revoke_quote(uuid)
+CREATE FUNCTION public.platform_owner_revoke_quote(p_quote_id uuid) RETURNS public.sales_quotes
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE v_row sales_quotes;
+BEGIN
+  IF NOT is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may revoke a quote';
+  END IF;
+  UPDATE sales_quotes SET status = 'revoked', updated_at = now()
+  WHERE id = p_quote_id AND status IN ('draft','sent')
+  RETURNING * INTO v_row;
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'Quote not found or not in a revocable status';
+  END IF;
+  UPDATE sales_quote_invitations SET status = 'revoked' WHERE quote_id = p_quote_id AND status = 'pending';
+  RETURN v_row;
+END;
+$$;
+
+-- platform_owner_revoke_quote_invitation(uuid)
+CREATE FUNCTION public.platform_owner_revoke_quote_invitation(p_invitation_id uuid) RETURNS public.sales_quote_invitations
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE v_row sales_quote_invitations;
+BEGIN
+  IF NOT is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may revoke an invitation';
+  END IF;
+  UPDATE sales_quote_invitations SET status = 'revoked'
+  WHERE id = p_invitation_id AND status = 'pending'
+  RETURNING * INTO v_row;
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'Invitation not found or not pending';
+  END IF;
+  RETURN v_row;
+END;
+$$;
+
+-- platform_owner_send_quote(uuid)
+CREATE FUNCTION public.platform_owner_send_quote(p_quote_id uuid) RETURNS public.sales_quotes
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE v_row sales_quotes;
+BEGIN
+  IF NOT is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may send a quote';
+  END IF;
+  UPDATE sales_quotes SET status = 'sent', updated_at = now()
+  WHERE id = p_quote_id AND status = 'draft'
+  RETURNING * INTO v_row;
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'Quote not found or not in draft status';
+  END IF;
+  RETURN v_row;
+END;
+$$;
+
+-- platform_owner_update_prospect_status(uuid, text)
+CREATE FUNCTION public.platform_owner_update_prospect_status(p_prospect_id uuid, p_status text) RETURNS public.sales_prospects
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE v_row sales_prospects;
+BEGIN
+  IF NOT is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may update a sales prospect';
+  END IF;
+  IF p_status NOT IN ('new','contacted','qualified','quoted','won','lost') THEN
+    RAISE EXCEPTION 'Invalid prospect status: %', p_status;
+  END IF;
+  UPDATE sales_prospects SET status = p_status, updated_at = now() WHERE id = p_prospect_id RETURNING * INTO v_row;
+  IF v_row.id IS NULL THEN RAISE EXCEPTION 'No such prospect'; END IF;
+  RETURN v_row;
+END;
+$$;
+
+-- platform_owner_void_contract(uuid, text)
+CREATE FUNCTION public.platform_owner_void_contract(p_contract_id uuid, p_reason text) RETURNS public.enterprise_contracts
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row enterprise_contracts;
+BEGIN
+  IF NOT is_platform_owner() THEN RAISE EXCEPTION 'Only the Platform Owner may void a contract'; END IF;
+  IF btrim(coalesce(p_reason, '')) = '' THEN RAISE EXCEPTION 'A reason is required'; END IF;
+  SELECT * INTO v_row FROM enterprise_contracts WHERE id = p_contract_id FOR UPDATE;
+  IF v_row.id IS NULL THEN RAISE EXCEPTION 'No such contract'; END IF;
+  IF v_row.status = 'void' THEN RAISE EXCEPTION 'Already void'; END IF;
+
+  UPDATE enterprise_contracts SET status = 'void', voided_reason = p_reason, updated_at = now()
+  WHERE id = p_contract_id RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+-- record_communication_needs(uuid, text, text)
+CREATE FUNCTION public.record_communication_needs(p_patient_id uuid, p_communication_needs text, p_source text DEFAULT 'caregiver_report'::text) RETURNS public.patients
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row patients;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Authentication required'; END IF;
+  IF NOT public.has_patient_access(p_patient_id) THEN RAISE EXCEPTION 'Not authorized for this patient'; END IF;
+  IF p_source IN ('verified_source', 'professional_observation') AND NOT public.is_professional_staff_for_patient(p_patient_id) THEN
+    RAISE EXCEPTION 'Only an assigned therapist or medical professional may record this as a professional observation';
+  END IF;
+  UPDATE patients SET
+    communication_needs = p_communication_needs, communication_needs_source = p_source, communication_needs_updated_by = auth.uid()
+  WHERE id = p_patient_id
+  RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+-- record_credential_verification(uuid, text, text)
+CREATE FUNCTION public.record_credential_verification(p_application_id uuid, p_decision text, p_evidence_reference text) RETURNS public.professional_applications
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_app professional_applications;
+  v_membership organization_memberships;
+BEGIN
+  IF p_decision NOT IN ('independently_verified', 'insufficient', 'rejected', 'requires_reverification') THEN
+    RAISE EXCEPTION 'Invalid credential verification decision: %', p_decision;
+  END IF;
+  IF p_evidence_reference IS NULL OR btrim(p_evidence_reference) = '' THEN
+    RAISE EXCEPTION 'An evidence reference describing what was checked is required';
+  END IF;
+
+  SELECT * INTO v_app FROM professional_applications WHERE id = p_application_id FOR UPDATE;
+  IF v_app.id IS NULL THEN RAISE EXCEPTION 'No such application'; END IF;
+  IF v_app.requested_office = 'director' THEN
+    RAISE EXCEPTION 'Director applications have no clinical credential to independently verify';
+  END IF;
+  IF NOT public.is_active_org_director(v_app.target_organization_id) THEN
+    RAISE EXCEPTION 'Only an active director of the target organization may record a credential verification decision';
+  END IF;
+  IF v_app.applicant_user_id = auth.uid() THEN
+    RAISE EXCEPTION 'You cannot verify your own credential';
+  END IF;
+
+  UPDATE professional_applications SET
+    credential_verification_status = p_decision,
+    credential_verified_by = auth.uid(),
+    credential_verified_at = now(),
+    credential_verification_evidence = p_evidence_reference,
+    updated_at = now()
+  WHERE id = p_application_id
+  RETURNING * INTO v_app;
+
+  INSERT INTO professional_application_events (application_id, event_type, actor_user_id, actor_role, from_status, to_status, notes)
+  VALUES (p_application_id, 'credential_verification_recorded', auth.uid(), 'director', v_app.status, v_app.status,
+    'Credential verification decision: ' || p_decision || ' ΓÇö ' || p_evidence_reference);
+
+  -- MMA-CODEX-02: a negative/reverification decision against an
+  -- already-approved application revokes the real authority it
+  -- previously granted, not merely the column.
+  IF v_app.status = 'approved' AND p_decision IN ('requires_reverification', 'rejected', 'expired') THEN
+    SELECT * INTO v_membership FROM organization_memberships
+    WHERE organization_id = v_app.target_organization_id AND user_id = v_app.applicant_user_id AND status = 'active'
+    FOR UPDATE;
+
+    IF v_membership.id IS NOT NULL THEN
+      UPDATE organization_memberships SET status = 'revoked', updated_at = now() WHERE id = v_membership.id;
+      UPDATE staff_patient_assignments SET is_active = false, updated_at = now()
+      WHERE organization_id = v_app.target_organization_id AND user_id = v_app.applicant_user_id AND is_active = true;
+
+      INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, previous_value, new_value, reason)
+      VALUES (v_app.applicant_user_id, v_app.target_organization_id, 'membership_revoked_credential_invalidated', auth.uid(),
+        jsonb_build_object('org_role', v_membership.org_role, 'status', 'active', 'credential_verification_status', 'independently_verified'),
+        jsonb_build_object('org_role', v_membership.org_role, 'status', 'revoked', 'credential_verification_status', p_decision),
+        'Credential verification decision "' || p_decision || '" invalidated prior authority ΓÇö ' || p_evidence_reference);
+    END IF;
+  END IF;
+
+  RETURN v_app;
+END;
+$$;
+
+-- record_note_amendment(uuid, text)
+CREATE FUNCTION public.record_note_amendment(p_original_note_id uuid, p_corrected_note text) RETURNS public.patient_notes
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_original patient_notes;
+  v_row patient_notes;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Authentication required'; END IF;
+  SELECT * INTO v_original FROM patient_notes WHERE id = p_original_note_id;
+  IF v_original.id IS NULL THEN RAISE EXCEPTION 'No such note'; END IF;
+  IF v_original.author_id != auth.uid() THEN
+    RAISE EXCEPTION 'Only the original author may amend this note';
+  END IF;
+  IF NOT public.has_patient_access(v_original.patient_id) THEN
+    RAISE EXCEPTION 'Your authorization for this patient has ended';
+  END IF;
+  IF v_original.note_type = 'therapist_session' AND NOT public.is_therapist_for_patient(v_original.patient_id) THEN
+    RAISE EXCEPTION 'Not authorized to amend this therapist session note';
+  ELSIF v_original.note_type = 'clinical_observation' AND NOT public.is_medical_professional_for_patient(v_original.patient_id) THEN
+    RAISE EXCEPTION 'Not authorized to amend this clinical observation note';
+  END IF;
+
+  INSERT INTO patient_notes (patient_id, author_id, caregiver_id, note, note_type, amends_note_id)
+  VALUES (v_original.patient_id, auth.uid(), v_original.caregiver_id, p_corrected_note, v_original.note_type, p_original_note_id)
+  RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+-- record_patient_provider(uuid, text, text, text, text, text, text)
+CREATE FUNCTION public.record_patient_provider(p_patient_id uuid, p_provider_name text, p_provider_role text, p_phone text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_notes text DEFAULT NULL::text, p_source text DEFAULT 'caregiver_report'::text) RETURNS public.patient_care_providers
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row patient_care_providers;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Authentication required'; END IF;
+  IF NOT public.has_patient_access(p_patient_id) THEN RAISE EXCEPTION 'Not authorized for this patient'; END IF;
+  IF p_source IN ('verified_source', 'professional_observation') AND NOT public.is_professional_staff_for_patient(p_patient_id) THEN
+    RAISE EXCEPTION 'Only an assigned therapist or medical professional may record this as a professional observation';
+  END IF;
+  INSERT INTO patient_care_providers (patient_id, provider_name, provider_role, phone, email, notes, source, author_id)
+  VALUES (p_patient_id, p_provider_name, p_provider_role, p_phone, p_email, p_notes, p_source, auth.uid())
+  RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+-- record_patient_safety_plan(uuid, text, text, text, text)
+CREATE FUNCTION public.record_patient_safety_plan(p_patient_id uuid, p_preferred_hospital text DEFAULT NULL::text, p_safety_response_instructions text DEFAULT NULL::text, p_code_status text DEFAULT NULL::text, p_code_status_source text DEFAULT 'caregiver_report'::text) RETURNS public.patients
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row patients;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Authentication required'; END IF;
+  IF NOT public.has_patient_access(p_patient_id) THEN RAISE EXCEPTION 'Not authorized for this patient'; END IF;
+  IF p_code_status IS NOT NULL AND p_code_status_source IN ('verified_source', 'professional_observation') AND NOT public.is_professional_staff_for_patient(p_patient_id) THEN
+    RAISE EXCEPTION 'Only an assigned therapist or medical professional may verify a code status';
+  END IF;
+  UPDATE patients SET
+    preferred_hospital = COALESCE(p_preferred_hospital, preferred_hospital),
+    safety_response_instructions = COALESCE(p_safety_response_instructions, safety_response_instructions),
+    code_status = COALESCE(p_code_status, code_status),
+    code_status_source = CASE WHEN p_code_status IS NOT NULL THEN p_code_status_source ELSE code_status_source END,
+    code_status_updated_by = CASE WHEN p_code_status IS NOT NULL THEN auth.uid() ELSE code_status_updated_by END
+  WHERE id = p_patient_id
+  RETURNING * INTO v_row;
+  RETURN v_row;
+END;
+$$;
+
+-- redeem_quote_invitation(text)
+CREATE FUNCTION public.redeem_quote_invitation(p_token text) RETURNS TABLE(outcome text, quote_id uuid, prospective_organization_name text, package_type text, proposed_licensed_seats integer, proposed_covered_patient_capacity integer)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE v_hash TEXT; v_inv sales_quote_invitations; v_caller_email TEXT; v_quote sales_quotes; v_prospect sales_prospects;
+BEGIN
+  IF btrim(coalesce(p_token,'')) = '' THEN
+    RAISE EXCEPTION 'A token is required';
+  END IF;
+  SELECT email INTO v_caller_email FROM profiles WHERE id = auth.uid();
+  v_hash := encode(extensions.digest(p_token, 'sha256'), 'hex');
+
+  SELECT * INTO v_inv FROM sales_quote_invitations WHERE token_hash = v_hash FOR UPDATE;
+  IF v_inv.id IS NULL THEN
+    RETURN QUERY SELECT 'not_found'::TEXT, NULL::UUID, NULL::TEXT, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+    RETURN;
+  END IF;
+
+  -- Lazy-expire bookkeeping: a pending row past its own expires_at is
+  -- reported (and recorded) as expired, not "not found".
+  IF v_inv.status = 'pending' AND v_inv.expires_at <= now() THEN
+    UPDATE sales_quote_invitations SET status = 'expired' WHERE id = v_inv.id;
+    v_inv.status := 'expired';
+  END IF;
+
+  IF v_inv.status = 'revoked' THEN
+    RETURN QUERY SELECT 'revoked'::TEXT, NULL::UUID, NULL::TEXT, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+    RETURN;
+  END IF;
+  IF v_inv.status = 'accepted' THEN
+    RETURN QUERY SELECT 'already_used'::TEXT, NULL::UUID, NULL::TEXT, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+    RETURN;
+  END IF;
+  IF v_inv.status = 'expired' THEN
+    RETURN QUERY SELECT 'expired'::TEXT, NULL::UUID, NULL::TEXT, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+    RETURN;
+  END IF;
+  -- Only 'pending' remains. Recipient-identity binding: the caller's OWN
+  -- profiles.email, never a client-supplied value.
+  IF lower(btrim(v_inv.recipient_email)) <> lower(btrim(coalesce(v_caller_email,''))) THEN
+    RETURN QUERY SELECT 'wrong_recipient'::TEXT, NULL::UUID, NULL::TEXT, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+    RETURN;
+  END IF;
+
+  SELECT * INTO v_quote FROM sales_quotes WHERE id = v_inv.quote_id;
+  IF v_quote.id IS NULL OR v_quote.status <> 'sent' THEN
+    -- Defensive: every RPC that revokes/supersedes a quote already
+    -- cascades to revoke its pending invitations, so this should not
+    -- occur in practice. If it ever does, report it as revoked rather
+    -- than silently redeeming stale terms.
+    RETURN QUERY SELECT 'revoked'::TEXT, NULL::UUID, NULL::TEXT, NULL::TEXT, NULL::INTEGER, NULL::INTEGER;
+    RETURN;
+  END IF;
+  SELECT * INTO v_prospect FROM sales_prospects WHERE id = v_quote.prospect_id;
+
+  UPDATE sales_quote_invitations SET status = 'accepted', accepted_by = auth.uid(), accepted_at = now() WHERE id = v_inv.id;
+
+  RETURN QUERY SELECT 'redeemed'::TEXT, v_quote.id, v_prospect.prospective_organization_name, v_quote.package_type, v_quote.proposed_licensed_seats, v_quote.proposed_covered_patient_capacity;
+END;
+$$;
+
+-- register_patient_representative(uuid, uuid, text, text, text, text, text, text, text, text, boolean, text, text)
+CREATE FUNCTION public.register_patient_representative(p_patient_id uuid, p_org_id uuid, p_representative_email text, p_legal_first_name text, p_legal_last_name text, p_contact_email text, p_contact_phone text, p_residential_address text, p_relationship_to_patient text, p_authorization_basis text, p_consent_acknowledged boolean, p_legal_middle_name text DEFAULT NULL::text, p_authorization_evidence_reference text DEFAULT NULL::text) RETURNS public.patient_representatives
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_rep_user_id UUID;
+  v_row patient_representatives;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM organization_memberships
+    WHERE organization_id = p_org_id AND user_id = auth.uid() AND status = 'active' AND org_role IN ('director', 'caregiver')
+  ) THEN
+    RAISE EXCEPTION 'Only an active Director or Caregiver of this organization may initiate representative enrollment';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM covered_patient_memberships c
+    JOIN organization_licenses l ON l.organization_id = c.organization_id AND l.status = 'active'
+    WHERE c.organization_id = p_org_id AND c.patient_id = p_patient_id AND c.status = 'active'
+  ) THEN
+    RAISE EXCEPTION 'This organization does not actively cover the specified patient';
+  END IF;
+
+  IF NOT p_consent_acknowledged THEN
+    RAISE EXCEPTION 'Required consent and acknowledgment was not provided';
+  END IF;
+
+  SELECT id INTO v_rep_user_id FROM profiles WHERE lower(email) = lower(btrim(p_representative_email));
+  IF v_rep_user_id IS NULL THEN
+    RAISE EXCEPTION 'No existing account was found for %. The representative must create an individual authenticated account before enrollment can proceed.', p_representative_email;
+  END IF;
+
+  INSERT INTO patient_representatives (
+    patient_id, organization_id, representative_user_id, legal_first_name, legal_middle_name, legal_last_name,
+    contact_email, contact_phone, residential_address, relationship_to_patient, authorization_basis,
+    authorization_evidence_reference, consent_acknowledged, initiated_by
+  ) VALUES (
+    p_patient_id, p_org_id, v_rep_user_id, btrim(p_legal_first_name), p_legal_middle_name, btrim(p_legal_last_name),
+    btrim(p_contact_email), btrim(p_contact_phone), btrim(p_residential_address), btrim(p_relationship_to_patient), btrim(p_authorization_basis),
+    p_authorization_evidence_reference, p_consent_acknowledged, auth.uid()
+  ) RETURNING * INTO v_row;
+
+  INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, new_value, reason)
+  VALUES (p_patient_id, p_org_id, 'patient_representative_registered', auth.uid(), jsonb_build_object('representative_id', v_row.id, 'representative_user_id', v_rep_user_id), 'APR enrollment initiated');
+
+  RETURN v_row;
+END;
+$$;
+
+-- reject_application(uuid, text)
+CREATE FUNCTION public.reject_application(p_application_id uuid, p_rejection_reason text) RETURNS public.professional_applications
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_app professional_applications;
+  v_actor_role TEXT;
+BEGIN
+  SELECT * INTO v_app FROM professional_applications WHERE id = p_application_id FOR UPDATE;
+  IF v_app.id IS NULL THEN RAISE EXCEPTION 'No such application'; END IF;
+  IF v_app.status NOT IN ('pending_review', 'info_required', 'resubmitted') THEN RAISE EXCEPTION 'This application cannot be rejected from its current state'; END IF;
+
+  IF v_app.requested_office = 'director' THEN
+    IF NOT public.is_platform_owner() THEN RAISE EXCEPTION 'Only the Platform Owner may reject a Director application'; END IF;
+    v_actor_role := 'platform_owner';
+  ELSE
+    IF NOT public.is_active_org_director(v_app.target_organization_id) THEN
+      RAISE EXCEPTION 'Only an active director of the target organization may reject this application';
+    END IF;
+    v_actor_role := 'director';
+  END IF;
+
+  UPDATE professional_applications SET
+    status = 'rejected', rejection_reason = p_rejection_reason, reviewed_by = auth.uid(), reviewed_at = now(), updated_at = now()
+  WHERE id = p_application_id RETURNING * INTO v_app;
+
+  INSERT INTO professional_application_events (application_id, event_type, actor_user_id, actor_role, from_status, to_status, notes)
+  VALUES (p_application_id, 'rejected', auth.uid(), v_actor_role, v_app.status, 'rejected', p_rejection_reason);
+
+  DELETE FROM professional_application_documents WHERE application_id = p_application_id;
+
+  RETURN v_app;
+END;
+$$;
+
+-- release_patient_legal_hold(uuid)
+CREATE FUNCTION public.release_patient_legal_hold(p_hold_id uuid) RETURNS public.patient_legal_holds
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE v_row patient_legal_holds;
+BEGIN
+  IF NOT public.is_platform_owner() THEN
+    RAISE EXCEPTION 'Only the Platform Owner may release a legal hold';
+  END IF;
+  UPDATE patient_legal_holds SET status = 'released', released_by = auth.uid(), released_at = now()
+  WHERE id = p_hold_id AND status = 'active' RETURNING * INTO v_row;
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'No active legal hold found with that id';
+  END IF;
+  INSERT INTO account_management_audit (target_user_id, action_type, actor_user_id, new_value)
+  VALUES (v_row.patient_id, 'patient_legal_hold_released', auth.uid(), jsonb_build_object('hold_id', v_row.id));
+  RETURN v_row;
+END;
+$$;
+
+-- replace_patient_representative(uuid, text, text, text, text, text, text, text, text, text, boolean, text, text)
+CREATE FUNCTION public.replace_patient_representative(p_old_representative_id uuid, p_reason text, p_representative_email text, p_legal_first_name text, p_legal_last_name text, p_contact_email text, p_contact_phone text, p_residential_address text, p_relationship_to_patient text, p_authorization_basis text, p_consent_acknowledged boolean, p_legal_middle_name text DEFAULT NULL::text, p_authorization_evidence_reference text DEFAULT NULL::text) RETURNS public.patient_representatives
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_old patient_representatives;
+  v_new patient_representatives;
+BEGIN
+  v_old := public.revoke_patient_representative(p_old_representative_id, p_reason);
+
+  v_new := public.register_patient_representative(
+    v_old.patient_id, v_old.organization_id, p_representative_email, p_legal_first_name, p_legal_last_name,
+    p_contact_email, p_contact_phone, p_residential_address, p_relationship_to_patient, p_authorization_basis,
+    p_consent_acknowledged, p_legal_middle_name, p_authorization_evidence_reference
+  );
+
+  UPDATE patient_representatives SET replaced_by_representative_id = v_new.id, updated_at = now() WHERE id = v_old.id;
+
+  RETURN v_new;
+END;
+$$;
+
+-- request_account_deletion(text)
+CREATE FUNCTION public.request_account_deletion(p_reason text) RETURNS public.account_deletion_requests
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row account_deletion_requests;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentication required';
+  END IF;
+  IF EXISTS (SELECT 1 FROM account_deletion_requests WHERE target_user_id = auth.uid() AND status IN ('requested', 'under_review')) THEN
+    RAISE EXCEPTION 'An open deletion request for this account already exists';
+  END IF;
+
+  INSERT INTO account_deletion_requests (target_user_id, requested_by, reason, status)
+  VALUES (auth.uid(), auth.uid(), p_reason, 'requested')
+  RETURNING * INTO v_row;
+
+  RETURN v_row;
+END;
+$$;
+
+-- request_application_corrections(uuid, text, jsonb)
+CREATE FUNCTION public.request_application_corrections(p_application_id uuid, p_correction_request text, p_correction_fields jsonb) RETURNS public.professional_applications
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_app professional_applications;
+BEGIN
+  SELECT * INTO v_app FROM professional_applications WHERE id = p_application_id FOR UPDATE;
+  IF v_app.id IS NULL THEN RAISE EXCEPTION 'No such application'; END IF;
+  IF v_app.status NOT IN ('pending_review', 'resubmitted') THEN RAISE EXCEPTION 'This application is not open for review'; END IF;
+
+  IF v_app.requested_office = 'director' THEN
+    IF NOT public.is_platform_owner() THEN RAISE EXCEPTION 'Only the Platform Owner may review a Director application'; END IF;
+  ELSE
+    IF NOT public.is_active_org_director(v_app.target_organization_id) THEN
+      RAISE EXCEPTION 'Only an active director of the target organization may review this application';
+    END IF;
+  END IF;
+
+  UPDATE professional_applications SET
+    status = 'info_required', correction_request = p_correction_request, correction_requested_fields = p_correction_fields,
+    correction_requested_at = now(), correction_requested_by = auth.uid(), updated_at = now()
+  WHERE id = p_application_id RETURNING * INTO v_app;
+
+  INSERT INTO professional_application_events (application_id, event_type, actor_user_id, actor_role, from_status, to_status, notes)
+  VALUES (p_application_id, 'info_requested', auth.uid(), CASE WHEN v_app.requested_office = 'director' THEN 'platform_owner' ELSE 'director' END,
+    'pending_review', 'info_required', p_correction_request);
+
+  RETURN v_app;
+END;
+$$;
+
+-- resolve_enterprise_billing_customer(uuid)
+CREATE FUNCTION public.resolve_enterprise_billing_customer(p_quote_id uuid) RETURNS TABLE(organization_id uuid, reusable_stripe_customer_id text)
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_organization_id UUID;
+  v_customer_id TEXT;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentication required';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM professional_applications pa
+    WHERE pa.applicant_user_id = auth.uid() AND pa.application_details->>'originatingQuoteId' = p_quote_id::text
+  ) AND NOT EXISTS (
+    SELECT 1 FROM organization_amendment_requests oar
+    WHERE oar.resulting_quote_id = p_quote_id AND oar.status = 'quoted' AND is_active_org_director(oar.organization_id)
+  ) THEN
+    RAISE EXCEPTION 'You do not have an application or amendment request referencing this quote';
+  END IF;
+
+  SELECT pa.target_organization_id INTO v_organization_id
+  FROM professional_applications pa
+  WHERE pa.application_details->>'originatingQuoteId' = p_quote_id::text AND pa.target_organization_id IS NOT NULL
+  LIMIT 1;
+
+  IF v_organization_id IS NULL THEN
+    SELECT oar.organization_id INTO v_organization_id
+    FROM organization_amendment_requests oar
+    WHERE oar.resulting_quote_id = p_quote_id
+    LIMIT 1;
+  END IF;
+
+  IF v_organization_id IS NOT NULL THEN
+    SELECT eba.stripe_customer_id INTO v_customer_id
+    FROM enterprise_billing_accounts eba
+    WHERE eba.stripe_customer_id IS NOT NULL
+      AND (
+        EXISTS (
+          SELECT 1 FROM professional_applications pa2
+          WHERE pa2.application_details->>'originatingQuoteId' = eba.quote_id::text AND pa2.target_organization_id = v_organization_id
+        )
+        OR EXISTS (
+          SELECT 1 FROM organization_amendment_requests oar2
+          WHERE oar2.resulting_quote_id = eba.quote_id AND oar2.organization_id = v_organization_id
+        )
+      )
+    ORDER BY eba.created_at DESC
+    LIMIT 1;
+  END IF;
+
+  RETURN QUERY SELECT v_organization_id, v_customer_id;
+END;
+$$;
+
+-- resubmit_application(uuid, text, text, text, text, text, text, jsonb)
+CREATE FUNCTION public.resubmit_application(p_application_id uuid, p_legal_name text, p_preferred_name text, p_contact_email text, p_contact_phone text, p_professional_title text, p_profession_category text, p_application_details jsonb) RETURNS public.professional_applications
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_app professional_applications;
+  v_existing_quote_id UUID;
+  v_incoming_quote_id UUID;
+  v_quote sales_quotes;
+  v_prospect sales_prospects;
+  v_details JSONB;
+  v_org_name TEXT;
+  v_package TEXT;
+  v_allowed_steps JSONB;
+  v_step2_allowed BOOLEAN;
+BEGIN
+  SELECT * INTO v_app FROM professional_applications WHERE id = p_application_id FOR UPDATE;
+  IF v_app.id IS NULL THEN
+    RAISE EXCEPTION 'No such application';
+  END IF;
+  IF v_app.applicant_user_id <> auth.uid() THEN
+    RAISE EXCEPTION 'You may only resubmit your own application';
+  END IF;
+  IF v_app.status <> 'info_required' THEN
+    RAISE EXCEPTION 'This application is not awaiting corrections';
+  END IF;
+
+  v_allowed_steps := v_app.correction_requested_fields->'allowedSteps';
+  IF v_app.requested_office = 'director' AND v_allowed_steps IS NOT NULL THEN
+    v_step2_allowed := EXISTS (SELECT 1 FROM jsonb_array_elements_text(v_allowed_steps) s WHERE s = 'step2');
+    IF NOT v_step2_allowed THEN
+      IF btrim(COALESCE(p_legal_name, '')) IS DISTINCT FROM COALESCE(v_app.legal_name, '')
+        OR NULLIF(btrim(COALESCE(p_preferred_name, '')), '') IS DISTINCT FROM v_app.preferred_name
+        OR btrim(COALESCE(p_contact_email, '')) IS DISTINCT FROM COALESCE(v_app.contact_email, '')
+        -- F-10 bugfix (found while re-verifying the wizard end-to-end,
+        -- not pre-planned): contact_phone/professional_title were
+        -- compared RAW, unlike preferred_name's own already-correct
+        -- NULL/''-normalizing comparison just above. Any application
+        -- whose contact_phone/professional_title column was ever NULL
+        -- (every create_organization()-originated application, since
+        -- it always passes NULL for both) would see the wizard's
+        -- always-non-null '' default compared against DB NULL and be
+        -- treated as "changed" even when step2 was never touched --
+        -- a false-positive lock rejection of a legitimate, unrelated
+        -- resubmission. Normalized the same way preferred_name already is.
+        OR NULLIF(btrim(COALESCE(p_contact_phone, '')), '') IS DISTINCT FROM v_app.contact_phone
+        OR NULLIF(btrim(COALESCE(p_professional_title, '')), '') IS DISTINCT FROM v_app.professional_title
+      THEN
+        RAISE EXCEPTION 'The Founding Director step was not reopened for correction -- legal name, preferred name, contact email, contact phone, and title must be resubmitted unchanged';
+      END IF;
+    END IF;
+  END IF;
+
+  v_existing_quote_id := NULLIF(v_app.application_details->>'originatingQuoteId', '')::UUID;
+  v_details := COALESCE(p_application_details, v_app.application_details);
+  v_incoming_quote_id := NULLIF(v_details->>'originatingQuoteId', '')::UUID;
+  IF v_existing_quote_id IS NOT NULL AND v_incoming_quote_id IS DISTINCT FROM v_existing_quote_id THEN
+    RAISE EXCEPTION 'This application''s originating quote cannot be changed';
+  END IF;
+
+  v_org_name := v_app.proposed_organization_name;
+  v_package := v_app.proposed_package_type;
+  IF v_existing_quote_id IS NOT NULL THEN
+    SELECT * INTO v_quote FROM sales_quotes WHERE id = v_existing_quote_id AND status = 'sent';
+    IF v_quote.id IS NULL THEN
+      RAISE EXCEPTION 'The quote behind this application is no longer available';
+    END IF;
+    SELECT * INTO v_prospect FROM sales_prospects WHERE id = v_quote.prospect_id;
+    v_org_name := v_prospect.prospective_organization_name;
+    v_package := v_quote.package_type;
+  END IF;
+
+  -- F-10: resubmission goes through the same full six-step validation
+  -- as initial submission -- a correction must leave (or make) the
+  -- entire application compliant, not just the specific field a
+  -- correction request named. Only engages for an actual six-step
+  -- application (see migration-header note on create_organization()'s
+  -- separate, simpler path).
+  IF v_app.requested_office = 'director' AND (v_details ? 'step1' OR v_details ? 'step2' OR v_details ? 'step3' OR v_details ? 'step4' OR v_details ? 'step5' OR v_details ? 'step6') THEN
+    PERFORM validate_director_application_payload(v_details, p_contact_email);
+  END IF;
+
+  UPDATE professional_applications SET
+    legal_name = btrim(p_legal_name), preferred_name = NULLIF(btrim(COALESCE(p_preferred_name, '')), ''),
+    contact_email = btrim(p_contact_email), contact_phone = p_contact_phone,
+    professional_title = p_professional_title, profession_category = p_profession_category,
+    proposed_organization_name = COALESCE(v_org_name, v_app.proposed_organization_name),
+    proposed_package_type = COALESCE(v_package, v_app.proposed_package_type),
+    application_details = v_details,
+    status = 'resubmitted', updated_at = now()
+  WHERE id = p_application_id
+  RETURNING * INTO v_app;
+
+  INSERT INTO professional_application_events (application_id, event_type, actor_user_id, actor_role, from_status, to_status, notes)
+  VALUES (p_application_id, 'resubmitted', auth.uid(), 'applicant', 'info_required', 'resubmitted', 'Applicant resubmitted with corrections');
+
+  RETURN v_app;
+END;
+$$;
+
+-- revoke_patient_representative(uuid, text)
+CREATE FUNCTION public.revoke_patient_representative(p_representative_id uuid, p_reason text) RETURNS public.patient_representatives
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row patient_representatives;
+BEGIN
+  IF p_reason IS NULL OR char_length(btrim(p_reason)) = 0 THEN
+    RAISE EXCEPTION 'A revocation reason is required';
+  END IF;
+
+  SELECT * INTO v_row FROM patient_representatives WHERE id = p_representative_id FOR UPDATE;
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'Representative record not found';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM organization_memberships
+    WHERE organization_id = v_row.organization_id AND user_id = auth.uid() AND status = 'active' AND org_role = 'director'
+  ) THEN
+    RAISE EXCEPTION 'Only an active Director of this organization may revoke a representative';
+  END IF;
+
+  IF v_row.status <> 'active' THEN
+    RAISE EXCEPTION 'Only an active representative record may be revoked';
+  END IF;
+
+  UPDATE patient_representatives
+  SET status = 'revoked', revoked_by = auth.uid(), revocation_reason = btrim(p_reason), revoked_at = now(), updated_at = now()
+  WHERE id = p_representative_id
+  RETURNING * INTO v_row;
+
+  INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, new_value, reason)
+  VALUES (v_row.patient_id, v_row.organization_id, 'patient_representative_revoked', auth.uid(), jsonb_build_object('representative_id', v_row.id), p_reason);
+
+  RETURN v_row;
+END;
+$$;
+
+-- save_application_draft(text, text, text, text, text, text, text, text, text, jsonb)
+CREATE FUNCTION public.save_application_draft(p_requested_office text, p_proposed_organization_name text, p_proposed_package_type text, p_legal_name text, p_preferred_name text, p_contact_email text, p_contact_phone text, p_professional_title text, p_profession_category text, p_application_details jsonb) RETURNS public.professional_applications
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_app professional_applications;
+  v_quote_id UUID;
+  v_quote sales_quotes;
+  v_prospect sales_prospects;
+  v_org_name TEXT := p_proposed_organization_name;
+  v_package TEXT := p_proposed_package_type;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentication required';
+  END IF;
+  IF p_requested_office NOT IN ('director', 'caregiver', 'medical_professional', 'therapist') THEN
+    RAISE EXCEPTION 'Invalid requested office: %', p_requested_office;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM professional_applications
+    WHERE applicant_user_id = auth.uid() AND status IN ('pending_review', 'info_required', 'resubmitted')
+  ) THEN
+    RAISE EXCEPTION 'You already have an application under review. Wait for a decision before starting another.';
+  END IF;
+
+  v_quote_id := NULLIF(p_application_details->>'originatingQuoteId', '')::UUID;
+  IF v_quote_id IS NOT NULL THEN
+    SELECT * INTO v_quote FROM sales_quotes WHERE id = v_quote_id AND status = 'sent';
+    IF v_quote.id IS NULL THEN
+      RAISE EXCEPTION 'The quote behind this application is no longer available';
+    END IF;
+    SELECT * INTO v_prospect FROM sales_prospects WHERE id = v_quote.prospect_id;
+    v_org_name := v_prospect.prospective_organization_name;
+    v_package := v_quote.package_type;
+  END IF;
+
+  INSERT INTO professional_applications (
+    applicant_user_id, requested_office, proposed_organization_name, proposed_package_type,
+    legal_name, preferred_name, contact_email, contact_phone, professional_title, profession_category,
+    application_details, status, platform_owner_approval_required
+  ) VALUES (
+    auth.uid(), p_requested_office, NULLIF(btrim(COALESCE(v_org_name, '')), ''), v_package,
+    NULLIF(btrim(COALESCE(p_legal_name, '')), ''), NULLIF(btrim(COALESCE(p_preferred_name, '')), ''),
+    NULLIF(btrim(COALESCE(p_contact_email, '')), ''), p_contact_phone, p_professional_title, p_profession_category,
+    COALESCE(p_application_details, '{}'::jsonb), 'draft', (p_requested_office = 'director')
+  )
+  ON CONFLICT (applicant_user_id) WHERE (status = 'draft') DO UPDATE SET
+    requested_office = EXCLUDED.requested_office,
+    proposed_organization_name = EXCLUDED.proposed_organization_name,
+    proposed_package_type = EXCLUDED.proposed_package_type,
+    legal_name = EXCLUDED.legal_name,
+    preferred_name = EXCLUDED.preferred_name,
+    contact_email = EXCLUDED.contact_email,
+    contact_phone = EXCLUDED.contact_phone,
+    professional_title = EXCLUDED.professional_title,
+    profession_category = EXCLUDED.profession_category,
+    application_details = EXCLUDED.application_details,
+    updated_at = now()
+  RETURNING * INTO v_app;
+
+  RETURN v_app;
+END;
+$$;
+
+-- search_my_conversations(text)
+CREATE FUNCTION public.search_my_conversations(p_search_term text) RETURNS TABLE(conversation_id uuid)
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+  SELECT DISTINCT c.id
+  FROM conversations c
+  JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.user_id = auth.uid()
+  JOIN messages m ON m.conversation_id = c.id
+  WHERE btrim(COALESCE(p_search_term, '')) != '' AND m.body ILIKE '%' || p_search_term || '%'
+    AND (public.is_authorized_for_patient(auth.uid(), c.patient_id) OR public.is_org_director_for_patient(auth.uid(), c.patient_id));
+$$;
+
+-- set_enterprise_license_status_for_quote(uuid, text)
+CREATE FUNCTION public.set_enterprise_license_status_for_quote(p_quote_id uuid, p_status text) RETURNS public.organization_licenses
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_app professional_applications;
+  v_license organization_licenses;
+BEGIN
+  IF p_status NOT IN ('expired', 'canceled', 'unpaid') THEN
+    RAISE EXCEPTION 'set_enterprise_license_status_for_quote only handles non-activating transitions, got %', p_status;
+  END IF;
+
+  SELECT * INTO v_app FROM professional_applications
+  WHERE application_details->>'originatingQuoteId' = p_quote_id::text
+    AND status = 'approved' AND target_organization_id IS NOT NULL
+  ORDER BY platform_owner_approved_at DESC
+  LIMIT 1;
+  IF v_app.id IS NULL THEN
+    RAISE EXCEPTION 'No approved Director application with an organization references quote %', p_quote_id;
+  END IF;
+
+  UPDATE organization_licenses SET status = p_status, updated_at = now()
+  WHERE organization_id = v_app.target_organization_id
+  RETURNING * INTO v_license;
+  IF v_license.id IS NULL THEN
+    RAISE EXCEPTION 'No license configuration row exists for organization %', v_app.target_organization_id;
+  END IF;
+
+  INSERT INTO professional_application_events (application_id, event_type, actor_user_id, actor_role, from_status, to_status, notes)
+  VALUES (v_app.id, 'enterprise_license_status_changed', NULL, 'system', v_app.status, v_app.status,
+    'License set to ' || p_status || ' for organization ' || v_app.target_organization_id);
+
+  RETURN v_license;
+END;
+$$;
+
+-- submit_professional_application(text, uuid, text, text, text, text, text, text, text, text, jsonb, uuid)
+CREATE FUNCTION public.submit_professional_application(p_requested_office text, p_target_organization_id uuid, p_proposed_organization_name text, p_proposed_package_type text, p_legal_name text, p_preferred_name text, p_contact_email text, p_contact_phone text, p_professional_title text, p_profession_category text, p_application_details jsonb, p_draft_id uuid DEFAULT NULL::uuid) RETURNS public.professional_applications
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_app professional_applications;
+  v_draft professional_applications;
+  v_existing_quote_id UUID;
+  v_incoming_quote_id UUID;
+  v_quote sales_quotes;
+  v_prospect sales_prospects;
+  v_org_name TEXT := p_proposed_organization_name;
+  v_package TEXT := p_proposed_package_type;
+  v_details JSONB := COALESCE(p_application_details, '{}'::jsonb);
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Authentication required';
+  END IF;
+  IF p_requested_office NOT IN ('director', 'caregiver', 'medical_professional', 'therapist') THEN
+    RAISE EXCEPTION 'Invalid requested office: %', p_requested_office;
+  END IF;
+  IF p_legal_name IS NULL OR btrim(p_legal_name) = '' THEN
+    RAISE EXCEPTION 'Legal name is required';
+  END IF;
+  IF p_contact_email IS NULL OR btrim(p_contact_email) = '' THEN
+    RAISE EXCEPTION 'Contact email is required';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM professional_applications
+    WHERE applicant_user_id = auth.uid() AND status IN ('pending_review', 'info_required', 'resubmitted')
+  ) THEN
+    RAISE EXCEPTION 'You already have an application under review. Wait for a decision before submitting another.';
+  END IF;
+
+  IF p_draft_id IS NOT NULL THEN
+    SELECT * INTO v_draft FROM professional_applications WHERE id = p_draft_id AND applicant_user_id = auth.uid() AND status = 'draft' FOR UPDATE;
+    IF v_draft.id IS NULL THEN
+      RAISE EXCEPTION 'No matching draft found to submit';
+    END IF;
+    v_existing_quote_id := NULLIF(v_draft.application_details->>'originatingQuoteId', '')::UUID;
+  END IF;
+
+  -- Quote immutability: once a draft/application carries an
+  -- originatingQuoteId, submit may never redirect it to a different
+  -- one. Setting it for the first time (no prior value) is still
+  -- permitted.
+  v_incoming_quote_id := NULLIF(v_details->>'originatingQuoteId', '')::UUID;
+  IF v_existing_quote_id IS NOT NULL AND v_incoming_quote_id IS DISTINCT FROM v_existing_quote_id THEN
+    RAISE EXCEPTION 'This application''s originating quote cannot be changed';
+  END IF;
+  IF v_incoming_quote_id IS NULL THEN
+    v_incoming_quote_id := v_existing_quote_id;
+  END IF;
+
+  -- Re-derive, never trust the client, exactly like
+  -- save_application_draft() already does -- the server, not the
+  -- submission payload, is the source of truth for what was actually
+  -- quoted.
+  IF v_incoming_quote_id IS NOT NULL THEN
+    SELECT * INTO v_quote FROM sales_quotes WHERE id = v_incoming_quote_id AND status = 'sent';
+    IF v_quote.id IS NULL THEN
+      RAISE EXCEPTION 'The quote behind this application is no longer available';
+    END IF;
+    SELECT * INTO v_prospect FROM sales_prospects WHERE id = v_quote.prospect_id;
+    v_org_name := v_prospect.prospective_organization_name;
+    v_package := v_quote.package_type;
+    v_details := jsonb_set(v_details, '{originatingQuoteId}', to_jsonb(v_incoming_quote_id::text));
+  END IF;
+
+  IF p_requested_office = 'director' THEN
+    IF p_target_organization_id IS NOT NULL THEN
+      RAISE EXCEPTION 'A Director application proposes a new organization and must not target an existing one';
+    END IF;
+    IF v_org_name IS NULL OR btrim(v_org_name) = '' THEN
+      RAISE EXCEPTION 'Proposed organization name is required for a Director application';
+    END IF;
+    IF v_package NOT IN ('therapist', 'integrated_care') THEN
+      RAISE EXCEPTION 'Invalid package type: %', v_package;
+    END IF;
+    -- F-10: the full six-step payload is validated server-side, not
+    -- merely by the wizard's own client-side `required`/`canSubmit`
+    -- markers. A direct RPC call cannot bypass this. Only engages for
+    -- an actual six-step submission (see migration-header note on
+    -- create_organization()'s separate, simpler path).
+    IF v_details ? 'step1' OR v_details ? 'step2' OR v_details ? 'step3' OR v_details ? 'step4' OR v_details ? 'step5' OR v_details ? 'step6' THEN
+      PERFORM validate_director_application_payload(v_details, p_contact_email);
+    END IF;
+  ELSE
+    IF p_target_organization_id IS NULL THEN
+      RAISE EXCEPTION 'An organization is required for this application';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM organizations WHERE id = p_target_organization_id) THEN
+      RAISE EXCEPTION 'The target organization does not exist';
+    END IF;
+  END IF;
+
+  IF p_draft_id IS NOT NULL THEN
+    UPDATE professional_applications SET
+      requested_office = p_requested_office, target_organization_id = p_target_organization_id,
+      proposed_organization_name = btrim(COALESCE(v_org_name, '')), proposed_package_type = v_package,
+      legal_name = btrim(p_legal_name), preferred_name = NULLIF(btrim(COALESCE(p_preferred_name, '')), ''),
+      contact_email = btrim(p_contact_email), contact_phone = p_contact_phone,
+      professional_title = p_professional_title, profession_category = p_profession_category,
+      application_details = v_details,
+      status = 'pending_review', platform_owner_approval_required = (p_requested_office = 'director'),
+      updated_at = now()
+    WHERE id = p_draft_id
+    RETURNING * INTO v_app;
+
+    INSERT INTO professional_application_events (application_id, event_type, actor_user_id, actor_role, from_status, to_status, notes)
+    VALUES (v_app.id, 'submitted', auth.uid(), 'applicant', 'draft', 'pending_review', 'Application submitted from saved draft');
+  ELSE
+    INSERT INTO professional_applications (
+      applicant_user_id, requested_office, target_organization_id, proposed_organization_name, proposed_package_type,
+      legal_name, preferred_name, contact_email, contact_phone, professional_title, profession_category,
+      application_details, status, platform_owner_approval_required
+    ) VALUES (
+      auth.uid(), p_requested_office, p_target_organization_id, btrim(COALESCE(v_org_name, '')), v_package,
+      btrim(p_legal_name), NULLIF(btrim(COALESCE(p_preferred_name, '')), ''), btrim(p_contact_email), p_contact_phone, p_professional_title, p_profession_category,
+      v_details, 'pending_review', (p_requested_office = 'director')
+    ) RETURNING * INTO v_app;
+
+    INSERT INTO professional_application_events (application_id, event_type, actor_user_id, actor_role, from_status, to_status, notes)
+    VALUES (v_app.id, 'submitted', auth.uid(), 'applicant', NULL, 'pending_review', 'Application submitted');
+  END IF;
+
+  RETURN v_app;
+END;
+$$;
+
+-- trg_notify_amendment_status()
+CREATE FUNCTION public.trg_notify_amendment_status() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+BEGIN
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    BEGIN
+      IF NEW.status = 'quoted' THEN
+        INSERT INTO enterprise_notifications (recipient_user_id, notification_type, title, body, related_entity_type, related_entity_id, dedup_key)
+        VALUES (NEW.requested_by, 'amendment_quoted', 'Your amendment request has been quoted', NULL, 'amendment_request', NEW.id, 'amendment_quoted:' || NEW.id)
+        ON CONFLICT (recipient_user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING;
+      ELSIF NEW.status = 'rejected' THEN
+        INSERT INTO enterprise_notifications (recipient_user_id, notification_type, title, body, related_entity_type, related_entity_id, dedup_key)
+        VALUES (NEW.requested_by, 'amendment_rejected', 'Your amendment request was not approved', NEW.platform_owner_notes, 'amendment_request', NEW.id, 'amendment_rejected:' || NEW.id)
+        ON CONFLICT (recipient_user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING;
+      ELSIF NEW.status = 'completed' THEN
+        INSERT INTO enterprise_notifications (recipient_user_id, notification_type, title, body, related_entity_type, related_entity_id, dedup_key)
+        VALUES (NEW.requested_by, 'amendment_completed', 'Your amendment request is complete', NULL, 'amendment_request', NEW.id, 'amendment_completed:' || NEW.id)
+        ON CONFLICT (recipient_user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      NULL;
+    END;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- trg_notify_application_status()
+CREATE FUNCTION public.trg_notify_application_status() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.requested_office = 'director' AND NEW.status = 'pending_review' THEN
+      PERFORM notify_platform_owners('application_submitted', 'New Director application submitted',
+        'Proposing "' || coalesce(NEW.proposed_organization_name, '') || '"', 'application', NEW.id, 'application_submitted:' || NEW.id);
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    BEGIN
+      IF NEW.status = 'info_required' THEN
+        INSERT INTO enterprise_notifications (recipient_user_id, notification_type, title, body, related_entity_type, related_entity_id, dedup_key)
+        VALUES (NEW.applicant_user_id, 'correction_requested', 'The Platform Owner requested corrections', NEW.correction_request, 'application', NEW.id, 'correction_requested:' || NEW.id || ':' || NEW.updated_at)
+        ON CONFLICT (recipient_user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING;
+      ELSIF NEW.status = 'resubmitted' THEN
+        PERFORM notify_platform_owners('application_resubmitted', 'Application resubmitted with corrections',
+          'Proposing "' || coalesce(NEW.proposed_organization_name, '') || '"', 'application', NEW.id, 'application_resubmitted:' || NEW.id || ':' || NEW.updated_at);
+      ELSIF NEW.status = 'approved' THEN
+        INSERT INTO enterprise_notifications (recipient_user_id, notification_type, title, body, related_entity_type, related_entity_id, dedup_key)
+        VALUES (NEW.applicant_user_id, 'application_approved', 'Your Director application was approved', NULL, 'application', NEW.id, 'application_approved:' || NEW.id)
+        ON CONFLICT (recipient_user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING;
+      ELSIF NEW.status = 'rejected' THEN
+        INSERT INTO enterprise_notifications (recipient_user_id, notification_type, title, body, related_entity_type, related_entity_id, dedup_key)
+        VALUES (NEW.applicant_user_id, 'application_rejected', 'Your application was not approved', NEW.rejection_reason, 'application', NEW.id, 'application_rejected:' || NEW.id)
+        ON CONFLICT (recipient_user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING;
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      NULL;
+    END;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- trg_notify_contract_status()
+CREATE FUNCTION public.trg_notify_contract_status() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_recipient UUID;
+BEGIN
+  IF NEW.status IS DISTINCT FROM OLD.status AND NEW.status IN ('presented', 'executed') THEN
+    SELECT pa.applicant_user_id INTO v_recipient FROM professional_applications pa
+    WHERE pa.application_details->>'originatingQuoteId' = NEW.quote_id::text LIMIT 1;
+    IF v_recipient IS NULL THEN
+      SELECT oar.requested_by INTO v_recipient FROM organization_amendment_requests oar
+      WHERE oar.resulting_quote_id = NEW.quote_id LIMIT 1;
+    END IF;
+    IF v_recipient IS NOT NULL THEN
+      BEGIN
+        INSERT INTO enterprise_notifications (recipient_user_id, notification_type, title, body, related_entity_type, related_entity_id, dedup_key)
+        VALUES (
+          v_recipient,
+          CASE NEW.status WHEN 'presented' THEN 'contract_presented' ELSE 'contract_executed' END,
+          CASE NEW.status WHEN 'presented' THEN 'An agreement is ready for your review' ELSE 'Your agreement has been executed' END,
+          NEW.template_version, 'contract', NEW.id,
+          (CASE NEW.status WHEN 'presented' THEN 'contract_presented:' ELSE 'contract_executed:' END) || NEW.id
+        )
+        ON CONFLICT (recipient_user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING;
+      EXCEPTION WHEN OTHERS THEN
+        NULL;
+      END;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- trg_notify_license_status()
+CREATE FUNCTION public.trg_notify_license_status() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_director_id UUID;
+BEGIN
+  IF NEW.status IS DISTINCT FROM OLD.status AND NEW.status = 'active' AND NEW.license_number IS NOT NULL THEN
+    SELECT user_id INTO v_director_id FROM organization_memberships
+    WHERE organization_id = NEW.organization_id AND org_role = 'director' AND status = 'active'
+    ORDER BY created_at ASC LIMIT 1;
+    IF v_director_id IS NOT NULL THEN
+      BEGIN
+        INSERT INTO enterprise_notifications (recipient_user_id, notification_type, title, body, related_entity_type, related_entity_id, dedup_key)
+        VALUES (v_director_id, 'license_activated', 'Your Enterprise license is now active', 'License ' || NEW.license_number, 'organization_license', NEW.id, 'license_activated:' || NEW.id)
+        ON CONFLICT (recipient_user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING;
+      EXCEPTION WHEN OTHERS THEN
+        NULL;
+      END;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- trg_notify_membership_invited()
+CREATE FUNCTION public.trg_notify_membership_invited() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_org_name TEXT;
+BEGIN
+  IF NEW.status = 'invited' AND NEW.org_role != 'director' AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'invited') THEN
+    SELECT name INTO v_org_name FROM organizations WHERE id = NEW.organization_id;
+    BEGIN
+      INSERT INTO enterprise_notifications (recipient_user_id, notification_type, title, body, related_entity_type, related_entity_id, dedup_key)
+      VALUES (NEW.user_id, 'membership_invited', 'You''ve been invited to join ' || coalesce(v_org_name, 'an organization'),
+        'Role: ' || NEW.org_role, 'organization_membership', NEW.id, 'membership_invited:' || NEW.id || ':' || NEW.updated_at)
+      ON CONFLICT (recipient_user_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING;
+    EXCEPTION WHEN OTHERS THEN
+      NULL;
+    END;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- validate_director_application_payload(jsonb, text)
+CREATE FUNCTION public.validate_director_application_payload(p_details jsonb, p_contact_email text) RETURNS void
+    LANGUAGE plpgsql STABLE
+    AS $_$
+DECLARE
+  v_email_re TEXT := '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$';
+  s1 JSONB := COALESCE(p_details->'step1', '{}'::jsonb);
+  s2 JSONB := COALESCE(p_details->'step2', '{}'::jsonb);
+  s3 JSONB := COALESCE(p_details->'step3', '{}'::jsonb);
+  s4 JSONB := COALESCE(p_details->'step4', '{}'::jsonb);
+  s5 JSONB := COALESCE(p_details->'step5', '{}'::jsonb);
+  s6 JSONB := COALESCE(p_details->'step6', '{}'::jsonb);
+BEGIN
+  -- Step 1 -- Organization legal identity
+  IF btrim(COALESCE(s1->>'legalBusinessName', '')) = '' THEN RAISE EXCEPTION 'Registered legal business name is required'; END IF;
+  IF btrim(COALESCE(s1->>'legalForm', '')) = '' THEN RAISE EXCEPTION 'Legal entity type is required'; END IF;
+  IF btrim(COALESCE(s1->>'businessClassification', '')) = '' THEN RAISE EXCEPTION 'Business classification is required'; END IF;
+  IF btrim(COALESCE(s1->>'formationJurisdiction', '')) = '' THEN RAISE EXCEPTION 'Formation jurisdiction is required'; END IF;
+  IF btrim(COALESCE(s1->>'registeredAddress', '')) = '' THEN RAISE EXCEPTION 'Registered address is required'; END IF;
+  IF btrim(COALESCE(s1->>'businessPhone', '')) = '' THEN RAISE EXCEPTION 'Business phone is required'; END IF;
+  IF btrim(COALESCE(s1->>'businessEmail', '')) = '' OR (s1->>'businessEmail') !~* v_email_re THEN RAISE EXCEPTION 'A valid business email is required'; END IF;
+  IF COALESCE((s1->>'operatingSameAsRegistered')::boolean, true) = false AND btrim(COALESCE(s1->>'operatingAddress', '')) = '' THEN
+    RAISE EXCEPTION 'Principal operating address is required when it differs from the registered address';
+  END IF;
+  IF COALESCE((s1->>'numLocations')::int, 0) < 1 THEN RAISE EXCEPTION 'Number of operating locations must be at least 1'; END IF;
+
+  -- Step 2 -- Founding Director identity and authority
+  IF btrim(COALESCE(s2->>'fullLegalName', '')) = '' THEN RAISE EXCEPTION 'Director full legal name is required'; END IF;
+  IF btrim(COALESCE(s2->>'verifiedBusinessEmail', '')) = '' OR (s2->>'verifiedBusinessEmail') !~* v_email_re THEN RAISE EXCEPTION 'A valid Director business email is required'; END IF;
+  IF btrim(COALESCE(s2->>'verifiedBusinessEmail', '')) IS DISTINCT FROM btrim(COALESCE(p_contact_email, '')) THEN
+    RAISE EXCEPTION 'The Director email on this submission does not match the application''s contact email';
+  END IF;
+  IF btrim(COALESCE(s2->>'mobile', '')) = '' THEN RAISE EXCEPTION 'Director mobile number is required'; END IF;
+  IF btrim(COALESCE(s2->>'title', '')) = '' THEN RAISE EXCEPTION 'Director title is required'; END IF;
+  IF btrim(COALESCE(s2->>'relationshipToEntity', '')) = '' THEN RAISE EXCEPTION 'Director relationship to the legal entity is required'; END IF;
+  IF COALESCE((s2->>'authorizedSignatory')::boolean, false) IS NOT TRUE THEN RAISE EXCEPTION 'Authorized-representative confirmation is required'; END IF;
+  IF COALESCE((s2->>'authorityAttestation')::boolean, false) IS NOT TRUE THEN RAISE EXCEPTION 'Authority attestation is required'; END IF;
+
+  -- Step 3 -- Enterprise package / operations setup
+  IF btrim(COALESCE(s3->>'buyerBillingContact', '')) = '' THEN RAISE EXCEPTION 'Buyer billing contact is required'; END IF;
+  IF COALESCE(s3->>'migrationStatus', '') = 'requested' THEN
+    IF btrim(COALESCE(s3->>'migrationDetails', '')) = '' THEN RAISE EXCEPTION 'Migration details are required when a migration is requested'; END IF;
+    IF COALESCE((s4->>'migrationConsent')::boolean, false) IS NOT TRUE THEN RAISE EXCEPTION 'Migration consent is required when a migration is requested'; END IF;
+  END IF;
+
+  -- Step 4 -- Operations & compliance
+  IF btrim(COALESCE(s4->>'services', '')) = '' THEN RAISE EXCEPTION 'Services provided is required'; END IF;
+  IF btrim(COALESCE(s4->>'careSetting', '')) = '' THEN RAISE EXCEPTION 'Care setting is required'; END IF;
+  IF btrim(COALESCE(s4->>'jurisdictions', '')) = '' THEN RAISE EXCEPTION 'Operating jurisdictions is required'; END IF;
+  IF COALESCE(s4->>'phiIntendedUse', '') NOT IN ('yes', 'no') THEN RAISE EXCEPTION 'Whether this organization will process PHI is required'; END IF;
+  IF COALESCE(s4->>'hipaaDeclaration', '') NOT IN ('covered_entity', 'business_associate', 'not_applicable', 'unsure') THEN
+    RAISE EXCEPTION 'A HIPAA relationship declaration is required';
+  END IF;
+  IF s4->>'phiIntendedUse' = 'yes' THEN
+    IF btrim(COALESCE(s4->>'privacyContact', '')) = '' THEN RAISE EXCEPTION 'A privacy contact is required when this organization will process PHI'; END IF;
+    IF btrim(COALESCE(s4->>'securityContact', '')) = '' THEN RAISE EXCEPTION 'A security contact is required when this organization will process PHI'; END IF;
+    IF btrim(COALESCE(s4->>'baaSignatory', '')) = '' THEN RAISE EXCEPTION 'A BAA signatory is required when this organization will process PHI'; END IF;
+  END IF;
+
+  -- Step 5 -- Billing profile
+  IF btrim(COALESCE(s5->>'billingLegalEntity', '')) = '' THEN RAISE EXCEPTION 'Billing legal entity is required'; END IF;
+  IF btrim(COALESCE(s5->>'billingContact', '')) = '' THEN RAISE EXCEPTION 'Billing contact is required'; END IF;
+  IF btrim(COALESCE(s5->>'billingAddress', '')) = '' THEN RAISE EXCEPTION 'Billing address is required'; END IF;
+  IF btrim(COALESCE(s5->>'billingEmail', '')) = '' OR (s5->>'billingEmail') !~* v_email_re THEN RAISE EXCEPTION 'A valid billing email is required'; END IF;
+  IF btrim(COALESCE(s5->>'currency', '')) = '' THEN RAISE EXCEPTION 'Billing currency is required'; END IF;
+  IF btrim(COALESCE(s5->>'cadence', '')) = '' THEN RAISE EXCEPTION 'Billing cadence is required'; END IF;
+
+  -- Step 6 -- Review & declarations
+  IF COALESCE((s6->>'accuracyAttestation')::boolean, false) IS NOT TRUE THEN RAISE EXCEPTION 'The accuracy attestation is required'; END IF;
+  IF COALESCE((s6->>'authorizedSignatoryConfirmed')::boolean, false) IS NOT TRUE THEN RAISE EXCEPTION 'The authorized-signatory confirmation is required'; END IF;
+  IF COALESCE((s6->>'privacyAck')::boolean, false) IS NOT TRUE THEN RAISE EXCEPTION 'The privacy-practices acknowledgment is required'; END IF;
+  IF btrim(COALESCE(s6->>'signatureName', '')) = '' THEN RAISE EXCEPTION 'A typed signature name is required'; END IF;
+END;
+$_$;
+
+-- verify_patient_representative(uuid)
+CREATE FUNCTION public.verify_patient_representative(p_representative_id uuid) RETURNS public.patient_representatives
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_row patient_representatives;
+BEGIN
+  SELECT * INTO v_row FROM patient_representatives WHERE id = p_representative_id FOR UPDATE;
+  IF v_row.id IS NULL THEN
+    RAISE EXCEPTION 'Representative record not found';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM organization_memberships
+    WHERE organization_id = v_row.organization_id AND user_id = auth.uid() AND status = 'active' AND org_role = 'director'
+  ) THEN
+    RAISE EXCEPTION 'Only an active Director of this organization may verify a representative';
+  END IF;
+
+  IF v_row.status <> 'pending_verification' THEN
+    RAISE EXCEPTION 'Only a pending representative record may be verified';
+  END IF;
+
+  UPDATE patient_representatives
+  SET verification_status = 'verified', status = 'active', verified_by = auth.uid(), verified_at = now(), updated_at = now()
+  WHERE id = p_representative_id
+  RETURNING * INTO v_row;
+
+  INSERT INTO account_management_audit (target_user_id, organization_id, action_type, actor_user_id, new_value, reason)
+  VALUES (v_row.patient_id, v_row.organization_id, 'patient_representative_verified', auth.uid(), jsonb_build_object('representative_id', v_row.id), 'APR verification approved');
+
+  RETURN v_row;
+END;
+$$;
+
+-- withdraw_application(uuid)
+CREATE FUNCTION public.withdraw_application(p_application_id uuid) RETURNS public.professional_applications
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE
+  v_app professional_applications;
+BEGIN
+  SELECT * INTO v_app FROM professional_applications WHERE id = p_application_id FOR UPDATE;
+  IF v_app.id IS NULL THEN RAISE EXCEPTION 'No such application'; END IF;
+  IF v_app.applicant_user_id <> auth.uid() THEN RAISE EXCEPTION 'You may only withdraw your own application'; END IF;
+  IF v_app.status NOT IN ('pending_review', 'info_required', 'resubmitted') THEN
+    RAISE EXCEPTION 'This application can no longer be withdrawn';
+  END IF;
+
+  UPDATE professional_applications SET status = 'withdrawn', updated_at = now() WHERE id = p_application_id RETURNING * INTO v_app;
+  INSERT INTO professional_application_events (application_id, event_type, actor_user_id, actor_role, from_status, to_status)
+  VALUES (p_application_id, 'withdrawn', auth.uid(), 'applicant', v_app.status, 'withdrawn');
+
+  DELETE FROM professional_application_documents WHERE application_id = p_application_id;
+
+  RETURN v_app;
+END;
+$$;
