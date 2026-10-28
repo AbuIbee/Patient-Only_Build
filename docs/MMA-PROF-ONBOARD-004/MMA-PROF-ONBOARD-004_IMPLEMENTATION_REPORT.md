@@ -171,11 +171,12 @@ Synthetic fixtures used (disposable stack only, never a real project):
   confirms this session's only changed source files are
   `vite.config.ts` and `PlatformOwnerAdminPage.tsx`, neither of which
   touches archival, closure, or cron logic in any way — this failure is
-  not attributable to this session's work. A single isolated rerun of
-  just that file was started to check for flakiness; its result will be
-  recorded here once it completes, honestly, whichever way it goes —
-  it is reported as a known, unrelated, timing-sensitive test, not
-  silently dropped from the count or misreported as passing.
+  not attributable to this session's work. Confirmed flaky by an
+  isolated rerun: `npx vitest run --config vitest.integration.config.ts
+  tests/integration/closureP4RealFiveMinuteArchival.test.ts` →
+  **2/2 passed** (duration 352.98s). Treated as a known, unrelated,
+  timing-sensitive test — not silently dropped from the original count
+  and not misreported as having passed on the first attempt.
 
 ### Files changed for P0-1
 
