@@ -15,9 +15,10 @@ import {
   submitProfessionalApplication, findOrganizationForApplication, uploadApplicationDocument,
   type RequestedOffice,
 } from '@/services/professionalApplicationService';
+import SelfServiceApplicationFlow from './SelfServiceApplicationFlow';
 
 const OFFICE_OPTIONS: { key: RequestedOffice; label: string; description: string; icon: typeof Building2 }[] = [
-  { key: 'director', label: 'Admin / Director', description: 'New Organization Director Application — propose and lead a new Enterprise organization.', icon: Building2 },
+  { key: 'director', label: 'Purchase a License / Become a Director', description: 'Select a license tier and complete a self-service application to start and lead a new Enterprise organization.', icon: Building2 },
   { key: 'caregiver', label: 'Enterprise Caregiver', description: 'Join an existing organization as a professional caregiver.', icon: Users },
   { key: 'medical_professional', label: 'Medical Professional', description: 'Join an existing organization in a clinical medical role.', icon: Stethoscope },
   { key: 'therapist', label: 'Therapist Professional', description: 'Join an existing organization in a licensed therapy role.', icon: HeartPulse },
@@ -141,8 +142,6 @@ export default function ProfessionalRegisterPage() {
   const [orgNameInput, setOrgNameInput] = useState('');
   const [orgLookup, setOrgLookup] = useState<{ id: string; name: string } | null>(null);
   const [orgLookupError, setOrgLookupError] = useState('');
-  const [proposedOrgName, setProposedOrgName] = useState('');
-  const [proposedPackageType, setProposedPackageType] = useState<'therapist' | 'integrated_care'>('integrated_care');
   const [licenseNumber, setLicenseNumber] = useState('');
   const [issuer, setIssuer] = useState('');
   const [jurisdiction, setJurisdiction] = useState('');
@@ -161,24 +160,29 @@ export default function ProfessionalRegisterPage() {
     setOrgLookup({ id: found.id, name: found.name });
   };
 
+  // Director applications no longer go through this function at all --
+  // they are handled entirely by SelfServiceApplicationFlow, which
+  // calls start_self_service_application() directly. This remains the
+  // submission path for the three STAFF-joining-an-existing-
+  // organization offices only (caregiver/medical_professional/
+  // therapist), which is deliberately untouched by MMA-PROF-ONBOARD-004
+  // -- "staff invitations remain distinct from customer licensing
+  // invitations."
   const submit = async () => {
-    if (!office) return;
+    if (!office || office === 'director') return;
     if (!legalName.trim() || !contactEmail.trim()) { toast.error('Legal name and contact email are required.'); return; }
-    if (office === 'director' && !proposedOrgName.trim()) { toast.error('Proposed organization name is required.'); return; }
-    if (office !== 'director' && !orgLookup) { toast.error('Look up and confirm your target organization first.'); return; }
+    if (!orgLookup) { toast.error('Look up and confirm your target organization first.'); return; }
 
     setSubmitting(true);
     try {
       const { application, error } = await submitProfessionalApplication({
         requestedOffice: office,
-        targetOrganizationId: office === 'director' ? null : orgLookup!.id,
-        proposedOrganizationName: office === 'director' ? proposedOrgName.trim() : null,
-        proposedPackageType: office === 'director' ? proposedPackageType : null,
+        targetOrganizationId: orgLookup.id,
+        proposedOrganizationName: null,
+        proposedPackageType: null,
         legalName, preferredName: preferredName || null, contactEmail, contactPhone: contactPhone || null,
         professionalTitle: professionalTitle || null, professionCategory: professionCategory || null,
-        applicationDetails: office === 'director'
-          ? {}
-          : { license_number: licenseNumber || undefined, issuer: issuer || undefined, jurisdiction: jurisdiction || undefined, expiration_date: expirationDate || undefined, specialty: specialty || undefined },
+        applicationDetails: { license_number: licenseNumber || undefined, issuer: issuer || undefined, jurisdiction: jurisdiction || undefined, expiration_date: expirationDate || undefined, specialty: specialty || undefined },
       });
       if (error || !application) { toast.error(error || 'Could not submit your application.'); return; }
 
@@ -241,7 +245,28 @@ export default function ProfessionalRegisterPage() {
               </div>
             )}
 
-            {step === 'form' && office && (
+            {step === 'form' && office === 'director' && (
+              <div className="space-y-4">
+                <button type="button" onClick={() => setStep('office')} className="text-xs font-semibold text-ent-bronze hover:underline">← Choose a different office</button>
+                {!legalName.trim() || !contactEmail.trim() ? (
+                  <>
+                    <h2 className="text-lg font-bold text-ent-ink">Your identity</h2>
+                    <label className="space-y-1 block text-sm font-medium text-ent-ink">
+                      <span>Legal Name *</span>
+                      <input value={legalName} onChange={(e) => setLegalName(e.target.value)} className={inputCls} />
+                    </label>
+                    <label className="space-y-1 block text-sm font-medium text-ent-ink">
+                      <span>Contact Email *</span>
+                      <input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={inputCls} />
+                    </label>
+                  </>
+                ) : (
+                  <SelfServiceApplicationFlow legalName={legalName} contactEmail={contactEmail} />
+                )}
+              </div>
+            )}
+
+            {step === 'form' && office && office !== 'director' && (
               <div className="space-y-4">
                 <button type="button" onClick={() => setStep('office')} className="text-xs font-semibold text-ent-bronze hover:underline">← Choose a different office</button>
                 <h2 className="text-lg font-bold text-ent-ink">{OFFICE_OPTIONS.find((o) => o.key === office)?.label} Application</h2>
@@ -251,24 +276,7 @@ export default function ProfessionalRegisterPage() {
                 <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Contact Email *</label><input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={inputCls} /></div>
                 <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Contact Phone</label><input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} className={inputCls} /></div>
 
-                {office === 'director' ? (
-                  <>
-                    <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Proposed Organization Legal Name *</label><input value={proposedOrgName} onChange={(e) => setProposedOrgName(e.target.value)} className={inputCls} /></div>
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-ent-ink">Business Package</label>
-                      <select value={proposedPackageType} onChange={(e) => setProposedPackageType(e.target.value as 'therapist' | 'integrated_care')} className={inputCls}>
-                        <option value="integrated_care">Enterprise Integrated Care</option>
-                        <option value="therapist">Enterprise Therapist</option>
-                      </select>
-                    </div>
-                    <p className="text-xs text-ent-muted">
-                      A business license purchase alone does not activate Director privileges. Your identity and organization will be
-                      reviewed and approved by the Platform Owner before your organization is created.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <div className="space-y-1">
+                <div className="space-y-1">
                       <label className="text-sm font-medium text-ent-ink">Target Organization Name *</label>
                       <div className="flex gap-2">
                         <input value={orgNameInput} onChange={(e) => { setOrgNameInput(e.target.value); setOrgLookup(null); }} placeholder="Exact organization name" className={`${inputCls} flex-1`} />
@@ -301,12 +309,10 @@ export default function ProfessionalRegisterPage() {
                         <input type="file" className="hidden" onChange={(e) => setDocumentFile(e.target.files?.[0] ?? null)} />
                       </label>
                     </div>
-                    <p className="text-xs text-ent-muted">
-                      Submitting this form does not verify your credentials or grant access. Your organization's Director reviews your
-                      submission and documents before approving your account.
-                    </p>
-                  </>
-                )}
+                <p className="text-xs text-ent-muted">
+                  Submitting this form does not verify your credentials or grant access. Your organization's Director reviews your
+                  submission and documents before approving your account.
+                </p>
 
                 <button type="button" onClick={() => { void submit(); }} disabled={submitting} className="w-full py-3 rounded-xl bg-ent-bronze hover:opacity-90 text-white font-semibold disabled:opacity-60">
                   {submitting ? 'Submitting…' : 'Submit Application for Review'}
