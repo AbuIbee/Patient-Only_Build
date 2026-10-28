@@ -313,8 +313,19 @@ BEGIN
   RETURN QUERY SELECT v_base, (v_base - v_final), v_final, v_coupon.code, NULL::TEXT;
 END;
 $$;
+-- This engagement's own EXHAUSTIVE GUARD regression test (migration
+-- 085 / tests/integration/round7MasterCorrectiveSecurity.test.ts)
+-- establishes, repo-wide, that NO function in the public schema may
+-- grant `anon` EXECUTE via any path -- a genuinely anonymous visitor's
+-- own price preview is served by license_tier_catalog's existing
+-- publicly-readable, published-only SELECT policy and simple client-
+-- side display arithmetic over that public data (the three tier prices
+-- are not sensitive; they are literally the pricing page's own
+-- content), never by calling this RPC directly. Coupon-aware pricing
+-- requires authentication, consistent with "Do not publicly display...
+-- recommend... prepopulate" either coupon.
 REVOKE ALL ON FUNCTION calculate_annual_license_charge(TEXT, TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION calculate_annual_license_charge(TEXT, TEXT) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION calculate_annual_license_charge(TEXT, TEXT) TO authenticated;
 
 -- redeem_coupon_for_application(): the ONLY function that actually
 -- consumes a redemption slot. Row-locks the coupon (FOR UPDATE) so two
@@ -416,5 +427,10 @@ BEGIN
   END IF;
 END;
 $$;
+-- Same EXHAUSTIVE GUARD rationale as calculate_annual_license_charge()
+-- above -- authenticated only. A visitor's own live monthly-fee
+-- preview on the pricing page is computed client-side from the same
+-- public, documented formula (no sensitive data involved), not via
+-- this RPC.
 REVOKE ALL ON FUNCTION calculate_monthly_patient_fee_cents(INTEGER) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION calculate_monthly_patient_fee_cents(INTEGER) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION calculate_monthly_patient_fee_cents(INTEGER) TO authenticated;
