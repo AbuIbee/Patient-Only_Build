@@ -30,7 +30,8 @@ afterAll(async () => {
   sql(`
     DELETE FROM enterprise_coupon_redemptions WHERE application_id IN (SELECT id FROM professional_applications WHERE applicant_user_id IN ('${ids.bilal}','${ids.outsider}'));
     DELETE FROM professional_applications WHERE applicant_user_id IN ('${ids.bilal}','${ids.outsider}');
-    DELETE FROM promo_coupon_catalog WHERE code LIKE 'TESTCOUP%';
+    DELETE FROM enterprise_coupon_redemptions WHERE coupon_code IN ('TESTCOUP-LIMIT1', 'TESTCOUP-RACE', 'TESTCOUP-PAUSE', 'TESTCOUP-EXPIRED');
+    DELETE FROM promo_coupon_catalog WHERE code IN ('TESTCOUP-LIMIT1', 'TESTCOUP-RACE', 'TESTCOUP-PAUSE', 'TESTCOUP-EXPIRED');
     DELETE FROM license_tier_catalog_history WHERE superseded_by = '${ids.owner}';
   `);
   for (const id of Object.values(ids)) await authDeleteUser(id);
