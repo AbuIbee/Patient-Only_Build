@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { Loader2, Sparkles, LogOut, ShieldCheck, Search, Building2, Plus, Send, Ban, FileText, Copy, KeyRound } from 'lucide-react';
 import {
   getDirectorApplications, platformOwnerApproveDirectorApplication, rejectApplication, requestApplicationCorrections,
-  platformOwnerCorrectOfficeClassification, getApplicationEvents, type ProfessionalApplication,
+  platformOwnerCorrectOfficeClassification, platformOwnerResolveManualReview, getApplicationEvents, type ProfessionalApplication,
 } from '@/services/professionalApplicationService';
 import { getPendingAccountDeletionRequests, platformOwnerReviewAccountDeletion, type AccountDeletionRequest } from '@/services/accountDeletionService';
 import { findSimilarOrganizations } from '@/services/organizationService';
@@ -22,6 +22,11 @@ import {
   getAllAmendmentRequests, rejectAmendmentRequest, approveCancellationRequest, quoteAmendmentRequest,
   type OrganizationAmendmentRequest, type AmendmentRequestType,
 } from '@/services/organizationAmendmentService';
+import {
+  getAllLicenseTiers, platformOwnerSetLicenseTierPrice, platformOwnerSetLicenseTierPublished,
+  getAllCoupons, platformOwnerCreateCoupon, platformOwnerSetCouponStatus, platformOwnerSetCouponLimit,
+  type LicenseTierAdmin, type CouponAdmin,
+} from '@/services/licenseTierAdminService';
 import {
   getContractsForQuote, createContract, presentContract, recordContractExecution, voidContract,
   type EnterpriseContract, type ContractType,
@@ -85,6 +90,7 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
   const [detailsOpenId, setDetailsOpenId] = useState<string | null>(null);
   const [detailsCache, setDetailsCache] = useState<Record<string, ApplicationReviewDetails>>({});
   const [detailsLoading, setDetailsLoading] = useState<string | null>(null);
+  const [manualReviewNote, setManualReviewNote] = useState<Record<string, string>>({});
 
   const approve = async (id: string) => {
     setBusyId(id);
@@ -106,6 +112,27 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
       onChanged();
     } finally { setBusyId(null); }
   };
+  // MMA-PROF-ONBOARD-004 -- the Platform Owner's resolution of a
+  // self-service application run_automated_application_verification()
+  // flagged into exception review (currently: a suspected duplicate
+  // organization name). 'confirmed_distinct' proceeds the application
+  // to agreements_pending exactly as if verification had passed
+  // cleanly; 'rejected' and 'return_for_correction' reuse the SAME
+  // rejection-reason/correction-request fields the pending_review path
+  // already collects, rather than inventing a second UI for the same
+  // two concepts.
+  const resolveManualReview = async (id: string, decision: 'confirmed_distinct' | 'rejected' | 'return_for_correction') => {
+    const reason = (decision === 'confirmed_distinct' ? manualReviewNote[id] : (decision === 'rejected' ? rejectReason[id] : manualReviewNote[id]))?.trim();
+    if (decision !== 'confirmed_distinct' && !reason) { toast.error('Provide a reason.'); return; }
+    setBusyId(id);
+    try {
+      const { error } = await platformOwnerResolveManualReview(id, decision, reason || 'Confirmed as a genuinely distinct organization.');
+      if (error) { toast.error(error); return; }
+      toast.success(decision === 'confirmed_distinct' ? 'Confirmed distinct — application proceeds to agreements.' : decision === 'rejected' ? 'Application rejected.' : 'Returned for correction.');
+      onChanged();
+    } finally { setBusyId(null); }
+  };
+
   const toggleStep = (appId: string, stepKey: string) => {
     setCorrectionSteps((prev) => {
       const current = new Set(prev[appId] ?? []);
@@ -146,7 +173,7 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
     }
   };
 
-  const basePool = showAllStatuses ? apps : apps.filter((a) => a.status === 'pending_review' || a.status === 'resubmitted');
+  const basePool = showAllStatuses ? apps : apps.filter((a) => a.status === 'pending_review' || a.status === 'resubmitted' || a.status === 'manual_review');
   const search = searchText.trim().toLowerCase();
   const visible = search
     ? basePool.filter((a) =>
@@ -177,6 +204,7 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
         <ul className="space-y-3">
           {visible.map((a) => {
             const isPendingReview = a.status === 'pending_review' || a.status === 'resubmitted';
+            const isManualReview = a.status === 'manual_review';
             const details = detailsCache[a.id];
             return (
             <li key={a.id} className="p-4 bg-ent-bg rounded-xl border border-ent-line space-y-2">
@@ -185,7 +213,13 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
                 <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-ent-amber/20 text-ent-amber capitalize">{a.status.replace('_', ' ')}</span>
               </div>
               <p className="text-xs text-ent-muted">{a.contactEmail}{a.contactPhone ? ` · ${a.contactPhone}` : ''} · submitted {new Date(a.createdAt).toLocaleDateString()}</p>
-              <p className="text-xs text-ent-muted">Package: {a.proposedPackageType === 'integrated_care' ? 'Enterprise Integrated Care' : 'Enterprise Therapist'}</p>
+              <p className="text-xs text-ent-muted">Package: {a.proposedPackageType === 'integrated_care' ? 'Enterprise Integrated Care' : 'Enterprise Therapist'}{a.selectedTierCode ? ` · Tier: ${a.selectedTierCode}` : ''}{a.entryMethod ? ` · Entry: ${a.entryMethod.replace('_', ' ')}` : ''}</p>
+              {isManualReview && a.exceptionReviewReason && (
+                <div className="p-2 bg-ent-amber/10 border border-ent-amber/40 rounded-lg">
+                  <p className="text-xs font-semibold text-ent-amber">Automated verification flagged this application:</p>
+                  <p className="text-xs text-ent-ink">{a.exceptionReviewReason}</p>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2 pt-1">
                 {isPendingReview && (
                   <>
@@ -196,6 +230,18 @@ function DirectorApplicationsPanel({ apps, onChanged }: { apps: ProfessionalAppl
                     <button type="button" onClick={() => { void reject(a.id); }} disabled={busyId === a.id} className="px-3 py-2 rounded-xl border border-ent-rust text-ent-rust text-sm font-semibold hover:bg-ent-rust/10">Reject</button>
                     <button type="button" onClick={() => setCorrectionOpenId(correctionOpenId === a.id ? null : a.id)} className="px-3 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">
                       Request corrections
+                    </button>
+                  </>
+                )}
+                {isManualReview && (
+                  <>
+                    <button type="button" onClick={() => { void resolveManualReview(a.id, 'confirmed_distinct'); }} disabled={busyId === a.id} className="px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60">
+                      Confirm distinct — proceed to agreements
+                    </button>
+                    <input value={manualReviewNote[a.id] ?? ''} onChange={(e) => setManualReviewNote((p) => ({ ...p, [a.id]: e.target.value }))} placeholder="Reason (required to reject/return)…" className={`${inputCls} flex-1 min-w-[160px]`} />
+                    <button type="button" onClick={() => { void resolveManualReview(a.id, 'rejected'); }} disabled={busyId === a.id} className="px-3 py-2 rounded-xl border border-ent-rust text-ent-rust text-sm font-semibold hover:bg-ent-rust/10">Reject</button>
+                    <button type="button" onClick={() => { void resolveManualReview(a.id, 'return_for_correction'); }} disabled={busyId === a.id} className="px-3 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">
+                      Return for correction
                     </button>
                   </>
                 )}
@@ -811,6 +857,169 @@ function ProspectCard({ prospect, onChanged }: { prospect: SalesProspect; onChan
   );
 }
 
+// MMA-PROF-ONBOARD-004 -- the Platform Owner's control surface for the
+// three published license tiers (price, specialist-slot capacity,
+// publish/unpublish). A price change never retroactively alters an
+// already-issued application/invoice's own snapshot
+// (annual_license_fee_snapshot_cents) -- this panel only ever changes
+// what a FUTURE applicant sees and pays.
+function LicenseTierPricingPanel() {
+  const [tiers, setTiers] = useState<LicenseTierAdmin[]>([]);
+  const [editing, setEditing] = useState<Record<string, { displayName: string; annualFeeDollars: string; specialistSlotCount: string }>>({});
+  const [busyTier, setBusyTier] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    const rows = await getAllLicenseTiers();
+    setTiers(rows);
+    setEditing((prev) => {
+      const next = { ...prev };
+      for (const t of rows) {
+        if (!next[t.tierCode]) {
+          next[t.tierCode] = { displayName: t.displayName, annualFeeDollars: (t.annualFeeCents / 100).toFixed(2), specialistSlotCount: String(t.specialistSlotCount) };
+        }
+      }
+      return next;
+    });
+  }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const save = async (tierCode: string) => {
+    const e = editing[tierCode];
+    if (!e) return;
+    const cents = Math.round(Number(e.annualFeeDollars) * 100);
+    const slots = Number(e.specialistSlotCount);
+    if (!Number.isFinite(cents) || cents < 0 || !Number.isFinite(slots) || slots < 0) { toast.error('Enter a valid price and slot count.'); return; }
+    setBusyTier(tierCode);
+    try {
+      const { error } = await platformOwnerSetLicenseTierPrice(tierCode, e.displayName, cents, slots);
+      if (error) { toast.error(error); return; }
+      toast.success(`${e.displayName} updated.`);
+      await refresh();
+    } finally { setBusyTier(null); }
+  };
+  const togglePublished = async (t: LicenseTierAdmin) => {
+    setBusyTier(t.tierCode);
+    try {
+      const { error } = await platformOwnerSetLicenseTierPublished(t.tierCode, !t.isPublished);
+      if (error) { toast.error(error); return; }
+      toast.success(t.isPublished ? `${t.displayName} unpublished.` : `${t.displayName} published.`);
+      await refresh();
+    } finally { setBusyTier(null); }
+  };
+
+  return (
+    <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
+      <h2 className="font-bold text-ent-ink">License Tiers &amp; Pricing</h2>
+      <div className="space-y-2">
+        {tiers.map((t) => {
+          const e = editing[t.tierCode] ?? { displayName: t.displayName, annualFeeDollars: '', specialistSlotCount: '' };
+          return (
+            <div key={t.tierCode} data-testid={`tier-row-${t.tierCode}`} className="p-3 bg-ent-bg rounded-xl border border-ent-line flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-ent-muted uppercase w-20">{t.tierCode}</span>
+              <input value={e.displayName} onChange={(ev) => setEditing((p) => ({ ...p, [t.tierCode]: { ...e, displayName: ev.target.value } }))} className={`${inputCls} w-32`} />
+              <span className="text-xs text-ent-muted">$</span>
+              <input value={e.annualFeeDollars} onChange={(ev) => setEditing((p) => ({ ...p, [t.tierCode]: { ...e, annualFeeDollars: ev.target.value } }))} className={`${inputCls} w-20`} />
+              <span className="text-xs text-ent-muted">/yr, slots:</span>
+              <input value={e.specialistSlotCount} onChange={(ev) => setEditing((p) => ({ ...p, [t.tierCode]: { ...e, specialistSlotCount: ev.target.value } }))} className={`${inputCls} w-14`} />
+              <button type="button" onClick={() => { void save(t.tierCode); }} disabled={busyTier === t.tierCode} className="px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold disabled:opacity-60">Save</button>
+              <button type="button" onClick={() => { void togglePublished(t); }} disabled={busyTier === t.tierCode} className={`px-3 py-2 rounded-xl border text-xs font-semibold ${t.isPublished ? 'border-ent-rust text-ent-rust hover:bg-ent-rust/10' : 'border-ent-forest text-ent-forest hover:bg-ent-forest/10'}`}>
+                {t.isPublished ? 'Unpublish' : 'Publish'}
+              </button>
+              <span className="text-[11px] text-ent-muted ml-auto">v{t.version}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// MMA-PROF-ONBOARD-004 -- WELCOME100/WELCOME50 coupon administration:
+// pause/expire/revoke, bounded redemption limits, and a form for the
+// owner to create a new custom code. Coupon codes are never listed
+// anywhere a client can browse them ANONYMOUSLY (migration 161's own
+// RLS) -- this panel itself is Platform-Owner-only.
+function CouponManagementPanel() {
+  const [coupons, setCoupons] = useState<CouponAdmin[]>([]);
+  const [busyCode, setBusyCode] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [newCode, setNewCode] = useState('');
+  const [newKind, setNewKind] = useState<'full_waiver' | 'half_off_minus_fifty_cents'>('half_off_minus_fifty_cents');
+  const [newLimit, setNewLimit] = useState('');
+
+  const refresh = useCallback(async () => { setCoupons(await getAllCoupons()); }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const setStatus = async (code: string, status: 'active' | 'paused' | 'expired' | 'revoked') => {
+    setBusyCode(code);
+    try {
+      const { error } = await platformOwnerSetCouponStatus(code, status);
+      if (error) { toast.error(error); return; }
+      toast.success(`${code} set to ${status}.`);
+      await refresh();
+    } finally { setBusyCode(null); }
+  };
+  const setLimit = async (code: string, limitStr: string) => {
+    const limit = limitStr.trim() === '' ? null : Number(limitStr);
+    if (limit !== null && (!Number.isFinite(limit) || limit <= 0)) { toast.error('Enter a positive number, or leave blank for unlimited.'); return; }
+    setBusyCode(code);
+    try {
+      const { error } = await platformOwnerSetCouponLimit(code, limit);
+      if (error) { toast.error(error); return; }
+      toast.success(`${code} limit updated.`);
+      await refresh();
+    } finally { setBusyCode(null); }
+  };
+  const createCoupon = async () => {
+    if (!newCode.trim()) { toast.error('Enter a code.'); return; }
+    setBusyCode('new');
+    try {
+      const { error } = await platformOwnerCreateCoupon(newCode.trim().toUpperCase(), newKind, newLimit.trim() ? Number(newLimit) : null, null, null);
+      if (error) { toast.error(error); return; }
+      toast.success(`${newCode.toUpperCase()} created.`);
+      setNewCode(''); setNewLimit(''); setShowForm(false);
+      await refresh();
+    } finally { setBusyCode(null); }
+  };
+
+  return (
+    <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-bold text-ent-ink">Promotional Coupons</h2>
+        <button type="button" onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold">
+          <Plus className="w-3.5 h-3.5" /> New code
+        </button>
+      </div>
+      {showForm && (
+        <div className="p-3 bg-ent-bg rounded-xl border border-ent-line flex flex-wrap items-center gap-2">
+          <input value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="CODE" className={`${inputCls} w-32`} />
+          <select value={newKind} onChange={(e) => setNewKind(e.target.value as 'full_waiver' | 'half_off_minus_fifty_cents')} className={`${inputCls} w-56`}>
+            <option value="half_off_minus_fifty_cents">50% off, then −$0.50</option>
+            <option value="full_waiver">100% off (full waiver)</option>
+          </select>
+          <input value={newLimit} onChange={(e) => setNewLimit(e.target.value)} placeholder="Max redemptions (blank=unlimited)" className={`${inputCls} w-56`} />
+          <button type="button" onClick={() => { void createCoupon(); }} disabled={busyCode === 'new'} className="px-3 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-xs font-semibold disabled:opacity-60">Create</button>
+        </div>
+      )}
+      <div className="space-y-2">
+        {coupons.length === 0 && <p className="text-sm text-ent-text">No coupons configured.</p>}
+        {coupons.map((c) => (
+          <div key={c.code} data-testid={`coupon-row-${c.code}`} className="p-3 bg-ent-bg rounded-xl border border-ent-line flex flex-wrap items-center gap-2">
+            <span className="font-mono text-sm font-bold text-ent-ink w-32">{c.code}</span>
+            <span className="text-xs text-ent-muted w-40">{c.discountKind === 'full_waiver' ? '100% off' : '50% off − $0.50'}</span>
+            <span className={`text-[11px] font-bold px-2 py-1 rounded-full capitalize ${c.status === 'active' ? 'bg-ent-forest/20 text-ent-forest' : 'bg-ent-amber/20 text-ent-amber'}`}>{c.status}</span>
+            <span className="text-xs text-ent-muted">{c.redemptionsUsed} used{c.maxRedemptionsTotal != null ? ` / ${c.maxRedemptionsTotal}` : ' (unlimited)'}</span>
+            <input defaultValue={c.maxRedemptionsTotal ?? ''} onBlur={(e) => { if (e.target.value !== String(c.maxRedemptionsTotal ?? '')) void setLimit(c.code, e.target.value); }} placeholder="limit" className={`${inputCls} w-20`} />
+            {c.status !== 'paused' && <button type="button" onClick={() => { void setStatus(c.code, 'paused'); }} disabled={busyCode === c.code} className="px-3 py-1.5 rounded-xl border border-ent-line text-ent-ink text-xs font-semibold hover:bg-ent-pale">Pause</button>}
+            {c.status === 'paused' && <button type="button" onClick={() => { void setStatus(c.code, 'active'); }} disabled={busyCode === c.code} className="px-3 py-1.5 rounded-xl border border-ent-forest text-ent-forest text-xs font-semibold hover:bg-ent-forest/10">Resume</button>}
+            {c.status !== 'revoked' && <button type="button" onClick={() => { void setStatus(c.code, 'revoked'); }} disabled={busyCode === c.code} className="px-3 py-1.5 rounded-xl border border-ent-rust text-ent-rust text-xs font-semibold hover:bg-ent-rust/10">Revoke</button>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SalesPipelinePanel() {
   const [prospects, setProspects] = useState<SalesProspect[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -1119,6 +1328,8 @@ export default function PlatformOwnerAdminPage() {
       <main className="p-4 sm:p-6">
         <div className="max-w-3xl mx-auto space-y-5">
           <DirectorApplicationsPanel apps={directorApps} onChanged={() => { void refresh(); }} />
+          <LicenseTierPricingPanel />
+          <CouponManagementPanel />
           <SalesPipelinePanel />
           <AmendmentRequestsPanel />
           <AccountDeletionRequestsPanel />

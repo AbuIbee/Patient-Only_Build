@@ -254,6 +254,17 @@ export async function rejectApplication(applicationId: string, rejectionReason: 
   return { error: null };
 }
 
+// MMA-PROF-ONBOARD-004 -- the Platform Owner's resolution of a
+// self-service application run_automated_application_verification()
+// flagged (currently: a suspected duplicate organization name). A thin
+// pass-through, same as every other function here.
+export async function platformOwnerResolveManualReview(
+  applicationId: string, decision: 'confirmed_distinct' | 'rejected' | 'return_for_correction', reason: string,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('platform_owner_resolve_manual_review', { p_application_id: applicationId, p_decision: decision, p_reason: reason });
+  return { error: error ? errMsg(error, 'Could not resolve this exception review.') : null };
+}
+
 export async function directorApproveApplication(applicationId: string): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('director_approve_application', { p_application_id: applicationId });
   return { error: error ? errMsg(error, 'Could not approve this application.') : null };
