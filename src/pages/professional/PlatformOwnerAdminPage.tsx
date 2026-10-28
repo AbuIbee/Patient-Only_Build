@@ -1021,30 +1021,74 @@ function AmendmentRequestsPanel() {
   );
 }
 
+// MMA-PROF-ONBOARD-004 P0-1 -- three distinct failure states instead
+// of folding every non-success case into "not owner": a genuine
+// backend/RPC error (missing function, network failure, misconfigured
+// project) must never be presented to the operator as if their
+// identity were merely unauthorized -- that hides a real infrastructure
+// fault behind a security message and makes it unfixable from the UI.
+type OwnerCheckStatus = 'checking' | 'owner' | 'not_owner' | 'backend_error';
+
 export default function PlatformOwnerAdminPage() {
   const { state, dispatch } = useApp();
-  const [loading, setLoading] = useState(true);
-  const [isOwner, setIsOwner] = useState(false);
+  const [status, setStatus] = useState<OwnerCheckStatus>('checking');
+  const [backendErrorMessage, setBackendErrorMessage] = useState<string | null>(null);
   const [directorApps, setDirectorApps] = useState<ProfessionalApplication[]>([]);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
-    const { data } = await supabase.rpc('is_platform_owner');
-    setIsOwner(data === true);
-    if (data === true) setDirectorApps(await getDirectorApplications());
-    setLoading(false);
+    setStatus('checking');
+    setBackendErrorMessage(null);
+    try {
+      const { data, error } = await supabase.rpc('is_platform_owner');
+      if (error) {
+        setStatus('backend_error');
+        setBackendErrorMessage(error.message);
+        return;
+      }
+      if (data !== true) {
+        setStatus('not_owner');
+        return;
+      }
+      setDirectorApps(await getDirectorApplications());
+      setStatus('owner');
+    } catch (err) {
+      // Network failure, thrown rejection, or any other unexpected
+      // exception must still resolve to an explicit error state --
+      // never leave `status` stuck at 'checking' forever (an infinite
+      // spinner is as unacceptable as a blank viewport).
+      setStatus('backend_error');
+      setBackendErrorMessage(err instanceof Error ? err.message : String(err));
+    }
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
 
   const handleLogout = async () => { await supabase.auth.signOut(); dispatch({ type: 'LOGOUT' }); toast('You have been logged out'); };
 
-  if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-ent-bg"><Loader2 className="w-8 h-8 animate-spin text-ent-forest" /></div>;
+  if (status === 'checking') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ent-bg" data-testid="owner-page-loading">
+        <Loader2 className="w-8 h-8 animate-spin text-ent-forest" />
+      </div>
+    );
   }
 
-  if (!isOwner) {
+  if (status === 'backend_error') {
     return (
-      <div className="min-h-screen bg-ent-bg flex items-center justify-center p-4">
+      <div className="min-h-screen bg-ent-bg flex items-center justify-center p-4" data-testid="owner-page-backend-error">
+        <div className="max-w-md text-center space-y-3">
+          <ShieldCheck className="w-10 h-10 text-ent-rust mx-auto" />
+          <h1 className="text-lg font-bold text-ent-ink">Platform Owner administration is unavailable</h1>
+          <p className="text-sm text-ent-text">We could not verify Platform Owner access because of a backend error. This is an infrastructure problem, not a permissions decision — please try again, and contact support if it persists.</p>
+          {backendErrorMessage && <p className="text-xs text-ent-muted font-mono break-all">{backendErrorMessage}</p>}
+          <button type="button" onClick={() => { void refresh(); }} className="px-4 py-2 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold">Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'not_owner') {
+    return (
+      <div className="min-h-screen bg-ent-bg flex items-center justify-center p-4" data-testid="owner-page-unauthorized">
         <div className="max-w-md text-center space-y-3">
           <ShieldCheck className="w-10 h-10 text-ent-rust mx-auto" />
           <h1 className="text-lg font-bold text-ent-ink">Platform Owner access required</h1>
