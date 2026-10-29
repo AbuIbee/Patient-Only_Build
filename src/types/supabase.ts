@@ -100,6 +100,12 @@ export interface Database {
           username: string | null
           created_at: string
           updated_at: string
+          max_patient_capacity: number | null
+          sms_consent: boolean | null
+          subscription_status: string | null
+          subscription_tier: string | null
+          temp_user_expires_at: string | null
+          terms_accepted_at: string | null
         }
         Insert: {
           id: string
@@ -121,6 +127,12 @@ export interface Database {
           username?: string | null
           created_at?: string
           updated_at?: string
+          max_patient_capacity?: number | null
+          sms_consent?: boolean | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          temp_user_expires_at?: string | null
+          terms_accepted_at?: string | null
         }
         Update: {
           id?: string
@@ -137,6 +149,12 @@ export interface Database {
           username?: string | null
           created_at?: string
           updated_at?: string
+          max_patient_capacity?: number | null
+          sms_consent?: boolean | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
+          temp_user_expires_at?: string | null
+          terms_accepted_at?: string | null
         }
         // REPAIR D: `profiles.id REFERENCES auth.users(id)` is real
         // (001_initial_schema.sql) but targets the `auth` schema, which
@@ -1095,6 +1113,7 @@ export interface Database {
           display_label: string | null
           created_at: string
           updated_at: string
+          relationship: string | null
         }
         Insert: {
           id?: string
@@ -1105,6 +1124,7 @@ export interface Database {
           display_label?: string | null
           created_at?: string
           updated_at?: string
+          relationship?: string | null
         }
         Update: {
           id?: string
@@ -1115,6 +1135,7 @@ export interface Database {
           display_label?: string | null
           created_at?: string
           updated_at?: string
+          relationship?: string | null
         }
         // REPAIR D (FUNCTIONAL-REPAIR-005): confirmed via
         // 001_initial_schema.sql's inline `REFERENCES` clauses —
@@ -1188,6 +1209,8 @@ export interface Database {
           created_by: string
           created_at: string
           updated_at: string
+          organization_owner_user_id: string | null
+          owner_user_id: string
         }
         Insert: {
           id?: string
@@ -1196,6 +1219,8 @@ export interface Database {
           created_by: string
           created_at?: string
           updated_at?: string
+          organization_owner_user_id?: string | null
+          owner_user_id: string
         }
         Update: {
           id?: string
@@ -1204,6 +1229,8 @@ export interface Database {
           created_by?: string
           created_at?: string
           updated_at?: string
+          organization_owner_user_id?: string | null
+          owner_user_id?: string
         }
         Relationships: [
           {
@@ -1280,6 +1307,12 @@ export interface Database {
           max_billing_admin_seats: number | null
           created_at: string
           updated_at: string
+          coupon_code_applied: string | null
+          legacy_package_type_at_issuance: string | null
+          license_tier_code: string | null
+          monthly_billing_anchor_date: string | null
+          monthly_billing_timezone: string | null
+          specialist_slot_count: number
         }
         Insert: {
           id?: string
@@ -1297,6 +1330,12 @@ export interface Database {
           max_billing_admin_seats?: number | null
           created_at?: string
           updated_at?: string
+          coupon_code_applied?: string | null
+          legacy_package_type_at_issuance?: string | null
+          license_tier_code?: string | null
+          monthly_billing_anchor_date?: string | null
+          monthly_billing_timezone?: string | null
+          specialist_slot_count?: number
         }
         Update: {
           id?: string
@@ -1314,6 +1353,12 @@ export interface Database {
           max_billing_admin_seats?: number | null
           created_at?: string
           updated_at?: string
+          coupon_code_applied?: string | null
+          legacy_package_type_at_issuance?: string | null
+          license_tier_code?: string | null
+          monthly_billing_anchor_date?: string | null
+          monthly_billing_timezone?: string | null
+          specialist_slot_count?: number
         }
         Relationships: [
           {
@@ -1388,6 +1433,12 @@ export interface Database {
           started_at: string
           ended_at: string | null
           created_by: string | null
+          archived_at: string | null
+          closed_at: string | null
+          closed_by: string | null
+          closure_notes: string | null
+          closure_reason: string | null
+          scheduled_archival_at: string | null
         }
         Insert: {
           id?: string
@@ -1397,6 +1448,12 @@ export interface Database {
           started_at?: string
           ended_at?: string | null
           created_by?: string | null
+          archived_at?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          closure_notes?: string | null
+          closure_reason?: string | null
+          scheduled_archival_at?: string | null
         }
         Update: {
           id?: string
@@ -1406,6 +1463,12 @@ export interface Database {
           started_at?: string
           ended_at?: string | null
           created_by?: string | null
+          archived_at?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          closure_notes?: string | null
+          closure_reason?: string | null
+          scheduled_archival_at?: string | null
         }
         Relationships: [
           {
@@ -1730,6 +1793,7 @@ export interface Database {
           amends_note_id: string | null
           created_at: string
           updated_at: string
+          caregiver_id: string | null
         }
         Insert: {
           id?: string
@@ -1740,6 +1804,7 @@ export interface Database {
           amends_note_id?: string | null
           created_at?: string
           updated_at?: string
+          caregiver_id?: string | null
         }
         Update: {
           id?: string
@@ -1750,6 +1815,7 @@ export interface Database {
           amends_note_id?: string | null
           created_at?: string
           updated_at?: string
+          caregiver_id?: string | null
         }
         // REPAIR D: `patient_id` confirmed via 001_initial_schema.sql
         // (`REFERENCES patients(id)`); `author_id` confirmed via
@@ -2310,6 +2376,7 @@ export interface Database {
           created_at: string | null
           reviewed_at: string | null
           reviewed_by: string | null
+          updated_at: string
         }
         Insert: {
           id: string
@@ -2343,6 +2410,7 @@ export interface Database {
           created_at?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          updated_at?: string
         }
         Update: {
           id?: string
@@ -2376,6 +2444,7 @@ export interface Database {
           created_at?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          updated_at?: string
         }
         // REPAIR D: confirmed via 009_patient_intake.sql's own inline
         // `REFERENCES profiles(id)` on all four columns.
@@ -2471,6 +2540,7 @@ export interface Database {
           caption: string | null
           shared_with: string[] | null
           created_at: string | null
+          updated_at: string
         }
         Insert: {
           id?: string
@@ -2485,6 +2555,7 @@ export interface Database {
           caption?: string | null
           shared_with?: string[] | null
           created_at?: string | null
+          updated_at?: string
         }
         Update: {
           id?: string
@@ -2499,6 +2570,7 @@ export interface Database {
           caption?: string | null
           shared_with?: string[] | null
           created_at?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
@@ -2693,6 +2765,8 @@ export interface Database {
           recorded_by: string | null
           undone_at: string | null
           undone_by: string | null
+          created_at: string | null
+          notes: string | null
         }
         Insert: {
           id?: string
@@ -2706,6 +2780,8 @@ export interface Database {
           recorded_by?: string | null
           undone_at?: string | null
           undone_by?: string | null
+          created_at?: string | null
+          notes?: string | null
         }
         Update: {
           id?: string
@@ -2719,6 +2795,8 @@ export interface Database {
           recorded_by?: string | null
           undone_at?: string | null
           undone_by?: string | null
+          created_at?: string | null
+          notes?: string | null
         }
         Relationships: [
           {
@@ -2749,6 +2827,7 @@ export interface Database {
           date: string
           text: string
           type: string
+          created_at: string | null
         }
         Insert: {
           id?: string
@@ -2756,6 +2835,7 @@ export interface Database {
           date: string
           text: string
           type: string
+          created_at?: string | null
         }
         Update: {
           id?: string
@@ -2763,6 +2843,7 @@ export interface Database {
           date?: string
           text?: string
           type?: string
+          created_at?: string | null
         }
         Relationships: [
           {
@@ -3000,6 +3081,9 @@ export interface Database {
           pain_level: number | null
           notes: string | null
           answers: Json | null
+          created_at: string
+          submitted_by: string | null
+          updated_at: string
         }
         Insert: {
           id?: string
@@ -3016,6 +3100,9 @@ export interface Database {
           pain_level?: number | null
           notes?: string | null
           answers?: Json | null
+          created_at?: string
+          submitted_by?: string | null
+          updated_at?: string
         }
         Update: {
           id?: string
@@ -3032,6 +3119,9 @@ export interface Database {
           pain_level?: number | null
           notes?: string | null
           answers?: Json | null
+          created_at?: string
+          submitted_by?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
@@ -3209,6 +3299,7 @@ export interface Database {
           address: string | null
           notes: string | null
           updated_at: string | null
+          created_at: string | null
         }
         Insert: {
           id?: string
@@ -3220,6 +3311,7 @@ export interface Database {
           address?: string | null
           notes?: string | null
           updated_at?: string | null
+          created_at?: string | null
         }
         Update: {
           id?: string
@@ -3231,6 +3323,7 @@ export interface Database {
           address?: string | null
           notes?: string | null
           updated_at?: string | null
+          created_at?: string | null
         }
         Relationships: [
           {
@@ -3607,6 +3700,13 @@ export interface Database {
           status: string
           target_organization_id: string | null
           updated_at: string
+          annual_license_fee_snapshot_cents: number | null
+          application_reference: string
+          auto_verification_result: Json | null
+          entry_method: string | null
+          exception_review_reason: string | null
+          initial_expected_active_patients: number | null
+          selected_tier_code: string | null
         }
         Insert: {
           applicant_user_id: string
@@ -3640,6 +3740,13 @@ export interface Database {
           status?: string
           target_organization_id?: string | null
           updated_at?: string
+          annual_license_fee_snapshot_cents?: number | null
+          application_reference: string
+          auto_verification_result?: Json | null
+          entry_method?: string | null
+          exception_review_reason?: string | null
+          initial_expected_active_patients?: number | null
+          selected_tier_code?: string | null
         }
         Update: {
           applicant_user_id?: string
@@ -3673,6 +3780,13 @@ export interface Database {
           status?: string
           target_organization_id?: string | null
           updated_at?: string
+          annual_license_fee_snapshot_cents?: number | null
+          application_reference?: string
+          auto_verification_result?: Json | null
+          entry_method?: string | null
+          exception_review_reason?: string | null
+          initial_expected_active_patients?: number | null
+          selected_tier_code?: string | null
         }
         Relationships: [
           {
@@ -3719,6 +3833,1536 @@ export interface Database {
           },
         ]
       }
+      account_management_audit: {
+        Row: {
+          action_type: string
+          actor_user_id: string | null
+          created_at: string
+          id: string
+          new_value: Json | null
+          organization_id: string | null
+          previous_value: Json | null
+          reason: string | null
+          target_user_id: string | null
+        }
+        Insert: {
+          action_type: string
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          new_value?: Json | null
+          organization_id?: string | null
+          previous_value?: Json | null
+          reason?: string | null
+          target_user_id?: string | null
+        }
+        Update: {
+          action_type?: string
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          new_value?: Json | null
+          organization_id?: string | null
+          previous_value?: Json | null
+          reason?: string | null
+          target_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_management_audit_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_management_audit_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_management_audit_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audio_stories: {
+        Row: {
+          audio_url: string
+          author: string | null
+          category: string
+          created_at: string
+          description: string | null
+          duration: string
+          id: string
+          is_active: boolean
+          sort_order: number
+          title: string
+        }
+        Insert: {
+          audio_url: string
+          author?: string | null
+          category: string
+          created_at?: string
+          description?: string | null
+          duration?: string
+          id?: string
+          is_active?: boolean
+          sort_order?: number
+          title: string
+        }
+        Update: {
+          audio_url?: string
+          author?: string | null
+          category?: string
+          created_at?: string
+          description?: string | null
+          duration?: string
+          id?: string
+          is_active?: boolean
+          sort_order?: number
+          title?: string
+        }
+        Relationships: []
+      }
+      calm_tracks: {
+        Row: {
+          artist: string
+          audio_url: string
+          category: string
+          color: string
+          created_at: string
+          emoji: string
+          id: string
+          is_active: boolean
+          sort_order: number
+          title: string
+        }
+        Insert: {
+          artist?: string
+          audio_url: string
+          category: string
+          color?: string
+          created_at?: string
+          emoji?: string
+          id?: string
+          is_active?: boolean
+          sort_order?: number
+          title: string
+        }
+        Update: {
+          artist?: string
+          audio_url?: string
+          category?: string
+          color?: string
+          created_at?: string
+          emoji?: string
+          id?: string
+          is_active?: boolean
+          sort_order?: number
+          title?: string
+        }
+        Relationships: []
+      }
+      enterprise_billing_accounts: {
+        Row: {
+          billing_component: string
+          billing_contact_email: string
+          billing_interval: string
+          created_at: string
+          created_by: string
+          currency: string
+          id: string
+          quote_id: string
+          status: string
+          stripe_checkout_session_id: string | null
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          unit_amount_cents: number
+          updated_at: string
+        }
+        Insert: {
+          billing_component?: string
+          billing_contact_email: string
+          billing_interval: string
+          created_at?: string
+          created_by: string
+          currency?: string
+          id?: string
+          quote_id: string
+          status?: string
+          stripe_checkout_session_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          unit_amount_cents: number
+          updated_at?: string
+        }
+        Update: {
+          billing_component?: string
+          billing_contact_email?: string
+          billing_interval?: string
+          created_at?: string
+          created_by?: string
+          currency?: string
+          id?: string
+          quote_id?: string
+          status?: string
+          stripe_checkout_session_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          unit_amount_cents?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enterprise_billing_accounts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enterprise_billing_accounts_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "sales_quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      enterprise_billing_events: {
+        Row: {
+          billing_account_id: string | null
+          event_type: string
+          id: string
+          payload: Json
+          processed_at: string | null
+          stripe_event_id: string
+        }
+        Insert: {
+          billing_account_id?: string | null
+          event_type: string
+          id?: string
+          payload: Json
+          processed_at?: string | null
+          stripe_event_id: string
+        }
+        Update: {
+          billing_account_id?: string | null
+          event_type?: string
+          id?: string
+          payload?: Json
+          processed_at?: string | null
+          stripe_event_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enterprise_billing_events_billing_account_id_fkey"
+            columns: ["billing_account_id"]
+            isOneToOne: false
+            referencedRelation: "enterprise_billing_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      enterprise_contracts: {
+        Row: {
+          contract_type: string
+          created_at: string
+          created_by: string
+          executed_at: string | null
+          executed_by: string | null
+          execution_evidence_reference: string | null
+          execution_method: string | null
+          id: string
+          presented_at: string | null
+          quote_id: string
+          signatory_name: string
+          signatory_title: string | null
+          status: string
+          supersedes_contract_id: string | null
+          template_version: string
+          updated_at: string
+          voided_reason: string | null
+        }
+        Insert: {
+          contract_type: string
+          created_at?: string
+          created_by: string
+          executed_at?: string | null
+          executed_by?: string | null
+          execution_evidence_reference?: string | null
+          execution_method?: string | null
+          id?: string
+          presented_at?: string | null
+          quote_id: string
+          signatory_name: string
+          signatory_title?: string | null
+          status?: string
+          supersedes_contract_id?: string | null
+          template_version: string
+          updated_at?: string
+          voided_reason?: string | null
+        }
+        Update: {
+          contract_type?: string
+          created_at?: string
+          created_by?: string
+          executed_at?: string | null
+          executed_by?: string | null
+          execution_evidence_reference?: string | null
+          execution_method?: string | null
+          id?: string
+          presented_at?: string | null
+          quote_id?: string
+          signatory_name?: string
+          signatory_title?: string | null
+          status?: string
+          supersedes_contract_id?: string | null
+          template_version?: string
+          updated_at?: string
+          voided_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enterprise_contracts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enterprise_contracts_executed_by_fkey"
+            columns: ["executed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enterprise_contracts_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "sales_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enterprise_contracts_supersedes_contract_id_fkey"
+            columns: ["supersedes_contract_id"]
+            isOneToOne: false
+            referencedRelation: "enterprise_contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      enterprise_coupon_redemptions: {
+        Row: {
+          application_id: string
+          base_cents: number
+          coupon_code: string
+          discount_cents: number
+          final_cents: number
+          id: string
+          redeemed_at: string
+          redeemed_by: string
+        }
+        Insert: {
+          application_id: string
+          base_cents: number
+          coupon_code: string
+          discount_cents: number
+          final_cents: number
+          id?: string
+          redeemed_at?: string
+          redeemed_by: string
+        }
+        Update: {
+          application_id?: string
+          base_cents?: number
+          coupon_code?: string
+          discount_cents?: number
+          final_cents?: number
+          id?: string
+          redeemed_at?: string
+          redeemed_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enterprise_coupon_redemptions_coupon_code_fkey"
+            columns: ["coupon_code"]
+            isOneToOne: false
+            referencedRelation: "promo_coupon_catalog"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "enterprise_coupon_redemptions_redeemed_by_fkey"
+            columns: ["redeemed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      enterprise_demo_environments: {
+        Row: {
+          cleanup_completed_at: string | null
+          created_at: string
+          created_by: string
+          expires_at: string | null
+          id: string
+          label: string
+          notes: string | null
+          organization_id: string | null
+          retired_at: string | null
+          status: string
+          synthetic_data_only: boolean
+          updated_at: string
+        }
+        Insert: {
+          cleanup_completed_at?: string | null
+          created_at?: string
+          created_by: string
+          expires_at?: string | null
+          id?: string
+          label: string
+          notes?: string | null
+          organization_id?: string | null
+          retired_at?: string | null
+          status?: string
+          synthetic_data_only?: boolean
+          updated_at?: string
+        }
+        Update: {
+          cleanup_completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          expires_at?: string | null
+          id?: string
+          label?: string
+          notes?: string | null
+          organization_id?: string | null
+          retired_at?: string | null
+          status?: string
+          synthetic_data_only?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enterprise_demo_environments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enterprise_demo_environments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      enterprise_license_sequences: {
+        Row: {
+          next_value: number
+          prefix: string
+          year: number
+        }
+        Insert: {
+          next_value?: number
+          prefix: string
+          year: number
+        }
+        Update: {
+          next_value?: number
+          prefix?: string
+          year?: number
+        }
+        Relationships: []
+      }
+      enterprise_notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          dedup_key: string | null
+          id: string
+          notification_type: string
+          read_at: string | null
+          recipient_user_id: string
+          related_entity_id: string | null
+          related_entity_type: string | null
+          status: string
+          title: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          dedup_key?: string | null
+          id?: string
+          notification_type: string
+          read_at?: string | null
+          recipient_user_id: string
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          status?: string
+          title: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          dedup_key?: string | null
+          id?: string
+          notification_type?: string
+          read_at?: string | null
+          recipient_user_id?: string
+          related_entity_id?: string | null
+          related_entity_type?: string | null
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enterprise_notifications_recipient_user_id_fkey"
+            columns: ["recipient_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      enterprise_patient_deletion_requests: {
+        Row: {
+          executed_at: string | null
+          executed_by: string | null
+          id: string
+          legal_hold_cleared_at: string | null
+          patient_id: string
+          request_reason: string
+          requested_at: string
+          requested_by: string
+          retention_anchor_at: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          executed_at?: string | null
+          executed_by?: string | null
+          id?: string
+          legal_hold_cleared_at?: string | null
+          patient_id: string
+          request_reason: string
+          requested_at?: string
+          requested_by: string
+          retention_anchor_at?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          executed_at?: string | null
+          executed_by?: string | null
+          id?: string
+          legal_hold_cleared_at?: string | null
+          patient_id?: string
+          request_reason?: string
+          requested_at?: string
+          requested_by?: string
+          retention_anchor_at?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enterprise_patient_deletion_requests_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "caregiver_patient_list"
+            referencedColumns: ["patient_id"]
+          },
+          {
+            foreignKeyName: "enterprise_patient_deletion_requests_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      enterprise_retention_settings: {
+        Row: {
+          effective_from: string
+          notes: string | null
+          policy_key: string
+          retention_years: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          effective_from?: string
+          notes?: string | null
+          policy_key: string
+          retention_years: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          effective_from?: string
+          notes?: string | null
+          policy_key?: string
+          retention_years?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      enterprise_role_catalog: {
+        Row: {
+          created_at: string
+          description: string
+          display_name: string
+          is_assignable_by_director: boolean
+          office_key: string | null
+          role_key: string
+          role_scope: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          display_name: string
+          is_assignable_by_director?: boolean
+          office_key?: string | null
+          role_key: string
+          role_scope: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          display_name?: string
+          is_assignable_by_director?: boolean
+          office_key?: string | null
+          role_key?: string
+          role_scope?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      license_tier_catalog: {
+        Row: {
+          annual_fee_cents: number
+          created_at: string
+          display_name: string
+          is_published: boolean
+          specialist_slot_count: number
+          tier_code: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        Insert: {
+          annual_fee_cents: number
+          created_at?: string
+          display_name: string
+          is_published?: boolean
+          specialist_slot_count: number
+          tier_code: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Update: {
+          annual_fee_cents?: number
+          created_at?: string
+          display_name?: string
+          is_published?: boolean
+          specialist_slot_count?: number
+          tier_code?: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "license_tier_catalog_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      license_tier_catalog_history: {
+        Row: {
+          annual_fee_cents: number
+          display_name: string
+          id: string
+          specialist_slot_count: number
+          superseded_at: string
+          superseded_by: string | null
+          tier_code: string
+          version: number
+        }
+        Insert: {
+          annual_fee_cents: number
+          display_name: string
+          id?: string
+          specialist_slot_count: number
+          superseded_at?: string
+          superseded_by?: string | null
+          tier_code: string
+          version: number
+        }
+        Update: {
+          annual_fee_cents?: number
+          display_name?: string
+          id?: string
+          specialist_slot_count?: number
+          superseded_at?: string
+          superseded_by?: string | null
+          tier_code?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "license_tier_catalog_history_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      medication_schedules: {
+        Row: {
+          created_at: string | null
+          days_of_week: number[] | null
+          id: string
+          medication_id: string
+          time: string
+        }
+        Insert: {
+          created_at?: string | null
+          days_of_week?: number[] | null
+          id?: string
+          medication_id: string
+          time: string
+        }
+        Update: {
+          created_at?: string | null
+          days_of_week?: number[] | null
+          id?: string
+          medication_id?: string
+          time?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "medication_schedules_medication_id_fkey"
+            columns: ["medication_id"]
+            isOneToOne: false
+            referencedRelation: "medications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organization_amendment_requests: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          director_notes: string | null
+          id: string
+          organization_id: string
+          platform_owner_notes: string | null
+          request_type: string
+          requested_by: string
+          requested_details: Json
+          resulting_quote_id: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          director_notes?: string | null
+          id?: string
+          organization_id: string
+          platform_owner_notes?: string | null
+          request_type: string
+          requested_by: string
+          requested_details?: Json
+          resulting_quote_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          director_notes?: string | null
+          id?: string
+          organization_id?: string
+          platform_owner_notes?: string | null
+          request_type?: string
+          requested_by?: string
+          requested_details?: Json
+          resulting_quote_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_amendment_requests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_amendment_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_amendment_requests_resulting_quote_id_fkey"
+            columns: ["resulting_quote_id"]
+            isOneToOne: false
+            referencedRelation: "sales_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_amendment_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organization_owner_capability_grants: {
+        Row: {
+          capability: string
+          created_at: string
+          granted_by: string
+          id: string
+          organization_id: string
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          capability: string
+          created_at?: string
+          granted_by: string
+          id?: string
+          organization_id: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          capability?: string
+          created_at?: string
+          granted_by?: string
+          id?: string
+          organization_id?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_owner_capability_grants_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_owner_capability_grants_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_owner_capability_grants_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_owner_capability_grants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organization_ownership_events: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          new_director_id: string | null
+          new_owner_id: string | null
+          organization_id: string
+          previous_director_id: string | null
+          previous_owner_id: string | null
+          reason: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          new_director_id?: string | null
+          new_owner_id?: string | null
+          organization_id: string
+          previous_director_id?: string | null
+          previous_owner_id?: string | null
+          reason?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          new_director_id?: string | null
+          new_owner_id?: string | null
+          organization_id?: string
+          previous_director_id?: string | null
+          previous_owner_id?: string | null
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_ownership_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_ownership_events_new_director_id_fkey"
+            columns: ["new_director_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_ownership_events_new_owner_id_fkey"
+            columns: ["new_owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_ownership_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_ownership_events_previous_director_id_fkey"
+            columns: ["previous_director_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_ownership_events_previous_owner_id_fkey"
+            columns: ["previous_owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patient_legal_holds: {
+        Row: {
+          id: string
+          patient_id: string
+          placed_at: string
+          placed_by: string
+          reason: string
+          released_at: string | null
+          released_by: string | null
+          status: string
+        }
+        Insert: {
+          id?: string
+          patient_id: string
+          placed_at?: string
+          placed_by: string
+          reason: string
+          released_at?: string | null
+          released_by?: string | null
+          status?: string
+        }
+        Update: {
+          id?: string
+          patient_id?: string
+          placed_at?: string
+          placed_by?: string
+          reason?: string
+          released_at?: string | null
+          released_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_legal_holds_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "caregiver_patient_list"
+            referencedColumns: ["patient_id"]
+          },
+          {
+            foreignKeyName: "patient_legal_holds_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_legal_holds_placed_by_fkey"
+            columns: ["placed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_legal_holds_released_by_fkey"
+            columns: ["released_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patient_representatives: {
+        Row: {
+          authorization_basis: string
+          authorization_evidence_reference: string | null
+          consent_acknowledged: boolean
+          contact_email: string
+          contact_phone: string
+          created_at: string
+          id: string
+          initiated_by: string
+          legal_first_name: string
+          legal_last_name: string
+          legal_middle_name: string | null
+          organization_id: string
+          patient_id: string
+          relationship_to_patient: string
+          replaced_by_representative_id: string | null
+          representative_user_id: string
+          residential_address: string
+          revocation_reason: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          updated_at: string
+          verification_status: string
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          authorization_basis: string
+          authorization_evidence_reference?: string | null
+          consent_acknowledged?: boolean
+          contact_email: string
+          contact_phone: string
+          created_at?: string
+          id?: string
+          initiated_by: string
+          legal_first_name: string
+          legal_last_name: string
+          legal_middle_name?: string | null
+          organization_id: string
+          patient_id: string
+          relationship_to_patient: string
+          replaced_by_representative_id?: string | null
+          representative_user_id: string
+          residential_address: string
+          revocation_reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+          updated_at?: string
+          verification_status?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          authorization_basis?: string
+          authorization_evidence_reference?: string | null
+          consent_acknowledged?: boolean
+          contact_email?: string
+          contact_phone?: string
+          created_at?: string
+          id?: string
+          initiated_by?: string
+          legal_first_name?: string
+          legal_last_name?: string
+          legal_middle_name?: string | null
+          organization_id?: string
+          patient_id?: string
+          relationship_to_patient?: string
+          replaced_by_representative_id?: string | null
+          representative_user_id?: string
+          residential_address?: string
+          revocation_reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+          updated_at?: string
+          verification_status?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_representatives_initiated_by_fkey"
+            columns: ["initiated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_representatives_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_representatives_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "caregiver_patient_list"
+            referencedColumns: ["patient_id"]
+          },
+          {
+            foreignKeyName: "patient_representatives_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_representatives_replaced_by_representative_id_fkey"
+            columns: ["replaced_by_representative_id"]
+            isOneToOne: false
+            referencedRelation: "patient_representatives"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_representatives_representative_user_id_fkey"
+            columns: ["representative_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_representatives_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_representatives_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      promo_codes: {
+        Row: {
+          code: string
+          created_at: string | null
+          days: number
+          description: string | null
+          expires_at: string | null
+          max_uses: number | null
+          plan: string | null
+          tier: string
+        }
+        Insert: {
+          code: string
+          created_at?: string | null
+          days: number
+          description?: string | null
+          expires_at?: string | null
+          max_uses?: number | null
+          plan?: string | null
+          tier: string
+        }
+        Update: {
+          code?: string
+          created_at?: string | null
+          days?: number
+          description?: string | null
+          expires_at?: string | null
+          max_uses?: number | null
+          plan?: string | null
+          tier?: string
+        }
+        Relationships: []
+      }
+      promo_coupon_catalog: {
+        Row: {
+          applies_to: string
+          code: string
+          created_at: string
+          created_by: string | null
+          discount_kind: string
+          expires_at: string | null
+          max_redemptions_total: number | null
+          notes: string | null
+          redemptions_used: number
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          applies_to?: string
+          code: string
+          created_at?: string
+          created_by?: string | null
+          discount_kind: string
+          expires_at?: string | null
+          max_redemptions_total?: number | null
+          notes?: string | null
+          redemptions_used?: number
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          applies_to?: string
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          discount_kind?: string
+          expires_at?: string | null
+          max_redemptions_total?: number | null
+          notes?: string | null
+          redemptions_used?: number
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promo_coupon_catalog_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "promo_coupon_catalog_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      promo_redemptions: {
+        Row: {
+          created_at: string | null
+          email: string
+          id: string
+          promo_code: string
+          redeemed_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          id?: string
+          promo_code: string
+          redeemed_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          id?: string
+          promo_code?: string
+          redeemed_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promo_redemptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_prospects: {
+        Row: {
+          contact_email: string
+          contact_name: string
+          contact_phone: string | null
+          created_at: string
+          created_by: string
+          id: string
+          notes: string | null
+          prospective_organization_name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          contact_email: string
+          contact_name: string
+          contact_phone?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          notes?: string | null
+          prospective_organization_name: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          contact_email?: string
+          contact_name?: string
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          notes?: string | null
+          prospective_organization_name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_prospects_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_quote_invitations: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          created_at: string
+          created_by: string
+          expires_at: string
+          id: string
+          quote_id: string
+          recipient_email: string
+          status: string
+          token_hash: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          created_by: string
+          expires_at: string
+          id?: string
+          quote_id: string
+          recipient_email: string
+          status?: string
+          token_hash: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          id?: string
+          quote_id?: string
+          recipient_email?: string
+          status?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_quote_invitations_accepted_by_fkey"
+            columns: ["accepted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_quote_invitations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_quote_invitations_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "sales_quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_quotes: {
+        Row: {
+          annual_license_fee: number | null
+          billing_cadence: string | null
+          created_at: string
+          created_by: string
+          discount_notes: string | null
+          id: string
+          package_type: string
+          proposed_covered_patient_capacity: number | null
+          proposed_licensed_seats: number
+          prospect_id: string
+          quote_term_months: number | null
+          status: string
+          supersedes_quote_id: string | null
+          updated_at: string
+          valid_until: string | null
+        }
+        Insert: {
+          annual_license_fee?: number | null
+          billing_cadence?: string | null
+          created_at?: string
+          created_by: string
+          discount_notes?: string | null
+          id?: string
+          package_type: string
+          proposed_covered_patient_capacity?: number | null
+          proposed_licensed_seats: number
+          prospect_id: string
+          quote_term_months?: number | null
+          status?: string
+          supersedes_quote_id?: string | null
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Update: {
+          annual_license_fee?: number | null
+          billing_cadence?: string | null
+          created_at?: string
+          created_by?: string
+          discount_notes?: string | null
+          id?: string
+          package_type?: string
+          proposed_covered_patient_capacity?: number | null
+          proposed_licensed_seats?: number
+          prospect_id?: string
+          quote_term_months?: number | null
+          status?: string
+          supersedes_quote_id?: string | null
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_quotes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_quotes_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "sales_prospects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_quotes_supersedes_quote_id_fkey"
+            columns: ["supersedes_quote_id"]
+            isOneToOne: false
+            referencedRelation: "sales_quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trial_history: {
+        Row: {
+          email_normalized: string
+          id: string
+          issued_at: string
+          user_id: string | null
+        }
+        Insert: {
+          email_normalized: string
+          id?: string
+          issued_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          email_normalized?: string
+          id?: string
+          issued_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      trial_registrations: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+
     }
     // NOTE: both views below are proposed for removal by
     // 014_caregiver_relationship_authorization_and_view_hardening.sql
@@ -5950,7 +7594,7 @@ export interface Database {
         Returns: boolean
       }
       get_my_enterprise_care_team: {
-        Args: Record<PropertyKey, never>
+        Args: { p_patient_id?: string | null }
         Returns: {
           email: string
           first_name: string
@@ -5961,7 +7605,7 @@ export interface Database {
         }[]
       }
       get_my_enterprise_organization: {
-        Args: Record<PropertyKey, never>
+        Args: { p_patient_id?: string | null }
         Returns: {
           organization_id: string
           organization_name: string
@@ -6414,6 +8058,839 @@ export interface Database {
           created_at: string
         }
       }
+      activate_enterprise_license_from_quote: {
+        Args: { p_quote_id: string }
+        Returns: {
+          activated_at: string | null
+          activated_by: string | null
+          annual_license_fee: number | null
+          coupon_code_applied: string | null
+          covered_patient_capacity: number | null
+          created_at: string
+          id: string
+          legacy_package_type_at_issuance: string | null
+          license_number: string | null
+          license_tier_code: string | null
+          licensed_seats: number | null
+          max_billing_admin_seats: number | null
+          max_caregiver_seats: number | null
+          max_medical_professional_seats: number | null
+          max_therapist_seats: number | null
+          monthly_billing_anchor_date: string | null
+          monthly_billing_timezone: string | null
+          organization_id: string
+          specialist_slot_count: number
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "organization_licenses"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      am_i_org_owner: { Args: { p_org_id: string }; Returns: boolean }
+      apply_organization_amendment_from_quote: {
+        Args: { p_quote_id: string }
+        Returns: {
+          completed_at: string | null
+          created_at: string
+          director_notes: string | null
+          id: string
+          organization_id: string
+          platform_owner_notes: string | null
+          request_type: string
+          requested_by: string
+          requested_details: Json
+          resulting_quote_id: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "organization_amendment_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      archival_interval: { Args: never; Returns: string }
+      archive_eligible_closed_patients: {
+        Args: never
+        Returns: {
+          archived: boolean
+          detail: string
+          out_organization_id: string
+          out_patient_id: string
+        }[]
+      }
+      calculate_annual_license_charge: {
+        Args: { p_coupon_code?: string | null; p_tier_code: string }
+        Returns: {
+          base_cents: number
+          coupon_code: string
+          coupon_rejected_reason: string
+          discount_cents: number
+          final_cents: number
+        }[]
+      }
+      calculate_monthly_patient_fee_cents: {
+        Args: { p_active_patients: number }
+        Returns: number
+      }
+      close_patient_coverage: {
+        Args: {
+          p_notes: string
+          p_org_id: string
+          p_patient_id: string
+          p_reason: string
+        }
+        Returns: {
+          archived_at: string | null
+          closed_at: string | null
+          closed_by: string | null
+          closure_notes: string | null
+          closure_reason: string | null
+          created_by: string | null
+          ended_at: string | null
+          id: string
+          organization_id: string
+          patient_id: string
+          scheduled_archival_at: string | null
+          started_at: string
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "covered_patient_memberships"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      compute_next_month_billing_anchor: {
+        Args: { p_timezone?: string }
+        Returns: {
+          anchor_date: string
+          anchor_instant: string
+          anchor_unix: number
+        }[]
+      }
+      create_enterprise_monthly_billing_component: {
+        Args: { p_billing_timezone?: string; p_quote_id: string }
+        Returns: {
+          billing_component: string
+          billing_contact_email: string
+          billing_interval: string
+          created_at: string
+          created_by: string
+          currency: string
+          id: string
+          quote_id: string
+          status: string
+          stripe_checkout_session_id: string | null
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          unit_amount_cents: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "enterprise_billing_accounts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      enterprise_patient_deletion_eligibility: {
+        Args: { p_request_id: string }
+        Returns: {
+          eligible_after: string
+          eligible_for_execution: boolean
+          legal_hold_reviewed: boolean
+          owner_reviewed: boolean
+          request_id: string
+          retention_elapsed: boolean
+          retention_years: number
+        }[]
+      }
+      get_my_patient_office_subject: { Args: never; Returns: string }
+      get_organization_owner: {
+        Args: { p_organization_id: string }
+        Returns: string
+      }
+      is_active_org_auditor: { Args: { p_org_id: string }; Returns: boolean }
+      is_active_org_clinical_authority: {
+        Args: { p_org_id: string }
+        Returns: boolean
+      }
+      is_organization_owner: {
+        Args: { p_organization_id: string }
+        Returns: boolean
+      }
+      my_patient_has_paid_entitlement: { Args: never; Returns: boolean }
+      my_patient_office_access_active: { Args: never; Returns: boolean }
+      notify_platform_owners: {
+        Args: {
+          p_body: string
+          p_dedup_key?: string
+          p_notification_type: string
+          p_related_entity_id: string
+          p_related_entity_type: string
+          p_title: string
+        }
+        Returns: undefined
+      }
+      org_owner_revoke_own_capability: {
+        Args: { p_capability: string; p_org_id: string }
+        Returns: {
+          capability: string
+          created_at: string
+          granted_by: string
+          id: string
+          organization_id: string
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "organization_owner_capability_grants"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      org_owner_self_assign_capability: {
+        Args: { p_capability: string; p_org_id: string }
+        Returns: {
+          capability: string
+          created_at: string
+          granted_by: string
+          id: string
+          organization_id: string
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "organization_owner_capability_grants"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      owner_replace_director: {
+        Args: {
+          p_new_director_email: string
+          p_organization_id: string
+          p_reason: string
+        }
+        Returns: {
+          created_at: string
+          id: string
+          invited_by: string | null
+          org_role: string
+          organization_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "organization_memberships"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      patient_has_active_legal_hold: {
+        Args: { p_patient_id: string }
+        Returns: boolean
+      }
+      patient_has_paid_entitlement: {
+        Args: { p_patient_id: string }
+        Returns: boolean
+      }
+      place_patient_legal_hold: {
+        Args: { p_patient_id: string; p_reason: string }
+        Returns: {
+          id: string
+          patient_id: string
+          placed_at: string
+          placed_by: string
+          reason: string
+          released_at: string | null
+          released_by: string | null
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_legal_holds"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      platform_owner_create_coupon: {
+        Args: {
+          p_code: string
+          p_discount_kind: string
+          p_expires_at: string | null
+          p_max_redemptions_total: number | null
+          p_notes: string | null
+        }
+        Returns: {
+          applies_to: string
+          code: string
+          created_at: string
+          created_by: string | null
+          discount_kind: string
+          expires_at: string | null
+          max_redemptions_total: number | null
+          notes: string | null
+          redemptions_used: number
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "promo_coupon_catalog"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      platform_owner_delete_patient_exceptionally: {
+        Args: { p_justification: string; p_patient_id: string }
+        Returns: Json
+      }
+      platform_owner_recover_organization_ownership: {
+        Args: {
+          p_new_owner_email: string
+          p_organization_id: string
+          p_reason: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          organization_owner_user_id: string | null
+          owner_user_id: string
+          package_type: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "organizations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      platform_owner_resolve_manual_review: {
+        Args: { p_application_id: string; p_decision: string; p_reason: string }
+        Returns: {
+          annual_license_fee_snapshot_cents: number | null
+          applicant_user_id: string
+          application_details: Json
+          application_reference: string
+          approved_office: string | null
+          auto_verification_result: Json | null
+          contact_email: string | null
+          contact_phone: string | null
+          correction_request: string | null
+          correction_requested_at: string | null
+          correction_requested_by: string | null
+          correction_requested_fields: Json | null
+          created_at: string
+          credential_verification_evidence: string | null
+          credential_verification_status: string
+          credential_verified_at: string | null
+          credential_verified_by: string | null
+          entry_method: string | null
+          exception_review_reason: string | null
+          id: string
+          initial_expected_active_patients: number | null
+          legal_name: string | null
+          platform_owner_approval_required: boolean
+          platform_owner_approved_at: string | null
+          platform_owner_approved_by: string | null
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          rejection_reason: string | null
+          requested_office: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          selected_tier_code: string | null
+          status: string
+          target_organization_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "professional_applications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      platform_owner_set_coupon_limit: {
+        Args: { p_code: string; p_max_redemptions_total: number | null }
+        Returns: {
+          applies_to: string
+          code: string
+          created_at: string
+          created_by: string | null
+          discount_kind: string
+          expires_at: string | null
+          max_redemptions_total: number | null
+          notes: string | null
+          redemptions_used: number
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "promo_coupon_catalog"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      platform_owner_set_coupon_status: {
+        Args: { p_code: string; p_status: string }
+        Returns: {
+          applies_to: string
+          code: string
+          created_at: string
+          created_by: string | null
+          discount_kind: string
+          expires_at: string | null
+          max_redemptions_total: number | null
+          notes: string | null
+          redemptions_used: number
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "promo_coupon_catalog"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      platform_owner_set_license_tier_price: {
+        Args: {
+          p_annual_fee_cents: number
+          p_display_name: string
+          p_specialist_slot_count: number
+          p_tier_code: string
+        }
+        Returns: {
+          annual_fee_cents: number
+          created_at: string
+          display_name: string
+          is_published: boolean
+          specialist_slot_count: number
+          tier_code: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "license_tier_catalog"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      platform_owner_set_license_tier_published: {
+        Args: { p_is_published: boolean; p_tier_code: string }
+        Returns: {
+          annual_fee_cents: number
+          created_at: string
+          display_name: string
+          is_published: boolean
+          specialist_slot_count: number
+          tier_code: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "license_tier_catalog"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      redeem_coupon_for_application: {
+        Args: {
+          p_application_id: string
+          p_coupon_code: string
+          p_tier_code: string
+        }
+        Returns: {
+          application_id: string
+          base_cents: number
+          coupon_code: string
+          discount_cents: number
+          final_cents: number
+          id: string
+          redeemed_at: string
+          redeemed_by: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "enterprise_coupon_redemptions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      register_patient_representative: {
+        Args: {
+          p_authorization_basis: string
+          p_authorization_evidence_reference?: string
+          p_consent_acknowledged: boolean
+          p_contact_email: string
+          p_contact_phone: string
+          p_legal_first_name: string
+          p_legal_last_name: string
+          p_legal_middle_name?: string
+          p_org_id: string
+          p_patient_id: string
+          p_relationship_to_patient: string
+          p_representative_email: string
+          p_residential_address: string
+        }
+        Returns: {
+          authorization_basis: string
+          authorization_evidence_reference: string | null
+          consent_acknowledged: boolean
+          contact_email: string
+          contact_phone: string
+          created_at: string
+          id: string
+          initiated_by: string
+          legal_first_name: string
+          legal_last_name: string
+          legal_middle_name: string | null
+          organization_id: string
+          patient_id: string
+          relationship_to_patient: string
+          replaced_by_representative_id: string | null
+          representative_user_id: string
+          residential_address: string
+          revocation_reason: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          updated_at: string
+          verification_status: string
+          verified_at: string | null
+          verified_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_representatives"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      release_patient_legal_hold: {
+        Args: { p_hold_id: string }
+        Returns: {
+          id: string
+          patient_id: string
+          placed_at: string
+          placed_by: string
+          reason: string
+          released_at: string | null
+          released_by: string | null
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_legal_holds"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      replace_patient_representative: {
+        Args: {
+          p_authorization_basis: string
+          p_authorization_evidence_reference?: string
+          p_consent_acknowledged: boolean
+          p_contact_email: string
+          p_contact_phone: string
+          p_legal_first_name: string
+          p_legal_last_name: string
+          p_legal_middle_name?: string
+          p_old_representative_id: string
+          p_reason: string
+          p_relationship_to_patient: string
+          p_representative_email: string
+          p_residential_address: string
+        }
+        Returns: {
+          authorization_basis: string
+          authorization_evidence_reference: string | null
+          consent_acknowledged: boolean
+          contact_email: string
+          contact_phone: string
+          created_at: string
+          id: string
+          initiated_by: string
+          legal_first_name: string
+          legal_last_name: string
+          legal_middle_name: string | null
+          organization_id: string
+          patient_id: string
+          relationship_to_patient: string
+          replaced_by_representative_id: string | null
+          representative_user_id: string
+          residential_address: string
+          revocation_reason: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          updated_at: string
+          verification_status: string
+          verified_at: string | null
+          verified_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_representatives"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      resolve_enterprise_billing_customer: {
+        Args: { p_quote_id: string }
+        Returns: {
+          organization_id: string
+          reusable_stripe_customer_id: string
+        }[]
+      }
+      revoke_patient_representative: {
+        Args: { p_reason: string; p_representative_id: string }
+        Returns: {
+          authorization_basis: string
+          authorization_evidence_reference: string | null
+          consent_acknowledged: boolean
+          contact_email: string
+          contact_phone: string
+          created_at: string
+          id: string
+          initiated_by: string
+          legal_first_name: string
+          legal_last_name: string
+          legal_middle_name: string | null
+          organization_id: string
+          patient_id: string
+          relationship_to_patient: string
+          replaced_by_representative_id: string | null
+          representative_user_id: string
+          residential_address: string
+          revocation_reason: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          updated_at: string
+          verification_status: string
+          verified_at: string | null
+          verified_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_representatives"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      run_automated_application_verification: {
+        Args: { p_application_id: string }
+        Returns: {
+          annual_license_fee_snapshot_cents: number | null
+          applicant_user_id: string
+          application_details: Json
+          application_reference: string
+          approved_office: string | null
+          auto_verification_result: Json | null
+          contact_email: string | null
+          contact_phone: string | null
+          correction_request: string | null
+          correction_requested_at: string | null
+          correction_requested_by: string | null
+          correction_requested_fields: Json | null
+          created_at: string
+          credential_verification_evidence: string | null
+          credential_verification_status: string
+          credential_verified_at: string | null
+          credential_verified_by: string | null
+          entry_method: string | null
+          exception_review_reason: string | null
+          id: string
+          initial_expected_active_patients: number | null
+          legal_name: string | null
+          platform_owner_approval_required: boolean
+          platform_owner_approved_at: string | null
+          platform_owner_approved_by: string | null
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          rejection_reason: string | null
+          requested_office: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          selected_tier_code: string | null
+          status: string
+          target_organization_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "professional_applications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      set_enterprise_license_status_for_quote: {
+        Args: { p_quote_id: string; p_status: string }
+        Returns: {
+          activated_at: string | null
+          activated_by: string | null
+          annual_license_fee: number | null
+          coupon_code_applied: string | null
+          covered_patient_capacity: number | null
+          created_at: string
+          id: string
+          legacy_package_type_at_issuance: string | null
+          license_number: string | null
+          license_tier_code: string | null
+          licensed_seats: number | null
+          max_billing_admin_seats: number | null
+          max_caregiver_seats: number | null
+          max_medical_professional_seats: number | null
+          max_therapist_seats: number | null
+          monthly_billing_anchor_date: string | null
+          monthly_billing_timezone: string | null
+          organization_id: string
+          specialist_slot_count: number
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "organization_licenses"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      start_self_service_application: {
+        Args: {
+          p_application_details: Json
+          p_contact_email: string
+          p_coupon_code?: string | null
+          p_initial_expected_active_patients: number | null
+          p_invitation_token?: string | null
+          p_legal_name: string
+          p_selected_tier_code: string | null
+        }
+        Returns: {
+          annual_license_fee_snapshot_cents: number | null
+          applicant_user_id: string
+          application_details: Json
+          application_reference: string
+          approved_office: string | null
+          auto_verification_result: Json | null
+          contact_email: string | null
+          contact_phone: string | null
+          correction_request: string | null
+          correction_requested_at: string | null
+          correction_requested_by: string | null
+          correction_requested_fields: Json | null
+          created_at: string
+          credential_verification_evidence: string | null
+          credential_verification_status: string
+          credential_verified_at: string | null
+          credential_verified_by: string | null
+          entry_method: string | null
+          exception_review_reason: string | null
+          id: string
+          initial_expected_active_patients: number | null
+          legal_name: string | null
+          platform_owner_approval_required: boolean
+          platform_owner_approved_at: string | null
+          platform_owner_approved_by: string | null
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          rejection_reason: string | null
+          requested_office: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          selected_tier_code: string | null
+          status: string
+          target_organization_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "professional_applications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      validate_director_application_payload: {
+        Args: { p_contact_email: string; p_details: Json }
+        Returns: undefined
+      }
+      verify_patient_representative: {
+        Args: { p_representative_id: string }
+        Returns: {
+          authorization_basis: string
+          authorization_evidence_reference: string | null
+          consent_acknowledged: boolean
+          contact_email: string
+          contact_phone: string
+          created_at: string
+          id: string
+          initiated_by: string
+          legal_first_name: string
+          legal_last_name: string
+          legal_middle_name: string | null
+          organization_id: string
+          patient_id: string
+          relationship_to_patient: string
+          replaced_by_representative_id: string | null
+          representative_user_id: string
+          residential_address: string
+          revocation_reason: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          updated_at: string
+          verification_status: string
+          verified_at: string | null
+          verified_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "patient_representatives"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+
     }
     Enums: {
       [_ in never]: never

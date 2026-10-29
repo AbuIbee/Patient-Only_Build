@@ -53,7 +53,7 @@ describe('MMA-PROF-ONBOARD-004 commercial catalog (migration 161)', () => {
     expect(body).toEqual([
       { tier_code: 'essential', annual_fee_cents: 39900, specialist_slot_count: 0 },
       { tier_code: 'plus', annual_fee_cents: 59900, specialist_slot_count: 1 },
-      { tier_code: 'complete', annual_fee_cents: 79900, specialist_slot_count: 2 },
+      { tier_code: 'complete', annual_fee_cents: 79900, specialist_slot_count: 3 },
     ]);
   });
 

@@ -6,7 +6,7 @@
 import { supabase, logDocumentAccess } from '@/lib/supabase';
 import type { Json } from '@/types/supabase';
 
-export type RequestedOffice = 'director' | 'caregiver' | 'medical_professional' | 'therapist';
+export type RequestedOffice = 'director' | 'caregiver' | 'medical_professional' | 'therapist' | 'other_specialist';
 export type ApplicationStatus =
   | 'draft' | 'submitted' | 'pending_review' | 'info_required' | 'resubmitted'
   | 'approved' | 'rejected' | 'withdrawn' | 'suspended' | 'revoked'

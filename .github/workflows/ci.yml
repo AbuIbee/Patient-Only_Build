@@ -27,11 +27,22 @@ on:
 permissions:
   contents: read
 
+# Keep only the latest run of each event type for an evolving branch.
+# Push and pull_request share source but PR within the same repository
+# does not need to launch a second disposable Docker/Supabase stack.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   static-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Acceptance register verifies historical commit hashes; a shallow
+          # checkout makes valid historical commits appear nonexistent.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -39,9 +50,19 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test:unit
+      # Traceability counts/ID uniqueness are structural only, not clinical acceptance.
+      - run: npm run verify:acceptance
 
   integration:
+    # PRs from this repository already execute the full integration suite
+    # on their push event. Fork PRs have no matching push in this repo and
+    # continue to receive the isolated integration gate.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
+    env:
+      # Disposable-only CLI; current fallback handles public ECR pull quota
+      # through GHCR / Docker Hub. No credentials, hosted DB, or prod writes.
+      HCN_DISPOSABLE_CLI_VERSION: '2.122.0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

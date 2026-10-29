@@ -194,6 +194,18 @@ describe('MMA-P1-FINAL-CLOSURE Priority 4 — real, non-backdated end-to-end arc
         if (finalStatus === 'archived') break;
         await new Promise((r) => setTimeout(r, 15_000));
       }
+      if (finalStatus !== 'archived') {
+        // Do not waive or shorten the actual wall-clock archival requirement.
+        // Surface pg_cron execution evidence so a CI failure distinguishes an
+        // inactive schedule, worker failure, permission denial or archive logic.
+        const cronJob = sqlAdmin(`SELECT COALESCE(string_agg(jobid::text || ':active=' || active::text, ', '), 'none')
+          FROM cron.job WHERE jobname='mma-archival-sweep';`);
+        const recentRuns = sqlAdmin(`SELECT COALESCE(string_agg(status || ': ' || COALESCE(return_message, ''), ' | '), 'none')
+          FROM (SELECT status, return_message FROM cron.job_run_details
+          WHERE jobid IN (SELECT jobid FROM cron.job WHERE jobname='mma-archival-sweep')
+          ORDER BY start_time DESC LIMIT 8) runs;`);
+        throw new Error(`Real archival incomplete: status=${finalStatus}, cronJob=${cronJob}, cronRuns=${recentRuns}`);
+      }
       expect(finalStatus).toBe('archived');
 
       // Item 6: archival audit record.

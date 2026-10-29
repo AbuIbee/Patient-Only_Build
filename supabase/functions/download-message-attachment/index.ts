@@ -64,8 +64,8 @@ serve(async (request) => {
       return jsonError('A valid request body is required.', 400);
     }
     const attachmentId = body.attachmentId?.trim();
-    if (!attachmentId) {
-      return jsonError('attachmentId is required.', 400);
+    if (!attachmentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(attachmentId)) {
+      return jsonError('A valid attachmentId is required.', 400);
     }
 
     // Scoped to the CALLER's own token — subject to message_attachments'
@@ -101,7 +101,7 @@ serve(async (request) => {
       .from(ATTACHMENT_BUCKET)
       .download(attachment.storage_path);
     if (downloadError || !fileBlob) {
-      console.error('download-message-attachment: storage download failed for', attachment.storage_path, downloadError?.message);
+      console.error('download-message-attachment: authorized storage download failed:', downloadError?.message);
       return jsonError('This attachment could not be retrieved.', 500);
     }
 
@@ -125,6 +125,6 @@ serve(async (request) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('FATAL download-message-attachment error:', message);
-    return jsonError(message, 500);
+    return jsonError('Attachment service temporarily unavailable.', 500);
   }
 });

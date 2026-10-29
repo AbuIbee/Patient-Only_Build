@@ -24,6 +24,7 @@ import SelfServiceApplicationFlow from './SelfServiceApplicationFlow';
 import { PendingInvitesBanner } from '@/pages/enterprise/EnterpriseDashboardRouter';
 import EnterpriseCaregiverDashboard from '@/pages/enterprise/EnterpriseCaregiverDashboard';
 import ClinicalOfficeDashboard from '@/pages/enterprise/ClinicalOfficeDashboard';
+import OtherSpecialistOffice from '@/pages/enterprise/OtherSpecialistOffice';
 import EnterprisePatientDashboard from '@/pages/patient/EnterprisePatientDashboard';
 import ApplicationStatusPage from './ApplicationStatusPage';
 
@@ -128,13 +129,13 @@ function RedeemInvitationSection({ onApplicationStarted }: { onApplicationStarte
   );
 }
 
-export type ProfessionalOfficeKey = 'admin' | 'caregiver' | 'medical' | 'therapy' | 'patient';
+export type ProfessionalOfficeKey = 'admin' | 'caregiver' | 'medical' | 'therapy' | 'other' | 'patient';
 
 const OFFICE_SEGMENT: Record<ProfessionalOfficeKey, string> = {
-  admin: 'Admin', caregiver: 'Caregiver', medical: 'Medical', therapy: 'Therapy', patient: 'Patient',
+  admin: 'Admin', caregiver: 'Caregiver', medical: 'Medical', therapy: 'Therapy', other: 'Other', patient: 'Patient',
 };
 const OFFICE_LABEL: Record<ProfessionalOfficeKey, string> = {
-  admin: 'Admin / Director', caregiver: 'Enterprise Caregiver', medical: 'Medical Professional', therapy: 'Therapist Professional', patient: 'Enterprise Patient',
+  admin: 'Admin / Director', caregiver: 'Enterprise Caregiver', medical: 'Medical Professional', therapy: 'Therapist Professional', other: 'Other Specialist', patient: 'Enterprise Patient',
 };
 // Priority order when no office is explicitly requested in the URL and
 // the signed-in user holds more than one — identical ordering to
@@ -142,7 +143,7 @@ const OFFICE_LABEL: Record<ProfessionalOfficeKey, string> = {
 // therapist > medical > caregiver), with Enterprise patient appended
 // last since it is the newly-added fifth dimension and no existing
 // behavior ever ranked it.
-const PRIORITY_ORDER: ProfessionalOfficeKey[] = ['admin', 'therapy', 'medical', 'caregiver', 'patient'];
+const PRIORITY_ORDER: ProfessionalOfficeKey[] = ['admin', 'therapy', 'medical', 'caregiver', 'other', 'patient'];
 
 function parseRequestedOffice(): ProfessionalOfficeKey | null {
   const segments = window.location.pathname.split('/').filter(Boolean); // ['Professional', 'Admin', ...]
@@ -336,12 +337,14 @@ export default function ProfessionalOfficeResolver() {
   const therapist = orgs.find((o) => o.orgRole === 'therapist');
   const medical = orgs.find((o) => o.orgRole === 'medical_professional');
   const caregiver = orgs.find((o) => o.orgRole === 'caregiver');
+  const otherSpecialist = orgs.find((o) => o.orgRole === 'other_specialist');
 
   const availableOffices: { key: ProfessionalOfficeKey; orgName: string }[] = [
     ...(director ? [{ key: 'admin' as const, orgName: director.organizationName }] : []),
     ...(therapist ? [{ key: 'therapy' as const, orgName: therapist.organizationName }] : []),
     ...(medical ? [{ key: 'medical' as const, orgName: medical.organizationName }] : []),
     ...(caregiver ? [{ key: 'caregiver' as const, orgName: caregiver.organizationName }] : []),
+    ...(otherSpecialist ? [{ key: 'other' as const, orgName: otherSpecialist.organizationName }] : []),
     ...(patientOfficeSubjectId ? [{ key: 'patient' as const, orgName: 'Your Care Organization' }] : []),
   ];
 
@@ -430,6 +433,7 @@ export default function ProfessionalOfficeResolver() {
       {effective === 'caregiver' && <EnterpriseCaregiverDashboard basePath={officeBasePath} />}
       {effective === 'medical' && <ClinicalOfficeDashboard filterRole="medical_professional" basePath={officeBasePath} />}
       {effective === 'therapy' && <ClinicalOfficeDashboard filterRole="therapist" basePath={officeBasePath} />}
+      {effective === 'other' && otherSpecialist && <OtherSpecialistOffice organizationName={otherSpecialist.organizationName} />}
       {effective === 'patient' && patientOfficeSubjectId && <EnterprisePatientDashboard basePath={officeBasePath} subjectPatientId={patientOfficeSubjectId} />}
     </div>
   );

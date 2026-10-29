@@ -22,6 +22,7 @@ const OFFICE_OPTIONS: { key: RequestedOffice; label: string; description: string
   { key: 'caregiver', label: 'Enterprise Caregiver', description: 'Join an existing organization as a professional caregiver.', icon: Users },
   { key: 'medical_professional', label: 'Medical Professional', description: 'Join an existing organization in a clinical medical role.', icon: Stethoscope },
   { key: 'therapist', label: 'Therapist Professional', description: 'Join an existing organization in a licensed therapy role.', icon: HeartPulse },
+  { key: 'other_specialist', label: 'Other Specialist', description: 'Apply for a configurable, credential-verified specialist role, such as dietitian or social worker.', icon: Sparkles },
 ];
 
 // §5.1-§5.4 — configurable, office-specific categories. Each office's
@@ -48,6 +49,12 @@ const CATEGORY_OPTIONS: Record<Exclude<RequestedOffice, 'director'>, { value: st
     { value: 'speech_language_pathologist', label: 'Speech-Language Pathologist' },
     { value: 'behavioral_health_professional', label: 'Licensed Behavioral / Mental-Health Professional' },
     { value: 'other_therapy_profession', label: 'Other approved therapy profession' },
+  ],
+  other_specialist: [
+    { value: 'registered_dietitian', label: 'Registered Dietitian' },
+    { value: 'social_worker', label: 'Social Worker' },
+    { value: 'care_coordinator', label: 'Care Coordinator' },
+    { value: 'other_approved_specialty', label: 'Another approved specialty (specify professional title)' },
   ],
 };
 
@@ -107,13 +114,13 @@ function AccountStep({ onDone }: { onDone: (identity: { firstName: string; lastN
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">First Name</label><input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputCls} /></div>
-        <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Last Name</label><input value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputCls} /></div>
+        <div className="space-y-1"><label htmlFor="registration-firstName" className="text-sm font-medium text-ent-ink">First Name</label><input id="registration-firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputCls} /></div>
+        <div className="space-y-1"><label htmlFor="registration-lastName" className="text-sm font-medium text-ent-ink">Last Name</label><input id="registration-lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputCls} /></div>
       </div>
-      <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Email Address</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} /></div>
+      <div className="space-y-1"><label htmlFor="registration-email" className="text-sm font-medium text-ent-ink">Email Address</label><input id="registration-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} /></div>
       <div className="space-y-1">
-        <label className="text-sm font-medium text-ent-ink">Password</label>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 11 characters" className={inputCls} />
+        <label htmlFor="registration-password" className="text-sm font-medium text-ent-ink">Password</label>
+        <input id="registration-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 11 characters" className={inputCls} />
       </div>
       <button type="button" onClick={() => { void submit(); }} disabled={loading} className="w-full py-3 rounded-xl bg-ent-bronze hover:opacity-90 text-white font-semibold disabled:opacity-60">
         {loading ? 'Creating account…' : 'Continue'}
@@ -165,13 +172,17 @@ export default function ProfessionalRegisterPage() {
   // calls start_self_service_application() directly. This remains the
   // submission path for the three STAFF-joining-an-existing-
   // organization offices only (caregiver/medical_professional/
-  // therapist), which is deliberately untouched by MMA-PROF-ONBOARD-004
+  // therapist/other_specialist), distinct from licensing and owner approval
   // -- "staff invitations remain distinct from customer licensing
   // invitations."
   const submit = async () => {
     if (!office || office === 'director') return;
     if (!legalName.trim() || !contactEmail.trim()) { toast.error('Legal name and contact email are required.'); return; }
     if (!orgLookup) { toast.error('Look up and confirm your target organization first.'); return; }
+    if (office === 'other_specialist' && (!professionCategory || !professionalTitle.trim())) {
+      toast.error('Other Specialists must select a profession category and enter a specific professional title.');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -271,35 +282,35 @@ export default function ProfessionalRegisterPage() {
                 <button type="button" onClick={() => setStep('office')} className="text-xs font-semibold text-ent-bronze hover:underline">← Choose a different office</button>
                 <h2 className="text-lg font-bold text-ent-ink">{OFFICE_OPTIONS.find((o) => o.key === office)?.label} Application</h2>
 
-                <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Legal Name *</label><input value={legalName} onChange={(e) => setLegalName(e.target.value)} className={inputCls} /></div>
-                <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Preferred Display Name</label><input value={preferredName} onChange={(e) => setPreferredName(e.target.value)} className={inputCls} /></div>
-                <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Contact Email *</label><input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={inputCls} /></div>
-                <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Contact Phone</label><input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} className={inputCls} /></div>
+                <div className="space-y-1"><label htmlFor="professional-legalName" className="text-sm font-medium text-ent-ink">Legal Name *</label><input id="professional-legalName" value={legalName} onChange={(e) => setLegalName(e.target.value)} className={inputCls} /></div>
+                <div className="space-y-1"><label htmlFor="professional-preferredName" className="text-sm font-medium text-ent-ink">Preferred Display Name</label><input id="professional-preferredName" value={preferredName} onChange={(e) => setPreferredName(e.target.value)} className={inputCls} /></div>
+                <div className="space-y-1"><label htmlFor="professional-contactEmail" className="text-sm font-medium text-ent-ink">Contact Email *</label><input id="professional-contactEmail" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={inputCls} /></div>
+                <div className="space-y-1"><label htmlFor="professional-contactPhone" className="text-sm font-medium text-ent-ink">Contact Phone</label><input id="professional-contactPhone" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} className={inputCls} /></div>
 
                 <div className="space-y-1">
-                      <label className="text-sm font-medium text-ent-ink">Target Organization Name *</label>
+                      <label htmlFor="professional-orgNameInput" className="text-sm font-medium text-ent-ink">Target Organization Name *</label>
                       <div className="flex gap-2">
-                        <input value={orgNameInput} onChange={(e) => { setOrgNameInput(e.target.value); setOrgLookup(null); }} placeholder="Exact organization name" className={`${inputCls} flex-1`} />
+                        <input id="professional-orgNameInput" value={orgNameInput} onChange={(e) => { setOrgNameInput(e.target.value); setOrgLookup(null); }} placeholder="Exact organization name" className={`${inputCls} flex-1`} />
                         <button type="button" onClick={() => { void lookupOrg(); }} className="px-4 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">Look up</button>
                       </div>
                       {orgLookup && <p className="text-xs text-ent-forest font-semibold">✓ Found: {orgLookup.name}</p>}
                       {orgLookupError && <p className="text-xs text-ent-rust">{orgLookupError}</p>}
                     </div>
                     <div className="space-y-1">
-                      <label className="text-sm font-medium text-ent-ink">Professional Category *</label>
-                      <select value={professionCategory} onChange={(e) => setProfessionCategory(e.target.value)} className={inputCls}>
+                      <label htmlFor="professional-professionCategory" className="text-sm font-medium text-ent-ink">Professional Category *</label>
+                      <select id="professional-professionCategory" value={professionCategory} onChange={(e) => setProfessionCategory(e.target.value)} className={inputCls}>
                         <option value="">Select…</option>
                         {CATEGORY_OPTIONS[office].map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                       </select>
                     </div>
-                    <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Professional Title</label><input value={professionalTitle} onChange={(e) => setProfessionalTitle(e.target.value)} className={inputCls} /></div>
+                    <div className="space-y-1"><label htmlFor="professional-professionalTitle" className="text-sm font-medium text-ent-ink">Professional Title</label><input id="professional-professionalTitle" value={professionalTitle} onChange={(e) => setProfessionalTitle(e.target.value)} className={inputCls} /></div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">License / Credential Number</label><input value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} className={inputCls} /></div>
                       <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Issuer</label><input value={issuer} onChange={(e) => setIssuer(e.target.value)} className={inputCls} /></div>
                       <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Jurisdiction</label><input value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value)} className={inputCls} /></div>
                       <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Expiration Date</label><input type="date" value={expirationDate} onChange={(e) => setExpirationDate(e.target.value)} className={inputCls} /></div>
                     </div>
-                    {(office === 'medical_professional' || office === 'therapist') && (
+                    {(office === 'medical_professional' || office === 'therapist' || office === 'other_specialist') && (
                       <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Specialty</label><input value={specialty} onChange={(e) => setSpecialty(e.target.value)} className={inputCls} /></div>
                     )}
                     <div className="space-y-1">

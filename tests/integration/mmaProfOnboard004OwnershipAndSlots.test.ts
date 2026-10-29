@@ -79,7 +79,7 @@ function makeTierOrg(tierCode: string, specialistSlots: number, orgName: string)
 // one for the same user. Each call's user is tracked in
 // createdSpecialistIds for afterAll cleanup.
 const createdSpecialistIds: string[] = [];
-async function submitAndVerifySpecialistApplication(orgId: string, office: 'medical_professional' | 'therapist'): Promise<string> {
+async function submitAndVerifySpecialistApplication(orgId: string, office: 'medical_professional' | 'therapist' | 'other_specialist'): Promise<string> {
   const email = `slots-spec-${stamp}-${createdSpecialistIds.length}@local.test`;
   const userId = await authSignUp(email, PW);
   createdSpecialistIds.push(userId);
@@ -117,12 +117,16 @@ describe('MMA-PROF-ONBOARD-004 Organization Owner/Director separation and specia
     expect(statusB).toBe(400);
   });
 
-  it('a Complete org (2 specialist slots) allows one of each specialty, then blocks a third', async () => {
-    const orgId = makeTierOrg('complete', 2, `Complete Slots Org ${stamp}`);
+  it('a Complete org (3 specialist slots) accepts Medical, Therapist, and Other, then rejects a fourth', async () => {
+    const orgId = makeTierOrg('complete', 3, `Complete Slots Org ${stamp}`);
     const appA = await submitAndVerifySpecialistApplication(orgId, 'medical_professional');
     expect((await rpc('director_approve_application', { p_application_id: appA }, tok.director))[0]).toBe(200);
     const appB = await submitAndVerifySpecialistApplication(orgId, 'therapist');
     expect((await rpc('director_approve_application', { p_application_id: appB }, tok.director))[0]).toBe(200);
+    const appC = await submitAndVerifySpecialistApplication(orgId, 'other_specialist');
+    expect((await rpc('director_approve_application', { p_application_id: appC }, tok.director))[0]).toBe(200);
+    const appD = await submitAndVerifySpecialistApplication(orgId, 'medical_professional');
+    expect((await rpc('director_approve_application', { p_application_id: appD }, tok.director))[0]).toBe(400);
   });
 
   it('a legacy (non-tier) organization is completely unaffected by the specialist-slot model', async () => {

@@ -133,7 +133,20 @@ for (const [office, count] of Object.entries(navCounts)) {
   oks.push(`Navigation — ${office}: ${count} destinations`);
   totalNav += count;
 }
-check('60 navigation destinations: total across all 5 offices', totalNav, 60);
+// The approved Owner/Director authority separation introduced an additional
+// Organization Ownership tab in the Director's 14-item array. It is NOT part
+// of the original 60-destination (13+14+12+11+10) acceptance baseline.
+// Count that supplemental destination independently; do not remove the
+// ownership screen, inflate the original acceptance coverage, or ignore
+// an unrelated new item in the future.
+const directorSource = fs.readFileSync(path.join(ROOT, 'src/pages/enterprise/OrganizationDirectorDashboard.tsx'), 'utf8');
+const directorNavStart = directorSource.indexOf('const DIRECTOR_NAV_ITEMS');
+const directorNavEnd = directorSource.indexOf('const DIRECTOR_NAV_GROUPS', directorNavStart);
+const directorNavBody = directorSource.slice(directorNavStart, directorNavEnd);
+const ownerNavMatches = [...directorNavBody.matchAll(/key:\s*'ownership'/g)].length;
+check('Supplemental Director Organization Ownership navigation entry', ownerNavMatches, 1);
+check('Original 60 core navigation destinations (excluding supplemental ownership)', totalNav - ownerNavMatches, 60);
+check('Current 5-office navigation entries including ownership', totalNav, 61);
 
 // ---------------------------------------------------------------------
 // 4. 25 ordered office-pair communication combinations — the 5x5 grid
@@ -174,7 +187,7 @@ for (const sha of citedShas) {
 }
 check('Commit-SHA consistency: every SHA cited in the register exists in git history', unknownShas.length, 0);
 if (unknownShas.length) failures.push(`  -> unresolvable SHA(s): ${unknownShas.join(', ')}`);
-oks.push(`Commit-SHA consistency: ${citedShas.size} distinct SHAs cited, all resolved`);
+if (unknownShas.length === 0) oks.push(`Commit-SHA consistency: ${citedShas.size} distinct SHAs cited, all resolved`);
 
 // ---------------------------------------------------------------------
 // Report

@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Loader2, ShieldCheck, CheckCircle2, AlertTriangle } from 'lucide-react';
 import {
-  getPublishedLicenseTiers, previewAnnualLicenseCharge, previewMonthlyPatientFeeCents, startSelfServiceApplication,
+  loadPublishedLicenseTiers, previewAnnualLicenseCharge, previewMonthlyPatientFeeCents, startSelfServiceApplication,
   type LicenseTier, type LicenseTierCode, type SelfServiceApplicationResult,
 } from '@/services/selfServiceOnboardingService';
 
@@ -55,6 +55,9 @@ type FlowStep = 'tier' | 'starter' | 'pricing' | 'submitting' | 'result';
 export default function SelfServiceApplicationFlow({ legalName, contactEmail, onSubmitted }: { legalName: string; contactEmail: string; onSubmitted?: () => void }) {
   const [step, setStep] = useState<FlowStep>('tier');
   const [tiers, setTiers] = useState<LicenseTier[]>([]);
+  const [tierLoading, setTierLoading] = useState(true);
+  const [tierError, setTierError] = useState<string | null>(null);
+  const [tierRetry, setTierRetry] = useState(0);
   const [selectedTier, setSelectedTier] = useState<LicenseTierCode | null>(null);
   const [initialPatients, setInitialPatients] = useState('');
 
@@ -86,7 +89,21 @@ export default function SelfServiceApplicationFlow({ legalName, contactEmail, on
   const [result, setResult] = useState<SelfServiceApplicationResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  useEffect(() => { void getPublishedLicenseTiers().then(setTiers); }, []);
+  useEffect(() => {
+    let active = true;
+    setTierLoading(true);
+    setTierError(null);
+    void loadPublishedLicenseTiers()
+      .then((loaded) => { if (active) setTiers(loaded); })
+      .catch((error: unknown) => {
+        if (active) {
+          setTiers([]);
+          setTierError(error instanceof Error ? error.message : 'Could not load license tiers.');
+        }
+      })
+      .finally(() => { if (active) setTierLoading(false); });
+    return () => { active = false; };
+  }, [tierRetry]);
 
   useEffect(() => {
     if (step !== 'pricing' || !selectedTier) return;
@@ -168,11 +185,19 @@ export default function SelfServiceApplicationFlow({ legalName, contactEmail, on
                 <p className="font-bold text-ent-bronze">{centsToDisplay(t.annualFeeCents)}/yr</p>
               </div>
               <p className="text-xs text-ent-muted mt-1">
-                Organization, caregiver, and patient access included. {t.specialistSlotCount === 0 ? 'No specialist slots.' : `${t.specialistSlotCount} configurable specialist slot${t.specialistSlotCount > 1 ? 's' : ''} (medical or therapy).`}
+                Organization, caregiver, and patient access included. {t.specialistSlotCount === 0 ? 'No specialist slots.' : `${t.specialistSlotCount} configurable specialist slot${t.specialistSlotCount > 1 ? 's' : ''} (Medical Professional, Therapist, or Other Specialist).`}
               </p>
             </button>
           ))}
-          {tiers.length === 0 && <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-ent-forest" /></div>}
+          {tierLoading && <div role="status" aria-label="Loading license tiers" className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-ent-forest" /></div>}
+          {!tierLoading && (tierError || tiers.length === 0) && (
+            <div role="alert" className="rounded-xl border border-ent-line p-4 space-y-3">
+              <p className="text-sm text-ent-rust">
+                {tierError ? 'License tiers are temporarily unavailable. Please retry or contact support.' : 'No license tiers are currently available. Please contact support.'}
+              </p>
+              <button type="button" onClick={() => setTierRetry((value) => value + 1)} className="px-4 py-2 rounded-xl border border-ent-line text-sm font-semibold text-ent-ink">Retry loading tiers</button>
+            </div>
+          )}
         </div>
         <p className="text-xs text-ent-muted">
           A separate monthly fee applies based on your organization's actual active-patient count, starting the first day of the
