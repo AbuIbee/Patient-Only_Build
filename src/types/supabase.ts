@@ -7594,7 +7594,7 @@ export interface Database {
         Returns: boolean
       }
       get_my_enterprise_care_team: {
-        Args: Record<PropertyKey, never>
+        Args: { p_patient_id?: string | null }
         Returns: {
           email: string
           first_name: string
@@ -7605,7 +7605,7 @@ export interface Database {
         }[]
       }
       get_my_enterprise_organization: {
-        Args: Record<PropertyKey, never>
+        Args: { p_patient_id?: string | null }
         Returns: {
           organization_id: string
           organization_name: string
@@ -8127,7 +8127,7 @@ export interface Database {
         }[]
       }
       calculate_annual_license_charge: {
-        Args: { p_coupon_code?: string; p_tier_code: string }
+        Args: { p_coupon_code?: string | null; p_tier_code: string }
         Returns: {
           base_cents: number
           coupon_code: string
@@ -8335,9 +8335,9 @@ export interface Database {
         Args: {
           p_code: string
           p_discount_kind: string
-          p_expires_at: string
-          p_max_redemptions_total: number
-          p_notes: string
+          p_expires_at: string | null
+          p_max_redemptions_total: number | null
+          p_notes: string | null
         }
         Returns: {
           applies_to: string
@@ -8437,7 +8437,7 @@ export interface Database {
         }
       }
       platform_owner_set_coupon_limit: {
-        Args: { p_code: string; p_max_redemptions_total: number }
+        Args: { p_code: string; p_max_redemptions_total: number | null }
         Returns: {
           applies_to: string
           code: string
@@ -8797,11 +8797,11 @@ export interface Database {
         Args: {
           p_application_details: Json
           p_contact_email: string
-          p_coupon_code?: string
-          p_initial_expected_active_patients: number
-          p_invitation_token?: string
+          p_coupon_code?: string | null
+          p_initial_expected_active_patients: number | null
+          p_invitation_token?: string | null
           p_legal_name: string
-          p_selected_tier_code: string
+          p_selected_tier_code: string | null
         }
         Returns: {
           annual_license_fee_snapshot_cents: number | null
