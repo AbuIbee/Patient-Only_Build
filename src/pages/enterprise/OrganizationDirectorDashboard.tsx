@@ -501,7 +501,7 @@ function StaffCard({ orgId, members, onChanged }: {
     try {
       const { error } = await inviteOrgMember(orgId, email, role);
       if (error) { toast.error(error); return; }
-      toast.success(`Invitation sent to ${email}.`);
+      toast.success(`Invitation created for ${email}; it will appear in their account when they sign in.`);
       setEmail('');
       onChanged();
     } finally {
@@ -535,6 +535,7 @@ function StaffCard({ orgId, members, onChanged }: {
           <option value="caregiver">Caregiver</option>
           <option value="therapist">Therapist</option>
           <option value="medical_professional">Medical Professional</option>
+          <option value="other_specialist">Other Specialist (credential review required)</option>
           <option value="billing_admin">Billing Administrator</option>
         </select>
         <button type="button" onClick={() => { void invite(); }} disabled={inviting} className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60 whitespace-nowrap">
@@ -542,7 +543,7 @@ function StaffCard({ orgId, members, onChanged }: {
         </button>
       </div>
       <p className="text-xs text-ent-muted -mt-2">
-        The invited person must already have a My Memoria Ally account with this email — no invitation email is sent; they will see it waiting when they next sign in.
+        The invited person must already have an account with this email. No invitation email is sent; they will see it upon sign-in. Specialist invitations require independent credential verification before activation.
       </p>
 
       {members.length === 0 ? (
@@ -1054,7 +1055,7 @@ function OrganizationOverviewView({ orgName, packageType, members, coveredCount 
 // Director applications (new organizations) never appear here — they
 // are Platform-Owner-only, by the backend's own design, not a frontend
 // filter.
-const OFFICE_LABEL: Record<string, string> = { caregiver: 'Enterprise Caregiver', medical_professional: 'Medical Professional', therapist: 'Therapist Professional', director: 'Admin / Director' };
+const OFFICE_LABEL: Record<string, string> = { caregiver: 'Enterprise Caregiver', medical_professional: 'Medical Professional', therapist: 'Therapist Professional', other_specialist: 'Other Specialist', director: 'Admin / Director' };
 const STATUS_BADGE: Record<string, string> = {
   pending_review: 'bg-ent-amber/20 text-ent-amber', resubmitted: 'bg-ent-amber/20 text-ent-amber', info_required: 'bg-ent-pale text-ent-ink',
   approved: 'bg-ent-green-active text-ent-forest', rejected: 'bg-ent-rust/15 text-ent-rust', withdrawn: 'bg-ent-pale text-ent-muted',
@@ -1236,6 +1237,7 @@ function ApplicationsReviewView({ organizationId }: { organizationId: string }) 
           <option value="caregiver">Enterprise Caregiver</option>
           <option value="medical_professional">Medical Professional</option>
           <option value="therapist">Therapist Professional</option>
+          <option value="other_specialist">Other Specialist</option>
         </select>
       </div>
       {filtered.length === 0 ? (
