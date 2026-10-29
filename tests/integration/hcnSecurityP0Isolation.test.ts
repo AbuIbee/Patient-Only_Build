@@ -84,6 +84,40 @@ describe('HCN P0 database authorization and license security', () => {
     ROLLBACK;`);
   });
 
+  it('prevents former conversation creators from removing others after patient access is lost', async () => {
+    const ownerToken = await login(`hcn-p0-owner-${stamp}@local.test`, PW);
+    sql(`INSERT INTO public.patients(id, first_name, last_name) VALUES
+       ('${ids.owner}', 'QA', 'Creator'), ('${ids.patient}', 'QA', 'Other')
+       ON CONFLICT (id) DO NOTHING;`);
+    const authorizedConv = sql(`INSERT INTO public.conversations(patient_id,created_by,subject)
+       VALUES ('${ids.owner}','${ids.owner}','QA owned patient') RETURNING id;`);
+    const revokedConv = sql(`INSERT INTO public.conversations(patient_id,created_by,subject)
+       VALUES ('${ids.patient}','${ids.owner}','QA unauthorized patient') RETURNING id;`);
+    try {
+      sql(`INSERT INTO public.conversation_participants(conversation_id,user_id,participant_role,added_by)
+        VALUES ('${authorizedConv}','${ids.owner}','patient','${ids.owner}'),
+        ('${authorizedConv}','${ids.director}','caregiver','${ids.owner}'),
+        ('${revokedConv}','${ids.owner}','caregiver','${ids.owner}'),
+        ('${revokedConv}','${ids.director}','caregiver','${ids.owner}');`);
+      const [blocked] = await rpc('remove_conversation_participant', {
+        p_conversation_id: revokedConv, p_user_id: ids.director,
+      }, ownerToken);
+      expect(blocked).toBeGreaterThanOrEqual(400);
+      const [valid] = await rpc('remove_conversation_participant', {
+        p_conversation_id: authorizedConv, p_user_id: ids.director,
+      }, ownerToken);
+      expect(valid).toBeLessThan(300);
+      const [self] = await rpc('remove_conversation_participant', {
+        p_conversation_id: revokedConv, p_user_id: ids.owner,
+      }, ownerToken);
+      expect(self).toBeLessThan(300);
+    } finally {
+      sql(`DELETE FROM public.conversation_participants WHERE conversation_id IN ('${authorizedConv}','${revokedConv}');
+        DELETE FROM public.conversations WHERE id IN ('${authorizedConv}','${revokedConv}');
+        DELETE FROM public.patients WHERE id IN ('${ids.owner}','${ids.patient}');`);
+    }
+  });
+
   it('client roles have no TRUNCATE, TRIGGER or REFERENCES rights on public tables', () => {
     const count = sql(`
       SELECT count(*) FROM pg_tables WHERE schemaname='public' AND (
