@@ -38,6 +38,52 @@ describe('HCN P0 database authorization and license security', () => {
     expect(sql(`SELECT role FROM public.profiles WHERE id='${ids.outsider}';`)).toBe('caregiver');
   });
 
+  it('rejected or insufficient credentials revoke approved specialist membership, assignments, and write audit', () => {
+    sql(`BEGIN;
+    DO $qa$
+    DECLARE o uuid; app uuid; prior_status text; assignment_active boolean; denied_null boolean:=false;
+    BEGIN
+      INSERT INTO public.organizations(name,package_type,created_by,owner_user_id,organization_owner_user_id)
+      VALUES('HCN-QA-ROLLBACK-REVERIFY','integrated_care','${ids.owner}','${ids.owner}','${ids.owner}') RETURNING id INTO o;
+      INSERT INTO public.organization_licenses(organization_id,status,licensed_seats) VALUES(o,'active',10);
+      INSERT INTO public.organization_memberships(organization_id,user_id,org_role,status,invited_by)
+      VALUES(o,'${ids.director}','director','active','${ids.owner}'),
+            (o,'${ids.outsider}','medical_professional','active','${ids.director}');
+      INSERT INTO public.patients(id,first_name,last_name) VALUES('${ids.patient}','QA','ROLLBACK');
+      INSERT INTO public.covered_patient_memberships(organization_id,patient_id,status)
+      VALUES(o,'${ids.patient}','active');
+      INSERT INTO public.staff_patient_assignments(organization_id,user_id,patient_id,org_role,assigned_by)
+      VALUES(o,'${ids.outsider}','${ids.patient}','medical_professional','${ids.director}');
+      INSERT INTO public.professional_applications(
+        applicant_user_id,requested_office,target_organization_id,legal_name,contact_email,
+        status,credential_verification_status,credential_verified_by)
+      VALUES('${ids.outsider}','medical_professional',o,'QA Specialist',
+         'qa-rollback@example.invalid','approved','independently_verified','${ids.director}')
+      RETURNING id INTO app;
+      PERFORM set_config('request.jwt.claim.sub','${ids.director}',true);
+      BEGIN
+        PERFORM public.record_credential_verification(app,NULL,'QA null verdict');
+      EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM LIKE 'Invalid credential verification decision:%' THEN denied_null:=true; ELSE RAISE; END IF;
+      END;
+      IF NOT denied_null THEN RAISE EXCEPTION 'Null credential verdict accepted'; END IF;
+      PERFORM public.record_credential_verification(app,'insufficient','QA reviewer rejected evidence');
+      SELECT status INTO prior_status FROM public.organization_memberships
+        WHERE organization_id=o AND user_id='${ids.outsider}';
+      SELECT is_active INTO assignment_active FROM public.staff_patient_assignments
+        WHERE organization_id=o AND user_id='${ids.outsider}';
+      IF prior_status<>'revoked' OR assignment_active IS DISTINCT FROM false THEN
+        RAISE EXCEPTION 'Credential revocation did not fence active authority';
+      END IF;
+      IF NOT EXISTS(SELECT 1 FROM public.account_management_audit
+       WHERE organization_id=o AND target_user_id='${ids.outsider}'
+         AND action_type='membership_revoked_credential_invalidated') THEN
+        RAISE EXCEPTION 'Credential revocation missing audit event';
+      END IF;
+    END $qa$;
+    ROLLBACK;`);
+  });
+
   it('client roles have no TRUNCATE, TRIGGER or REFERENCES rights on public tables', () => {
     const count = sql(`
       SELECT count(*) FROM pg_tables WHERE schemaname='public' AND (
