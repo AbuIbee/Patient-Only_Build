@@ -30,7 +30,7 @@ export default function ProfessionalLoginPage() {
             <Sparkles className="w-5 h-5 text-ent-forest" />
           </div>
           <div>
-            <div className="font-bold text-ent-ink text-sm leading-tight">My Memoria Ally</div>
+            <div className="font-bold text-ent-ink text-sm leading-tight">Haneen Care Network</div>
             <div className="text-[10px] font-extrabold tracking-[0.14em] text-ent-bronze mt-0.5">PROFESSIONAL WORKSPACE</div>
           </div>
         </div>
