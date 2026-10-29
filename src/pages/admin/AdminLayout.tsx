@@ -54,9 +54,15 @@ interface EditState {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const ROLES = [
   { value: 'patient',   label: 'Patient',   color: 'bg-soft-sage/20 text-green-700'     },
-  { value: 'admin',     label: 'Admin',     color: 'bg-deep-bronze/10 text-deep-bronze' },
+  { value: 'caregiver', label: 'Caregiver', color: 'bg-soft-sage/20 text-green-700' },
+  { value: 'therapist', label: 'Therapist', color: 'bg-soft-sage/20 text-green-700' },
+  { value: 'admin',     label: 'Global Admin', color: 'bg-deep-bronze/10 text-deep-bronze' },
+  { value: 'superadmin', label: 'Global Admin (legacy)', color: 'bg-deep-bronze/10 text-deep-bronze' },
   { value: 'pending',   label: 'Pending',   color: 'bg-amber-100 text-amber-700'        },
 ];
+
+// A customer's ordinary account screen may not delegate platform privileges.
+const ASSIGNABLE_ACCOUNT_ROLES = new Set(['patient', 'caregiver', 'therapist']);
 
 const EMAIL_RE  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const inputCls  = 'w-full min-w-[100px] px-2 py-1.5 border border-soft-taupe rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-warm-bronze bg-white whitespace-nowrap';
@@ -231,7 +237,7 @@ function AddUserModal({ defaultRole = 'patient', onClose, onAdded }: {
             <label className="text-xs font-medium text-charcoal">Role *</label>
             <select value={form.role} onChange={e => setForm(p => ({...p, role: e.target.value}))}
               className={minputCls()}>
-              {ROLES.filter(r => r.value !== 'pending').map(r => (
+              {ROLES.filter(r => ASSIGNABLE_ACCOUNT_ROLES.has(r.value)).map(r => (
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
             </select>
@@ -547,8 +553,9 @@ function UserTable({ roleFilter, title, showAccountType = false }: {
                       <td className="px-4 py-2.5 min-w-[120px]">
                         <select value={e.role}
                           onChange={ev => setField(u.id, 'role', ev.target.value)}
+                           disabled={u.role === 'admin' || u.role === 'superadmin'}
                           className={`${inputCls} ${dirty && e.role !== u.role ? 'border-warm-bronze text-warm-bronze font-medium' : ''}`}>
-                          {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                          {ROLES.map(r => <option key={r.value} value={r.value} disabled={!ASSIGNABLE_ACCOUNT_ROLES.has(r.value)}>{r.label}</option>)}
                         </select>
                       </td>
                       {/* Account Type dropdown */}
