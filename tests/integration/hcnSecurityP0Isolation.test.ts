@@ -2,7 +2,7 @@
 // Integration runtime refuses unset/unsafe Docker targets. All SQL fixture DML
 // occurs inside transactions rolled back before teardown.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
+import { authDeleteUser, authSignUp, http, login, rpc, sql } from './_runtime';
 
 const stamp = Date.now();
 const ids: Record<string, string> = {};
@@ -91,6 +91,27 @@ describe('HCN P0 database authorization and license security', () => {
       EXECUTE 'RESET ROLE';
     END $qa$;
     ROLLBACK;`);
+  });
+
+  it('denies unrelated patient SELECT and forged clinical INSERT over real JWT/PostgREST', async () => {
+    const outsiderToken = await login(`hcn-p0-outsider-${stamp}@local.test`, PW);
+    const patientToken = await login(`hcn-p0-patient-${stamp}@local.test`, PW);
+    sql(`INSERT INTO public.patients(id,first_name,last_name) VALUES('${ids.patient}','QA','HTTP') ON CONFLICT (id) DO NOTHING;`);
+    try {
+      const [deniedRead, rows] = await http('GET', `/rest/v1/patients?id=eq.${ids.patient}&select=id`, undefined, outsiderToken);
+      expect(deniedRead).toBe(200);
+      expect(rows).toEqual([]);
+      const [selfRead, ownRows] = await http('GET', `/rest/v1/patients?id=eq.${ids.patient}&select=id`, undefined, patientToken);
+      expect(selfRead).toBe(200);
+      expect(Array.isArray(ownRows) ? ownRows.length : 0).toBe(1);
+      const [deniedInsert] = await http('POST', '/rest/v1/patient_diagnoses', {
+        patient_id: ids.patient, condition_name: 'QA forged diagnosis',
+        source: 'verified_source', author_id: ids.outsider,
+      }, outsiderToken);
+      expect(deniedInsert).toBeGreaterThanOrEqual(400);
+    } finally {
+      sql(`DELETE FROM public.patients WHERE id='${ids.patient}';`);
+    }
   });
 
   it('prevents Organization Owner clinical self-grant while retaining billing control', () => {
