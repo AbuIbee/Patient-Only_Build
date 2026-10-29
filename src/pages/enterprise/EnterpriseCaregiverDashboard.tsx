@@ -370,7 +370,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
             <Sparkles className="w-5 h-5 text-ent-forest" />
           </div>
           <div className="min-w-0">
-            <div className="font-bold text-ent-ink text-sm leading-tight truncate">My Memoria Ally</div>
+            <div className="font-bold text-ent-ink text-sm leading-tight truncate">{import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'}</div>
             <div className="text-[10px] font-extrabold tracking-[0.14em] text-ent-bronze mt-0.5">ENTERPRISE CARE</div>
           </div>
         </div>
