@@ -38,6 +38,41 @@ describe('HCN P0 database authorization and license security', () => {
     expect(sql(`SELECT role FROM public.profiles WHERE id='${ids.outsider}';`)).toBe('caregiver');
   });
 
+  it('Other Specialist remains nonclinical while authorized caregiver and patient retain access', () => {
+    sql(`BEGIN;
+    DO $qa$
+    DECLARE o uuid;
+    BEGIN
+      INSERT INTO public.organizations(name,package_type,created_by,owner_user_id,organization_owner_user_id)
+      VALUES('HCN-QA-ROLLBACK-OTHER-ACCESS','integrated_care','${ids.owner}','${ids.owner}','${ids.owner}')
+      RETURNING id INTO o;
+      INSERT INTO public.organization_licenses(organization_id,license_tier_code,specialist_slot_count,status,licensed_seats)
+      VALUES(o,'complete',3,'active',10);
+      INSERT INTO public.professional_applications(applicant_user_id,requested_office,target_organization_id,
+        legal_name,contact_email,status,credential_verification_status,credential_verified_by)
+      VALUES('${ids.outsider}','other_specialist',o,'QA Other','qa-other@example.invalid',
+        'pending_review','independently_verified','${ids.owner}');
+      INSERT INTO public.organization_memberships(organization_id,user_id,org_role,status,invited_by)
+      VALUES(o,'${ids.director}','caregiver','active','${ids.owner}'),
+            (o,'${ids.outsider}','other_specialist','active','${ids.owner}');
+      INSERT INTO public.patients(id,first_name,last_name) VALUES('${ids.patient}','QA','ROLLBACK');
+      INSERT INTO public.covered_patient_memberships(organization_id,patient_id,status)
+      VALUES(o,'${ids.patient}','active');
+      INSERT INTO public.staff_patient_assignments(organization_id,user_id,patient_id,org_role,assigned_by)
+      VALUES(o,'${ids.director}','${ids.patient}','caregiver','${ids.owner}');
+      IF NOT public.is_authorized_for_patient('${ids.director}','${ids.patient}') THEN
+        RAISE EXCEPTION 'Valid caregiver access denied';
+      END IF;
+      IF public.is_authorized_for_patient('${ids.outsider}','${ids.patient}') THEN
+        RAISE EXCEPTION 'Other Specialist acquired unauthorized patient access';
+      END IF;
+      IF NOT public.is_authorized_for_patient('${ids.patient}','${ids.patient}') THEN
+        RAISE EXCEPTION 'Patient self-access denied';
+      END IF;
+    END $qa$;
+    ROLLBACK;`);
+  });
+
   it('rejected or insufficient credentials revoke approved specialist membership, assignments, and write audit', () => {
     sql(`BEGIN;
     DO $qa$
