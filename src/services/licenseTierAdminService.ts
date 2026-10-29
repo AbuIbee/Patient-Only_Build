@@ -55,10 +55,21 @@ export async function platformOwnerSetLicenseTierPublished(tierCode: string, isP
 export async function getAllCoupons(): Promise<CouponAdmin[]> {
   const { data, error } = await supabase.from('promo_coupon_catalog').select('*').order('created_at', { ascending: false });
   if (error || !data) return [];
-  return data.map((r) => ({
-    code: r.code, discountKind: r.discount_kind, status: r.status, maxRedemptionsTotal: r.max_redemptions_total,
-    redemptionsUsed: r.redemptions_used, expiresAt: r.expires_at, notes: r.notes, createdAt: r.created_at,
-  }));
+  // Database CHECK constraints enforce coupon categories, but validate the
+  // response at the UI boundary rather than casting arbitrary strings into
+  // commercial eligibility states. Invalid records are not presented as valid.
+  return data.flatMap((r): CouponAdmin[] => {
+    const discountKind = r.discount_kind;
+    const status = r.status;
+    if (
+      (discountKind !== 'full_waiver' && discountKind !== 'half_off_minus_fifty_cents') ||
+      (status !== 'active' && status !== 'paused' && status !== 'expired' && status !== 'revoked')
+    ) return [];
+    return [{
+      code: r.code, discountKind, status, maxRedemptionsTotal: r.max_redemptions_total,
+      redemptionsUsed: r.redemptions_used, expiresAt: r.expires_at, notes: r.notes, createdAt: r.created_at,
+    }];
+  });
 }
 
 export async function platformOwnerCreateCoupon(
