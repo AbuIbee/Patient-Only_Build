@@ -98,7 +98,7 @@ describe('HCN P0 database authorization and license security', () => {
   it('accepts valid invitations, denies active role substitution and revoked-inviter acceptance', () => {
     sql(`BEGIN;
     DO $qa$
-    DECLARE o uuid; first_inv uuid; second_inv uuid; email text; rejected boolean;
+    DECLARE o uuid; first_inv uuid; second_inv uuid; v_email text; rejected boolean;
     BEGIN
       INSERT INTO public.organizations(name,package_type,created_by,owner_user_id,organization_owner_user_id)
       VALUES('HCN-QA-ROLLBACK-INVITES','integrated_care','${ids.owner}','${ids.owner}','${ids.owner}')
@@ -111,11 +111,11 @@ describe('HCN P0 database authorization and license security', () => {
       VALUES(o,'${ids.patient}','caregiver','invited','${ids.director}') RETURNING id INTO first_inv;
       PERFORM set_config('request.jwt.claim.sub','${ids.patient}',true);
       PERFORM public.respond_to_org_invite(first_inv,true);
-      SELECT email INTO email FROM public.profiles WHERE id='${ids.patient}';
+      SELECT pr.email INTO v_email FROM public.profiles pr WHERE pr.id='${ids.patient}';
       PERFORM set_config('request.jwt.claim.sub','${ids.director}',true);
       rejected:=false;
       BEGIN
-        PERFORM public.invite_org_member(o,email,'co_director');
+        PERFORM public.invite_org_member(o,v_email,'co_director');
       EXCEPTION WHEN OTHERS THEN
         IF SQLERRM LIKE 'This account is already an active organization member%' THEN rejected:=true; ELSE RAISE; END IF;
       END;
