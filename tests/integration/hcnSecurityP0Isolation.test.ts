@@ -2,14 +2,14 @@
 // Integration runtime refuses unset/unsafe Docker targets. All SQL fixture DML
 // occurs inside transactions rolled back before teardown.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authDeleteUser, authSignUp, sql } from './_runtime';
+import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
 
 const stamp = Date.now();
 const ids: Record<string, string> = {};
 const PW = 'Hcn-Isolation-9!';
 
 beforeAll(async () => {
-  for (const key of ['owner', 'director', 'patient', 'outsider']) {
+  for (const key of ['owner', 'director', 'patient', 'outsider', 'globalAdmin']) {
     ids[key] = await authSignUp(`hcn-p0-${key}-${stamp}@local.test`, PW);
     expect(ids[key]).toMatch(/^[0-9a-f-]{36}$/i);
   }
@@ -20,6 +20,24 @@ afterAll(async () => {
 }, 30000);
 
 describe('HCN P0 database authorization and license security', () => {
+  it('keeps Global Admin authority nondelegable via authenticated role-management RPCs', async () => {
+    // This role is created only in the disposable Docker database; no live identities are touched.
+    sql(`UPDATE public.profiles SET role='admin' WHERE id='${ids.globalAdmin}';`);
+    const adminToken = await login(`hcn-p0-globalAdmin-${stamp}@local.test`, PW);
+    const ordinaryToken = await login(`hcn-p0-director-${stamp}@local.test`, PW);
+    const [ordinaryStatus] = await rpc('admin_set_role', { p_user_id: ids.outsider, p_role: 'caregiver' }, ordinaryToken);
+    expect(ordinaryStatus).toBeGreaterThanOrEqual(400);
+    const [elevationStatus] = await rpc('admin_set_role', { p_user_id: ids.outsider, p_role: 'superadmin' }, adminToken);
+    expect(elevationStatus).toBeGreaterThanOrEqual(400);
+    const [pendingStatus] = await rpc('admin_set_role', { p_user_id: ids.outsider, p_role: 'pending' }, adminToken);
+    expect(pendingStatus).toBeGreaterThanOrEqual(400);
+    const [selfStatus] = await rpc('admin_set_role', { p_user_id: ids.globalAdmin, p_role: 'caregiver' }, adminToken);
+    expect(selfStatus).toBeGreaterThanOrEqual(400);
+    const [ordinaryApproved] = await rpc('admin_set_role', { p_user_id: ids.outsider, p_role: 'caregiver' }, adminToken);
+    expect(ordinaryApproved).toBeLessThan(300);
+    expect(sql(`SELECT role FROM public.profiles WHERE id='${ids.outsider}';`)).toBe('caregiver');
+  });
+
   it('client roles have no TRUNCATE, TRIGGER or REFERENCES rights on public tables', () => {
     const count = sql(`
       SELECT count(*) FROM pg_tables WHERE schemaname='public' AND (
