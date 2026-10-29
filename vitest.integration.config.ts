@@ -9,6 +9,12 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
+    // Multiple suites manage the SAME pg_cron job and database-level
+    // archival test interval. Parallel files race (the independent
+    // scheduler test removes the real five-minute test's job).
+    // Run all disposable-stack integration files sequentially; never
+    // weaken or shorten the actual wall-clock archival acceptance.
+    fileParallelism: false,
     include: ['tests/integration/**/*.test.ts'],
     testTimeout: 30000,
     hookTimeout: 30000,
