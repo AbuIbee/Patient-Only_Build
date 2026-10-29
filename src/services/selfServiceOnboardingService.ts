@@ -40,6 +40,24 @@ export async function getPublishedLicenseTiers(): Promise<LicenseTier[]> {
   }));
 }
 
+// Strict variant for enterprise onboarding: surface catalog load failures instead of
+// silently treating database/network errors as an empty published catalog.
+export async function loadPublishedLicenseTiers(): Promise<LicenseTier[]> {
+  const { data, error } = await supabase
+    .from('license_tier_catalog')
+    .select('tier_code, display_name, annual_fee_cents, specialist_slot_count')
+    .eq('is_published', true)
+    .order('annual_fee_cents', { ascending: true });
+  if (error) throw new Error(error.message || 'License tiers could not be loaded.');
+  if (!data) throw new Error('License tiers could not be loaded.');
+  return data.map((r) => ({
+    tierCode: r.tier_code as LicenseTierCode,
+    displayName: r.display_name as string,
+    annualFeeCents: r.annual_fee_cents as number,
+    specialistSlotCount: r.specialist_slot_count as number,
+  }));
+}
+
 // The exact, server-authoritative continuous monthly active-patient
 // pricing schedule, duplicated here ONLY for a signed-out visitor's
 // display preview -- this is the published formula itself, not
