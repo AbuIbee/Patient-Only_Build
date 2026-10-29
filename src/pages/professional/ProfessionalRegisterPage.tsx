@@ -271,28 +271,28 @@ export default function ProfessionalRegisterPage() {
                 <button type="button" onClick={() => setStep('office')} className="text-xs font-semibold text-ent-bronze hover:underline">← Choose a different office</button>
                 <h2 className="text-lg font-bold text-ent-ink">{OFFICE_OPTIONS.find((o) => o.key === office)?.label} Application</h2>
 
-                <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Legal Name *</label><input value={legalName} onChange={(e) => setLegalName(e.target.value)} className={inputCls} /></div>
-                <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Preferred Display Name</label><input value={preferredName} onChange={(e) => setPreferredName(e.target.value)} className={inputCls} /></div>
-                <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Contact Email *</label><input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={inputCls} /></div>
-                <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Contact Phone</label><input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} className={inputCls} /></div>
+                <div className="space-y-1"><label htmlFor="professional-legalName" className="text-sm font-medium text-ent-ink">Legal Name *</label><input id="professional-legalName" value={legalName} onChange={(e) => setLegalName(e.target.value)} className={inputCls} /></div>
+                <div className="space-y-1"><label htmlFor="professional-preferredName" className="text-sm font-medium text-ent-ink">Preferred Display Name</label><input id="professional-preferredName" value={preferredName} onChange={(e) => setPreferredName(e.target.value)} className={inputCls} /></div>
+                <div className="space-y-1"><label htmlFor="professional-contactEmail" className="text-sm font-medium text-ent-ink">Contact Email *</label><input id="professional-contactEmail" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={inputCls} /></div>
+                <div className="space-y-1"><label htmlFor="professional-contactPhone" className="text-sm font-medium text-ent-ink">Contact Phone</label><input id="professional-contactPhone" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} className={inputCls} /></div>
 
                 <div className="space-y-1">
-                      <label className="text-sm font-medium text-ent-ink">Target Organization Name *</label>
+                      <label htmlFor="professional-orgNameInput" className="text-sm font-medium text-ent-ink">Target Organization Name *</label>
                       <div className="flex gap-2">
-                        <input value={orgNameInput} onChange={(e) => { setOrgNameInput(e.target.value); setOrgLookup(null); }} placeholder="Exact organization name" className={`${inputCls} flex-1`} />
+                        <input id="professional-orgNameInput" value={orgNameInput} onChange={(e) => { setOrgNameInput(e.target.value); setOrgLookup(null); }} placeholder="Exact organization name" className={`${inputCls} flex-1`} />
                         <button type="button" onClick={() => { void lookupOrg(); }} className="px-4 py-2 rounded-xl border border-ent-line text-ent-ink text-sm font-semibold hover:bg-ent-pale">Look up</button>
                       </div>
                       {orgLookup && <p className="text-xs text-ent-forest font-semibold">✓ Found: {orgLookup.name}</p>}
                       {orgLookupError && <p className="text-xs text-ent-rust">{orgLookupError}</p>}
                     </div>
                     <div className="space-y-1">
-                      <label className="text-sm font-medium text-ent-ink">Professional Category *</label>
-                      <select value={professionCategory} onChange={(e) => setProfessionCategory(e.target.value)} className={inputCls}>
+                      <label htmlFor="professional-professionCategory" className="text-sm font-medium text-ent-ink">Professional Category *</label>
+                      <select id="professional-professionCategory" value={professionCategory} onChange={(e) => setProfessionCategory(e.target.value)} className={inputCls}>
                         <option value="">Select…</option>
                         {CATEGORY_OPTIONS[office].map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                       </select>
                     </div>
-                    <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Professional Title</label><input value={professionalTitle} onChange={(e) => setProfessionalTitle(e.target.value)} className={inputCls} /></div>
+                    <div className="space-y-1"><label htmlFor="professional-professionalTitle" className="text-sm font-medium text-ent-ink">Professional Title</label><input id="professional-professionalTitle" value={professionalTitle} onChange={(e) => setProfessionalTitle(e.target.value)} className={inputCls} /></div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">License / Credential Number</label><input value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} className={inputCls} /></div>
                       <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Issuer</label><input value={issuer} onChange={(e) => setIssuer(e.target.value)} className={inputCls} /></div>
