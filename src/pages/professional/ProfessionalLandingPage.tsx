@@ -142,8 +142,8 @@ export default function ProfessionalLandingPage() {
           <nav aria-label="Primary navigation" className="flex shrink-0 items-center gap-2 sm:gap-3">
             <a href="#offices" className="hidden text-sm font-semibold text-[#344d67] hover:text-[#0b6689] lg:inline">Five Offices</a>
             <a href="#how-it-works" className="hidden text-sm font-semibold text-[#344d67] hover:text-[#0b6689] lg:inline">How It Works</a>
-            <a href="/Professional" className="inline-flex min-h-11 items-center rounded-lg border border-[#0b6689] px-3 py-2 text-center text-xs font-bold text-[#075c7b] hover:bg-[#e8f6fc] sm:px-4 sm:text-sm">Professional Sign In</a>
-            <a href="/Professional/Register" className="hidden min-h-11 items-center rounded-lg bg-[#081c3e] px-4 py-2 text-sm font-bold text-white hover:bg-[#153b64] sm:inline-flex">Apply for Organization</a>
+            <a href="/Professional" className="inline-flex min-h-11 items-center rounded-lg border border-[#0b6689] px-3 py-2 text-center text-xs font-bold text-[#075c7b] hover:bg-[#e8f6fc] sm:px-4 sm:text-sm"><span className="sm:hidden">Sign In</span><span className="hidden sm:inline">Professional Sign In</span></a>
+            <a href="/Professional/Register" className="inline-flex min-h-11 items-center rounded-lg bg-[#081c3e] px-3 py-2 text-xs font-bold text-white hover:bg-[#153b64] sm:px-4 sm:text-sm"><span className="sm:hidden">Apply</span><span className="hidden sm:inline">Apply for Organization</span></a>
           </nav>
         </div>
       </header>
