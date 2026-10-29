@@ -53,6 +53,10 @@ jobs:
     # continue to receive the isolated integration gate.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
+    env:
+      # Disposable-only CLI; current fallback handles public ECR pull quota
+      # through GHCR / Docker Hub. No credentials, hosted DB, or prod writes.
+      HCN_DISPOSABLE_CLI_VERSION: '2.122.0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
