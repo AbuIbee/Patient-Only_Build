@@ -143,7 +143,7 @@ const directorSource = fs.readFileSync(path.join(ROOT, 'src/pages/enterprise/Org
 const directorNavStart = directorSource.indexOf('const DIRECTOR_NAV_ITEMS');
 const directorNavEnd = directorSource.indexOf('const DIRECTOR_NAV_GROUPS', directorNavStart);
 const directorNavBody = directorSource.slice(directorNavStart, directorNavEnd);
-const ownerNavMatches = [...directorNavBody.matchAll(/key:\\s*'ownership'/g)].length;
+const ownerNavMatches = [...directorNavBody.matchAll(/key:\s*'ownership'/g)].length;
 check('Supplemental Director Organization Ownership navigation entry', ownerNavMatches, 1);
 check('Original 60 core navigation destinations (excluding supplemental ownership)', totalNav - ownerNavMatches, 60);
 check('Current 5-office navigation entries including ownership', totalNav, 61);
