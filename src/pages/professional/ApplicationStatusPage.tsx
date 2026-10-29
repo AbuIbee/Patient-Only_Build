@@ -26,7 +26,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <header className="bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0"><Sparkles className="w-5 h-5 text-ent-forest" /></div>
-          <div className="font-bold text-ent-ink text-sm">My Memoria Ally — Professional Workspace</div>
+          <div className="font-bold text-ent-ink text-sm">Haneen Care Network — Professional Workspace</div>
         </div>
         <button type="button" onClick={() => { void handleLogout(); }} className="flex items-center gap-1.5 text-sm text-ent-muted hover:text-ent-ink px-3 py-2 rounded-lg hover:bg-ent-pale">
           <LogOut className="w-4 h-4" /> Logout
