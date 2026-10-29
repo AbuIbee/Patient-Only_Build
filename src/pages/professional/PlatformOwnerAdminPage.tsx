@@ -1313,7 +1313,7 @@ export default function PlatformOwnerAdminPage() {
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0"><Sparkles className="w-5 h-5 text-ent-forest" /></div>
           <div>
-            <div className="font-bold text-ent-ink text-sm leading-tight">My Memoria Ally</div>
+            <div className="font-bold text-ent-ink text-sm leading-tight">Haneen Care Network</div>
             <div className="text-[10px] font-extrabold tracking-[0.14em] text-ent-bronze mt-0.5">PLATFORM OWNER ADMINISTRATION</div>
           </div>
         </div>
