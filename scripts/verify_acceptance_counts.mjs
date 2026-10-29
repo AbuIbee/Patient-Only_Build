@@ -174,7 +174,7 @@ for (const sha of citedShas) {
 }
 check('Commit-SHA consistency: every SHA cited in the register exists in git history', unknownShas.length, 0);
 if (unknownShas.length) failures.push(`  -> unresolvable SHA(s): ${unknownShas.join(', ')}`);
-oks.push(`Commit-SHA consistency: ${citedShas.size} distinct SHAs cited, all resolved`);
+if (unknownShas.length === 0) oks.push(`Commit-SHA consistency: ${citedShas.size} distinct SHAs cited, all resolved`);
 
 // ---------------------------------------------------------------------
 // Report
