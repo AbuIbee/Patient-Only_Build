@@ -46,6 +46,8 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test:unit
+      # Traceability counts/ID uniqueness are structural only, not clinical acceptance.
+      - run: npm run verify:acceptance
 
   integration:
     # PRs from this repository already execute the full integration suite
