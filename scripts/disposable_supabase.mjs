@@ -47,6 +47,12 @@ import { join } from 'node:path';
 const REPO_ROOT = join(import.meta.dirname, '..');
 const PROJECT_ID = 'mma-ent-caregiver-master-003';
 const WORKDIR = join(tmpdir(), PROJECT_ID);
+// CI-only CLI override: v2.122.0 supports ECR -> GHCR -> Docker Hub image
+// resolution on registry rate limits. Do not alter the app's package-lock or
+// production deployment tooling; the disposable project remains isolated.
+const CLI_ARGS = process.env.HCN_DISPOSABLE_CLI_VERSION
+  ? ['--yes', `supabase@${process.env.HCN_DISPOSABLE_CLI_VERSION}`]
+  : ['supabase'];
 
 // Deliberately far from supabase_db_repo's 55321-55329 and PAY2PAY's
 // 54321-54329, and from the now-torn-down audit stack's 56321-56329.
@@ -105,7 +111,7 @@ function startSupabaseWithRetry() {
   const BACKOFF_MS = [30_000, 60_000, 120_000];
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     console.log(`[disposable_supabase] supabase start attempt ${attempt}/${MAX_ATTEMPTS}`);
-    const result = spawnSync('npx', ['supabase', 'start', '--workdir', WORKDIR], { encoding: 'utf8', shell: true });
+    const result = spawnSync('npx', [...CLI_ARGS, 'start', '--workdir', WORKDIR], { encoding: 'utf8', shell: true });
     const combined = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
     // Still echo the real output to the CI log even though we captured
     // it instead of inheriting stdio -- never hide what actually happened.
@@ -128,7 +134,7 @@ function startSupabaseWithRetry() {
       `[disposable_supabase] supabase start hit a confirmed transient registry error (toomanyrequests / data limit) ` +
         `on attempt ${attempt}/${MAX_ATTEMPTS}. Cleaning up and retrying in ${delay / 1000}s...`,
     );
-    spawnSync('npx', ['supabase', 'stop', '--workdir', WORKDIR, '--no-backup'], { encoding: 'utf8', shell: true });
+    spawnSync('npx', [...CLI_ARGS, 'stop', '--workdir', WORKDIR, '--no-backup'], { encoding: 'utf8', shell: true });
     // Blocking sleep without a CPU-spinning busy-loop -- this is a
     // short-lived, single-purpose CLI script (not a server), so there
     // is no event loop work to protect by staying async here.
@@ -165,7 +171,7 @@ function start() {
   startSupabaseWithRetry();
 
   console.log(`[disposable_supabase] applying all repository migrations (db reset)`);
-  execFileSync('npx', ['supabase', 'db', 'reset', '--workdir', WORKDIR, '--local'], { stdio: 'inherit', shell: true });
+  execFileSync('npx', [...CLI_ARGS, 'db', 'reset', '--workdir', WORKDIR, '--local'], { stdio: 'inherit', shell: true });
 
   console.log('\n[disposable_supabase] ready. Export before running integration tests:');
   console.log(`  MMA_TEST_API_BASE=http://127.0.0.1:${PORTS.api}`);
@@ -180,7 +186,7 @@ function stop() {
     console.log('[disposable_supabase] nothing to stop (no workdir found).');
     return;
   }
-  spawnSync('npx', ['supabase', 'stop', '--workdir', WORKDIR, '--no-backup'], { stdio: 'inherit', shell: true });
+  spawnSync('npx', [...CLI_ARGS, 'stop', '--workdir', WORKDIR, '--no-backup'], { stdio: 'inherit', shell: true });
   rmSync(WORKDIR, { recursive: true, force: true });
   console.log('[disposable_supabase] stopped and workdir removed.');
 }
