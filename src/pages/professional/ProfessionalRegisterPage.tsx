@@ -107,13 +107,13 @@ function AccountStep({ onDone }: { onDone: (identity: { firstName: string; lastN
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">First Name</label><input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputCls} /></div>
-        <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Last Name</label><input value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputCls} /></div>
+        <div className="space-y-1"><label htmlFor="registration-firstName" className="text-sm font-medium text-ent-ink">First Name</label><input id="registration-firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputCls} /></div>
+        <div className="space-y-1"><label htmlFor="registration-lastName" className="text-sm font-medium text-ent-ink">Last Name</label><input id="registration-lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputCls} /></div>
       </div>
-      <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Email Address</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} /></div>
+      <div className="space-y-1"><label htmlFor="registration-email" className="text-sm font-medium text-ent-ink">Email Address</label><input id="registration-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} /></div>
       <div className="space-y-1">
-        <label className="text-sm font-medium text-ent-ink">Password</label>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 11 characters" className={inputCls} />
+        <label htmlFor="registration-password" className="text-sm font-medium text-ent-ink">Password</label>
+        <input id="registration-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 11 characters" className={inputCls} />
       </div>
       <button type="button" onClick={() => { void submit(); }} disabled={loading} className="w-full py-3 rounded-xl bg-ent-bronze hover:opacity-90 text-white font-semibold disabled:opacity-60">
         {loading ? 'Creating account…' : 'Continue'}
