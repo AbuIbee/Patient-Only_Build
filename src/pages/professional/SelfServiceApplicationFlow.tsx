@@ -168,7 +168,7 @@ export default function SelfServiceApplicationFlow({ legalName, contactEmail, on
                 <p className="font-bold text-ent-bronze">{centsToDisplay(t.annualFeeCents)}/yr</p>
               </div>
               <p className="text-xs text-ent-muted mt-1">
-                Organization, caregiver, and patient access included. {t.specialistSlotCount === 0 ? 'No specialist slots.' : `${t.specialistSlotCount} configurable specialist slot${t.specialistSlotCount > 1 ? 's' : ''} (medical or therapy).`}
+                Organization, caregiver, and patient access included. {t.specialistSlotCount === 0 ? 'No specialist slots.' : `${t.specialistSlotCount} configurable specialist slot${t.specialistSlotCount > 1 ? 's' : ''} (Medical Professional, Therapist, or Other Specialist).`}
               </p>
             </button>
           ))}
