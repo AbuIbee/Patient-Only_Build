@@ -101,6 +101,19 @@ const onboarding = [
 
 const faq = [
   {
+    q: 'Is Haneen intended only for home-care agencies?',
+    a: 'No. The platform is designed for caregiving organizations, healthcare service providers, therapy practices, multidisciplinary care teams and enterprises coordinating multiple professional offices.',
+  },
+  {
+    q: 'Can medical professionals and therapists collaborate with caregivers?',
+    a: 'Haneen is designed to support authorized collaboration. The information available to each participant depends on role, approved office, the patient relationship and implemented communication workflows.',
+  },
+  {
+    q: 'Does Haneen provide medical advice or make clinical decisions?',
+    a: 'No. Haneen is a care-management and coordination platform. Clinical assessment, diagnosis and treatment decisions remain the responsibility of appropriately qualified professionals.',
+  },
+
+  {
     q: 'What exactly does Haneen Care Network do?',
     a: 'It provides one organizational platform for leadership oversight, patient assignments, care documentation, scheduling, professional collaboration and patient participation. Each role works from an office designed around its responsibilities.',
   },
@@ -154,16 +167,16 @@ export default function ProfessionalLandingPage() {
           <div className="relative mx-auto grid max-w-7xl gap-9 px-5 pb-12 pt-12 sm:px-7 sm:pb-16 sm:pt-16 lg:grid-cols-[1.06fr_0.94fr] lg:items-center lg:gap-14 lg:py-20">
             <div className="max-w-[660px]">
               <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#c4e4f4] bg-white px-3 py-2 text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#075c7b] sm:px-4 sm:text-xs">
-                <Workflow className="h-4 w-4 shrink-0" aria-hidden="true" /> Five connected offices. One care network.
+                <Workflow className="h-4 w-4 shrink-0" aria-hidden="true" /> One network. Five connected offices. Better-coordinated care.
               </p>
               <h1 className="font-serif text-[clamp(2.3rem,5.7vw,4.6rem)] font-bold leading-[1.08] tracking-tight">
-                Run your care organization <span className="text-[#0a6b90]">together.</span> Not in pieces.
+                Enterprise Care Coordination &amp; <span className="text-[#0a6b90]">Professional Care Management.</span>
               </h1>
               <p className="mt-6 max-w-xl text-[17px] font-semibold leading-[1.6] text-[#344d67] sm:text-xl">
-                Bring leadership, caregivers, medical professionals, therapists and patients into one connected care platform.
+                One connected platform for caregivers, healthcare professionals, therapists, organizations, and the people they serve.
               </p>
               <p className="mt-3 max-w-xl text-[15px] leading-[1.7] text-[#536a82] sm:text-base">
-                Organize patient assignments, care plans, visits, documentation, team communication and operational oversight—through the right workspace for each person.
+                Imagine running a care organization where every authorized professional has the relevant information they need, important care updates are not lost between departments, and leadership has visibility into how care is delivered. <strong className="text-[#081c3e]">That is the vision behind Haneen Care Network.</strong>
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                 <a href="/Professional/Register" className={primary}>Apply for an Organization <ArrowRight className="h-4 w-4" aria-hidden="true" /></a>
@@ -214,12 +227,41 @@ export default function ProfessionalLandingPage() {
           </div>
         </section>
 
+
+        <section id="what-haneen-does" className="scroll-mt-24 border-t border-[#d9e8f1] bg-white px-5 py-16 sm:px-7 sm:py-24">
+          <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-start lg:gap-16">
+            <div>
+              <p className="text-xs font-extrabold uppercase tracking-[0.19em] text-[#08779d]">The Haneen Difference</p>
+              <h2 className="mt-3 font-serif text-3xl font-bold leading-tight sm:text-4xl">Care doesn't happen in isolation. Neither should your care management.</h2>
+              <p className="mt-5 text-base leading-[1.85] text-[#536a82]">An administrator oversees operations. A caregiver provides daily support. A medical professional evaluates clinical concerns. A therapist follows treatment goals. The patient depends on all of them to work responsibly together.</p>
+              <p className="mt-4 text-base leading-[1.85] text-[#536a82]">When updates are scattered across calls, messages, paperwork and unrelated systems, it becomes harder to understand the full care picture. Haneen Care Network is designed to bring those responsibilities into one coordinated environment without giving everyone unrestricted access to the same information.</p>
+              <p className="mt-5 border-l-4 border-[#c28b1b] pl-4 font-serif text-xl font-semibold leading-relaxed text-[#081c3e]">Your organization maintains control. Your professionals maintain their responsibilities. Your patients remain at the center of care.</p>
+            </div>
+            <div className="rounded-3xl border border-[#d3e7f0] bg-[#f2f9fd] p-6 sm:p-8">
+              <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#08779d]">What Haneen Care Network Does</p>
+              <h3 className="mt-3 font-serif text-2xl font-bold">A professional care-management and collaboration platform.</h3>
+              <p className="mt-3 text-sm leading-[1.8] text-[#536a82]">Designed to help organizations coordinate services, manage care teams, organize patient information and support collaboration between authorized professionals.</p>
+              <ul className="mt-6 space-y-4">
+                {[
+                  'Manage organizations, offices, staff roles and patient coverage',
+                  'Coordinate care plans, appointments, visits and daily tasks',
+                  'Document observations, incidents and care-related follow-ups',
+                  'Support relevant professional communication and collaboration',
+                  'Give authorized Directors oversight of operations and licensing',
+                ].map(item => (
+                  <li key={item} className="flex gap-3 text-sm leading-relaxed text-[#344d67]"><Check className="mt-0.5 h-5 w-5 shrink-0 text-[#0b6689]" aria-hidden="true" />{item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
         <section id="offices" className="scroll-mt-24 bg-white px-5 py-16 sm:px-7 sm:py-24">
           <div className="mx-auto max-w-7xl">
             <div className="max-w-[790px]">
               <p className="text-xs font-extrabold uppercase tracking-[0.19em] text-[#08779d]">The Five Connected Offices</p>
-              <h2 className="mt-3 font-serif text-3xl font-bold leading-tight sm:text-4xl">Every person has a role. Every role has a place.</h2>
-              <p className="mt-4 text-base leading-relaxed text-[#536a82] sm:text-lg">The Director oversees the organization. Caregivers coordinate daily care. Approved medical and therapy professionals work with assigned patients. Patients follow their care journey. Select your office to reach professional sign-in; only authorized accounts can enter.</p>
+              <h2 className="mt-3 font-serif text-3xl font-bold leading-tight sm:text-4xl">Five distinct environments. One connected care network.</h2>
+              <p className="mt-4 text-base leading-relaxed text-[#536a82] sm:text-lg">Haneen is built around Administration, Caregivers, Medical Professionals, Therapists, and Patients. Each has an appropriately scoped professional workspace. These offices can support shared care responsibilities without erasing boundaries between organizational authority, clinical decisions, therapy responsibilities, and patient participation.</p>
             </div>
             <div className="mt-9 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {offices.map(({ number, name, icon: Icon, href, benefit, detail, tags }) => (
@@ -251,8 +293,8 @@ export default function ProfessionalLandingPage() {
           <div className="mx-auto max-w-7xl">
             <div className="max-w-[820px]">
               <p className="text-xs font-extrabold uppercase tracking-[0.19em] text-[#08779d]">Why Haneen Care Network?</p>
-              <h2 className="mt-3 font-serif text-3xl font-bold leading-tight sm:text-4xl">Care is complicated. Your business tools should help bring it together.</h2>
-              <p className="mt-4 text-base leading-relaxed text-[#536a82] sm:text-lg">When information lives in separate tools, staff must keep reconnecting the details. Haneen gives your organization a common structure while respecting the responsibilities of each professional and patient.</p>
+              <h2 className="mt-3 font-serif text-3xl font-bold leading-tight sm:text-4xl">Less fragmentation. Clearer responsibilities. More connected care.</h2>
+              <p className="mt-4 text-base leading-relaxed text-[#536a82] sm:text-lg">As your organization grows, so do patient assignments, communications, documentation, permissions and operational responsibilities. Haneen is designed to help reduce communication gaps, strengthen care accountability, maintain professional boundaries, give leadership greater visibility and support responsible expansion.</p>
             </div>
             <div className="mt-9 grid gap-4 lg:grid-cols-2">
               {businessBenefits.map(({ icon: Icon, challenge, result, description }) => (
@@ -273,8 +315,8 @@ export default function ProfessionalLandingPage() {
           <div className="mx-auto max-w-7xl">
             <div className="max-w-3xl">
               <p className="text-xs font-extrabold uppercase tracking-[0.19em] text-[#08779d]">Who We Help</p>
-              <h2 className="mt-3 font-serif text-3xl font-bold sm:text-4xl">Built for the people responsible for care.</h2>
-              <p className="mt-4 text-base leading-relaxed text-[#536a82] sm:text-lg">A clearer way to work for leadership, frontline caregivers, specialist providers and people receiving care.</p>
+              <h2 className="mt-3 font-serif text-3xl font-bold sm:text-4xl">Designed for organizations where care is a shared responsibility.</h2>
+              <p className="mt-4 text-base leading-relaxed text-[#536a82] sm:text-lg">Relevant for home-care agencies, professional caregiving providers, healthcare service organizations, therapy practices, multidisciplinary care teams and enterprises with multiple professional offices. Especially when care teams serve overlapping patient populations but need different access and responsibilities.</p>
             </div>
             <div className="mt-9 grid gap-5 sm:grid-cols-2">
               {audiences.map(({ title, icon: Icon, description }) => (
@@ -287,12 +329,64 @@ export default function ProfessionalLandingPage() {
           </div>
         </section>
 
+
+        <section id="care-scenario" className="scroll-mt-24 border-y border-[#d3e6f0] bg-[#f0f8fd] px-5 py-16 sm:px-7 sm:py-24">
+          <div className="mx-auto max-w-7xl">
+            <div className="max-w-4xl">
+              <p className="text-xs font-extrabold uppercase tracking-[0.19em] text-[#08779d]">Illustrative Care Coordination Scenario</p>
+              <h2 className="mt-3 font-serif text-3xl font-bold leading-tight sm:text-4xl">One patient. Multiple professionals. One coordinated care process.</h2>
+              <p className="mt-5 text-base leading-[1.85] text-[#536a82]">Imagine a patient receiving care from a home caregiver, a physician, and a therapist. One day, the caregiver notices that the patient appears more confused than usual. The medical professional needs relevant information to assess the change, the therapist may need to review its impact on therapy, and the care coordinator needs to understand whether follow-up is required.</p>
+              <p className="mt-3 text-base leading-[1.85] text-[#536a82]">With disconnected systems, that information can get lost among calls, messages, paperwork and separate applications. Haneen is designed to make this process more structured, visible and accountable.</p>
+            </div>
+            <ol className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              {[
+                { number: '01', title: 'Caregiver observes', text: 'The caregiver documents the change using an authorized patient workflow.' },
+                { number: '02', title: 'Care team informed', text: 'Relevant information is communicated to appropriate personnel according to permissions and care relationships.' },
+                { number: '03', title: 'Medical review', text: 'An authorized clinician evaluates relevant information and documents an appropriate professional response.' },
+                { number: '04', title: 'Therapy coordination', text: 'When appropriate and authorized, a therapist reviews pertinent information and considers related care-plan follow-up.' },
+                { number: '05', title: 'Leadership oversight', text: 'Authorized supervisors review relevant activity and outstanding operational responsibilities.' },
+              ].map(step => (
+                <li key={step.number} className="rounded-2xl border border-[#cddfe9] bg-white p-5 shadow-sm">
+                  <span className="font-serif text-3xl font-bold text-[#b77a09]">{step.number}</span>
+                  <h3 className="mt-4 text-base font-bold">{step.title}</h3>
+                  <p className="mt-3 text-sm leading-[1.8] text-[#536a82]">{step.text}</p>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-6 rounded-xl border border-[#cbdfea] bg-white px-5 py-4 text-xs leading-[1.8] text-[#536a82]"><strong>Important:</strong> This illustrates the intended integrated care-coordination workflow. It does not represent confirmation that every communication, notification, or escalation path has passed production testing.</p>
+          </div>
+        </section>
+
+        <section id="business-value" className="scroll-mt-24 bg-white px-5 py-16 sm:px-7 sm:py-24">
+          <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-2 lg:gap-16">
+            <div>
+              <p className="text-xs font-extrabold uppercase tracking-[0.19em] text-[#08779d]">The Business Value</p>
+              <h2 className="mt-3 font-serif text-3xl font-bold leading-tight sm:text-4xl">Better care coordination starts with better operational structure.</h2>
+              <p className="mt-4 text-base leading-[1.85] text-[#536a82]">Haneen is designed to support fewer disconnected handoffs, clearer staff responsibilities, better-organized documentation, improved operational visibility, and a structure that can accommodate approved organization growth.</p>
+              <p className="mt-4 text-sm leading-[1.8] text-[#647c94]">These are intended operational benefits. Quantified time savings, error reductions or improvements in clinical outcomes require real-world measurements before they can be advertised as proven results.</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                'Fewer disconnected handoffs',
+                'Clearer staff responsibilities',
+                'More organized care documentation',
+                'Greater leadership visibility',
+              ].map(item => (
+                <div key={item} className="flex min-h-[110px] items-center gap-3 rounded-2xl border border-[#d5e5ef] bg-[#f5faff] p-5">
+                  <Check className="h-6 w-6 shrink-0 text-[#0b6689]" aria-hidden="true" />
+                  <p className="text-sm font-bold leading-relaxed text-[#081c3e]">{item}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <section id="how-it-works" className="scroll-mt-24 border-y border-[#d2e5ef] bg-[#eef8fd] px-5 py-16 sm:px-7 sm:py-24">
           <div className="mx-auto max-w-7xl">
             <div className="max-w-3xl">
               <p className="text-xs font-extrabold uppercase tracking-[0.19em] text-[#08779d]">How and When to Begin</p>
-              <h2 className="mt-3 font-serif text-3xl font-bold sm:text-4xl">From organization application to connected care.</h2>
-              <p className="mt-4 text-base leading-relaxed text-[#536a82] sm:text-lg">Your organization starts with a reviewed application and activated license. The right people and offices are then provisioned under your approved terms.</p>
+              <h2 className="mt-3 font-serif text-3xl font-bold sm:text-4xl">From organization application to your connected care network.</h2>
+              <p className="mt-4 text-base leading-relaxed text-[#536a82] sm:text-lg">Your organization starts with a professional account and reviewed application. Following approval, applicable agreements, billing and license activation, your Director can establish eligible offices, manage personnel and coordinate patient coverage.</p>
             </div>
             <ol className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               {onboarding.map(({ number, title, text }) => (
@@ -330,6 +424,28 @@ export default function ProfessionalLandingPage() {
           </div>
         </section>
 
+
+        <section id="licensing" className="scroll-mt-24 border-t border-[#d3e6f0] bg-white px-5 py-16 sm:px-7 sm:py-24">
+          <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-2 lg:items-center lg:gap-16">
+            <div>
+              <p className="text-xs font-extrabold uppercase tracking-[0.19em] text-[#08779d]">Professional Organization Licensing</p>
+              <h2 className="mt-3 font-serif text-3xl font-bold leading-tight sm:text-4xl">Start with your core care team. Expand responsibly as you grow.</h2>
+              <p className="mt-4 text-base leading-[1.85] text-[#536a82]">Not every organization needs the same combination of professional offices. Haneen is built around foundational administration, caregiver and patient environments, with configurable specialist-office capabilities subject to the approved package and professional requirements.</p>
+              <p className="mt-3 text-sm leading-[1.8] text-[#647c94]">Specialist access is never granted simply because a user clicks an office link or selects a professional role.</p>
+              <a href="/Professional/Register" className={primary}>Apply for Your Organization <ArrowRight className="h-4 w-4" aria-hidden="true" /></a>
+            </div>
+            <div className="rounded-3xl border border-[#d7e7f0] bg-[#f2f9fd] p-6 sm:p-8">
+              <h3 className="font-serif text-2xl font-bold">Connected care with defined boundaries</h3>
+              <p className="mt-4 text-sm leading-[1.85] text-[#536a82]">Connected does not mean unrestricted. Access to patient information is designed around organization membership, licensed entitlements, professional credentials and patient-specific permissions. Haneen supports professional collaboration; it does not replace qualified clinical judgment, independent compliance obligations or emergency services.</p>
+              <ul className="mt-6 space-y-3 text-sm font-semibold text-[#344d67]">
+                <li className="flex gap-2"><ShieldCheck className="h-5 w-5 shrink-0 text-[#0b6689]" aria-hidden="true" /> Organization and office authorization</li>
+                <li className="flex gap-2"><ShieldCheck className="h-5 w-5 shrink-0 text-[#0b6689]" aria-hidden="true" /> Approved professional eligibility</li>
+                <li className="flex gap-2"><ShieldCheck className="h-5 w-5 shrink-0 text-[#0b6689]" aria-hidden="true" /> Patient-specific record access</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
         <section id="faq" className="border-t border-[#d5e5ef] bg-[#f3f9fd] px-5 py-16 sm:px-7 sm:py-24">
           <div className="mx-auto max-w-4xl">
             <p className="text-xs font-extrabold uppercase tracking-[0.19em] text-[#08779d]">The Practical Details</p>
@@ -351,8 +467,8 @@ export default function ProfessionalLandingPage() {
           <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-7 lg:flex-row lg:items-center">
             <div className="max-w-2xl">
               <p className="text-xs font-extrabold uppercase tracking-[0.19em] text-[#e8ba4c]">Where Compassion Connects Care.</p>
-              <h2 className="mt-4 font-serif text-3xl font-bold leading-tight sm:text-4xl">Your teams deserve more than disconnected tools.</h2>
-              <p className="mt-4 text-base leading-relaxed text-[#c8dbe9]">Bring your organization, caregivers, authorized specialists and patients into a connected professional network.</p>
+              <h2 className="mt-4 font-serif text-3xl font-bold leading-tight sm:text-4xl">Your organization. Your professionals. Your patients. One connected network.</h2>
+              <p className="mt-4 text-base leading-relaxed text-[#c8dbe9]">Bring the people, responsibilities, and information involved in care into one professional environment—while preserving the permissions and professional responsibilities that matter.</p>
             </div>
             <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row lg:flex-col">
               <a href="/Professional/Register" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#e8ba4c] px-6 py-3 text-sm font-bold text-[#081c3e] hover:bg-[#f2d084]">Apply for an Organization <ArrowRight className="h-4 w-4" aria-hidden="true" /></a>
