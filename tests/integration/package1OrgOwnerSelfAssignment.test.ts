@@ -3,23 +3,19 @@
 //
 // Proves, against real RLS/RPC (never a mocked permission check):
 //   1. An org's Owner (organizations.owner_user_id, backfilled from
-//      created_by) can self-assign a clinical capability
-//      (medical_professional/therapist) to themselves, explicitly and
-//      auditably, without any Platform Owner intervention.
+//      created_by) can self-assign nonclinical billing administration only.
+//      Clinical access requires separate independently verified credentials
+//      and per-patient authorization, never ownership alone.
 //   2. Before self-assignment, the Owner has NO patient access through
 //      this path (ownership alone does not grant clinical access --
 //      5.2's "Do not automatically grant clinical access merely because
 //      the person is identified as Organization Owner").
-//   3. After self-assignment, the Owner IS authorized for a patient
-//      actually covered by their own organization (with an active
-//      license) -- but NOT for a patient covered by an unrelated
-//      organization (5.3 tenant boundary), even though the capability
-//      grant exists.
+//   3. The owner retains NO clinical access after a billing capability
+//      grant, for patients in any organization they own.
 //   4. A non-owner (e.g. a Director who is not the Owner) cannot
 //      self-assign capability for that organization at all (403/
 //      exception).
-//   5. Revocation is self-service, auditable, and immediately removes
-//      the resulting patient access.
+//   5. Billing capability revocation remains self-service and auditable.
 //   6. Every self-assign/revoke call writes a real account_management_
 //      audit row recording actor, target, organization, and action.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -93,17 +89,19 @@ describe('PACKAGE 1 (migration 144) — Organization Owner self-assignment', () 
     expect(directorOwnsA).toBe(false);
   });
 
-  it('a non-owner Director cannot self-assign capability for the organization', async () => {
-    const [status] = (await rpc('org_owner_self_assign_capability', { p_org_id: ORG_A, p_capability: 'medical_professional' }, tok.directorA)) as [number, unknown];
+  it('a non-owner Director cannot self-assign even nonclinical capabilities', async () => {
+    const [status] = (await rpc('org_owner_self_assign_capability', { p_org_id: ORG_A, p_capability: 'billing_admin' }, tok.directorA)) as [number, unknown];
     expect(status).toBeGreaterThanOrEqual(400);
   });
 
-  it('the Owner can self-assign medical_professional and gains patient access only within their own organization', async () => {
-    const [assignStatus] = await rpc('org_owner_self_assign_capability', { p_org_id: ORG_A, p_capability: 'medical_professional' }, tok.ownerA);
+  it('the Owner can self-assign billing administration, but cannot self-assign clinical authority', async () => {
+    const [forbidden] = await rpc('org_owner_self_assign_capability', { p_org_id: ORG_A, p_capability: 'medical_professional' }, tok.ownerA);
+    expect(forbidden).toBeGreaterThanOrEqual(400);
+    const [assignStatus] = await rpc('org_owner_self_assign_capability', { p_org_id: ORG_A, p_capability: 'billing_admin' }, tok.ownerA);
     expect(assignStatus).toBe(200);
 
     const [, authorizedA] = await rpc('is_medical_professional_for_patient', { p_patient_id: ids.patientA }, tok.ownerA);
-    expect(authorizedA).toBe(true);
+    expect(authorizedA).toBe(false);
 
     // Tenant boundary: the capability grant is scoped to ORG_A only.
     // patientB is covered by ORG_B, which this grant was never issued
@@ -116,8 +114,8 @@ describe('PACKAGE 1 (migration 144) — Organization Owner self-assignment', () 
     expect(auditRow).toBe('organization_owner_self_assign_capability');
   });
 
-  it('the Owner can revoke their own self-assigned capability, and access is removed immediately', async () => {
-    const [revokeStatus] = await rpc('org_owner_revoke_own_capability', { p_org_id: ORG_A, p_capability: 'medical_professional' }, tok.ownerA);
+  it('the Owner can revoke their billing capability, without gaining clinical access', async () => {
+    const [revokeStatus] = await rpc('org_owner_revoke_own_capability', { p_org_id: ORG_A, p_capability: 'billing_admin' }, tok.ownerA);
     expect(revokeStatus).toBe(200);
 
     const [, authorized] = await rpc('is_medical_professional_for_patient', { p_patient_id: ids.patientA }, tok.ownerA);
