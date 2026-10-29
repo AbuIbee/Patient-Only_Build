@@ -5,7 +5,7 @@
 // decision on its own.
 import { supabase } from '@/lib/supabase';
 
-export type OrgRole = 'director' | 'caregiver' | 'therapist' | 'medical_professional' | 'billing_admin';
+export type OrgRole = 'director' | 'caregiver' | 'therapist' | 'medical_professional' | 'other_specialist' | 'billing_admin';
 export type OrgPackageType = 'therapist' | 'integrated_care';
 export type StaffRole = 'caregiver' | 'therapist' | 'medical_professional';
 
