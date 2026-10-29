@@ -118,7 +118,7 @@ describe('HCN P0 database authorization and license security', () => {
     }
   });
 
-  it('client roles have no TRUNCATE, TRIGGER or REFERENCES rights on public tables', () => {
+  it('client roles have no TRUNCATE, TRIGGER, REFERENCES or MAINTAIN on public tables', () => {
     const count = sql(`
       SELECT count(*) FROM pg_tables WHERE schemaname='public' AND (
       has_table_privilege('anon',format('%I.%I',schemaname,tablename),'TRUNCATE') OR
@@ -126,8 +126,22 @@ describe('HCN P0 database authorization and license security', () => {
       has_table_privilege('anon',format('%I.%I',schemaname,tablename),'TRIGGER') OR
       has_table_privilege('authenticated',format('%I.%I',schemaname,tablename),'TRIGGER') OR
       has_table_privilege('anon',format('%I.%I',schemaname,tablename),'REFERENCES') OR
-      has_table_privilege('authenticated',format('%I.%I',schemaname,tablename),'REFERENCES'));`);
+      has_table_privilege('authenticated',format('%I.%I',schemaname,tablename),'REFERENCES') OR
+      has_table_privilege('anon',format('%I.%I',schemaname,tablename),'MAINTAIN') OR
+      has_table_privilege('authenticated',format('%I.%I',schemaname,tablename),'MAINTAIN'));`);
     expect(count).toBe('0');
+  });
+
+  it('prevents future postgres-owned public tables from inheriting destructive client privileges', () => {
+    const n = sql(`SELECT count(*)
+      FROM pg_default_acl d
+      CROSS JOIN LATERAL aclexplode(d.defaclacl) a
+      JOIN pg_roles r ON r.oid=a.grantee
+      WHERE d.defaclnamespace='public'::regnamespace
+        AND d.defaclobjtype='r' AND d.defaclrole='postgres'::regrole
+        AND r.rolname IN ('anon','authenticated')
+        AND a.privilege_type IN ('TRUNCATE','TRIGGER','REFERENCES','MAINTAIN');`);
+    expect(n).toBe('0');
   });
 
   it('temporary-program exclusion intersects authorized patient reads instead of granting every patient', () => {
