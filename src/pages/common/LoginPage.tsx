@@ -332,7 +332,7 @@ export function SignInForm({
     <div className="space-y-5">
       <div className="text-center space-y-1">
         <h2 className="text-2xl font-bold text-charcoal">Sign In</h2>
-        <p className="text-medium-gray text-sm">Welcome back to My Memoria Ally</p>
+        <p className="text-medium-gray text-sm">Welcome back to {import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'}</p>
       </div>
 
       <form

@@ -541,7 +541,7 @@ function StaffCard({ orgId, members, onChanged }: {
         </button>
       </div>
       <p className="text-xs text-ent-muted -mt-2">
-        The invited person must already have a My Memoria Ally account with this email — no invitation email is sent; they will see it waiting when they next sign in.
+        The invited person must already have an account associated with this email — no invitation email is sent; they will see it waiting when they next sign in.
       </p>
 
       {members.length === 0 ? (

@@ -360,3 +360,42 @@
   background-color: #FFFFFF !important;
   border: 1px solid var(--soft-taupe) !important;
 }
+
+/* Haneen Care Network — enterprise deployment ONLY.
+   Never change the shared residential/patient color tokens globally.
+   main.tsx attaches .haneen-site only with VITE_ENTERPRISE_SITE=true. */
+html.haneen-site {
+  --warm-ivory: #f6fbff;
+  --soft-taupe: #e4f0f7;
+  --warm-bronze: #b77a09;
+  --deep-bronze: #98620a;
+  --charcoal: #081c3e;
+  --medium-gray: #536a82;
+  --calm-blue: #08779d;
+  --ent-bg: #f5faff;
+  --ent-panel: #ffffff;
+  --ent-ink: #081c3e;
+  --ent-text: #344d67;
+  --ent-muted: #647c94;
+  --ent-line: #d3e4ef;
+  --ent-forest: #0b6689;
+  --ent-green: #e8f6fc;
+  --ent-green-active: #d7eff8;
+  --ent-bronze: #b77a09;
+  --ent-amber: #fff2d7;
+  --ent-pale: #f1f8fc;
+  --background: #f5faff;
+  --foreground: #081c3e;
+  --border: #d3e4ef;
+  --input: #d3e4ef;
+  --primary: #0a6486;
+  --ring: #0a6486;
+}
+html.haneen-site body {
+  background: #f5faff;
+  color: #081c3e;
+}
+html.haneen-site :where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid #0b6689;
+  outline-offset: 3px;
+}

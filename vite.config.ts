@@ -24,7 +24,25 @@ import { inspectAttr } from 'kimi-plugin-inspect-react'
 // mobile browser visiting the real site.
 export default defineConfig({
   base: '/',
-  plugins: [inspectAttr(), react()],
+  plugins: [
+    inspectAttr(),
+    react(),
+    {
+      name: 'haneen-enterprise-html-branding',
+      // Static build-time HTML branding is required for browser titles,
+      // favicon, and crawlers; React-only title changes arrive too late.
+      // The patient site keeps its original index.html unchanged.
+      transformIndexHtml(html) {
+        if (process.env.VITE_ENTERPRISE_SITE !== 'true') return html;
+        return html
+          .replace('<title>My Memoria Ally</title>', '<title>Haneen Care Network | Where Compassion Connects Care</title>')
+          .replace('href="/images/MymemoriaDayTime.png"', 'href="/haneen-favicon.svg"')
+          .replace('content="#C9A87C"', 'content="#071A3A"')
+          .replace('content="My Memoria Ally - Designed to support Dementia Care, ADHD, Autism, Anxiety, Traumatic Brain Injury, and other cognitive support needs."', 'content="Haneen Care Network connects organizations, caregivers, patients, and authorized healthcare specialists in one coordinated care platform."')
+          .replace('</head>', '    <meta property="og:title" content="Haneen Care Network" />\n    <meta property="og:description" content="Where Compassion Connects Care." />\n    <meta property="og:type" content="website" />\n  </head>');
+      },
+    },
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

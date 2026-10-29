@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Haneen Care Network">
+<defs><linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e8ba4c"/><stop offset="1" stop-color="#b77a09"/></linearGradient></defs>
+<rect width="64" height="64" rx="14" fill="#081c3e"/>
+<path d="M13 13h11v15h16V13h11v38H40V38H24v13H13z" fill="url(#gold)"/>
+</svg>
