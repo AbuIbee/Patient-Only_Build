@@ -27,6 +27,13 @@ on:
 permissions:
   contents: read
 
+# Keep only the latest run of each event type for an evolving branch.
+# Push and pull_request share source but PR within the same repository
+# does not need to launch a second disposable Docker/Supabase stack.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   static-checks:
     runs-on: ubuntu-latest
@@ -41,6 +48,10 @@ jobs:
       - run: npm run test:unit
 
   integration:
+    # PRs from this repository already execute the full integration suite
+    # on their push event. Fork PRs have no matching push in this repo and
+    # continue to receive the isolated integration gate.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
