@@ -497,7 +497,10 @@ export async function findSimilarOrganizations(name: string): Promise<{ id: stri
 // am_i_org_owner(). Every mutation is still re-verified server-side by
 // those RPCs; this file never decides authorization on its own.
 export type OwnerCapability = 'caregiver' | 'therapist' | 'medical_professional' | 'billing_admin';
-export const OWNER_CAPABILITIES: OwnerCapability[] = ['caregiver', 'therapist', 'medical_professional', 'billing_admin'];
+// Only non-clinical administrative self-service is offered to an Owner.
+// Legacy clinical capability names remain in OwnerCapability for displaying
+// historical revoked grants; their reactivation is forbidden by the RPC.
+export const OWNER_CAPABILITIES: OwnerCapability[] = ['billing_admin'];
 
 export interface OwnerCapabilityGrant {
   id: string;
