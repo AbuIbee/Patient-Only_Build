@@ -175,7 +175,7 @@ describe('Account deletion request lifecycle (migration 088)', () => {
     const membershipId = sql(`SELECT id FROM organization_memberships WHERE organization_id='${SECOND_ORG}' AND user_id='${ids.staffB}';`);
     const [acceptStatus, acceptBody] = (await rpc('respond_to_org_invite', { p_membership_id: membershipId, p_accept: true }, tok.staffB)) as [number, { message?: string }];
     expect(acceptStatus).toBeGreaterThanOrEqual(400);
-    expect(acceptBody.message).toContain('No pending invitation found');
+    expect(acceptBody.message).toContain('No pending invitation exists');
 
     const auditType = sql(`SELECT action_type FROM account_management_audit WHERE target_user_id='${ids.staffB}' AND action_type='account_deletion_approved_invitation_cancelled';`);
     expect(auditType).toBe('account_deletion_approved_invitation_cancelled');
