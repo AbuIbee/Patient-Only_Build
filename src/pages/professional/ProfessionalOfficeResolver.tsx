@@ -31,7 +31,7 @@ const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-non
 
 const OUTCOME_MESSAGE: Record<Exclude<RedemptionOutcome, 'redeemed'>, string> = {
   not_found: "That code wasn't recognized. Double-check it and try again, or contact the person who sent it to you.",
-  expired: 'That invitation has expired. Contact My Memoria Ally to request a new one.',
+  expired: 'That invitation has expired. Contact Haneen Care Network to request a new one.',
   revoked: "That invitation is no longer valid. If you believe this is a mistake, contact the person who sent it.",
   already_used: 'That invitation has already been used.',
   wrong_recipient: 'That invitation was issued to a different email address. Sign in with the matching account, or contact the person who sent it.',
@@ -185,7 +185,7 @@ function AccessRequiredState({
       <header className="bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0"><Sparkles className="w-5 h-5 text-ent-forest" /></div>
-          <div className="font-bold text-ent-ink text-sm">My Memoria Ally — Professional Workspace</div>
+          <div className="font-bold text-ent-ink text-sm">Haneen Care Network — Professional Workspace</div>
         </div>
         <button type="button" onClick={onLogout} className="flex items-center gap-1.5 text-sm text-ent-muted hover:text-ent-ink px-3 py-2 rounded-lg hover:bg-ent-pale">
           <LogOut className="w-4 h-4" /> Logout
