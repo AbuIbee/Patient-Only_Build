@@ -64,6 +64,7 @@ const ROLE_LABELS: Record<OrgRole, string> = {
   caregiver: 'Caregiver',
   therapist: 'Therapist',
   medical_professional: 'Medical Professional',
+  other_specialist: 'Other Specialist',
   billing_admin: 'Billing Administrator',
 };
 
