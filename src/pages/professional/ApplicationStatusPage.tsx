@@ -150,20 +150,32 @@ export default function ApplicationStatusPage({ application, onRefresh }: { appl
     );
   }
 
-  if (application.status === 'agreements_pending' || application.status === 'agreements_executed' || application.status === 'payment_authorization_pending') {
+  // These are distinct server-owned lifecycle states. Do not tell an applicant
+  // that agreements remain unsigned after execution, or that payment is due
+  // when the backend has already moved to a later state.
+  if (application.status === 'agreements_pending') {
     return (
       <Shell>
         <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-3">
           <Clock className="w-10 h-10 text-ent-forest mx-auto" />
-          <h1 className="text-lg font-bold text-ent-ink">Application verified — agreements and billing next</h1>
-          <p className="text-sm text-ent-text">
-            Your application passed automated verification. Legal agreement execution and payment authorization are the next
-            steps before your license activates.
-          </p>
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 text-left">
-            Electronic signature capture for your license and BAA agreement is not yet connected to a live provider in this
-            environment — a Platform Owner will contact you to complete agreement execution and initiate billing.
-          </div>
+          <h1 className="text-lg font-bold text-ent-ink">Application verified — agreements pending</h1>
+          <p className="text-sm text-ent-text">Your application passed automated verification. The required license agreement and Business Associate Agreement must be executed before billing authorization can begin.</p>
+          <p className="text-sm text-ent-muted">Agreement execution is not available through this screen. Contact your Platform Owner for the approved signing process; your license is not yet active.</p>
+          <button type="button" onClick={onRefresh} className="rounded-xl border border-ent-line px-4 py-2 text-sm font-medium text-ent-ink hover:bg-ent-pale">Check application status</button>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (application.status === 'agreements_executed' || application.status === 'payment_authorization_pending') {
+    return (
+      <Shell>
+        <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-3">
+          <Clock className="w-10 h-10 text-ent-forest mx-auto" />
+          <h1 className="text-lg font-bold text-ent-ink">Agreements complete — payment authorization pending</h1>
+          <p className="text-sm text-ent-text">Your agreement execution has been recorded. Payment authorization must be completed and independently confirmed before your license can activate.</p>
+          <p className="text-sm text-ent-muted">If you have already completed payment authorization, check again for an updated status. Do not submit another payment solely because this screen has not updated.</p>
+          <button type="button" onClick={onRefresh} className="rounded-xl border border-ent-line px-4 py-2 text-sm font-medium text-ent-ink hover:bg-ent-pale">Check application status</button>
         </div>
       </Shell>
     );
