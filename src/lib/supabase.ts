@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
+import { createTabSessionStorage } from './tabSessionStorage';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -7,11 +8,7 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 // ─── HIPAA: Use sessionStorage so auth token is never persisted across ────────
 // browser sessions. Closing the tab / browser clears the token entirely.
 // This prevents a new browser window from restoring a previous patient session.
-const sessionStorageAdapter = {
-  getItem:    (key: string) => sessionStorage.getItem(key),
-  setItem:    (key: string, value: string) => sessionStorage.setItem(key, value),
-  removeItem: (key: string) => sessionStorage.removeItem(key),
-};
+const sessionStorageAdapter = createTabSessionStorage();
 
 // REMEDIATION B (activation-session isolation): this shared, persistent
 // client must NEVER consume a patient activation/recovery token from the
