@@ -1381,33 +1381,65 @@ export interface Database {
       }
       covered_patient_memberships: {
         Row: {
+          archived_at: string | null
+          closed_at: string | null
+          closed_by: string | null
+          closure_notes: string | null
+          closure_reason: string | null
+          created_by: string | null
+          ended_at: string | null
           id: string
           organization_id: string
           patient_id: string
-          status: "active" | "ended"
+          scheduled_archival_at: string | null
           started_at: string
-          ended_at: string | null
-          created_by: string | null
+          status: string
         }
         Insert: {
+          archived_at?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          closure_notes?: string | null
+          closure_reason?: string | null
+          created_by?: string | null
+          ended_at?: string | null
           id?: string
           organization_id: string
           patient_id: string
-          status?: "active" | "ended"
+          scheduled_archival_at?: string | null
           started_at?: string
-          ended_at?: string | null
-          created_by?: string | null
+          status?: string
         }
         Update: {
+          archived_at?: string | null
+          closed_at?: string | null
+          closed_by?: string | null
+          closure_notes?: string | null
+          closure_reason?: string | null
+          created_by?: string | null
+          ended_at?: string | null
           id?: string
           organization_id?: string
           patient_id?: string
-          status?: "active" | "ended"
+          scheduled_archival_at?: string | null
           started_at?: string
-          ended_at?: string | null
-          created_by?: string | null
+          status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "covered_patient_memberships_closed_by_fkey"
+            columns: ["closed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "covered_patient_memberships_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "covered_patient_memberships_organization_id_fkey"
             columns: ["organization_id"]
@@ -1419,11 +1451,19 @@ export interface Database {
             foreignKeyName: "covered_patient_memberships_patient_id_fkey"
             columns: ["patient_id"]
             isOneToOne: false
+            referencedRelation: "caregiver_patient_list"
+            referencedColumns: ["patient_id"]
+          },
+          {
+            foreignKeyName: "covered_patient_memberships_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
             referencedRelation: "patients"
             referencedColumns: ["id"]
           },
         ]
       }
+
       // ENTERPRISE CONSOLIDATED DELIVERY / migration 036. See that file's
       // own header comment for the full design rationale — access is
       // controlled entirely by conversation_participants, never by any
@@ -3719,7 +3759,179 @@ export interface Database {
           },
         ]
       }
-    }
+
+      organization_owner_capability_grants: {
+        Row: {
+          capability: string
+          created_at: string
+          granted_by: string
+          id: string
+          organization_id: string
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          capability: string
+          created_at?: string
+          granted_by: string
+          id?: string
+          organization_id: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          capability?: string
+          created_at?: string
+          granted_by?: string
+          id?: string
+          organization_id?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_owner_capability_grants_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_owner_capability_grants_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_owner_capability_grants_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_owner_capability_grants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+
+      promo_coupon_catalog: {
+        Row: {
+          applies_to: string
+          code: string
+          created_at: string
+          created_by: string | null
+          discount_kind: string
+          expires_at: string | null
+          max_redemptions_total: number | null
+          notes: string | null
+          redemptions_used: number
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          applies_to?: string
+          code: string
+          created_at?: string
+          created_by?: string | null
+          discount_kind: string
+          expires_at?: string | null
+          max_redemptions_total?: number | null
+          notes?: string | null
+          redemptions_used?: number
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          applies_to?: string
+          code?: string
+          created_at?: string
+          created_by?: string | null
+          discount_kind?: string
+          expires_at?: string | null
+          max_redemptions_total?: number | null
+          notes?: string | null
+          redemptions_used?: number
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promo_coupon_catalog_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "promo_coupon_catalog_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+
+      license_tier_catalog: {
+        Row: {
+          annual_fee_cents: number
+          created_at: string
+          display_name: string
+          is_published: boolean
+          specialist_slot_count: number
+          tier_code: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        Insert: {
+          annual_fee_cents: number
+          created_at?: string
+          display_name: string
+          is_published?: boolean
+          specialist_slot_count: number
+          tier_code: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Update: {
+          annual_fee_cents?: number
+          created_at?: string
+          display_name?: string
+          is_published?: boolean
+          specialist_slot_count?: number
+          tier_code?: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "license_tier_catalog_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+}
     // NOTE: both views below are proposed for removal by
     // 014_caregiver_relationship_authorization_and_view_hardening.sql
     // (SEC-001 — they bypass caller-level RLS, see that file for the full
@@ -5950,7 +6162,7 @@ export interface Database {
         Returns: boolean
       }
       get_my_enterprise_care_team: {
-        Args: Record<PropertyKey, never>
+        Args: { p_patient_id?: string | null }
         Returns: {
           email: string
           first_name: string
@@ -5960,23 +6172,15 @@ export interface Database {
           user_id: string
         }[]
       }
+
       get_my_enterprise_organization: {
-        Args: Record<PropertyKey, never>
+        Args: { p_patient_id?: string | null }
         Returns: {
           organization_id: string
           organization_name: string
           package_type: string
         }[]
       }
-      // OWNER DIRECTIVE MMA-ENT-SALES-002 Phase C -- migration 107.
-      // Returns are inlined (not a Database['public']['Tables'][...]
-      // self-reference) -- the self-referencing form, while used
-      // elsewhere in this file, failed to resolve for these particular
-      // entries (tsc: "Property 'sales_prospects' does not exist"),
-      // apparently order/depth-sensitive for a newly-added table
-      // referenced from within the same interface literal. Inlining
-      // sidesteps the ambiguity entirely and is equally well-precedented
-      // in this file (e.g. get_my_account_deletion_requests below).
       platform_owner_create_prospect: {
         Args: {
           p_contact_email: string
@@ -6414,7 +6618,327 @@ export interface Database {
           created_at: string
         }
       }
-    }
+
+      start_self_service_application: {
+        Args: {
+          p_application_details: Json
+          p_contact_email: string
+          p_coupon_code?: string | null
+          p_initial_expected_active_patients: number | null
+          p_invitation_token?: string | null
+          p_legal_name: string
+          p_selected_tier_code: string | null
+        }
+        Returns: {
+          annual_license_fee_snapshot_cents: number | null
+          applicant_user_id: string
+          application_details: Json
+          application_reference: string
+          approved_office: string | null
+          auto_verification_result: Json | null
+          contact_email: string | null
+          contact_phone: string | null
+          correction_request: string | null
+          correction_requested_at: string | null
+          correction_requested_by: string | null
+          correction_requested_fields: Json | null
+          created_at: string
+          credential_verification_evidence: string | null
+          credential_verification_status: string
+          credential_verified_at: string | null
+          credential_verified_by: string | null
+          entry_method: string | null
+          exception_review_reason: string | null
+          id: string
+          initial_expected_active_patients: number | null
+          legal_name: string | null
+          platform_owner_approval_required: boolean
+          platform_owner_approved_at: string | null
+          platform_owner_approved_by: string | null
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          rejection_reason: string | null
+          requested_office: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          selected_tier_code: string | null
+          status: string
+          target_organization_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "professional_applications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+
+      calculate_annual_license_charge: {
+        Args: { p_coupon_code?: string | null; p_tier_code: string }
+        Returns: {
+          base_cents: number
+          coupon_code: string
+          coupon_rejected_reason: string
+          discount_cents: number
+          final_cents: number
+        }[]
+      }
+
+      platform_owner_resolve_manual_review: {
+        Args: { p_application_id: string; p_decision: string; p_reason: string }
+        Returns: {
+          annual_license_fee_snapshot_cents: number | null
+          applicant_user_id: string
+          application_details: Json
+          application_reference: string
+          approved_office: string | null
+          auto_verification_result: Json | null
+          contact_email: string | null
+          contact_phone: string | null
+          correction_request: string | null
+          correction_requested_at: string | null
+          correction_requested_by: string | null
+          correction_requested_fields: Json | null
+          created_at: string
+          credential_verification_evidence: string | null
+          credential_verification_status: string
+          credential_verified_at: string | null
+          credential_verified_by: string | null
+          entry_method: string | null
+          exception_review_reason: string | null
+          id: string
+          initial_expected_active_patients: number | null
+          legal_name: string | null
+          platform_owner_approval_required: boolean
+          platform_owner_approved_at: string | null
+          platform_owner_approved_by: string | null
+          preferred_name: string | null
+          profession_category: string | null
+          professional_title: string | null
+          proposed_organization_name: string | null
+          proposed_package_type: string | null
+          rejection_reason: string | null
+          requested_office: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          selected_tier_code: string | null
+          status: string
+          target_organization_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "professional_applications"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+
+      org_owner_revoke_own_capability: {
+        Args: { p_capability: string; p_org_id: string }
+        Returns: {
+          capability: string
+          created_at: string
+          granted_by: string
+          id: string
+          organization_id: string
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "organization_owner_capability_grants"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+
+      org_owner_self_assign_capability: {
+        Args: { p_capability: string; p_org_id: string }
+        Returns: {
+          capability: string
+          created_at: string
+          granted_by: string
+          id: string
+          organization_id: string
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "organization_owner_capability_grants"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+
+      am_i_org_owner: { Args: { p_org_id: string }; Returns: boolean }
+
+      close_patient_coverage: {
+        Args: {
+          p_notes: string | null
+          p_org_id: string
+          p_patient_id: string
+          p_reason: string
+        }
+        Returns: {
+          archived_at: string | null
+          closed_at: string | null
+          closed_by: string | null
+          closure_notes: string | null
+          closure_reason: string | null
+          created_by: string | null
+          ended_at: string | null
+          id: string
+          organization_id: string
+          patient_id: string
+          scheduled_archival_at: string | null
+          started_at: string
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "covered_patient_memberships"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+
+      platform_owner_set_coupon_limit: {
+        Args: { p_code: string; p_max_redemptions_total: number | null }
+        Returns: {
+          applies_to: string
+          code: string
+          created_at: string
+          created_by: string | null
+          discount_kind: string
+          expires_at: string | null
+          max_redemptions_total: number | null
+          notes: string | null
+          redemptions_used: number
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "promo_coupon_catalog"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+
+      platform_owner_set_coupon_status: {
+        Args: { p_code: string; p_status: string }
+        Returns: {
+          applies_to: string
+          code: string
+          created_at: string
+          created_by: string | null
+          discount_kind: string
+          expires_at: string | null
+          max_redemptions_total: number | null
+          notes: string | null
+          redemptions_used: number
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "promo_coupon_catalog"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+
+      platform_owner_create_coupon: {
+        Args: {
+          p_code: string
+          p_discount_kind: string
+          p_expires_at: string | null
+          p_max_redemptions_total: number | null
+          p_notes: string | null
+        }
+        Returns: {
+          applies_to: string
+          code: string
+          created_at: string
+          created_by: string | null
+          discount_kind: string
+          expires_at: string | null
+          max_redemptions_total: number | null
+          notes: string | null
+          redemptions_used: number
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "promo_coupon_catalog"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+
+      platform_owner_set_license_tier_published: {
+        Args: { p_is_published: boolean; p_tier_code: string }
+        Returns: {
+          annual_fee_cents: number
+          created_at: string
+          display_name: string
+          is_published: boolean
+          specialist_slot_count: number
+          tier_code: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "license_tier_catalog"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+
+      platform_owner_set_license_tier_price: {
+        Args: {
+          p_annual_fee_cents: number
+          p_display_name: string
+          p_specialist_slot_count: number
+          p_tier_code: string
+        }
+        Returns: {
+          annual_fee_cents: number
+          created_at: string
+          display_name: string
+          is_published: boolean
+          specialist_slot_count: number
+          tier_code: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "license_tier_catalog"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+
+      get_my_patient_office_subject: { Args: never; Returns: string }
+}
     Enums: {
       [_ in never]: never
     }

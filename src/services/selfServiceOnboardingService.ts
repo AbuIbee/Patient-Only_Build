@@ -25,20 +25,38 @@ function errMsg(error: { message: string } | null, fallback: string): string {
 // exactly as the directive's "visit the website, review pricing"
 // requires. Never calls an RPC for this: the three prices ARE the
 // pricing page's own public content.
-export async function getPublishedLicenseTiers(): Promise<LicenseTier[]> {
-  const { data, error } = await supabase
+export async function loadPublishedLicenseTiers(): Promise<LicenseTier[]> {
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const request = supabase
     .from('license_tier_catalog')
     .select('tier_code, display_name, annual_fee_cents, specialist_slot_count')
     .eq('is_published', true)
-    .order('annual_fee_cents', { ascending: true });
-  if (error || !data) return [];
-  return data.map((r) => ({
+    .order('annual_fee_cents', { ascending: true })
+    .abortSignal(controller.signal);
+    // Race also bounds auth/session waits that may precede the HTTP fetch.
+    const deadline = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(new Error('License tier loading timed out. Please retry.'));
+        controller.abort();
+      }, 10000);
+    });
+    const { data, error } = await Promise.race([request, deadline]);
+    if (error) throw new Error('Could not load license tiers. Please retry.');
+    return (data ?? []).map((r) => ({
     tierCode: r.tier_code as LicenseTierCode,
     displayName: r.display_name as string,
     annualFeeCents: r.annual_fee_cents as number,
     specialistSlotCount: r.specialist_slot_count as number,
   }));
+  } finally {
+    clearTimeout(timeout);
+  }
 }
+
+// Preserve the existing service API for other consumers.
+export const getPublishedLicenseTiers = loadPublishedLicenseTiers;
 
 // The exact, server-authoritative continuous monthly active-patient
 // pricing schedule, duplicated here ONLY for a signed-out visitor's

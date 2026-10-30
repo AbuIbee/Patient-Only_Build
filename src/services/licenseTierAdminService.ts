@@ -56,7 +56,7 @@ export async function getAllCoupons(): Promise<CouponAdmin[]> {
   const { data, error } = await supabase.from('promo_coupon_catalog').select('*').order('created_at', { ascending: false });
   if (error || !data) return [];
   return data.map((r) => ({
-    code: r.code, discountKind: r.discount_kind, status: r.status, maxRedemptionsTotal: r.max_redemptions_total,
+    code: r.code, discountKind: r.discount_kind as CouponAdmin['discountKind'], status: r.status as CouponAdmin['status'], maxRedemptionsTotal: r.max_redemptions_total,
     redemptionsUsed: r.redemptions_used, expiresAt: r.expires_at, notes: r.notes, createdAt: r.created_at,
   }));
 }

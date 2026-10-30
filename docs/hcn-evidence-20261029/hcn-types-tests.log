@@ -1,0 +1,20 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> my-app@0.0.0 test:types
+> vitest run --typecheck
+
+Testing types with tsc and vue-tsc is an experimental feature.
+Breaking changes might not follow SemVer, please pin Vitest's version when using it.
+
+ RUN  v5.0.4 /workspace/scratch/3bb2d3347ac8/Patient-Only_Build
+
+
+ Test Files  34 passed (34)
+      Tests  410 passed (410)
+Type Errors  no errors
+   Start at  21:41:59
+   Duration  3.22s (import 42%, transform 34%, tests 14%, worker 6%, typecheck 4%)
+
+    Isolate  34 workers spawned · ~386ms startup each (spawn + environment, per file)
+             at least ~1.49s faster with isolate: false — reuses workers across files instead of one per file
+

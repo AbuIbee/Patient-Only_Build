@@ -1,0 +1,18 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> my-app@0.0.0 test:unit
+> vitest run --reporter=dot
+
+
+ RUN  v5.0.4 /workspace/scratch/3bb2d3347ac8/Patient-Only_Build
+
+·························································································································································································································································································································································································································
+
+ Test Files  33 passed (33)
+      Tests  409 passed (409)
+   Start at  21:41:04
+   Duration  3.68s (transform 61%, import 19%, worker 11%, tests 8%)
+
+    Isolate  33 workers spawned · ~462ms startup each (spawn + environment, per file)
+             at least ~1.72s faster with isolate: false — reuses workers across files instead of one per file
+

@@ -1,0 +1,36 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> my-app@0.0.0 build
+> vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+Browserslist: browsers data (caniuse-lite) is 7 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+✓ 3264 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                         1.07 kB │ gzip:   0.54 kB
+dist/assets/index-CmgUOC8-.css                        172.47 kB │ gzip:  27.14 kB
+dist/assets/search-D5snxyg4.js                          0.17 kB │ gzip:   0.17 kB
+dist/assets/layout-dashboard-CMJhADbD.js                0.35 kB │ gzip:   0.21 kB
+dist/assets/user-check-CMcf_CpS.js                      0.39 kB │ gzip:   0.28 kB
+dist/assets/save-hAjB3OoJ.js                            0.69 kB │ gzip:   0.36 kB
+dist/assets/EnterprisePatientRouter-CdxnFL92.js         1.19 kB │ gzip:   0.63 kB
+dist/assets/web-B8-IThYL.js                             3.45 kB │ gzip:   1.11 kB
+dist/assets/EnterprisePatientDashboard-D8ygl2do.js     28.06 kB │ gzip:   5.71 kB
+dist/assets/ActiveSessionsPanel-Bm9Aoh0d.js            35.00 kB │ gzip:   8.09 kB
+dist/assets/CareConversations-D7Nu1LHG.js              42.65 kB │ gzip:   9.86 kB
+dist/assets/AdminLayout-DWWo9zAO.js                    50.63 kB │ gzip:  11.66 kB
+dist/assets/PatientCareTeam-BaId2xYL.js               138.82 kB │ gzip:  31.18 kB
+dist/assets/ProfessionalEntryRouter-C2AKzVcB.js       167.02 kB │ gzip:  29.27 kB
+dist/assets/EnterpriseDashboardRouter-BM6RBGJA.js     498.50 kB │ gzip:  90.13 kB
+dist/assets/PatientLayout-DbL9rQC0.js                 923.53 kB │ gzip: 238.14 kB
+dist/assets/index-DqyojFTW.js                       1,043.49 kB │ gzip: 291.85 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 14.95s

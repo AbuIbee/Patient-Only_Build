@@ -1,0 +1,28 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> my-app@0.0.0 verify:acceptance
+> node scripts/verify_acceptance_counts.mjs
+
+=== PASS ===
+  92-requirement CSV: well-formed rows (13 fields each): 92 (expected 92)
+  92-requirement CSV: malformed-width rows: 0 (expected 0)
+  92-requirement CSV: unique IDs: 92 (expected 92)
+  19 Codex findings: unique numbered rows found in register §2l: 19 (expected 19)
+  19 Codex findings: no duplicate finding IDs in §2l: 19 (expected 19)
+  19 Codex findings: every row uses a legitimate disposition lead-word: 0 (expected 0)
+  19 Codex findings: every row cites a concrete evidence reference: 0 (expected 0)
+  Navigation — Admin/Director (OrganizationDirectorDashboard.tsx DIRECTOR_NAV_ITEMS): 14 destinations
+  Navigation — Caregiver (EnterpriseCaregiverDashboard.tsx NAV_ITEMS): 14 destinations
+  Navigation — Medical (ClinicalOfficeDashboard.tsx MEDICAL_NAV_ITEMS): 12 destinations
+  Navigation — Therapy (ClinicalOfficeDashboard.tsx THERAPY_NAV_ITEMS): 11 destinations
+  Navigation — Patient (EnterprisePatientDashboard.tsx NAV_ITEMS): 10 destinations
+  25-cell communication matrix: office count forms a 5x5 grid: 25 (expected 25)
+  15 Wave E acceptance documents present: 15 (expected 15)
+  15 Wave E acceptance documents carrying a dated current-state UPDATE section: 15 (expected 15)
+  Commit-SHA consistency: every SHA cited in the register exists in git history: 0 (expected 0)
+  Commit-SHA consistency: 27 distinct SHAs cited, all resolved
+
+=== FAIL ===
+  60 navigation destinations: total across all 5 offices: got 61, expected 60
+
+1 check(s) failed.

@@ -1,0 +1,15 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> my-app@0.0.0 typecheck
+> npm run typecheck:app && npm run typecheck:node
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> my-app@0.0.0 typecheck:app
+> tsc --noEmit -p tsconfig.app.json
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> my-app@0.0.0 typecheck:node
+> tsc --noEmit -p tsconfig.node.json
+

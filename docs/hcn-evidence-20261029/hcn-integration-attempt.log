@@ -1,0 +1,32 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> my-app@0.0.0 test:integration
+> vitest run --config vitest.integration.config.ts tests/integration/enterpriseLicenseIssuance.test.ts
+
+
+ RUN  v5.0.4 /workspace/scratch/3bb2d3347ac8/Patient-Only_Build
+
+ ❯ tests/integration/enterpriseLicenseIssuance.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/integration/enterpriseLicenseIssuance.test.ts [ tests/integration/enterpriseLicenseIssuance.test.ts ]
+Error: MMA_TEST_API_BASE must be explicitly set to run tests/integration/**. There is no default. This is deliberate (MMA-SUPABASE-RECONCILIATION-AND-EXECUTION-012 Section 7): a default here previously pointed at the owner's real persistent local database. Start a disposable stack (scripts/disposable_supabase.mjs) and pass MMA_TEST_API_BASE + MMA_TEST_DB_CONTAINER explicitly.
+ ❯ requireEnv tests/integration/_targetValidation.ts:25:11
+     23|   const value = env[name];
+     24|   if (!value || !value.trim()) {
+     25|     throw new Error(
+       |           ^
+     26|       `${name} must be explicitly set to run tests/integration/**. The…
+     27|         'This is deliberate (MMA-SUPABASE-RECONCILIATION-AND-EXECUTION…
+ ❯ tests/integration/_runtime.ts:40:21
+ ❯ tests/integration/enterpriseLicenseIssuance.test.ts:12:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  21:42:00
+   Duration  1.24s (worker 99%, environment 1%)
+

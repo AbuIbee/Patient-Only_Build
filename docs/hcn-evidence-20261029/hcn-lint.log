@@ -1,0 +1,12 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> my-app@0.0.0 lint
+> eslint .
+
+
+/workspace/scratch/3bb2d3347ac8/Patient-Only_Build/codex_round7_independent_audit/browser_audit.mjs
+  1:1  warning  Unused eslint-disable directive (no problems were reported)
+
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+
