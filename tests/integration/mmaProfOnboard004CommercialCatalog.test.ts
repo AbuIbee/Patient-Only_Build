@@ -53,13 +53,13 @@ describe('MMA-PROF-ONBOARD-004 commercial catalog (migration 161)', () => {
     expect(body).toEqual([
       { tier_code: 'essential', annual_fee_cents: 39900, specialist_slot_count: 0 },
       { tier_code: 'plus', annual_fee_cents: 59900, specialist_slot_count: 1 },
-      { tier_code: 'complete', annual_fee_cents: 79900, specialist_slot_count: 2 },
+      { tier_code: 'complete', annual_fee_cents: 79900, specialist_slot_count: 3 },
     ]);
   });
 
   it('computes the exact monthly active-patient fee at every required boundary', async () => {
     const cases: [number, number | null][] = [
-      [0, 25000], [15, 25000], [16, 25800], [50, 53000], [51, 53500],
+      [0, 25000], [15, 25000], [16, 25800], [50, 53000], [51, 53500], [100, 78000], [160, 108000],
       [250, 153000], [251, 153400], [500, 253000], [501, 253250], [1000, 378000], [1001, null],
     ];
     for (const [n, expected] of cases) {

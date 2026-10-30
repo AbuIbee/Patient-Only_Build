@@ -31,7 +31,7 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   });
 }
 
-async function stripePost(path: string, params: Record<string, string>) {
+async function stripePost(path: string, params: Record<string, string>, idempotencyKey?: string) {
   const secretKey = Deno.env.get('STRIPE_SECRET_KEY') ?? '';
 
   if (!secretKey) {
@@ -47,6 +47,7 @@ async function stripePost(path: string, params: Record<string, string>) {
     headers: {
       Authorization: `Bearer ${secretKey}`,
       'Content-Type': 'application/x-www-form-urlencoded',
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
     },
     body,
   });
@@ -202,39 +203,55 @@ serve(async (request) => {
     const resolvedOrganizationId = (resolution as { organization_id: string | null } | null)?.organization_id ?? null;
     let customerId: string | undefined = (resolution as { reusable_stripe_customer_id: string | null } | null)?.reusable_stripe_customer_id ?? undefined;
 
+    // Deterministic idempotency keys keyed on the (organization-bound)
+    // quote and the stable billing-account row -- a retried call (double
+    // submit, network timeout, cold-start retry) before this function's
+    // own DB persist below completes must resolve to the SAME Stripe
+    // customer and checkout session, never a second one. Stripe caches
+    // each key for 24h server-side, which naturally bounds "stale key"
+    // concerns for a deliberately fresh checkout attempt long after the
+    // first.
     if (!customerId) {
-      const customer = await stripePost('/customers', {
-        email: billingContactEmail,
-        'metadata[billing_type]': 'enterprise',
-        'metadata[quote_id]': quoteId,
-        ...(resolvedOrganizationId ? { 'metadata[organization_id]': resolvedOrganizationId } : {}),
-      });
+      const customer = await stripePost(
+        '/customers',
+        {
+          email: billingContactEmail,
+          'metadata[billing_type]': 'enterprise',
+          'metadata[quote_id]': quoteId,
+          ...(resolvedOrganizationId ? { 'metadata[organization_id]': resolvedOrganizationId } : {}),
+        },
+        `enterprise-customer:${quoteId}`,
+      );
       customerId = customer.id;
     }
 
-    const session = await stripePost('/checkout/sessions', {
-      customer: customerId,
-      'payment_method_types[0]': 'card',
-      mode: 'subscription',
-      success_url: `${appUrl}?enterprise_checkout=success&quote_id=${encodeURIComponent(quoteId)}`,
-      cancel_url: `${appUrl}?enterprise_checkout=cancelled&quote_id=${encodeURIComponent(quoteId)}`,
-      client_reference_id: quoteId,
-      'line_items[0][quantity]': '1',
-      'line_items[0][price_data][currency]': billingAccount.currency,
-      'line_items[0][price_data][unit_amount]': String(billingAccount.unit_amount_cents),
-      'line_items[0][price_data][recurring][interval]': billingAccount.billing_interval,
-      'line_items[0][price_data][product_data][name]': `Enterprise License — ${orgName}`,
-      'metadata[billing_type]': 'enterprise',
-      'metadata[billing_component]': 'annual_license',
-      'metadata[quote_id]': quoteId,
-      'metadata[billing_account_id]': billingAccount.id,
-      'metadata[applicant_user_id]': user.id,
-      'subscription_data[metadata][billing_type]': 'enterprise',
-      'subscription_data[metadata][billing_component]': 'annual_license',
-      'subscription_data[metadata][quote_id]': quoteId,
-      'subscription_data[metadata][billing_account_id]': billingAccount.id,
-      'subscription_data[metadata][applicant_user_id]': user.id,
-    });
+    const session = await stripePost(
+      '/checkout/sessions',
+      {
+        customer: customerId,
+        'payment_method_types[0]': 'card',
+        mode: 'subscription',
+        success_url: `${appUrl}?enterprise_checkout=success&quote_id=${encodeURIComponent(quoteId)}`,
+        cancel_url: `${appUrl}?enterprise_checkout=cancelled&quote_id=${encodeURIComponent(quoteId)}`,
+        client_reference_id: quoteId,
+        'line_items[0][quantity]': '1',
+        'line_items[0][price_data][currency]': billingAccount.currency,
+        'line_items[0][price_data][unit_amount]': String(billingAccount.unit_amount_cents),
+        'line_items[0][price_data][recurring][interval]': billingAccount.billing_interval,
+        'line_items[0][price_data][product_data][name]': `Enterprise License — ${orgName}`,
+        'metadata[billing_type]': 'enterprise',
+        'metadata[billing_component]': 'annual_license',
+        'metadata[quote_id]': quoteId,
+        'metadata[billing_account_id]': billingAccount.id,
+        'metadata[applicant_user_id]': user.id,
+        'subscription_data[metadata][billing_type]': 'enterprise',
+        'subscription_data[metadata][billing_component]': 'annual_license',
+        'subscription_data[metadata][quote_id]': quoteId,
+        'subscription_data[metadata][billing_account_id]': billingAccount.id,
+        'subscription_data[metadata][applicant_user_id]': user.id,
+      },
+      `enterprise-annual-checkout:${billingAccount.id}`,
+    );
 
     const { error: persistError } = await admin
       .from('enterprise_billing_accounts')

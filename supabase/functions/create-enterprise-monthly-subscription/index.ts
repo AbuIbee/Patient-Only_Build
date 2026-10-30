@@ -49,7 +49,7 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   });
 }
 
-async function stripePost(path: string, params: Record<string, string>) {
+async function stripePost(path: string, params: Record<string, string>, idempotencyKey?: string) {
   const secretKey = Deno.env.get('STRIPE_SECRET_KEY') ?? '';
   if (!secretKey) {
     throw new Error('STRIPE_SECRET_KEY secret is not set in Supabase.');
@@ -59,7 +59,11 @@ async function stripePost(path: string, params: Record<string, string>) {
     .join('&');
   const response = await fetch(`https://api.stripe.com/v1${path}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+    },
     body,
   });
   const data = await response.json();
@@ -166,43 +170,55 @@ serve(async (request) => {
         .eq('quote_id', quoteId)
         .eq('billing_component', 'annual_license')
         .maybeSingle();
-      const customer = await stripePost('/customers', {
-        email: billingContactEmail?.billing_contact_email ?? user.email ?? '',
-        'metadata[billing_type]': 'enterprise',
-        'metadata[quote_id]': quoteId,
-        ...(resolvedOrganizationId ? { 'metadata[organization_id]': resolvedOrganizationId } : {}),
-      });
+      const customer = await stripePost(
+        '/customers',
+        {
+          email: billingContactEmail?.billing_contact_email ?? user.email ?? '',
+          'metadata[billing_type]': 'enterprise',
+          'metadata[quote_id]': quoteId,
+          ...(resolvedOrganizationId ? { 'metadata[organization_id]': resolvedOrganizationId } : {}),
+        },
+        `enterprise-customer:${quoteId}`,
+      );
       customerId = customer.id;
     }
 
-    const session = await stripePost('/checkout/sessions', {
-      customer: customerId,
-      'payment_method_types[0]': 'card',
-      mode: 'subscription',
-      success_url: `${appUrl}?enterprise_monthly_checkout=success&quote_id=${encodeURIComponent(quoteId)}`,
-      cancel_url: `${appUrl}?enterprise_monthly_checkout=cancelled&quote_id=${encodeURIComponent(quoteId)}`,
-      client_reference_id: quoteId,
-      'line_items[0][quantity]': '1',
-      'line_items[0][price_data][currency]': billingAccount.currency,
-      'line_items[0][price_data][unit_amount]': String(billingAccount.unit_amount_cents),
-      'line_items[0][price_data][recurring][interval]': billingAccount.billing_interval,
-      'line_items[0][price_data][product_data][name]': `Monthly Active-Patient Subscription — ${orgName}`,
-      'metadata[billing_type]': 'enterprise',
-      'metadata[billing_component]': 'monthly_patients',
-      'metadata[quote_id]': quoteId,
-      'metadata[billing_account_id]': billingAccount.id,
-      'metadata[applicant_user_id]': user.id,
-      // The deferral mechanism itself: Stripe bills $0 through the
-      // trial period and fires the first REAL invoice at trial_end --
-      // never immediately on checkout.
-      'subscription_data[trial_end]': String(anchor.anchor_unix),
-      'subscription_data[metadata][billing_type]': 'enterprise',
-      'subscription_data[metadata][billing_component]': 'monthly_patients',
-      'subscription_data[metadata][quote_id]': quoteId,
-      'subscription_data[metadata][billing_account_id]': billingAccount.id,
-      'subscription_data[metadata][applicant_user_id]': user.id,
-      'subscription_data[metadata][billing_anchor_date]': anchor.anchor_date,
-    });
+    // Deterministic idempotency keys, same rationale as the annual
+    // checkout function: a retried call before this function's own DB
+    // persist below completes must resolve to the SAME Stripe customer
+    // and subscription checkout session, never a second one.
+    const session = await stripePost(
+      '/checkout/sessions',
+      {
+        customer: customerId,
+        'payment_method_types[0]': 'card',
+        mode: 'subscription',
+        success_url: `${appUrl}?enterprise_monthly_checkout=success&quote_id=${encodeURIComponent(quoteId)}`,
+        cancel_url: `${appUrl}?enterprise_monthly_checkout=cancelled&quote_id=${encodeURIComponent(quoteId)}`,
+        client_reference_id: quoteId,
+        'line_items[0][quantity]': '1',
+        'line_items[0][price_data][currency]': billingAccount.currency,
+        'line_items[0][price_data][unit_amount]': String(billingAccount.unit_amount_cents),
+        'line_items[0][price_data][recurring][interval]': billingAccount.billing_interval,
+        'line_items[0][price_data][product_data][name]': `Monthly Active-Patient Subscription — ${orgName}`,
+        'metadata[billing_type]': 'enterprise',
+        'metadata[billing_component]': 'monthly_patients',
+        'metadata[quote_id]': quoteId,
+        'metadata[billing_account_id]': billingAccount.id,
+        'metadata[applicant_user_id]': user.id,
+        // The deferral mechanism itself: Stripe bills $0 through the
+        // trial period and fires the first REAL invoice at trial_end --
+        // never immediately on checkout.
+        'subscription_data[trial_end]': String(anchor.anchor_unix),
+        'subscription_data[metadata][billing_type]': 'enterprise',
+        'subscription_data[metadata][billing_component]': 'monthly_patients',
+        'subscription_data[metadata][quote_id]': quoteId,
+        'subscription_data[metadata][billing_account_id]': billingAccount.id,
+        'subscription_data[metadata][applicant_user_id]': user.id,
+        'subscription_data[metadata][billing_anchor_date]': anchor.anchor_date,
+      },
+      `enterprise-monthly-checkout:${billingAccount.id}`,
+    );
 
     const { error: persistError } = await admin
       .from('enterprise_billing_accounts')
