@@ -259,6 +259,12 @@ export default function ProfessionalRegisterPage() {
                       <span>Contact Email *</span>
                       <input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={inputCls} />
                     </label>
+                    <p className="text-xs text-ent-muted">Enter your legal name to continue. Your existing signed-in account will be used; no second account is created.</p>
+                    <button type="button" disabled={!legalName.trim() || !contactEmail.trim()} onClick={() => {
+                      if (!legalName.trim() || !contactEmail.trim()) return;
+                      setLegalName(legalName.trim());
+                      setContactEmail(contactEmail.trim());
+                    }} className="w-full py-3 rounded-xl bg-ent-bronze text-white font-semibold disabled:opacity-50">Continue to application</button>
                   </>
                 ) : (
                   <SelfServiceApplicationFlow legalName={legalName} contactEmail={contactEmail} />
