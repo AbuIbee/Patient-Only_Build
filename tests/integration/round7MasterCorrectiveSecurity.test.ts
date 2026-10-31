@@ -392,7 +392,7 @@ describe('OWNER CORRECTION — Enterprise caregivers are operational users, not 
     await authDeleteUser(id);
   });
 
-  it('Platform Owner approval of that same application creates the organization and activates the Director — the ONLY path to activation', async () => {
+  it('Platform Owner approval of that same application creates the organization and invites the Director — activation requires verified billing/agreements too (Issue #3 P0-01)', async () => {
     const email = `r7mc-brandnew2-${stamp}@local.test`;
     const id = await authSignUp(email, PW);
     sql(`UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${id}';`);
@@ -413,8 +413,16 @@ describe('OWNER CORRECTION — Enterprise caregivers are operational users, not 
     expect(ownerStatus).toBe(200);
     expect(org.name).toBe('Brand New Approved Org');
 
+    // Issue #3 P0-01 (owner-approved corrective directive, 2026-10-31):
+    // approval alone no longer grants operational Director authority.
+    // No billing account or executed agreement exists for this
+    // application at all, so the membership must be 'invited', not
+    // 'active' -- the prior behavior asserted here (unconditional
+    // 'active' on approval) was the exact defect the directive fixes.
     const membership = sql(`SELECT org_role, status FROM public.organization_memberships WHERE user_id='${id}' AND organization_id='${org.id}';`);
-    expect(membership).toBe('director|active');
+    expect(membership).toBe('director|invited');
+    const licenseStatus = sql(`SELECT status FROM public.organization_licenses WHERE organization_id='${org.id}';`);
+    expect(licenseStatus).toBe('proposed');
 
     if (org.id) sql(`DELETE FROM public.organization_memberships WHERE organization_id='${org.id}'; DELETE FROM public.organization_licenses WHERE organization_id='${org.id}'; DELETE FROM public.professional_application_events WHERE application_id='${app.id}'; DELETE FROM public.professional_applications WHERE id='${app.id}'; DELETE FROM public.organizations WHERE id='${org.id}';`);
     await authDeleteUser(id);

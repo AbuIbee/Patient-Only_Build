@@ -188,6 +188,16 @@ describe('MMA-PROF-ONBOARD-004 Organization Owner/Director separation and specia
       sql(`UPDATE professional_applications SET target_organization_id='${orgId}' WHERE id='${appId}';`);
       sql(`INSERT INTO organization_licenses (organization_id, status) VALUES ('${orgId}', 'proposed');`);
       sql(`INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, unit_amount_cents, billing_interval, status, created_by) VALUES ('${quoteId}', 'concurrency@local.test', 59900, 'year', 'active', '${ids.owner}');`);
+      // Pre-existing gap surfaced while verifying Issue #3 (unrelated to
+      // P0-01/P0-02): migration 20261030013820 added a monthly-
+      // authorization gate to activate_enterprise_license_from_quote()
+      // for any application with selected_tier_code set (every
+      // self-service tier application, this one included) -- this
+      // fixture predates that migration and never created the monthly
+      // component, so activation now correctly (per that gate) refuses
+      // every one of these quotes. Not a defect in today's P0 work;
+      // fixing the fixture to match the real required precondition.
+      sql(`INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, unit_amount_cents, billing_interval, billing_component, status, stripe_subscription_id, created_by) VALUES ('${quoteId}', 'concurrency@local.test', 25800, 'month', 'monthly_patients', 'active', 'SYNTHETIC-NOT-A-STRIPE-SUBSCRIPTION-${stamp}-${i}', '${ids.owner}');`);
       sql(`INSERT INTO enterprise_contracts (quote_id, contract_type, template_version, signatory_name, status, executed_by, executed_at, execution_method, execution_evidence_reference, created_by) VALUES ('${quoteId}', 'saas_license', 'v1', 'Test Signatory', 'executed', '${ids.owner}', now(), 'test', 'test-evidence', '${ids.owner}');`);
       sql(`INSERT INTO enterprise_contracts (quote_id, contract_type, template_version, signatory_name, status, executed_by, executed_at, execution_method, execution_evidence_reference, created_by) VALUES ('${quoteId}', 'baa', 'v1', 'Test Signatory', 'executed', '${ids.owner}', now(), 'test', 'test-evidence', '${ids.owner}');`);
       quoteIds.push(quoteId);

@@ -1270,7 +1270,7 @@ export interface Database {
           licensed_seats: number | null
           covered_patient_capacity: number | null
           annual_license_fee: number | null
-          status: "proposed" | "active" | "expired" | "canceled" | "unpaid"
+          status: "proposed" | "active" | "expired" | "suspended" | "canceled"
           activated_by: string | null
           activated_at: string | null
           license_number: string | null
@@ -1287,7 +1287,7 @@ export interface Database {
           licensed_seats?: number | null
           covered_patient_capacity?: number | null
           annual_license_fee?: number | null
-          status?: "proposed" | "active" | "expired" | "canceled" | "unpaid"
+          status?: "proposed" | "active" | "expired" | "suspended" | "canceled"
           activated_by?: string | null
           activated_at?: string | null
           license_number?: string | null
@@ -1304,7 +1304,7 @@ export interface Database {
           licensed_seats?: number | null
           covered_patient_capacity?: number | null
           annual_license_fee?: number | null
-          status?: "proposed" | "active" | "expired" | "canceled" | "unpaid"
+          status?: "proposed" | "active" | "expired" | "suspended" | "canceled"
           activated_by?: string | null
           activated_at?: string | null
           license_number?: string | null

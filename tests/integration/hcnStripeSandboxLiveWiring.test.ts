@@ -153,6 +153,27 @@ d('HCN Stripe sandbox wiring (owner-authorized Test Mode, 2026-10-30)', () => {
     expect(Number(row)).toBe(cents);
   });
 
+  it('monthly checkout idempotency key varies with the effective anchor: a genuine retry (same anchor) is idempotent, a different anchor gets its own session (owner directive, 2026-10-31)', async () => {
+    const { quoteId } = await makeTierApplication('essential', 'essential', 39900, 42);
+    const annualFirst = await callFunction('create-enterprise-checkout-session', tok.essential, { quoteId, billingContactEmail: emails.essential });
+    expect(annualFirst.status, JSON.stringify(annualFirst.json)).toBe(200);
+
+    // Genuine retry with the SAME billing timezone -> same computed
+    // anchor -> same Stripe checkout session (idempotent).
+    const r1 = await callFunction('create-enterprise-monthly-subscription', tok.essential, { quoteId, billingTimezone: 'America/Chicago' });
+    const r2 = await callFunction('create-enterprise-monthly-subscription', tok.essential, { quoteId, billingTimezone: 'America/Chicago' });
+    expect(r1.status, JSON.stringify(r1.json)).toBe(200);
+    expect(r2.status, JSON.stringify(r2.json)).toBe(200);
+    expect((r2.json as { url: string }).url).toBe((r1.json as { url: string }).url);
+
+    // A DIFFERENT billing timezone can produce a different effective
+    // anchor_unix (same calendar date rule, different UTC instant) --
+    // must get its OWN session, never reuse the cached one above.
+    const r3 = await callFunction('create-enterprise-monthly-subscription', tok.essential, { quoteId, billingTimezone: 'America/New_York' });
+    expect(r3.status, JSON.stringify(r3.json)).toBe(200);
+    expect((r3.json as { url: string }).url).not.toBe((r1.json as { url: string }).url);
+  }, 30000);
+
   it('webhook signature verification: a request to the REAL deployed stripe-webhook function with no/garbage signature is rejected, never processed', async () => {
     const r = await fetch(`${BASE}/functions/v1/stripe-webhook`, {
       method: 'POST',

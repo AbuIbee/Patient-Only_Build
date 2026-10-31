@@ -69,18 +69,25 @@ describe('getOrgLicense — item 1: the full status vocabulary and activation ti
   });
 });
 
-describe('adminSetOrganizationLicenseStatus — item 1: the staging-only activation mechanism', () => {
+describe('adminSetOrganizationLicenseStatus — exceptional suspension/cancellation only (Issue #3 P0-02)', () => {
   it('surfaces the "only admins" rejection as an error string, never a silent success', async () => {
-    rpcMock.mockResolvedValue({ data: null, error: { message: 'Only admins can activate or change an organization license status' } });
-    const { error } = await adminSetOrganizationLicenseStatus('org-1', 'active', 'Approved per owner escalation #42');
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'Only admins can change an organization license status' } });
+    const { error } = await adminSetOrganizationLicenseStatus('org-1', 'suspended', 'Approved per owner escalation #42');
     expect(error).toMatch(/Only admins/);
-    expect(rpcMock).toHaveBeenCalledWith('admin_set_organization_license_status', { p_org_id: 'org-1', p_status: 'active', p_justification: 'Approved per owner escalation #42' });
+    expect(rpcMock).toHaveBeenCalledWith('admin_set_organization_license_status', { p_org_id: 'org-1', p_status: 'suspended', p_justification: 'Approved per owner escalation #42' });
   });
 
-  it('returns no error on success', async () => {
-    rpcMock.mockResolvedValue({ data: { id: 'lic-1', status: 'active' }, error: null });
-    const { error } = await adminSetOrganizationLicenseStatus('org-1', 'active', 'Approved per owner escalation #42');
+  it('returns no error on a successful exceptional suspension', async () => {
+    rpcMock.mockResolvedValue({ data: { id: 'lic-1', status: 'suspended' }, error: null });
+    const { error } = await adminSetOrganizationLicenseStatus('org-1', 'suspended', 'Approved per owner escalation #42');
     expect(error).toBeNull();
+  });
+
+  it('surfaces the server-side refusal when a caller attempts to bypass verified activation (defense in depth behind the TS type restriction)', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'This exceptional intervention RPC cannot activate a license directly. Use the verified payment/agreement activation path (activate_enterprise_license_from_quote) instead.' } });
+    // @ts-expect-error -- 'active' is no longer a valid AdminExceptionalLicenseStatus; this call only exists to prove the server still refuses it even if a caller bypasses the type.
+    const { error } = await adminSetOrganizationLicenseStatus('org-1', 'active', 'Approved per owner escalation #42');
+    expect(error).toMatch(/cannot activate a license directly/);
   });
 });
 

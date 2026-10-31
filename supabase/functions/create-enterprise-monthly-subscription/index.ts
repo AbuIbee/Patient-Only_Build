@@ -127,23 +127,30 @@ serve(async (request) => {
       return jsonResponse({ error: rpcError?.message ?? 'This quote cannot be billed monthly yet.' }, 400);
     }
 
+    // Owner-approved first-of-month rollover correction (2026-10-31):
+    // compute_next_month_billing_anchor() (migration
+    // 20261031000300_monthly_billing_anchor_rollover.sql) now rolls
+    // over to the first of the month AFTER next whenever "first of
+    // next month" would be too close to Stripe's minimum trial_end
+    // lead time -- the SAME single source of truth every other layer
+    // (application data, this trial_end, subscription metadata, the
+    // API response below, eventual organization_licenses disclosure)
+    // reads from. The temporary fail-closed guard this replaced
+    // (commit 0a3515c1) is no longer needed for the predictable
+    // month-end boundary; the assertion below is now a pure defensive
+    // check -- if it ever fires, the SQL function itself has a bug,
+    // not a routine "try again later" condition.
     const { data: anchor, error: anchorError } = await supabase
       .rpc('compute_next_month_billing_anchor', { p_timezone: billingTimezone })
       .single();
     if (anchorError || !anchor) {
       return jsonResponse({ error: 'Could not compute the billing anchor date.' }, 400);
     }
-    // Fail closed at the month-end boundary until the approved database/RPC,
-    // Stripe trial_end, subscription metadata, and user disclosure all agree
-    // on one effective first-of-month billing anchor. Never submit a date
-    // Stripe will reject or silently alter the customer's disclosed date.
     const MIN_TRIAL_LEAD_SECONDS = 48 * 60 * 60 + 5 * 60;
     if (!Number.isSafeInteger(Number(anchor.anchor_unix)) ||
         Number(anchor.anchor_unix) < Math.floor(Date.now() / 1000) + MIN_TRIAL_LEAD_SECONDS) {
-      return jsonResponse({
-        error: 'The next monthly billing date is too close to safely establish the Stripe subscription. The approved first-of-month rollover correction has not yet been applied to the billing anchor; checkout is temporarily unavailable. No charge was created.',
-        code: 'MONTHLY_BILLING_ANCHOR_ROLLOVER_REQUIRED',
-      }, 409);
+      console.error('ASSERTION FAILED: compute_next_month_billing_anchor returned an anchor below Stripe\'s minimum trial_end lead time even after the rollover fix.', anchor);
+      return jsonResponse({ error: 'Could not establish a valid billing date for the monthly subscription. No charge was created.' }, 500);
     }
 
     let orgName = 'Enterprise License';
@@ -198,7 +205,15 @@ serve(async (request) => {
     // Deterministic idempotency keys, same rationale as the annual
     // checkout function: a retried call before this function's own DB
     // persist below completes must resolve to the SAME Stripe customer
-    // and subscription checkout session, never a second one.
+    // and subscription checkout session, never a second one. Owner
+    // directive (2026-10-31): the key must ALSO vary with the
+    // effective anchor -- keying on billingAccount.id alone would let
+    // a Stripe-cached session from a PRIOR anchor (e.g. requested
+    // right before a rollover boundary, then retried right after)
+    // freeze an outdated trial_end/disclosed date, or get reused with
+    // a now-wrong anchor. Including anchor_unix means a genuinely
+    // identical retry (same account, same anchor) is still idempotent,
+    // while a changed anchor always gets its own, correct session.
     const session = await stripePost(
       '/checkout/sessions',
       {
@@ -229,7 +244,7 @@ serve(async (request) => {
         'subscription_data[metadata][applicant_user_id]': user.id,
         'subscription_data[metadata][billing_anchor_date]': anchor.anchor_date,
       },
-      `enterprise-monthly-checkout:${billingAccount.id}`,
+      `enterprise-monthly-checkout:${billingAccount.id}:${anchor.anchor_unix}`,
     );
 
     const { error: persistError } = await admin

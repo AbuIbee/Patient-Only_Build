@@ -35,16 +35,33 @@ afterAll(async () => {
 });
 
 describe('MMA-PROF-ONBOARD-004 monthly billing component (migration 164)', () => {
-  it('computes the exact first-of-next-month anchor, DST-aware, in a disclosed timezone', async () => {
-    const [status, rows] = (await rpc('compute_next_month_billing_anchor', { p_timezone: 'America/Chicago' }, tok.bilal)) as [number, { anchor_date: string; anchor_unix: number }[]];
+  it('computes the first-of-month anchor, DST-aware, in a disclosed timezone -- next month when there is enough Stripe trial_end lead time, otherwise the month after next (owner-approved rollover correction, 2026-10-31)', async () => {
+    const [status, rows] = (await rpc('compute_next_month_billing_anchor', { p_timezone: 'America/Chicago' }, tok.bilal)) as [number, { anchor_date: string; anchor_unix: number; rolled_over_to_month_after_next: boolean }[]];
     expect(status).toBe(200);
-    const [year, month] = rows[0].anchor_date.split('-').map(Number);
+    const anchor = rows[0];
+    expect(anchor.anchor_date.endsWith('-01')).toBe(true);
+
+    // Always at least Stripe's minimum trial_end lead time (48h + the
+    // same safety margin the function itself uses) out from now --
+    // this is the one invariant that holds regardless of what day the
+    // suite happens to run on, without duplicating the rollover
+    // threshold's exact arithmetic here.
+    const minLeadSeconds = 48 * 60 * 60 + 5 * 60;
+    expect(anchor.anchor_unix).toBeGreaterThanOrEqual(Math.floor(Date.now() / 1000) + minLeadSeconds);
+
+    // The anchor is either "next calendar month" or, when that was too
+    // close, "the month after next" -- never anything else.
     const now = new Date();
-    const expectedMonth = now.getUTCMonth() === 11 ? 1 : now.getUTCMonth() + 2;
-    const expectedYear = now.getUTCMonth() === 11 ? now.getUTCFullYear() + 1 : now.getUTCFullYear();
-    expect(month).toBe(expectedMonth);
-    expect(year).toBe(expectedYear);
-    expect(rows[0].anchor_date.endsWith('-01')).toBe(true);
+    const nextMonth = now.getUTCMonth() === 11 ? 1 : now.getUTCMonth() + 2;
+    const nextMonthYear = now.getUTCMonth() === 11 ? now.getUTCFullYear() + 1 : now.getUTCFullYear();
+    const monthAfterNext = nextMonth === 12 ? 1 : nextMonth + 1;
+    const monthAfterNextYear = nextMonth === 12 ? nextMonthYear + 1 : nextMonthYear;
+    const [year, month] = anchor.anchor_date.split('-').map(Number);
+
+    const isNextMonth = month === nextMonth && year === nextMonthYear;
+    const isMonthAfterNext = month === monthAfterNext && year === monthAfterNextYear;
+    expect(isNextMonth || isMonthAfterNext, `anchor_date ${anchor.anchor_date} was neither next month (${nextMonthYear}-${nextMonth}) nor the month after (${monthAfterNextYear}-${monthAfterNext})`).toBe(true);
+    expect(anchor.rolled_over_to_month_after_next).toBe(isMonthAfterNext);
   });
 
   it('rejects an invalid timezone rather than silently defaulting to UTC', async () => {

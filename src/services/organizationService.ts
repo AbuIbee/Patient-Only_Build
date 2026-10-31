@@ -60,7 +60,14 @@ export interface OrgMembershipRow {
   createdAt: string;
 }
 
-export type OrgLicenseStatus = 'proposed' | 'active' | 'expired' | 'canceled' | 'unpaid';
+export type OrgLicenseStatus = 'proposed' | 'active' | 'expired' | 'suspended' | 'canceled';
+
+// Issue #3 P0-02: admin_set_organization_license_status() can no longer
+// set 'active' at all (real activation must go through the verified
+// payment/agreement path) and 'unpaid' was never a real status. This
+// narrower type is the actual set the RPC accepts, enforced at compile
+// time so this exceptional-intervention call site can't regress.
+export type AdminExceptionalLicenseStatus = 'suspended' | 'canceled' | 'expired';
 
 export interface OrgLicense {
   licensedSeats: number | null;
@@ -287,7 +294,7 @@ export async function getOrgLicense(orgId: string): Promise<OrgLicense | null> {
 // (migration 150) and recorded on the resulting account_management_audit
 // row, so this exceptional intervention remains accountable even though
 // it needs no ordinary business-eligibility approval.
-export async function adminSetOrganizationLicenseStatus(orgId: string, status: OrgLicenseStatus, justification: string): Promise<{ error: string | null }> {
+export async function adminSetOrganizationLicenseStatus(orgId: string, status: AdminExceptionalLicenseStatus, justification: string): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('admin_set_organization_license_status', { p_org_id: orgId, p_status: status, p_justification: justification });
   return { error: error ? errMsg(error, 'Could not update the license status.') : null };
 }
