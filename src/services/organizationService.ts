@@ -16,6 +16,17 @@ export interface MyOrganization {
   orgRole: OrgRole;
 }
 
+// HCN organization license and office authentication remediation,
+// 2026-10-31 (P0-05). Mutually exclusive with MyOrganization: an
+// organization appears here, never in getMyOrganizations(), while its
+// license is not 'active'.
+export interface LicenseBlockedMembership {
+  organizationId: string;
+  organizationName: string;
+  orgRole: OrgRole;
+  licenseStatus: 'proposed' | 'expired' | 'suspended' | 'canceled';
+}
+
 export interface PendingOrgInvite {
   membershipId: string;
   organizationId: string;
@@ -148,6 +159,17 @@ export async function getMyOrganizationsResult(): Promise<{ data: MyOrganization
     })),
     error: null,
   };
+}
+
+export async function getMyLicenseBlockedMemberships(): Promise<LicenseBlockedMembership[]> {
+  const { data, error } = await supabase.rpc('get_my_license_blocked_memberships');
+  if (error || !data) return [];
+  return data.map((r) => ({
+    organizationId: r.organization_id,
+    organizationName: r.organization_name,
+    orgRole: r.org_role as OrgRole,
+    licenseStatus: r.license_status as LicenseBlockedMembership['licenseStatus'],
+  }));
 }
 
 export async function getMyPendingOrgInvites(): Promise<PendingOrgInvite[]> {

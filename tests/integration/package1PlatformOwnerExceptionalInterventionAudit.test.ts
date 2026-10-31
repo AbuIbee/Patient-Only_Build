@@ -13,6 +13,17 @@
 // mandatory third argument, persisted as the audit row's `reason` --
 // updated here to the new three-argument signature; a missing
 // justification is additionally proven to be rejected.
+//
+// Issue #3 P0-02 (migration 20261031000200, HCN organization license
+// and office authentication remediation): admin_set_organization_
+// license_status() no longer accepts p_status='active' AT ALL -- the
+// "exceptional activation bypass" this RPC used to allow is exactly
+// the vulnerability Issue #3 required removed; real activation must
+// now go through activate_enterprise_license_from_quote()'s
+// independently-verified billing+agreements path. The audit-trail
+// assertion below was updated from 'active' to 'suspended' (still an
+// allowed exceptional status) to test the SAME audit behavior without
+// exercising a capability that was deliberately removed.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
 
@@ -55,13 +66,19 @@ describe('PACKAGE 1 (migration 147) — Platform Owner exceptional intervention 
     expect(status).toBeGreaterThanOrEqual(400);
   });
 
-  it('a missing justification is rejected even for a real admin', async () => {
-    const [status] = (await rpc('admin_set_organization_license_status', { p_org_id: ORG, p_status: 'active', p_justification: '' }, tok.admin)) as [number, unknown];
+  it('a missing justification is rejected even for a real admin, for an otherwise-allowed status', async () => {
+    const [status] = (await rpc('admin_set_organization_license_status', { p_org_id: ORG, p_status: 'suspended', p_justification: '' }, tok.admin)) as [number, unknown];
     expect(status).toBeGreaterThanOrEqual(400);
   });
 
+  it('admin_set_organization_license_status() can no longer activate a license directly (Issue #3 P0-02: the exceptional activation bypass is removed)', async () => {
+    const [status, body] = (await rpc('admin_set_organization_license_status', { p_org_id: ORG, p_status: 'active', p_justification: 'Attempted exceptional activation' }, tok.admin)) as [number, { message?: string }];
+    expect(status).toBeGreaterThanOrEqual(400);
+    expect(body.message).toMatch(/cannot activate a license directly/i);
+  });
+
   it("the Platform Owner's exceptional status change is fully audited with before/after state and justification", async () => {
-    const [status] = await rpc('admin_set_organization_license_status', { p_org_id: ORG, p_status: 'active', p_justification: 'Confirmed payment received outside normal quote flow' }, tok.admin);
+    const [status] = await rpc('admin_set_organization_license_status', { p_org_id: ORG, p_status: 'suspended', p_justification: 'Confirmed payment received outside normal quote flow' }, tok.admin);
     expect(status).toBe(200);
 
     const auditRow = sql(`
@@ -70,6 +87,6 @@ describe('PACKAGE 1 (migration 147) — Platform Owner exceptional intervention 
       WHERE organization_id='${ORG}' AND action_type='platform_owner_exceptional_license_status_change'
       ORDER BY created_at DESC LIMIT 1;
     `);
-    expect(auditRow).toBe(`${ids.admin}|${ORG}|proposed|active|Confirmed payment received outside normal quote flow`);
+    expect(auditRow).toBe(`${ids.admin}|${ORG}|proposed|suspended|Confirmed payment received outside normal quote flow`);
   });
 });

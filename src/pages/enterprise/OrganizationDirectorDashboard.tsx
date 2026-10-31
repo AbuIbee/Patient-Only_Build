@@ -286,7 +286,25 @@ const AMENDMENT_STATUS_STYLE: Record<string, string> = {
 // amendment quote specifically). Only renders for an organization
 // with an already-active license -- an org whose license is still
 // 'proposed' uses EnterpriseActivationSection instead.
-function AmendmentRequestSection({ orgId }: { orgId: string }) {
+//
+// HCN organization license and office authentication remediation,
+// 2026-10-31 (P0-04/P0-05): exported so ProfessionalOfficeResolver.tsx
+// can also render this SAME component for a Director whose license
+// has already lapsed (expired/suspended/canceled) and who can
+// therefore no longer reach this dashboard at all (correctly, per the
+// P0-02 fix in migration 20261031020000) -- without this, such a
+// Director would have no self-service way to even REQUEST a renewal,
+// since director_request_organization_amendment() itself has no
+// license-status gate (only is_active_org_director(), which checks
+// membership, not license, status) but its ONLY existing UI lived
+// behind the now-correctly-locked dashboard. Reusing this exact,
+// already-reviewed, already-idempotent component (not a new billing
+// transition) is deliberate: it is the SAME
+// apply_organization_amendment_from_quote() path already proven safe
+// against webhook replay (ENT-011, resulting_quote_id-gated,
+// status='quoted'-gated) -- no new, unreviewed renewal mechanism is
+// introduced here.
+export function AmendmentRequestSection({ orgId }: { orgId: string }) {
   const [requests, setRequests] = useState<OrganizationAmendmentRequest[]>([]);
   const [quoted, setQuoted] = useState<OrganizationAmendmentRequest | null>(null);
   const [loading, setLoading] = useState(true);

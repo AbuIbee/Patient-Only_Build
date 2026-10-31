@@ -15,11 +15,11 @@ import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { Loader2, ShieldAlert, LogOut, Sparkles, KeyRound, ChevronDown, ChevronUp } from 'lucide-react';
-import { getMyOrganizations, getMyPendingOrgInvites, type MyOrganization, type PendingOrgInvite } from '@/services/organizationService';
+import { getMyOrganizations, getMyPendingOrgInvites, getMyLicenseBlockedMemberships, type MyOrganization, type PendingOrgInvite, type LicenseBlockedMembership } from '@/services/organizationService';
 import { getMyApplication, getMyApplicationDraft, type ProfessionalApplication } from '@/services/professionalApplicationService';
 import { redeemQuoteInvitation, quoteTermsFromDraft, type RedemptionOutcome, type RedeemedQuoteTerms } from '@/services/salesService';
 import DirectorApplicationWizard from './DirectorApplicationWizard';
-import OrganizationDirectorDashboard from '@/pages/enterprise/OrganizationDirectorDashboard';
+import OrganizationDirectorDashboard, { AmendmentRequestSection } from '@/pages/enterprise/OrganizationDirectorDashboard';
 import SelfServiceApplicationFlow from './SelfServiceApplicationFlow';
 import { PendingInvitesBanner } from '@/pages/enterprise/EnterpriseDashboardRouter';
 import EnterpriseCaregiverDashboard from '@/pages/enterprise/EnterpriseCaregiverDashboard';
@@ -228,6 +228,63 @@ function AccessRequiredState({
   );
 }
 
+// HCN organization license and office authentication remediation,
+// 2026-10-31 (P0-05). Owner-approved architecture item 6 ("inactive
+// licenses block all licensed office access") combined with the
+// explicit requirement that the resulting dead end be a truthful,
+// actionable state -- never the generic "contact Platform Owner"
+// screen, and never a stale-looking application-status page that
+// implies agreements/billing are merely pending for the first time.
+// A Director can request renewal and pay for it right from this
+// screen via AmendmentRequestSection -- the SAME already-reviewed,
+// already-idempotent director_request_organization_amendment() /
+// apply_organization_amendment_from_quote() path the active dashboard
+// already offers for expansion/renewal/downgrade, not a new billing
+// transition invented for this screen.
+const LICENSE_STATUS_COPY: Record<LicenseBlockedMembership['licenseStatus'], string> = {
+  expired: 'has expired',
+  suspended: 'has been suspended',
+  canceled: 'has been canceled',
+  proposed: 'has not yet been activated',
+};
+
+function LicenseRenewalRequiredState({ membership, onLogout }: { membership: LicenseBlockedMembership; onLogout: () => void }) {
+  const isDirector = membership.orgRole === 'director';
+  return (
+    <div className="min-h-screen bg-ent-bg flex flex-col">
+      <header className="bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0"><Sparkles className="w-5 h-5 text-ent-forest" /></div>
+          <div className="font-bold text-ent-ink text-sm">Haneen Care Network — Professional Workspace</div>
+        </div>
+        <button type="button" onClick={onLogout} className="flex items-center gap-1.5 text-sm text-ent-muted hover:text-ent-ink px-3 py-2 rounded-lg hover:bg-ent-pale">
+          <LogOut className="w-4 h-4" /> Logout
+        </button>
+      </header>
+      <main className="flex-1 flex flex-col items-center justify-center p-4 gap-4">
+        <div className="max-w-md text-center space-y-3">
+          <ShieldAlert className="w-10 h-10 text-ent-bronze mx-auto" />
+          <h1 className="text-lg font-bold text-ent-ink">Renew license</h1>
+          <p className="text-sm text-ent-text">
+            {membership.organizationName}'s license {LICENSE_STATUS_COPY[membership.licenseStatus]}. Your membership is still
+            active, but office access is suspended until the license is renewed.
+          </p>
+          <p className="text-sm text-ent-text">
+            {isDirector
+              ? 'Request renewal below — the Platform Owner will price it, and you can complete payment here once it is quoted.'
+              : 'Your organization\'s Director has been notified to renew. Sign back in once renewal is confirmed.'}
+          </p>
+        </div>
+        {isDirector && (
+          <div className="w-full max-w-md">
+            <AmendmentRequestSection orgId={membership.organizationId} />
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
 function OfficeSelector({ offices, onSelect }: { offices: { key: ProfessionalOfficeKey; orgName: string }[]; onSelect: (key: ProfessionalOfficeKey) => void }) {
   return (
     <div className="min-h-screen bg-ent-bg flex items-center justify-center p-4">
@@ -294,16 +351,18 @@ export default function ProfessionalOfficeResolver() {
   const [manualSelection, setManualSelection] = useState<ProfessionalOfficeKey | null>(null);
   const [myApplication, setMyApplication] = useState<ProfessionalApplication | null>(null);
   const [pendingInvites, setPendingInvites] = useState<PendingOrgInvite[]>([]);
+  const [licenseBlocked, setLicenseBlocked] = useState<LicenseBlockedMembership[]>([]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [o, subjectResult, app, invites] = await Promise.all([
-      getMyOrganizations(), supabase.rpc('get_my_patient_office_subject'), getMyApplication(), getMyPendingOrgInvites(),
+    const [o, subjectResult, app, invites, blocked] = await Promise.all([
+      getMyOrganizations(), supabase.rpc('get_my_patient_office_subject'), getMyApplication(), getMyPendingOrgInvites(), getMyLicenseBlockedMemberships(),
     ]);
     setOrgs(o);
     setPatientOfficeSubjectId(typeof subjectResult.data === 'string' ? subjectResult.data : null);
     setMyApplication(app);
     setPendingInvites(invites);
+    setLicenseBlocked(blocked);
     setLoading(false);
   }, []);
 
@@ -346,6 +405,17 @@ export default function ProfessionalOfficeResolver() {
   ];
 
   if (availableOffices.length === 0) {
+    // HCN organization license and office authentication
+    // remediation, 2026-10-31 (P0-05). Takes priority over every
+    // other zero-office fallback below: a membership that is itself
+    // perfectly active but whose org's license has lapsed is a
+    // categorically different, more specific truth than "never had an
+    // application" or "application still pending" -- showing either
+    // of those instead would be exactly the kind of untruthful dead
+    // end this directive requires removed.
+    if (licenseBlocked.length > 0) {
+      return <LicenseRenewalRequiredState membership={licenseBlocked[0]} onLogout={() => { void handleLogout(); }} />;
+    }
     // §12 — "If the account remains Pending Review, show an
     // application-status page... If Additional Information Required...
     // If Rejected..." Takes priority over the generic "Access required"

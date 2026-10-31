@@ -5267,6 +5267,15 @@ export interface Database {
           org_role: string
         }[]
       }
+      get_my_license_blocked_memberships: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          organization_id: string
+          organization_name: string
+          org_role: string
+          license_status: string
+        }[]
+      }
       get_my_pending_org_invites: {
         Args: Record<PropertyKey, never>
         Returns: {
