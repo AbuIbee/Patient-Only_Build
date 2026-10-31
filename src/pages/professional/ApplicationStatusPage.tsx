@@ -20,7 +20,12 @@ const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-non
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { dispatch } = useApp();
-  const handleLogout = async () => { await supabase.auth.signOut(); dispatch({ type: 'LOGOUT' }); toast('You have been logged out'); };
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) { toast.error('Unable to sign out. Please try again.'); return; }
+    dispatch({ type: 'LOGOUT' });
+    window.location.assign('/Professional');
+  };
   return (
     <div className="min-h-screen bg-ent-bg flex flex-col">
       <header className="bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-4 flex items-center justify-between">
@@ -162,6 +167,8 @@ export default function ApplicationStatusPage({ application, onRefresh }: { appl
           <p className="text-sm text-ent-text">Your application passed automated verification. The required license agreement and Business Associate Agreement must be executed before billing authorization can begin.</p>
           <p className="text-sm text-ent-muted">Agreement execution is not available through this screen. Contact your Platform Owner for the approved signing process; your license is not yet active.</p>
           <button type="button" onClick={onRefresh} className="rounded-xl border border-ent-line px-4 py-2 text-sm font-medium text-ent-ink hover:bg-ent-pale">Check application status</button>
+          <p className="text-xs text-ent-muted">You can return to this application after signing in again.</p>
+          <a href="/Professional" className="inline-block text-sm font-semibold text-ent-bronze hover:underline">Return to professional sign in</a>
         </div>
       </Shell>
     );
