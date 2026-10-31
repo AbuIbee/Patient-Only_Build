@@ -381,6 +381,23 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# HCN pre-production finding (2026-10-30): with no [functions.*] override
+# anywhere in this file, every Edge Function deploys with the Supabase
+# CLI default verify_jwt = true -- the API gateway rejects a request
+# with no valid Supabase JWT/apikey before the function body ever runs.
+# stripe-webhook authenticates purely via Stripe's own signature
+# (HMAC, checked against STRIPE_WEBHOOK_SECRET inside the function) and
+# a real Stripe webhook delivery never carries a Supabase JWT or apikey
+# at all -- confirmed locally: an unauthenticated POST to this function
+# returned 401 from the gateway itself, never reaching the function's
+# own signature check. Without this override, no live Stripe webhook
+# event could ever reach this function once deployed, regardless of
+# signature correctness. This function must still verify the Stripe
+# signature itself (it already does) -- this override only removes a
+# redundant, incompatible SECOND auth layer that Stripe cannot satisfy.
+[functions.stripe-webhook]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 55327
