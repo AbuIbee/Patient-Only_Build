@@ -259,12 +259,28 @@ export default function ProfessionalRegisterPage() {
                       <span>Contact Email *</span>
                       <input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={inputCls} />
                     </label>
-                    <p className="text-xs text-ent-muted">Enter your legal name to continue. Your existing signed-in account will be used; no second account is created.</p>
-                    <button type="button" disabled={!legalName.trim() || !contactEmail.trim()} onClick={() => {
-                      if (!legalName.trim() || !contactEmail.trim()) return;
-                      setLegalName(legalName.trim());
-                      setContactEmail(contactEmail.trim());
-                    }} className="w-full py-3 rounded-xl bg-ent-bronze text-white font-semibold disabled:opacity-50">Continue to application</button>
+                    {/*
+                      CONFIRMED DEFECT (commit e43a296a): a "Continue to
+                      application" button was added here, disabled by
+                      this exact same `!legalName.trim() ||
+                      !contactEmail.trim()` expression -- but that is
+                      also the condition gating this entire branch, so
+                      the button was permanently disabled for every
+                      render in which it could ever be visible, and the
+                      view already auto-advances to
+                      SelfServiceApplicationFlow the instant both fields
+                      hold content (a pre-existing, intentional behavior
+                      this page's own E2E suite documents and asserts --
+                      see tests/e2e_professional_access_states.spec.ts).
+                      The button could never be clicked and never
+                      changed any real behavior; removed as dead/
+                      misleading UI rather than reinstated with new
+                      gating state, which would have broken that
+                      already-tested auto-advance. The informational
+                      line below is kept -- it is accurate and useful on
+                      its own.
+                    */}
+                    <p className="text-xs text-ent-muted">Your existing signed-in account will be used; no second account is created.</p>
                   </>
                 ) : (
                   <SelfServiceApplicationFlow legalName={legalName} contactEmail={contactEmail} />

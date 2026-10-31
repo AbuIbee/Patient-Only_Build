@@ -104,7 +104,13 @@ test.describe('Professional access-required states (Phase B)', () => {
       // -- superseding SelfServiceApplicationFlow's own brief inline result
       // screen before it is ever the settled state, which is the correct,
       // intended behavior (same pattern CreateOrgCard originally had here).
-      await expect(page.getByRole('heading', { name: 'Application verified — agreements and billing next' })).toBeVisible({ timeout: 15000 });
+      // CONFIRMED STALE EXPECTATION, found by actually driving this flow
+      // in a real browser: ApplicationStatusPage.tsx's agreements_pending
+      // heading reads "Application verified — agreements pending" --
+      // accurate, since billing authorization is explicitly gated on
+      // agreement execution completing first, not concurrent with it.
+      // This test's expected string predates that copy.
+      await expect(page.getByRole('heading', { name: 'Application verified — agreements pending' })).toBeVisible({ timeout: 15000 });
       // The application exists and is agreements_pending, not an active membership/org -- no dashboard chrome anywhere.
       const appStatus = sql(`SELECT status FROM public.professional_applications WHERE proposed_organization_name='${orgName}';`);
       expect(appStatus).toBe('agreements_pending');
@@ -112,6 +118,18 @@ test.describe('Professional access-required states (Phase B)', () => {
       expect(entryMethod).toBe('public_website');
       expect(sql(`SELECT count(*) FROM public.organizations WHERE name='${orgName}';`)).toBe('0');
       await expect(page.getByText('Director Dashboard')).toHaveCount(0);
+
+      // CONFIRMED REGRESSION (commit 4e872535), verified live: logout from
+      // this exact agreements_pending screen used to always clear local
+      // session state regardless of the remote signOut() result; that
+      // commit made it conditional on the API call succeeding, which
+      // could strand a user in an authenticated UI if only that one call
+      // failed. Fixed to always clear local state; confirmed here with a
+      // real click, not just a code read -- it must navigate back to the
+      // sign-in page and leave no authenticated session behind.
+      await page.getByRole('button', { name: 'Logout' }).click();
+      await expect(page).toHaveURL(/\/Professional$/, { timeout: 10000 });
+      await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible();
     } finally {
       const quoteId = sql(`SELECT (application_details->>'originatingQuoteId')::uuid FROM public.professional_applications WHERE proposed_organization_name='${orgName}';`);
       sql(`

@@ -20,9 +20,17 @@ const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-non
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { dispatch } = useApp();
+  // CONFIRMED REGRESSION (commit 4e872535): the prior version always
+  // dispatched LOGOUT and navigated away regardless of the remote
+  // signOut() result. This commit made local logout conditional on
+  // that call succeeding, so a single failed/timed-out network request
+  // left the user stuck in an authenticated UI with their session
+  // token still in sessionStorage and no way to force a local sign-out
+  // -- a real problem for a HIPAA-context screen. Local state is always
+  // cleared; a remote signOut error is surfaced but never blocks it.
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
-    if (error) { toast.error('Unable to sign out. Please try again.'); return; }
+    if (error) { toast.error('Could not confirm sign-out with the server, but your local session has been cleared.'); }
     dispatch({ type: 'LOGOUT' });
     window.location.assign('/Professional');
   };
