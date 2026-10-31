@@ -18,7 +18,7 @@ const OFFICE_LABEL: Record<string, string> = {
 
 const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, showSignInAction = false }: { children: React.ReactNode; showSignInAction?: boolean }) {
   const { dispatch } = useApp();
   // CONFIRMED REGRESSION (commit 4e872535): the prior version always
   // dispatched LOGOUT and navigated away regardless of the remote
@@ -46,7 +46,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </button>
       </header>
       <main className="flex-1 flex items-start justify-center p-4 sm:p-6 pt-16">
-        <div className="max-w-lg w-full">{children}</div>
+        <div className="max-w-lg w-full">{children}{showSignInAction && <div className="text-center mt-4"><button type="button" onClick={() => { void handleLogout(); }} className="text-sm font-semibold text-ent-bronze hover:underline">Sign out and return to sign in</button></div>}</div>
       </main>
     </div>
   );
@@ -168,15 +168,13 @@ export default function ApplicationStatusPage({ application, onRefresh }: { appl
   // when the backend has already moved to a later state.
   if (application.status === 'agreements_pending') {
     return (
-      <Shell>
+      <Shell showSignInAction>
         <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-3">
           <Clock className="w-10 h-10 text-ent-forest mx-auto" />
           <h1 className="text-lg font-bold text-ent-ink">Application verified — agreements pending</h1>
           <p className="text-sm text-ent-text">Your application passed automated verification. The required license agreement and Business Associate Agreement must be executed before billing authorization can begin.</p>
-          <p className="text-sm text-ent-muted">Agreement execution is not available through this screen. Contact your Platform Owner for the approved signing process; your license is not yet active.</p>
+          <p className="text-sm text-ent-muted">Agreement signing is not yet available in this workspace. Your license remains inactive until the required agreements and applicable billing conditions are verified.</p>
           <button type="button" onClick={onRefresh} className="rounded-xl border border-ent-line px-4 py-2 text-sm font-medium text-ent-ink hover:bg-ent-pale">Check application status</button>
-          <p className="text-xs text-ent-muted">You can return to this application after signing in again.</p>
-          <a href="/Professional" className="inline-block text-sm font-semibold text-ent-bronze hover:underline">Return to professional sign in</a>
         </div>
       </Shell>
     );
