@@ -133,6 +133,18 @@ serve(async (request) => {
     if (anchorError || !anchor) {
       return jsonResponse({ error: 'Could not compute the billing anchor date.' }, 400);
     }
+    // Fail closed at the month-end boundary until the approved database/RPC,
+    // Stripe trial_end, subscription metadata, and user disclosure all agree
+    // on one effective first-of-month billing anchor. Never submit a date
+    // Stripe will reject or silently alter the customer's disclosed date.
+    const MIN_TRIAL_LEAD_SECONDS = 48 * 60 * 60 + 5 * 60;
+    if (!Number.isSafeInteger(Number(anchor.anchor_unix)) ||
+        Number(anchor.anchor_unix) < Math.floor(Date.now() / 1000) + MIN_TRIAL_LEAD_SECONDS) {
+      return jsonResponse({
+        error: 'The next monthly billing date is too close to safely establish the Stripe subscription. The approved first-of-month rollover correction has not yet been applied to the billing anchor; checkout is temporarily unavailable. No charge was created.',
+        code: 'MONTHLY_BILLING_ANCHOR_ROLLOVER_REQUIRED',
+      }, 409);
+    }
 
     let orgName = 'Enterprise License';
     try {
