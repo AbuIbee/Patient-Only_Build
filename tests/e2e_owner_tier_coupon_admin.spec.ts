@@ -94,13 +94,21 @@ test.describe('Platform Owner tier/coupon administration and exception review (M
       const appRow = page.locator('li', { hasText: 'Admin Test Applicant' });
       await appRow.getByRole('button', { name: 'Confirm distinct — proceed to agreements' }).click();
       await expect(page.getByText('Confirmed distinct — application proceeds to agreements.')).toBeVisible({ timeout: 10000 });
-      expect(sql(`SELECT status FROM professional_applications WHERE id='${appId}';`)).toBe('agreements_pending');
+      // Owner-directed acceptance requirement (2026-10-31, migration
+      // 20261031010000): confirming the exception as genuinely distinct
+      // now ALSO auto-provisions the organization immediately -- no
+      // second, separate manual approval step -- landing on 'approved'
+      // with a real organization, not the old 'agreements_pending'
+      // resting state with none.
+      expect(sql(`SELECT status FROM professional_applications WHERE id='${appId}';`)).toBe('approved');
 
       sql(`DELETE FROM promo_coupon_catalog WHERE code='ADMINTEST${stamp}';`);
     } finally {
       sql(`
         DELETE FROM professional_application_events WHERE application_id IN (SELECT id FROM professional_applications WHERE applicant_user_id='${applicantId}');
         DELETE FROM professional_applications WHERE applicant_user_id='${applicantId}';
+        DELETE FROM organization_licenses WHERE organization_id IN (SELECT id FROM organizations WHERE name='${orgName}');
+        DELETE FROM organization_memberships WHERE organization_id IN (SELECT id FROM organizations WHERE name='${orgName}');
         DELETE FROM organizations WHERE name='${orgName}';
       `);
       await fetch(`${API_BASE}/auth/v1/admin/users/${ownerId}`, { method: 'DELETE', headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` } });

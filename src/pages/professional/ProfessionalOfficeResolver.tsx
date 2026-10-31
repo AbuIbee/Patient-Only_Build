@@ -372,15 +372,33 @@ export default function ProfessionalOfficeResolver() {
     }
     // MMA-PROF-ONBOARD-004 -- extended with the self-service lifecycle's
     // own non-terminal/informative states (migration 162), additive to
-    // the original list. 'active'/'approved' are deliberately excluded:
-    // by the time a license is active, provisioning has already
-    // created a real organization + Director membership, so
-    // getMyOrganizations() picks the user up before this fallback is
-    // ever reached at all. 'draft'/'withdrawn' stay excluded too --
-    // falling through to AccessRequiredState lets the applicant start
-    // over, unchanged from the original behavior.
+    // the original list.
+    //
+    // CONFIRMED REGRESSION, self-found while implementing automatic
+    // self-service organization provisioning (2026-10-31): 'approved'
+    // used to be safely excluded here on the reasoning that "by the
+    // time a license is active, provisioning has already created a
+    // real organization + Director membership, so getMyOrganizations()
+    // picks the user up before this fallback is ever reached at all."
+    // That reasoning depended on platform_owner_approve_director_
+    // application() creating the Director's membership as 'active'
+    // immediately on approval -- exactly the Issue #3 P0-01 defect
+    // (migration 20261031000100) that was fixed to create it as
+    // 'invited' instead, promoted to 'active' only once billing and
+    // agreements are independently verified. Since that fix, EVERY
+    // 'approved' application has availableOffices.length === 0 until
+    // activation, so excluding 'approved' here meant every one of them
+    // silently fell through to the generic "Organization access
+    // required" screen instead of their real status -- risking
+    // confusing an already-approved applicant into starting a second,
+    // duplicate application. 'active' stays correctly excluded: once
+    // truly active the membership IS 'active', so getMyOrganizations()
+    // picks the user up before this fallback is reached, exactly as the
+    // original reasoning intended. 'draft'/'withdrawn' stay excluded
+    // too -- falling through to AccessRequiredState lets the applicant
+    // start over, unchanged from the original behavior.
     if (myApplication && [
-      'pending_review', 'info_required', 'resubmitted', 'rejected',
+      'pending_review', 'info_required', 'resubmitted', 'rejected', 'approved',
       'auto_verification_pending', 'manual_review', 'agreements_pending', 'agreements_executed',
       'payment_authorization_pending', 'payment_verified', 'provisioning_pending', 'canceled',
     ].includes(myApplication.status)) {

@@ -99,44 +99,64 @@ test.describe('Professional access-required states (Phase B)', () => {
       await page.getByLabel('Typed signature').fill('Access Founder');
       await page.getByRole('button', { name: 'Submit application' }).click();
 
-      // The resolver's own refresh() picks up the new agreements_pending
-      // application and immediately swaps to the full ApplicationStatusPage
-      // -- superseding SelfServiceApplicationFlow's own brief inline result
-      // screen before it is ever the settled state, which is the correct,
-      // intended behavior (same pattern CreateOrgCard originally had here).
-      // CONFIRMED STALE EXPECTATION, found by actually driving this flow
-      // in a real browser: ApplicationStatusPage.tsx's agreements_pending
-      // heading reads "Application verified — agreements pending" --
-      // accurate, since billing authorization is explicitly gated on
-      // agreement execution completing first, not concurrent with it.
-      // This test's expected string predates that copy.
-      await expect(page.getByRole('heading', { name: 'Application verified — agreements pending' })).toBeVisible({ timeout: 15000 });
-      // The application exists and is agreements_pending, not an active membership/org -- no dashboard chrome anywhere.
+      // The resolver's own refresh() picks up the new application and
+      // immediately swaps to the full ApplicationStatusPage -- superseding
+      // SelfServiceApplicationFlow's own brief inline result screen before
+      // it is ever the settled state, which is the correct, intended
+      // behavior (same pattern CreateOrgCard originally had here).
+      //
+      // Owner-directed acceptance requirement (2026-10-31): a verified
+      // self-service application is now auto-provisioned a real
+      // organization and Director membership (status='invited', never
+      // 'active') with ZERO Platform Owner action, landing on 'approved'
+      // rather than 'agreements_pending' -- the organization now exists;
+      // only agreement execution and billing remain, and the Director's
+      // membership stays 'invited' until both independently verify
+      // (Issue #3 P0-01 is unaffected).
+      await expect(page.getByRole('heading', { name: 'Application approved — agreements pending' })).toBeVisible({ timeout: 15000 });
       const appStatus = sql(`SELECT status FROM public.professional_applications WHERE proposed_organization_name='${orgName}';`);
-      expect(appStatus).toBe('agreements_pending');
+      expect(appStatus).toBe('approved');
       const entryMethod = sql(`SELECT entry_method FROM public.professional_applications WHERE proposed_organization_name='${orgName}';`);
       expect(entryMethod).toBe('public_website');
-      expect(sql(`SELECT count(*) FROM public.organizations WHERE name='${orgName}';`)).toBe('0');
+      // The organization now exists (auto-provisioned) -- but the
+      // Director's own membership is still only 'invited', so no
+      // dashboard chrome is reachable yet (P0-01 unaffected).
+      expect(sql(`SELECT count(*) FROM public.organizations WHERE name='${orgName}';`)).toBe('1');
+      expect(sql(`SELECT m.status FROM public.organization_memberships m JOIN public.organizations o ON o.id=m.organization_id WHERE o.name='${orgName}' AND m.org_role='director';`)).toBe('invited');
       await expect(page.getByText('Director Dashboard')).toHaveCount(0);
 
-      // CONFIRMED REGRESSION (commit 4e872535), verified live: logout from
-      // this exact agreements_pending screen used to always clear local
-      // session state regardless of the remote signOut() result; that
-      // commit made it conditional on the API call succeeding, which
-      // could strand a user in an authenticated UI if only that one call
-      // failed. Fixed to always clear local state; confirmed here with a
-      // real click, not just a code read -- it must navigate back to the
-      // sign-in page and leave no authenticated session behind.
-      await page.getByRole('button', { name: 'Logout' }).click();
+      // CONFIRMED REGRESSION (commit 4e872535), verified live: logout
+      // used to always clear local session state regardless of the
+      // remote signOut() result; that commit made it conditional on the
+      // API call succeeding, which could strand a user in an
+      // authenticated UI if only that one call failed. Fixed to always
+      // clear local state.
+      //
+      // Commit a93aa901 added a SECOND, inline "Sign out and return to
+      // sign in" action directly on this screen (showSignInAction),
+      // calling the exact same handleLogout(). Tested here explicitly,
+      // separately from the header's own pre-existing "Logout" button
+      // (already covered elsewhere) -- it must terminate the session
+      // and return the user to the real login screen, with a real
+      // click, not just a code read.
+      await page.getByRole('button', { name: 'Sign out and return to sign in' }).click();
       await expect(page).toHaveURL(/\/Professional$/, { timeout: 10000 });
       await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible();
     } finally {
       const quoteId = sql(`SELECT (application_details->>'originatingQuoteId')::uuid FROM public.professional_applications WHERE proposed_organization_name='${orgName}';`);
+      const orgId = sql(`SELECT id FROM public.organizations WHERE name='${orgName}';`);
       sql(`
         DELETE FROM public.professional_application_events WHERE application_id IN (SELECT id FROM public.professional_applications WHERE proposed_organization_name='${orgName}');
         DELETE FROM public.professional_applications WHERE proposed_organization_name='${orgName}';
         DELETE FROM public.sales_quotes WHERE id='${quoteId}';
       `);
+      if (orgId) {
+        sql(`
+          DELETE FROM public.organization_licenses WHERE organization_id='${orgId}';
+          DELETE FROM public.organization_memberships WHERE organization_id='${orgId}';
+          DELETE FROM public.organizations WHERE id='${orgId}';
+        `);
+      }
       await deleteUser(id);
     }
   });

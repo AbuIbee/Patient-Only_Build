@@ -180,6 +180,30 @@ export default function ApplicationStatusPage({ application, onRefresh }: { appl
     );
   }
 
+  // CONFIRMED GAP (found while implementing automatic self-service
+  // organization provisioning, 2026-10-31): 'approved' had no branch
+  // here at all and fell through to the bare generic fallback below --
+  // true both for this new auto-provisioned path and for the
+  // pre-existing Platform-Owner-approval path. From the applicant's own
+  // point of view 'approved' and 'agreements_pending' require the
+  // identical next action (none -- agreement signing is not yet
+  // available in this workspace for either path), so the same
+  // informative content applies; the only real difference is that an
+  // organization now exists, which this copy says honestly.
+  if (application.status === 'approved') {
+    return (
+      <Shell showSignInAction>
+        <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-3">
+          <Clock className="w-10 h-10 text-ent-forest mx-auto" />
+          <h1 className="text-lg font-bold text-ent-ink">Application approved — agreements pending</h1>
+          <p className="text-sm text-ent-text">Your application was verified and your organization has been created. The required license agreement and Business Associate Agreement must be executed before billing authorization can begin.</p>
+          <p className="text-sm text-ent-muted">Agreement signing is not yet available in this workspace. Your license remains inactive until the required agreements and applicable billing conditions are verified.</p>
+          <button type="button" onClick={onRefresh} className="rounded-xl border border-ent-line px-4 py-2 text-sm font-medium text-ent-ink hover:bg-ent-pale">Check application status</button>
+        </div>
+      </Shell>
+    );
+  }
+
   if (application.status === 'agreements_executed' || application.status === 'payment_authorization_pending') {
     return (
       <Shell>

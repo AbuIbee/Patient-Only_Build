@@ -107,19 +107,37 @@ test.describe('Self-service Director onboarding (MMA-PROF-ONBOARD-004)', () => {
     await expect(page.getByText('Application verified — agreements next')).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(/not yet connected to a live provider/i)).toBeVisible();
 
+    // Owner-directed acceptance requirement (2026-10-31): a verified
+    // self-service application is now auto-provisioned a real
+    // organization with zero Platform Owner action, landing on
+    // 'approved' rather than 'agreements_pending' -- see migration
+    // 20261031010000. The Director's own membership stays 'invited'
+    // until billing and agreements independently verify (Issue #3
+    // P0-01 unaffected).
     const status = sql(`SELECT status FROM professional_applications WHERE contact_email='${email}';`);
-    expect(status).toBe('agreements_pending');
+    expect(status).toBe('approved');
     const feeSnapshot = sql(`SELECT annual_license_fee_snapshot_cents FROM professional_applications WHERE contact_email='${email}';`);
     expect(feeSnapshot).toBe('29900');
     const entryMethod = sql(`SELECT entry_method FROM professional_applications WHERE contact_email='${email}';`);
     expect(entryMethod).toBe('public_website');
+    const orgName = sql(`SELECT proposed_organization_name FROM professional_applications WHERE contact_email='${email}';`);
+    expect(sql(`SELECT count(*) FROM organizations WHERE name='${orgName}';`)).toBe('1');
+    expect(sql(`SELECT m.status FROM organization_memberships m JOIN organizations o ON o.id=m.organization_id WHERE o.name='${orgName}' AND m.org_role='director';`)).toBe('invited');
 
     const quoteId = sql(`SELECT (application_details->>'originatingQuoteId')::uuid FROM professional_applications WHERE contact_email='${email}';`);
+    const orgId = sql(`SELECT id FROM organizations WHERE name='${orgName}';`);
     sql(`
       DELETE FROM enterprise_coupon_redemptions WHERE application_id IN (SELECT id FROM professional_applications WHERE contact_email='${email}');
       DELETE FROM professional_application_events WHERE application_id IN (SELECT id FROM professional_applications WHERE contact_email='${email}');
       DELETE FROM professional_applications WHERE contact_email='${email}';
       DELETE FROM sales_quotes WHERE id = '${quoteId}';
     `);
+    if (orgId) {
+      sql(`
+        DELETE FROM organization_licenses WHERE organization_id='${orgId}';
+        DELETE FROM organization_memberships WHERE organization_id='${orgId}';
+        DELETE FROM organizations WHERE id='${orgId}';
+      `);
+    }
   });
 });
