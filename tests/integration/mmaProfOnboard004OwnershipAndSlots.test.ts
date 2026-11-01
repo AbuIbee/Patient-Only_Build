@@ -62,11 +62,22 @@ afterAll(async () => {
 // row at a given tier, bypassing the full application ceremony -- this
 // test's own subject is slot ENFORCEMENT at approval time, not the
 // provisioning path itself (covered separately).
-function makeTierOrg(tierCode: string, specialistSlots: number, orgName: string): string {
+//
+// HCN-MASTER-REMEDIATION-20261101 Phase E: specialistSlots is no longer a
+// caller-supplied parameter. It previously hardcoded 'complete' -> 2,
+// silently drifting stale the moment migration 20261030020000 corrected
+// the real license_tier_catalog row to 3 (the owner-approved commercial
+// term) -- this test would have kept passing against the WRONG number
+// forever, since it never read the catalog it was meant to represent.
+// Reading it live from license_tier_catalog means this test tracks
+// whatever the authoritative catalog says, permanently, not a number
+// copied once and never revisited.
+function makeTierOrg(tierCode: string, orgName: string): { orgId: string; specialistSlots: number } {
   const orgId = sql(`INSERT INTO organizations (name, package_type, created_by) VALUES ('${orgName}', 'integrated_care', '${ids.director}') RETURNING id;`);
   sql(`INSERT INTO organization_memberships (organization_id, user_id, org_role, status, invited_by) VALUES ('${orgId}', '${ids.director}', 'director', 'active', '${ids.director}');`);
+  const specialistSlots = Number(sql(`SELECT specialist_slot_count FROM license_tier_catalog WHERE tier_code = '${tierCode}';`));
   sql(`INSERT INTO organization_licenses (organization_id, licensed_seats, covered_patient_capacity, status, license_tier_code, specialist_slot_count) VALUES ('${orgId}', 10, 100, 'active', '${tierCode}', ${specialistSlots});`);
-  return orgId;
+  return { orgId, specialistSlots };
 }
 
 // Creates a BRAND-NEW specialist applicant for every call -- reusing
@@ -96,15 +107,17 @@ async function submitAndVerifySpecialistApplication(orgId: string, office: 'medi
 }
 
 describe('MMA-PROF-ONBOARD-004 Organization Owner/Director separation and specialist slots (migration 162)', () => {
-  it('an Essential org (0 specialist slots) cannot approve any medical_professional or therapist application', async () => {
-    const orgId = makeTierOrg('essential', 0, `Essential Slots Org ${stamp}`);
+  it('an Essential org (0 specialist slots, per the real license_tier_catalog) cannot approve any medical_professional or therapist application', async () => {
+    const { orgId, specialistSlots } = makeTierOrg('essential', `Essential Slots Org ${stamp}`);
+    expect(specialistSlots).toBe(0);
     const appId = await submitAndVerifySpecialistApplication(orgId, 'medical_professional');
     const [status] = await rpc('director_approve_application', { p_application_id: appId }, tok.director);
     expect(status).toBe(400);
   });
 
-  it('a Plus org (1 specialist slot) allows exactly one specialist approval, shared across medical and therapy, then blocks the next', async () => {
-    const orgId = makeTierOrg('plus', 1, `Plus Slots Org ${stamp}`);
+  it('a Plus org (1 specialist slot, per the real license_tier_catalog) allows exactly one specialist approval, shared across medical and therapy, then blocks the next', async () => {
+    const { orgId, specialistSlots } = makeTierOrg('plus', `Plus Slots Org ${stamp}`);
+    expect(specialistSlots).toBe(1);
     const appA = await submitAndVerifySpecialistApplication(orgId, 'medical_professional');
     const [statusA] = await rpc('director_approve_application', { p_application_id: appA }, tok.director);
     expect(statusA).toBe(200);
@@ -117,12 +130,55 @@ describe('MMA-PROF-ONBOARD-004 Organization Owner/Director separation and specia
     expect(statusB).toBe(400);
   });
 
-  it('a Complete org (2 specialist slots) allows one of each specialty, then blocks a third', async () => {
-    const orgId = makeTierOrg('complete', 2, `Complete Slots Org ${stamp}`);
+  // HCN-MASTER-REMEDIATION-20261101 Phase E: this test previously
+  // hardcoded 2 specialist slots for 'complete' and never asserted the
+  // 4th-application rejection at all -- stale the moment migration
+  // 20261030020000 corrected the real catalog value to 3 (the
+  // owner-approved commercial term: Complete = 3 specialist slots).
+  // Now reads the real catalog value and proves the FULL boundary: all
+  // 3 slots fillable (any mix of medical/therapist, confirming the
+  // shared-pool model), the 4th correctly rejected.
+  it('a Complete org (3 specialist slots, per the real license_tier_catalog) allows three specialists in any mix, then blocks a fourth', async () => {
+    const { orgId, specialistSlots } = makeTierOrg('complete', `Complete Slots Org ${stamp}`);
+    expect(specialistSlots).toBe(3);
+
     const appA = await submitAndVerifySpecialistApplication(orgId, 'medical_professional');
     expect((await rpc('director_approve_application', { p_application_id: appA }, tok.director))[0]).toBe(200);
     const appB = await submitAndVerifySpecialistApplication(orgId, 'therapist');
     expect((await rpc('director_approve_application', { p_application_id: appB }, tok.director))[0]).toBe(200);
+    const appC = await submitAndVerifySpecialistApplication(orgId, 'medical_professional');
+    expect((await rpc('director_approve_application', { p_application_id: appC }, tok.director))[0]).toBe(200);
+
+    const appD = await submitAndVerifySpecialistApplication(orgId, 'therapist');
+    const [statusD] = await rpc('director_approve_application', { p_application_id: appD }, tok.director);
+    expect(statusD).toBe(400);
+  });
+
+  // HCN-MASTER-REMEDIATION-20261101 Phase E: "concurrent activations
+  // cannot exceed capacity." director_approve_application() takes
+  // `PERFORM licensed_seats FROM organization_licenses WHERE
+  // organization_id = ... FOR UPDATE` unconditionally, early, before its
+  // later (unlocked) specialist_slot_count SELECT -- since both target
+  // the SAME row, the row lock already acquired serializes any second
+  // concurrent call for the same organization. Proven here with a REAL
+  // race (rpc() uses fetch(), genuinely concurrent under Promise.all --
+  // unlike the sql() helper, which is synchronous via execSync and could
+  // never actually race), not merely reasoned about from the code.
+  it('two specialist approvals racing for the LAST slot of a Plus org (1 slot) resolve to exactly one success and one rejection, never both succeeding', async () => {
+    const { orgId, specialistSlots } = makeTierOrg('plus', `Plus Race Org ${stamp}`);
+    expect(specialistSlots).toBe(1);
+    const appA = await submitAndVerifySpecialistApplication(orgId, 'medical_professional');
+    const appB = await submitAndVerifySpecialistApplication(orgId, 'therapist');
+
+    const [[statusA], [statusB]] = await Promise.all([
+      rpc('director_approve_application', { p_application_id: appA }, tok.director),
+      rpc('director_approve_application', { p_application_id: appB }, tok.director),
+    ]) as [[number, unknown], [number, unknown]];
+
+    const statuses = [statusA, statusB].sort();
+    expect(statuses).toEqual([200, 400]);
+    const specialistCount = sql(`SELECT count(*) FROM organization_memberships WHERE organization_id='${orgId}' AND status='active' AND org_role IN ('medical_professional','therapist');`);
+    expect(specialistCount).toBe('1');
   });
 
   it('a legacy (non-tier) organization is completely unaffected by the specialist-slot model', async () => {
