@@ -14,6 +14,12 @@ AS $fn$
     AND om.user_id=auth.uid()
     AND om.status='active'
     AND om.org_role IN ('caregiver','therapist','medical_professional')
+    AND EXISTS (
+      SELECT 1 FROM public.staff_patient_assignments spa
+      WHERE spa.organization_id=p_org AND spa.patient_id=p_patient
+        AND spa.user_id=auth.uid() AND spa.is_active=true
+        AND spa.org_role=om.org_role
+    )
     AND ol.status='active'
     AND cpm.status='active'
     AND cpm.archived_at IS NULL
