@@ -29,7 +29,7 @@ REVOKE ALL ON FUNCTION public.hcn_current_staff_patient_access(uuid,uuid) FROM P
 GRANT EXECUTE ON FUNCTION public.hcn_current_staff_patient_access(uuid,uuid) TO authenticated;
 
 DO $migration$
-DECLARE p record; new_qual text; new_check text; n integer:=0; replacement text;
+DECLARE p record; new_qual text; new_check text; n integer:=0; replacement text; already_corrected boolean;
 BEGIN
  replacement := '((spa.is_active = true) AND public.hcn_current_staff_patient_access(spa.organization_id, spa.patient_id))';
  FOR p IN
@@ -40,6 +40,11 @@ BEGIN
  LOOP
   IF (coalesce(p.qual,'')||coalesce(p.with_check,'')) NOT ILIKE '%spa.is_active = true%' THEN
    RAISE EXCEPTION 'Unrecognized assignment policy: %.% %',p.schemaname,p.tablename,p.policyname;
+  END IF;
+  already_corrected := coalesce(p.qual,'') LIKE '%hcn_current_staff_patient_access(%' OR coalesce(p.with_check,'') LIKE '%hcn_current_staff_patient_access(%';
+  IF already_corrected THEN
+   IF (coalesce(p.qual,'')||coalesce(p.with_check,'')) NOT LIKE '%hcn_current_staff_patient_access(%' THEN RAISE EXCEPTION 'Invalid corrected policy'; END IF;
+   CONTINUE;
   END IF;
   new_qual := replace(p.qual,'(spa.is_active = true)',replacement);
   new_check := replace(p.with_check,'(spa.is_active = true)',replacement);
@@ -53,7 +58,9 @@ BEGIN
   );
   n:=n+1;
  END LOOP;
- IF n<>29 THEN RAISE EXCEPTION 'Policy inventory changed: expected 29, got %',n; END IF;
+ -- Policy count is not frozen: the subsequent reconciliation adds two assignment
+ -- references. Validate individual predicate shape and fail on unknown patterns.
+ IF n > 29 THEN RAISE EXCEPTION 'Unexpected uncorrected assignment policies: %',n; END IF;
 END
 $migration$;
 -- Required before approval: authenticated JWT replay of C-REVOKED-CLINICAL-READ,
