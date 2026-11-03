@@ -11,6 +11,7 @@ import { Sparkles, LogOut, Clock, AlertCircle, XCircle, Upload } from 'lucide-re
 import { supabase } from '@/lib/supabase';
 import { useApp } from '@/store/useApp';
 import { resubmitApplication, withdrawApplication, uploadApplicationDocument, type ProfessionalApplication } from '@/services/professionalApplicationService';
+import AgreementExecutionFlow from './AgreementExecutionFlow';
 
 const OFFICE_LABEL: Record<string, string> = {
   director: 'Admin / Director', caregiver: 'Enterprise Caregiver', medical_professional: 'Medical Professional', therapist: 'Therapist Professional',
@@ -166,15 +167,26 @@ export default function ApplicationStatusPage({ application, onRefresh }: { appl
   // These are distinct server-owned lifecycle states. Do not tell an applicant
   // that agreements remain unsigned after execution, or that payment is due
   // when the backend has already moved to a later state.
+  // HCN-ONBOARDING-PRODUCTION-001 Section 1/2 -- this used to be an
+  // informational dead end ("Agreement signing is not yet available in
+  // this workspace") with no actionable next step. Now renders the
+  // real first-party signing flow (AgreementExecutionFlow): the
+  // Business Associate Agreement executes for real; the Haneen SaaS
+  // License Agreement shows an honest BLOCKED state (no approved
+  // template exists yet) rather than a fake signing form. onRefresh
+  // re-fetches the application, which will reflect the server's own
+  // status advance to 'agreements_executed' once (if) both agreements
+  // are executed.
   if (application.status === 'agreements_pending') {
     return (
       <Shell showSignInAction>
-        <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-3">
-          <Clock className="w-10 h-10 text-ent-forest mx-auto" />
-          <h1 className="text-lg font-bold text-ent-ink">Application verified — agreements pending</h1>
-          <p className="text-sm text-ent-text">Your application passed automated verification. The required license agreement and Business Associate Agreement must be executed before billing authorization can begin.</p>
-          <p className="text-sm text-ent-muted">Agreement signing is not yet available in this workspace. Your license remains inactive until the required agreements and applicable billing conditions are verified.</p>
-          <button type="button" onClick={onRefresh} className="rounded-xl border border-ent-line px-4 py-2 text-sm font-medium text-ent-ink hover:bg-ent-pale">Check application status</button>
+        <div className="space-y-4">
+          <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-2">
+            <Clock className="w-10 h-10 text-ent-forest mx-auto" />
+            <h1 className="text-lg font-bold text-ent-ink">Application verified — agreements pending</h1>
+            <p className="text-sm text-ent-text">Your application passed automated verification. Both agreements below must be executed before billing authorization can begin.</p>
+          </div>
+          <AgreementExecutionFlow application={application} onRefresh={onRefresh} />
         </div>
       </Shell>
     );
@@ -193,12 +205,13 @@ export default function ApplicationStatusPage({ application, onRefresh }: { appl
   if (application.status === 'approved') {
     return (
       <Shell showSignInAction>
-        <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-3">
-          <Clock className="w-10 h-10 text-ent-forest mx-auto" />
-          <h1 className="text-lg font-bold text-ent-ink">Application approved — agreements pending</h1>
-          <p className="text-sm text-ent-text">Your application was verified and your organization has been created. The required license agreement and Business Associate Agreement must be executed before billing authorization can begin.</p>
-          <p className="text-sm text-ent-muted">Agreement signing is not yet available in this workspace. Your license remains inactive until the required agreements and applicable billing conditions are verified.</p>
-          <button type="button" onClick={onRefresh} className="rounded-xl border border-ent-line px-4 py-2 text-sm font-medium text-ent-ink hover:bg-ent-pale">Check application status</button>
+        <div className="space-y-4">
+          <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-2">
+            <Clock className="w-10 h-10 text-ent-forest mx-auto" />
+            <h1 className="text-lg font-bold text-ent-ink">Application approved — agreements pending</h1>
+            <p className="text-sm text-ent-text">Your application was verified and your organization has been created. Both agreements below must be executed before billing authorization can begin.</p>
+          </div>
+          <AgreementExecutionFlow application={application} onRefresh={onRefresh} />
         </div>
       </Shell>
     );

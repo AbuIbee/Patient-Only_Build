@@ -91,3 +91,24 @@ export async function voidContract(contractId: string, reason: string): Promise<
   const { error } = await supabase.rpc('platform_owner_void_contract', { p_contract_id: contractId, p_reason: reason });
   return { error: error ? errMsg(error, 'Could not void this contract.') : null };
 }
+
+// HCN-ONBOARDING-PRODUCTION-001 Section 2 -- the self-service
+// counterpart to the Platform-Owner-only RPCs above. Creates AND
+// executes the contract in one call (no separate "present" step --
+// the applicant is both the presenting and signing party for their
+// own agreement). 'saas_license' always fails with an explicit,
+// honest BLOCKED error -- no approved template exists for it yet; see
+// migration 20261103000100's own header for the full evidence. 'baa'
+// executes for real against the approved, committed BAA text.
+export async function selfServiceExecuteAgreement(
+  applicationId: string, contractType: 'saas_license' | 'baa', signatoryName: string, signatoryTitle: string | null,
+  consentToElectronicRecords: boolean,
+): Promise<{ data: EnterpriseContract | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('self_service_execute_agreement', {
+    p_application_id: applicationId, p_contract_type: contractType, p_signatory_name: signatoryName,
+    p_signatory_title: signatoryTitle, p_consent_to_electronic_records: consentToElectronicRecords,
+    p_user_agent: typeof navigator === 'undefined' ? null : navigator.userAgent,
+  });
+  if (error || !data) return { data: null, error: errMsg(error, 'Could not execute this agreement.') };
+  return { data: mapContract(data as Record<string, unknown>), error: null };
+}
