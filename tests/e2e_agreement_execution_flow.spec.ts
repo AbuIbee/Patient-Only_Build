@@ -95,4 +95,90 @@ test.describe('Real-browser agreement execution (HCN-ONBOARDING-PRODUCTION-001)'
       await fetch(`${API_BASE}/auth/v1/admin/users/${id}`, { method: 'DELETE', headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` } });
     }
   });
+
+  // P0 override (2026-11-03): explicit acceptance scenarios named in
+  // the follow-up directive -- refresh, logout/login (a FRESH session,
+  // never a cached/stale one), browser back/forward, and resuming a
+  // PRE-EXISTING application (one that was already sitting at
+  // 'approved' before this fix ever shipped, modeled by seeding it with
+  // no special marker distinguishing it from a brand-new one -- exactly
+  // what a real already-stuck production application looks like) --
+  // never requiring re-registration or a duplicate organization.
+  test('a pre-existing approved application survives refresh, logout/login, and browser back/forward without ever regressing to the dead-end screen or requiring re-registration', async ({ page }) => {
+    const email = `agreement-e2e-resume-${stamp}@local.test`;
+    const orgName = `Agreement E2E Resume Org ${stamp}`;
+    const id = await mkUser(email);
+    try {
+      sql(`UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${id}';`);
+
+      // Pre-existing application: created directly, identical in every
+      // column to one that was already stuck before this fix shipped --
+      // no "already signed" flag, no special-cased recovery path.
+      const prospectId = sql(`INSERT INTO sales_prospects(contact_name,contact_email,prospective_organization_name,status,created_by) VALUES('Resume E2E','${email}','${orgName}','quoted','${id}') RETURNING id;`);
+      const quoteId = sql(`INSERT INTO sales_quotes(prospect_id,package_type,proposed_licensed_seats,proposed_covered_patient_capacity,annual_license_fee,billing_cadence,status,created_by) VALUES('${prospectId}','integrated_care',10,10,399,'annual','sent','${id}') RETURNING id;`);
+      const appIdSql = sql(`
+        INSERT INTO professional_applications (applicant_user_id, requested_office, proposed_organization_name, proposed_package_type, legal_name, contact_email, status, platform_owner_approval_required, entry_method, selected_tier_code, application_details)
+        VALUES ('${id}', 'director', '${orgName}', 'integrated_care', 'Resume E2E Applicant', '${email}', 'approved', false, 'public_website', 'essential', jsonb_build_object('originatingQuoteId', '${quoteId}'))
+        RETURNING id;
+      `);
+      const orgCountBefore = sql(`SELECT count(*) FROM organizations WHERE name='${orgName}';`);
+      expect(orgCountBefore).toBe('0'); // confirms: no org exists yet -- nothing to duplicate
+
+      // Sign in (not a fresh registration) and reach the SAME existing application directly.
+      await page.goto(`${BASE}/Professional`);
+      await page.getByPlaceholder('you@example.com').fill(email);
+      await page.getByPlaceholder('Your password').fill(PW);
+      await page.getByRole('button', { name: /sign in/i }).click();
+      await expect(page.getByRole('heading', { name: 'Application approved — agreements pending' })).toBeVisible({ timeout: 15000 });
+
+      await page.locator('#baa-signatory-name').fill('Resume E2E Applicant');
+      await page.getByText('I have read and agree to the complete Business Associate Agreement').click();
+      await page.getByText('I consent to conduct this transaction and sign this agreement electronically').click();
+      await page.getByRole('button', { name: 'Sign Business Associate Agreement' }).click();
+      await expect(page.getByText('Business Associate Agreement — executed')).toBeVisible({ timeout: 10000 });
+
+      // 1. Refresh preserves the signed state (never re-prompts, never dead-ends).
+      await page.reload();
+      await expect(page.getByRole('heading', { name: 'Application approved — agreements pending' })).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText('Business Associate Agreement — executed')).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText('Agreement signing is not yet available in this workspace')).toHaveCount(0);
+
+      // 2. Logout, then a genuinely fresh login (a new session, never a cached token) -- still resumes correctly.
+      await page.getByRole('button', { name: 'Logout' }).click();
+      await expect(page.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible({ timeout: 10000 });
+      await page.getByPlaceholder('you@example.com').fill(email);
+      await page.getByPlaceholder('Your password').fill(PW);
+      await page.getByRole('button', { name: /sign in/i }).click();
+      await expect(page.getByRole('heading', { name: 'Application approved — agreements pending' })).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText('Business Associate Agreement — executed')).toBeVisible({ timeout: 10000 });
+
+      // 3. Direct navigation to /Professional (not through any link) resolves correctly.
+      await page.goto(`${BASE}/Professional`);
+      await expect(page.getByRole('heading', { name: 'Application approved — agreements pending' })).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText('Business Associate Agreement — executed')).toBeVisible({ timeout: 10000 });
+
+      // 4. Browser back/forward cannot bypass or regress the resolved state.
+      await page.goto(`${BASE}/Professional/Admin`); // a route this account is not authorized for yet
+      await page.waitForTimeout(500);
+      await page.goBack();
+      await expect(page.getByText('Business Associate Agreement — executed')).toBeVisible({ timeout: 10000 });
+      await page.goForward();
+      await page.waitForTimeout(500);
+      await expect(page.getByText('Director Dashboard')).toHaveCount(0); // never granted merely by navigating there
+
+      // Confirms the whole journey never created a duplicate organization or a second application.
+      expect(sql(`SELECT count(*) FROM organizations WHERE name='${orgName}';`)).toBe('0');
+      expect(sql(`SELECT count(*) FROM professional_applications WHERE contact_email='${email}';`)).toBe('1');
+
+      sql(`
+        DELETE FROM enterprise_contracts WHERE quote_id='${quoteId}';
+        DELETE FROM professional_application_events WHERE application_id='${appIdSql}';
+        DELETE FROM professional_applications WHERE id='${appIdSql}';
+        DELETE FROM sales_quotes WHERE id='${quoteId}';
+        DELETE FROM sales_prospects WHERE id='${prospectId}';
+      `);
+    } finally {
+      await fetch(`${API_BASE}/auth/v1/admin/users/${id}`, { method: 'DELETE', headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` } });
+    }
+  });
 });
