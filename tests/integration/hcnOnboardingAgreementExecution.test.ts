@@ -6,7 +6,7 @@
 // that billing authorization cannot begin without both.
 //
 // Requires the local Docker Supabase stack. Run with `npm run test:integration`.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
 
 const PW = 'AgreementExec9!';
