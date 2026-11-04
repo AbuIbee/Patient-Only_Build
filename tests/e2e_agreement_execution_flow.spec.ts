@@ -60,12 +60,20 @@ test.describe('Real-browser agreement execution (HCN-ONBOARDING-PRODUCTION-001)'
 
       await expect(page.getByRole('heading', { name: 'Application approved — agreements pending' })).toBeVisible({ timeout: 15000 });
       await expect(page.getByText('Business Associate Agreement — requires your signature')).toBeVisible();
-      await expect(page.getByText('Haneen SaaS License Agreement — not yet available')).toBeVisible();
+      await expect(page.getByText('Haneen SaaS License Agreement — review and sign')).toBeVisible();
 
       // Starts already expanded (there is no existing contract yet) --
       // the full text is visible without needing to click anything.
       await expect(page.getByText('My Memoria Ally Business Associate Agreement')).toBeVisible();
       await expect(page.getByText(/Salahuddeen Enterprises LLC \("Business Associate"\)/)).toBeVisible();
+
+      // HCN-SAAS-1.0: the complete, real agreement text is shown for
+      // review, but signing stays disabled with a precise
+      // configuration message -- never a fake, clickable "sign"
+      // button, and never silently absent.
+      await expect(page.getByText('Agreement Version HCN-SAAS-1.0')).toBeVisible();
+      await expect(page.getByText(/Haneen Care Network's lawful contracting entity has not yet been legally confirmed/)).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Signing temporarily disabled' })).toBeDisabled();
 
       await page.locator('#baa-signatory-name').fill('Agreement E2E Applicant');
       await page.locator('#baa-signatory-title').fill('Founder');

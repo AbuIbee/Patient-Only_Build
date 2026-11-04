@@ -25,6 +25,7 @@ export interface EnterpriseContract {
   executedAt: string | null;
   voidedReason: string | null;
   supersedesContractId: string | null;
+  contentSha256: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -41,7 +42,7 @@ function mapContract(r: Record<string, unknown>): EnterpriseContract {
     status: r.status as ContractStatus, presentedAt: r.presented_at as string | null,
     executionMethod: r.execution_method as string | null, executionEvidenceReference: r.execution_evidence_reference as string | null,
     executedBy: r.executed_by as string | null, executedAt: r.executed_at as string | null, voidedReason: r.voided_reason as string | null,
-    supersedesContractId: r.supersedes_contract_id as string | null,
+    supersedesContractId: r.supersedes_contract_id as string | null, contentSha256: (r.content_sha256 as string | null) ?? null,
     createdBy: r.created_by as string, createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
 }
@@ -92,14 +93,16 @@ export async function voidContract(contractId: string, reason: string): Promise<
   return { error: error ? errMsg(error, 'Could not void this contract.') : null };
 }
 
-// HCN-ONBOARDING-PRODUCTION-001 Section 2 -- the self-service
-// counterpart to the Platform-Owner-only RPCs above. Creates AND
-// executes the contract in one call (no separate "present" step --
-// the applicant is both the presenting and signing party for their
-// own agreement). 'saas_license' always fails with an explicit,
-// honest BLOCKED error -- no approved template exists for it yet; see
-// migration 20261103000100's own header for the full evidence. 'baa'
-// executes for real against the approved, committed BAA text.
+// HCN-ONBOARDING-PRODUCTION-001 Section 2 / HCN-SAAS-1.0 -- the
+// self-service counterpart to the Platform-Owner-only RPCs above.
+// Creates AND executes the contract in one call (no separate
+// "present" step -- the applicant is both the presenting and signing
+// party for their own agreement). 'baa' executes for real against
+// the approved, committed BAA text. 'saas_license' now has an
+// approved template (HCN-SAAS-1.0, migration 20261104000100) but
+// still fails with an explicit, honest BLOCKED configuration error --
+// signature submission stays disabled until Haneen Care Network's
+// lawful contracting entity is confirmed (hcn_saas_contracting_entity_confirmed()).
 export async function selfServiceExecuteAgreement(
   applicationId: string, contractType: 'saas_license' | 'baa', signatoryName: string, signatoryTitle: string | null,
   consentToElectronicRecords: boolean,
