@@ -217,15 +217,20 @@ export default function ApplicationStatusPage({ application, onRefresh }: { appl
     );
   }
 
+  // The post-signature payment-authorization holding page was permanently
+  // removed on owner instruction (2026-11-04). Production activates eligible
+  // self-service Director organizations atomically after both agreements are
+  // executed. This branch is strictly an exceptional recovery state, not a
+  // payment gate: never claim a charge is due or direct a second payment.
   if (application.status === 'agreements_executed' || application.status === 'payment_authorization_pending') {
     return (
-      <Shell>
-        <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-3">
-          <Clock className="w-10 h-10 text-ent-forest mx-auto" />
-          <h1 className="text-lg font-bold text-ent-ink">Agreements complete — payment authorization pending</h1>
-          <p className="text-sm text-ent-text">Your agreement execution has been recorded. Payment authorization must be completed and independently confirmed before your license can activate.</p>
-          <p className="text-sm text-ent-muted">If you have already completed payment authorization, check again for an updated status. Do not submit another payment solely because this screen has not updated.</p>
-          <button type="button" onClick={onRefresh} className="rounded-xl border border-ent-line px-4 py-2 text-sm font-medium text-ent-ink hover:bg-ent-pale">Check application status</button>
+      <Shell showSignInAction>
+        <div role="alert" className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-3">
+          <AlertCircle className="w-10 h-10 text-ent-bronze mx-auto" />
+          <h1 className="text-lg font-bold text-ent-ink">Workspace activation needs attention</h1>
+          <p className="text-sm text-ent-text">Your signed agreements are on file. Your workspace has not finished opening. Retry access; if this persists, contact Haneen Care Network support and provide your application reference.</p>
+          {application.applicationReference && <p className="text-xs text-ent-muted">Reference: {application.applicationReference}</p>}
+          <button type="button" onClick={onRefresh} className="rounded-xl border border-ent-line px-4 py-2 text-sm font-medium text-ent-ink hover:bg-ent-pale">Retry workspace access</button>
         </div>
       </Shell>
     );
