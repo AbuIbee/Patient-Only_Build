@@ -4436,7 +4436,7 @@ export interface Database {
           p_consent_to_electronic_records: boolean
           p_user_agent?: string | null
         }
-        Returns: Database['public']['Tables']['enterprise_contracts']['Row']
+        Returns: Record<string, unknown>
       }
       // HCN 2026-11-04 manager-created employee lifecycle.
       hcn_activate_my_caregiver_invites: {
