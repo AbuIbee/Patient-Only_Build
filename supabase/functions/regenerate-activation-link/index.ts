@@ -103,15 +103,38 @@ serve(async (request) => {
       Array.isArray(enterprise.data) &&
       enterprise.data.some((p: { patient_id: string; org_role: string }) =>
         p.patient_id === patientId && p.org_role === 'caregiver');
-    if (!isResidentialCaregiver && !isAssignedEnterpriseCaregiver) {
-      return jsonResponse({
-        error: 'Only a currently assigned, authorized caregiver may resend this patient setup email.',
-      }, 403);
-    }
-
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    // A Director/Owner may resend only for a currently covered patient of
+    // their own organization. Check real authenticated manager RPCs,
+    // never a client-provided role or user_metadata.
+    let isAuthorizedManager = false;
+    if (!isResidentialCaregiver && !isAssignedEnterpriseCaregiver) {
+      const { data: coverageRows, error: coverageError } = await adminClient
+        .from('covered_patient_memberships')
+        .select('organization_id')
+        .eq('patient_id', patientId)
+        .eq('status','active');
+      if (!coverageError && Array.isArray(coverageRows)) {
+        for (const coverage of coverageRows) {
+          const [director, owner] = await Promise.all([
+            callerClient.rpc('is_active_org_director',{p_org_id:coverage.organization_id}),
+            callerClient.rpc('am_i_org_owner',{p_org_id:coverage.organization_id}),
+          ]);
+          if ((!director.error && director.data === true) ||
+              (!owner.error && owner.data === true)) {
+            isAuthorizedManager = true; break;
+          }
+        }
+      }
+    }
+    if (!isResidentialCaregiver && !isAssignedEnterpriseCaregiver && !isAuthorizedManager) {
+      return jsonResponse({
+        error: 'Only an authorized caregiver or organization manager may resend patient setup email.',
+      }, 403);
+    }
 
     const { data: patientProfile, error: profileError } = await adminClient
       .from('profiles')
@@ -146,9 +169,17 @@ serve(async (request) => {
 
     // The previous generateLink() issued a raw token to the caregiver
     // and never sent the patient an email. Send via Auth itself instead.
-    const { error: sendError } = await adminClient.auth.resetPasswordForEmail(
-      patientProfile.email, { redirectTo: origin + '/activate' },
-    );
+    // Unconfirmed identities need an invitation (email confirmation +
+    // password setup). Existing confirmed users who have never signed in
+    // may use the recovery flow. Do NOT create another Auth identity.
+    const sendResult = !target.user.email_confirmed_at
+      ? await adminClient.auth.admin.inviteUserByEmail(
+          patientProfile.email, { redirectTo: origin + '/activate' },
+        )
+      : await adminClient.auth.resetPasswordForEmail(
+          patientProfile.email, { redirectTo: origin + '/activate' },
+        );
+    const sendError = sendResult.error;
     if (sendError) {
       const rateLimited = sendError.status === 429 ||
         /rate limit|too many email/i.test(sendError.message);
