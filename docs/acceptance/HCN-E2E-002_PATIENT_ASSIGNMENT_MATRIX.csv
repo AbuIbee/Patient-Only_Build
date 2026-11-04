@@ -1,13 +1,13 @@
-patient_test_id,synthetic_patient_name,planned_caregiver_id,required_specialist_ids,simulated_need,actual_patient_id,actual_caregiver_user_id,actual_org_id,actual_assignment_id,patient_activated,assigned,verified_isolation,communication_evidence,execution_status
-P01,"Farah Karim",C01,"S01|S02","Heart failure and anxiety",,,,,FALSE,FALSE,FALSE,,NOT_RUN
-P02,"Yusuf Nadir",C01,"S01|S03","Type 2 diabetes and nutrition",,,,,FALSE,FALSE,FALSE,,NOT_RUN
-P03,"Leila Sayeed",C01,"S02|S03|S04","Post-stroke mobility and therapeutic diet",,,,,FALSE,FALSE,FALSE,,NOT_RUN
-P04,"Mariam Hadi",C02,"","Arthritis and fall risk",,,,,FALSE,FALSE,FALSE,,NOT_RUN
-P05,"Samir Rami",C02,"","Visual assistance",,,,,FALSE,FALSE,FALSE,,NOT_RUN
-P06,"Amina Noor",C02,"","Respiratory support",,,,,FALSE,FALSE,FALSE,,NOT_RUN
-P07,"Tariq Basri",C03,"","Post-operative mobility",,,,,FALSE,FALSE,FALSE,,NOT_RUN
-P08,"Nadia Faris",C03,"","Memory support",,,,,FALSE,FALSE,FALSE,,NOT_RUN
-P09,"Ibrahim Tariq",C03,"","Tremor and daily assistance",,,,,FALSE,FALSE,FALSE,,NOT_RUN
-P10,"Salma Adeel",C04,"","Hearing accessibility",,,,,FALSE,FALSE,FALSE,,NOT_RUN
-P11,"Omar Rahim",C04,"","Sleep and wellbeing",,,,,FALSE,FALSE,FALSE,,NOT_RUN
-P12,"Hana Zaki",C04,"","Blood-pressure observation",,,,,FALSE,FALSE,FALSE,,NOT_RUN
+patient_test_id,synthetic_patient_name,planned_caregiver_id,required_specialist_ids,simulated_need,actual_patient_id,actual_caregiver_user_id,actual_org_id,actual_assignment_id,patient_activated,assigned,verified_isolation,communication_evidence,execution_status,intake_version,caregiver_acknowledged,caregiver_ack_timestamp,representative_id,representative_legal_basis_verified,representative_activation,patient_portal_subject_verified
+P01,"Farah Karim",C01,"S01|S02","Heart failure and anxiety",,,,,FALSE,FALSE,FALSE,,NOT_RUN,,FALSE,,,FALSE,NOT_RUN,FALSE
+P02,"Yusuf Nadir",C01,"S01|S03","Type 2 diabetes and nutrition",,,,,FALSE,FALSE,FALSE,,NOT_RUN,,FALSE,,,FALSE,NOT_RUN,FALSE
+P03,"Leila Sayeed",C01,"S02|S03|S04","Post-stroke mobility and therapeutic diet",,,,,FALSE,FALSE,FALSE,,NOT_RUN,,FALSE,,,FALSE,NOT_RUN,FALSE
+P04,"Mariam Hadi",C02,"","Arthritis and fall risk",,,,,FALSE,FALSE,FALSE,,NOT_RUN,,FALSE,,,FALSE,NOT_RUN,FALSE
+P05,"Samir Rami",C02,"","Visual assistance",,,,,FALSE,FALSE,FALSE,,NOT_RUN,,FALSE,,,FALSE,NOT_RUN,FALSE
+P06,"Amina Noor",C02,"","Respiratory support",,,,,FALSE,FALSE,FALSE,,NOT_RUN,,FALSE,,,FALSE,NOT_RUN,FALSE
+P07,"Tariq Basri",C03,"","Post-operative mobility",,,,,FALSE,FALSE,FALSE,,NOT_RUN,,FALSE,,,FALSE,NOT_RUN,FALSE
+P08,"Nadia Faris",C03,"","Memory support",,,,,FALSE,FALSE,FALSE,,NOT_RUN,,FALSE,,,FALSE,NOT_RUN,FALSE
+P09,"Ibrahim Tariq",C03,"","Tremor and daily assistance",,,,,FALSE,FALSE,FALSE,,NOT_RUN,,FALSE,,,FALSE,NOT_RUN,FALSE
+P10,"Salma Adeel",C04,"","Hearing accessibility",,,,,FALSE,FALSE,FALSE,,NOT_RUN,,FALSE,,,FALSE,NOT_RUN,FALSE
+P11,"Omar Rahim",C04,"","Sleep and wellbeing",,,,,FALSE,FALSE,FALSE,,NOT_RUN,,FALSE,,,FALSE,NOT_RUN,FALSE
+P12,"Hana Zaki",C04,"","Blood-pressure observation",,,,,FALSE,FALSE,FALSE,,NOT_RUN,,FALSE,,,FALSE,NOT_RUN,FALSE
