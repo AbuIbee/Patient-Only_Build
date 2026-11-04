@@ -101,20 +101,27 @@ serve(async (request: Request) => {
         license.status !== 'active' || !license.license_number) {
       return response(origin, 403, { error: 'This organization does not have an active caregiver-capable license' });
     }
+    const { data: identity, error: lookupError } = await admin.from('profiles')
+      .select('id').ilike('email', email).maybeSingle();
+    if (lookupError) return response(origin, 503, { error: 'Could not check employee identity' });
+    const { data: previousMembership, error: previousError } = identity?.id
+      ? await admin.from('organization_memberships').select('org_role,status')
+          .eq('organization_id',organizationId).eq('user_id',identity.id).maybeSingle()
+      : { data: null, error: null };
+    if (previousError) return response(origin, 503, { error: 'Could not verify existing employee status' });
+    const alreadyAllocated = previousMembership?.org_role === 'caregiver' &&
+      (previousMembership.status === 'invited' || previousMembership.status === 'active');
+
     const { data: memberships, error: membersError } = await admin.from('organization_memberships')
       .select('id,org_role,status').eq('organization_id',organizationId)
       .in('status', ['active', 'invited']);
     if (membersError || !memberships) return response(origin, 503, { error: 'Could not verify employee capacity' });
     const total = memberships.filter(m => m.org_role !== 'director').length;
     const caregivers = memberships.filter(m => m.org_role === 'caregiver').length;
-    if (license.licensed_seats === null || total >= license.licensed_seats ||
-        (license.max_caregiver_seats !== null && caregivers >= license.max_caregiver_seats)) {
+    if (!alreadyAllocated && (license.licensed_seats === null || total >= license.licensed_seats ||
+        (license.max_caregiver_seats !== null && caregivers >= license.max_caregiver_seats))) {
       return response(origin, 409, { error: 'No caregiver employee seats remain in this license' });
     }
-
-    const { data: identity, error: lookupError } = await admin.from('profiles')
-      .select('id').ilike('email', email).maybeSingle();
-    if (lookupError) return response(origin, 503, { error: 'Could not check employee identity' });
 
     let employeeId: string;
     let createdAuthIdentity = false;
@@ -156,14 +163,29 @@ serve(async (request: Request) => {
         message: 'Employee account created. A password-setup invitation was sent to the employee email.',
       });
     }
-    // Existing identities must never be overwritten, emailed a new password,
-    // or automatically activated. They accept the new organization invite.
+    // An existing identity is never duplicated or overwritten. For a
+    // pending employee invitation, send a normal Supabase one-time
+    // password-reset email to that identity. Its employee-invite query
+    // flag makes the isolated activation page accept ONLY that person's
+    // pending caregiver membership after the password has been saved.
+    if (membership.status === 'active') {
+      return response(origin, 200, {
+        success: true, status: 'active', existingAccount: true,
+        message: 'This employee already has active access to this organization.',
+      });
+    }
+    const { error: recoveryError } = await admin.auth.resetPasswordForEmail(email, {
+      redirectTo: SITE_ORIGIN + '/activate?employee_invite=1',
+    });
+    if (recoveryError) {
+      return response(origin, 503, {
+        error: 'Employee role was reserved, but the password-setup email could not be sent. Retry sending or contact support.',
+      });
+    }
     return response(origin, 200, {
       success: true, status: membership.status,
       existingAccount: true,
-      message: membership.status === 'active'
-        ? 'This employee already has active access to this organization.'
-        : 'An existing account was assigned an employee invitation. The employee must sign in and accept it.',
+      message: 'Employee invitation recorded. A one-time password-setup email was sent to their existing identity.',
     });
   } catch (error) {
     console.error('Caregiver employee provisioning failed', error instanceof Error ? error.name : 'unknown');
