@@ -1,24 +1,11 @@
-// regenerate-activation-link — CODEX-VERIFIED CRITICAL REMEDIATION
-// Critical 2: "Regenerate activation where authorized" + "A successful
-// claim-only retry must not leave the patient without an account-
-// activation path."
-//
-// Confirmed gap: finishCaregiverPatientClaim() (the resume-after-partial-
-// failure path) calls caregiver_claim_new_patient() directly — a plain
-// RPC, never an Edge Function — so it never generated an activation link
-// at all. A caregiver who successfully resumed a stuck registration had
-// no way to get the patient's activation link afterward. This function
-// is the single, general-purpose fix: callable right after a successful
-// resume-claim, AND callable any time later if the original link was
-// lost, expired, or compromised — "regenerate activation where
-// authorized," not a one-shot side effect of registration alone.
-//
-// Authorization: the caller must be the patient's ACTIVE, verified
-// caregiver (caregiver_patients) — re-checked here server-side, never
-// inferred from a client-supplied flag. This never creates a new Auth
-// account or a new patients row; it only ever (re)issues a recovery
-// link for an EXISTING patient identity the caller is already
-// authorized for.
+// regenerate-activation-link: server-authorized resend of patient setup
+// email to the existing patient identity; no new Auth user, raw token
+// delivery to staff or untrusted redirect hostname. The caller must be an
+// active assigned caregiver, personal caregiver or this organization's
+// active Director/Owner. A previously signed-in patient must use their
+// own self-service password recovery flow.
+// Historical Critical 2 claim-only retry still uses this endpoint;
+// the delivery result is an email-send request, NOT a generated link.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
