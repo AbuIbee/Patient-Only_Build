@@ -8,6 +8,8 @@ import { toast } from 'sonner';
 
 interface ResetPasswordPageProps {
   onComplete:   () => void;
+  /** Optional verified post-password activation step (employee invite only). */
+  onPasswordSaved?: () => Promise<void>;
   forced?:      boolean;   // true = cannot skip (temp password set by admin/caregiver, OR first-time activation)
   userEmail?:   string;    // shown to remind the user which account they're setting
   // ACT-01: distinguishes copy only — "forced" already removes the
@@ -22,7 +24,7 @@ interface ResetPasswordPageProps {
   client?:      SupabaseClient<Database>;
 }
 
-export default function ResetPasswordPage({ onComplete, forced = false, userEmail, activationMode = false, client }: ResetPasswordPageProps) {
+export default function ResetPasswordPage({ onComplete, onPasswordSaved, forced = false, userEmail, activationMode = false, client }: ResetPasswordPageProps) {
   const supabase = client ?? sharedSupabase;
   const [password, setPassword] = useState('');
   const [confirm,  setConfirm]  = useState('');
@@ -73,6 +75,11 @@ export default function ResetPasswordPage({ onComplete, forced = false, userEmai
       if (!updatedRows || updatedRows.length === 0) {
         throw new Error('Your password was set, but your account profile could not be confirmed. Please contact support before signing in.');
       }
+
+      // Invite-based employees activate their real membership only AFTER
+      // the password update succeeds. If the server refuses, never show
+      // the account as activated or grant an employee office via the UI.
+      if (onPasswordSaved) await onPasswordSaved();
 
       setDone(true);
       toast.success('Password set! Taking you to your portal...');
