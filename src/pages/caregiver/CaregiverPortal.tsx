@@ -176,10 +176,16 @@ export function RegisterPatientForm({ onRegistered, onBack }: { onRegistered: (p
         return;
       }
       toast.success(`${form.patientFirstName} has been registered and linked to your account.`);
-      if (result.activationLink) {
+      if (result.activationEmailSent) {
+        toast.success('Patient setup email requested. Ask the patient to check their inbox and junk folder.');
+      } else if (result.activationEmailError) {
+        toast.error('Patient account created, but email was not sent: ' + result.activationEmailError, { duration: 10000 });
+      } else if (result.activationLink) {
+        // Legacy non-Enterprise registrations may still return one-time
+        // links. Production Enterprise requests never reveal tokens.
         setActivation({ link: result.activationLink, name: form.patientFirstName });
       } else {
-        toast('Patient registered, but no activation link was generated. Contact support to help them sign in.', { duration: 8000 });
+        toast.error('Patient account created, but password setup email has not been confirmed.', { duration: 10000 });
       }
       setForm(emptyForm());
       setResume(null);
@@ -202,6 +208,8 @@ export function RegisterPatientForm({ onRegistered, onBack }: { onRegistered: (p
         return;
       }
       toast.success('Registration completed successfully.');
+      if (result.activationEmailSent) toast.success('Patient password setup email requested.');
+      else if (result.activationEmailError) toast.error(result.activationEmailError, {duration:10000});
       setForm(emptyForm());
       setResume(null);
       onRegistered(resume.patientId);
@@ -381,7 +389,6 @@ function PatientCard({
   const [coveringOrgId, setCoveringOrgId] = useState('');
   const [covering, setCovering] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
-  const [newActivationLink, setNewActivationLink] = useState<string | null>(null);
 
   // CODEX-VERIFIED CRITICAL REMEDIATION Critical 2: "regenerate
   // activation where authorized" — for a patient whose original link
@@ -392,9 +399,9 @@ function PatientCard({
   const regenerateLink = async () => {
     setRegenerating(true);
     try {
-      const { link, error } = await regenerateActivationLink(patient.id);
-      if (error || !link) { toast.error(error || 'Could not generate a new activation link.'); return; }
-      setNewActivationLink(link);
+      const { emailSent, error } = await regenerateActivationLink(patient.id);
+      if (error || !emailSent) { toast.error(error || 'The patient setup email could not be requested.'); return; }
+      toast.success('Patient setup email requested. Ask the patient to check inbox and junk.');
     } finally {
       setRegenerating(false);
     }
@@ -476,32 +483,11 @@ function PatientCard({
       >
         Open Patient Account <ChevronRight className="w-4 h-4" />
       </button>
-      {newActivationLink ? (
-        <div className="space-y-1.5 pt-1 border-t border-soft-taupe/60">
-          <p className="text-[11px] text-medium-gray">New one-time activation link — share it with {patient.firstName}:</p>
-          <div className="flex items-stretch gap-1.5">
-            <input readOnly value={newActivationLink} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 px-2 py-1.5 border border-soft-taupe rounded-lg text-[11px] font-mono" />
-            <button
-              type="button"
-              onClick={() => { void navigator.clipboard.writeText(newActivationLink).then(() => toast.success('Copied')); }}
-              className="flex-shrink-0 px-2 py-1.5 rounded-lg bg-warm-bronze text-white"
-              aria-label="Copy link"
-            >
-              <Copy className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          <button type="button" onClick={() => setNewActivationLink(null)} className="text-[11px] text-medium-gray hover:text-charcoal underline">Dismiss</button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => { void regenerateLink(); }}
-          disabled={regenerating}
-          className="w-full text-xs text-medium-gray hover:text-charcoal underline disabled:opacity-60"
-        >
-          {regenerating ? 'Generating…' : 'Regenerate Activation Link'}
-        </button>
-      )}
+      <button type="button" onClick={() => { void regenerateLink(); }}
+        disabled={regenerating}
+        className="w-full text-xs text-medium-gray hover:text-charcoal underline disabled:opacity-60">
+        {regenerating ? 'Sending…' : 'Send Patient Password Setup Email'}
+      </button>
       {caregiverOrgs.length > 0 && (
         <div className="flex items-stretch gap-1.5 pt-1 border-t border-soft-taupe/60">
           <select
