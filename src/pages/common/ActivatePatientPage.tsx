@@ -66,8 +66,11 @@ export default function ActivatePatientPage() {
   // A patient recovery link must never activate an employee membership.
   const [isEmployeeInvite] = useState(() => {
     const hashType = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type');
-    const queryType = new URLSearchParams(window.location.search).get('type');
-    const explicitType = hashType ?? queryType;
+    const query = new URLSearchParams(window.location.search);
+    // Existing identities receive a verified recovery link with an
+    // employee-invite marker, not a second Auth identity.
+    if (query.get('employee_invite') === '1') return true;
+    const explicitType = hashType ?? query.get('type');
     return explicitType !== null
       ? explicitType === 'invite'
       : readResumeRecord()?.employeeInvite === true;
