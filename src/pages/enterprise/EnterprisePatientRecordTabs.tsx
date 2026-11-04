@@ -951,7 +951,7 @@ function AGTab({ patientId, staffRole }: { patientId: string; staffRole: StaffRo
           )}
         </SectionCard>
       ))}
-      <SleepOvernightCard patientId={patientId} />
+      <SleepOvernightCard key={`${patientId}-${revision}`} patientId={patientId} />
     </>
   );
 }
