@@ -100,3 +100,19 @@ Stop immediately on ANY unverified representative seeing PHI, an unacknowledged 
 
 ## 9. CODEX EXACT INSTRUCTION
 Implement HCN-CLINICAL-REP-001 on feature/hcn-director-clinical-intake-and-representative-20261104 as typed, additive changes with reversible migrations and tests. Audit exact files and functions above. Do not modify current published licensing, payments, staff entitlements or platform owner role. Do not run production SQL, create users, fake a clinician/license, approve a real representative, or deploy before secure staging/independent Codex acceptance. Produce a defect register naming function, exact authorization defect, code correction, tests, exit conditions. Do not call an E2E step PASS without independent real session evidence.
+
+## 11. REQUIRED LEGAL ATTESTATION / SIGNED DOCUMENT EXPANSION — OWNER DIRECTIVE 2026-11-04
+Mandatory prerequisite HCN-RP-DECL-001 has been added as a non-routable implementation foundation and is not live until the full signing/verification services and legal review are completed.
+
+- Exact full declaration: docs/legal/HCN-RP-DECL-001_RESPONSIBLE_PERSON_DECLARATION.md
+- Dedicated UI component: src/pages/patient/ResponsiblePersonDeclarationPage.tsx
+- Validated affirmation schema: src/legal/responsiblePersonDeclaration.ts
+- Backend, PDF retention, access controls and independent verification contract: docs/engineering/HCN-RP-DECL-001_SIGNING_AND_STORAGE_CONTRACT.md
+
+Required sequence: current-acknowledged caregiver sends secured invitation; representative verifies email, sets their own password, completes separately acknowledged identity, truthful authority, genuine evidence, scope, no revocation, confidentiality, patient interests, reporting and E-SIGN declarations; signs with own legal name using counsel-approved jurisdiction clause. Execute immutable signed-PDF audit and store in restricted patient Documents > Legal & Authorizations. Independent Director/authorized verifier must approve actual healthcare authority scope. Portal remains blocked until signed and independently verified, with active patient coverage and license. Contact-only records NEVER activate broad proxy access.
+
+The signed declaration is NOT itself the healthcare POA or guardianship instrument, nor does it conclusively protect the company from privacy liability. The phrase "under penalty of perjury" can be used only when a legally reviewed clause properly applies in that jurisdiction; generic web text does not automatically trigger federal 28 USC 1746. Do not claim the signer's oath is notarized. E-SIGN disclosures/retention, state POA formalities, HIPAA 45 CFR 164.502(g)/164.514(h) and special-scope limitations must be independently validated.
+
+Production finding: existing private patient-documents bucket and patient_document_uploads RLS are not appropriate for general full access to healthcare-proxy evidence; use restricted legal-document index and service-protected private storage, with eligible-actor download audit. Frontend clause approval and client checkboxes never substitute for server verification.
+
+Additional acceptance tests: no signed PDF means no executed document state; missing any separate checkbox fails; malformed or missing signer evidence fails; signer's account cannot approve authority; caregiver cannot approve their own collected evidence; portal denied after signed-only but not verified; revoke denies API/Storage/Realtime; immutable SHA256 and historical signed version retained; wrong patient and cross-tenant denied. Every signature audit binds authenticated actor separate from represented patient.
