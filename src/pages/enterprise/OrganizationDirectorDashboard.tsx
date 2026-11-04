@@ -15,6 +15,7 @@ import {
 import {
   getMyOrganizations, getOrgMembers, getOrgLicense, getOrgCoveredPatients, closePatientCoverage,
   inviteOrgMember, createCaregiverEmployee, removeOrgMember, createOrganization,
+  assignCaregiverToPatient, unassignCaregiverFromPatient,
   getOrgStaffPatientAssignments, assignStaffToPatient, unassignStaffFromPatient,
   getOrgCommunicationsOverview,
   amIOrgOwner, getMyOwnerCapabilityGrants, ownerSelfAssignCapability, ownerRevokeOwnCapability,
@@ -41,6 +42,7 @@ import {
 } from '@/services/organizationAmendmentService';
 import { getContractsForQuote, type EnterpriseContract } from '@/services/enterpriseContractService';
 import OrganizationBillingPage from './OrganizationBillingPage';
+import DirectorPatientEnrollmentCard from './DirectorPatientEnrollmentCard';
 import CareConversations from '@/components/communications/CareConversations';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
@@ -524,7 +526,13 @@ function StaffCard({ orgId, members, onChanged }: {
     try {
       if (role === 'caregiver') {
         const { error, message } = await createCaregiverEmployee(orgId, firstName, lastName, email);
-        if (error) { toast.error(error); return; }
+        if (error) {
+          toast.error(error);
+          // A previously reserved identity still belongs in the inventory,
+          // even when Supabase Auth fails to resend an email (HTTP 429).
+          onChanged();
+          return;
+        }
         toast.success(message ?? 'Caregiver account created.');
         setFirstName('');
         setLastName('');
@@ -557,9 +565,13 @@ function StaffCard({ orgId, members, onChanged }: {
     <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-4">
       <div className="flex items-center gap-2">
         <Users className="w-5 h-5 text-ent-bronze" />
-        <h2 className="font-bold text-ent-ink">Staff</h2>
+        <h2 className="font-bold text-ent-ink">Staff Inventory ({members.filter(m => m.orgRole !== 'director' && ['active','invited'].includes(m.status)).length})</h2>
       </div>
 
+      <p className="text-sm text-ent-muted" role="status">
+        {members.filter(m=>m.orgRole==='caregiver'&&m.status==='active').length} active caregivers ·{' '}
+        {members.filter(m=>m.orgRole==='caregiver'&&m.status==='invited').length} awaiting activation
+      </p>
       {role === 'caregiver' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <label className="text-sm text-ent-ink">
@@ -685,7 +697,11 @@ function CloseCoverageDialog({ orgId, patientId, patientName, onClose, onClosed 
   );
 }
 
-function CoveredPatientsCard({ orgId }: { orgId: string }) {
+function CoveredPatientsCard({ orgId, members, onChanged }: {
+  orgId: string;
+  members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
+  onChanged: () => void;
+}) {
   const [patients, setPatients] = useState<OrgCoveredPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [closingTarget, setClosingTarget] = useState<OrgCoveredPatient | null>(null);
@@ -701,6 +717,9 @@ function CoveredPatientsCard({ orgId }: { orgId: string }) {
   const closedOrArchived = patients.filter((p) => p.status === 'closed' || p.status === 'archived');
 
   return (
+    <div className="space-y-4">
+    <DirectorPatientEnrollmentCard orgId={orgId} members={members}
+      onCreated={() => { refresh(); onChanged(); }} />
     <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
       <div className="flex items-center gap-2">
         <ClipboardList className="w-5 h-5 text-ent-bronze" />
@@ -709,7 +728,7 @@ function CoveredPatientsCard({ orgId }: { orgId: string }) {
       {loading ? (
         <Loader2 className="w-5 h-5 animate-spin text-ent-bronze" />
       ) : active.length === 0 ? (
-        <p className="text-sm text-ent-muted">No patients are currently covered by this organization. Caregiver staff register and automatically cover patients from their own dashboard.</p>
+        <p className="text-sm text-ent-muted">No patients are covered yet. Create a patient above; then assign an activated caregiver to grant patient-specific access.</p>
       ) : (
         <ul className="space-y-2">
           {active.map((p) => (
@@ -748,6 +767,7 @@ function CoveredPatientsCard({ orgId }: { orgId: string }) {
           onClosed={() => { setClosingTarget(null); refresh(); }}
         />
       )}
+    </div>
     </div>
   );
 }
@@ -891,7 +911,9 @@ function AssignmentsCard({ orgId, members }: {
     if (!staffId || !patientId) { toast.error('Select both a staff member and a patient.'); return; }
     setSaving(true);
     try {
-      const { error } = await assignStaffToPatient(orgId, staffId, patientId, role);
+      const { error } = role === 'caregiver'
+        ? await assignCaregiverToPatient(orgId, staffId, patientId)
+        : await assignStaffToPatient(orgId, staffId, patientId, role);
       if (error) { toast.error(error); return; }
       toast.success('Assignment created.');
       setStaffId(''); setPatientId('');
@@ -901,8 +923,10 @@ function AssignmentsCard({ orgId, members }: {
     }
   };
 
-  const unassign = async (userId: string, patId: string) => {
-    const { error } = await unassignStaffFromPatient(orgId, userId, patId);
+  const unassign = async (userId: string, patId: string, assignedRole: StaffRole) => {
+    const { error } = assignedRole === 'caregiver'
+      ? await unassignCaregiverFromPatient(orgId, userId, patId)
+      : await unassignStaffFromPatient(orgId, userId, patId);
     if (error) { toast.error(error); return; }
     toast.success('Assignment removed.');
     await refresh();
@@ -946,7 +970,7 @@ function AssignmentsCard({ orgId, members }: {
               <p className="text-sm text-ent-ink min-w-0 truncate">
                 <strong>{a.firstName} {a.lastName}</strong> ({ROLE_LABELS[a.orgRole as OrgRole]}) → {a.patientPreferredName || `${a.patientFirstName} ${a.patientLastName}`}
               </p>
-              <button type="button" onClick={() => { void unassign(a.userId, a.patientId); }} className="flex-shrink-0 p-2 rounded-lg text-ent-rust hover:bg-ent-rust/10" aria-label="Remove assignment">
+              <button type="button" onClick={() => { void unassign(a.userId, a.patientId, a.orgRole as StaffRole); }} className="flex-shrink-0 p-2 rounded-lg text-ent-rust hover:bg-ent-rust/10" aria-label="Remove assignment">
                 <Unlink className="w-4 h-4" />
               </button>
             </li>
@@ -1003,6 +1027,7 @@ function DashboardHome({ orgName, members, license, visits, incidents, handoffs,
   onNavigate: (key: DirectorNavKey) => void;
 }) {
   const activeStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'active').length;
+  const invitedStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'invited').length;
   const openIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').length;
   const scheduledVisits = visits.filter((v) => v.status === 'scheduled' || v.status === 'in_progress').length;
   const recentHandoffs = handoffs.slice(0, 5);
@@ -1016,7 +1041,8 @@ function DashboardHome({ orgName, members, license, visits, incidents, handoffs,
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard label="Care Team" value={String(activeStaff)} sub="active staff" />
+        <MetricCard label="Care Team Inventory" value={String(activeStaff+invitedStaff)}
+          sub={`${activeStaff} active · ${invitedStaff} pending activation`} />
         <MetricCard label="Open Incidents" value={String(openIncidents)} sub="need review" />
         <MetricCard label="Scheduled Visits" value={String(scheduledVisits)} sub="upcoming or in progress" />
         <MetricCard label="License" value={license?.status ?? 'proposed'} sub="current status" />
@@ -1085,6 +1111,7 @@ function OrganizationOverviewView({ orgName, packageType, members, coveredCount 
         <p><span className="text-ent-muted">Organization name:</span> {orgName || 'Not set'}</p>
         <p><span className="text-ent-muted">Business package:</span> {packageType === 'integrated_care' ? 'Enterprise Integrated Care' : 'Enterprise Therapist'}</p>
         <p><span className="text-ent-muted">Active members:</span> {activeStaff.length}</p>
+        <p><span className="text-ent-muted">Pending staff invitations:</span> {members.filter(m => m.orgRole !== 'director' && m.status === 'invited').length}</p>
         <p><span className="text-ent-muted">Covered patients:</span> {coveredCount}</p>
       </div>
     </OfficeCard>
@@ -1645,7 +1672,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       ) : nav === 'staff' ? (
         <StaffCard orgId={organizationId} members={members} onChanged={() => { void refresh(); }} />
       ) : nav === 'patients' ? (
-        <CoveredPatientsCard orgId={organizationId} />
+        <CoveredPatientsCard orgId={organizationId} members={members} onChanged={() => { void refresh(); }} />
       ) : nav === 'assignments' ? (
         <AssignmentsCard orgId={organizationId} members={members} />
       ) : nav === 'scheduling' ? (
