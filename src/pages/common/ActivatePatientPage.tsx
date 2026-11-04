@@ -22,7 +22,7 @@
 // any) exists in the shared client. The caregiver's own browser tab, if
 // they are the one who opened this link to check it, is never touched.
 import { useEffect, useState } from 'react';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 import ResetPasswordPage from './ResetPasswordPage';
 import { Heart, ShieldAlert } from 'lucide-react';
@@ -61,6 +61,17 @@ export default function ActivatePatientPage() {
   // later, inside a useEffect, could already see the hash cleared
   // (GoTrue's own detectSessionInUrl processing races ahead of it).
   const [initialSignal] = useState(() => readUrlSignal());
+  // A Supabase Auth employee invitation carries type=invite. Capture
+  // before GoTrue consumes the URL; keep that flag on same-tab refresh.
+  // A patient recovery link must never activate an employee membership.
+  const [isEmployeeInvite] = useState(() => {
+    const hashType = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('type');
+    const queryType = new URLSearchParams(window.location.search).get('type');
+    const explicitType = hashType ?? queryType;
+    return explicitType !== null
+      ? explicitType === 'invite'
+      : readResumeRecord()?.employeeInvite === true;
+  });
   const [phase, setPhase] = useState<Phase>('resolving');
   const [invalidReason, setInvalidReason] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
@@ -136,20 +147,35 @@ export default function ActivatePatientPage() {
       return;
     }
 
+    const acceptVerifiedSession = (session: Session | null) => {
+      if (recovered || !session?.user?.email || !session.refresh_token) return;
+      recovered = true;
+      saveResumeRecord({
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+        email: session.user.email,
+        savedAt: Date.now(),
+        employeeInvite: isEmployeeInvite,
+      });
+      setEmail(session.user.email);
+      setPhase('ready');
+    };
+
     const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
-      if (recovered) return;
-      if (event === 'PASSWORD_RECOVERY' && session?.user?.email && session.refresh_token) {
-        recovered = true;
-        saveResumeRecord({
-          accessToken: session.access_token,
-          refreshToken: session.refresh_token,
-          email: session.user.email,
-          savedAt: Date.now(),
-        });
-        setEmail(session.user.email);
-        setPhase('ready');
+      if (event === 'PASSWORD_RECOVERY' ||
+        (isEmployeeInvite && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION'))) {
+        acceptVerifiedSession(session);
       }
     });
+
+    // Some Auth clients complete the invite exchange before the callback
+    // subscription is registered. getSession() covers that valid race;
+    // it is deliberately restricted to an invite-bearing activation URL.
+    if (isEmployeeInvite) {
+      void client.auth.getSession().then(({ data, error }) => {
+        if (!error) acceptVerifiedSession(data.session);
+      });
+    }
 
     // A token WAS present but verification hasn't resolved within a
     // few seconds — this is "could not confirm in time," a distinct,
@@ -168,7 +194,7 @@ export default function ActivatePatientPage() {
       subscription.unsubscribe();
       window.clearTimeout(timeout);
     };
-  }, [client, initialSignal]);
+  }, [client, initialSignal, isEmployeeInvite]);
 
   const handleComplete = async () => {
     // The activation is finished — the cached resume session is no
@@ -184,7 +210,7 @@ export default function ActivatePatientPage() {
       // reload with no leftover isolated-client state of any kind, and
       // ensures the shared client (which never saw this token at all)
       // starts completely fresh too.
-      window.location.href = '/';
+      window.location.href = isEmployeeInvite ? '/Professional' : '/';
     }, 1800);
   };
 
@@ -207,7 +233,9 @@ export default function ActivatePatientPage() {
           <h2 className="text-xl font-bold text-charcoal">This activation link is invalid or has expired</h2>
           <p className="text-sm text-medium-gray">
             {invalidReason ? `${invalidReason} ` : ''}
-            Activation links are single-use and expire after a period of time. Ask your caregiver to generate a new one from their Caregiver Portal, then open it in a fresh tab.
+            {isEmployeeInvite
+              ? 'This employee invitation has expired or was already used. Ask your Organization Owner or Director to issue a new invitation.'
+              : 'Activation links are single-use and expire after a period of time. Ask your caregiver to generate a new one from their Caregiver Portal, then open it in a fresh tab.'}
           </p>
           <a href="/" className="inline-block text-sm text-warm-bronze hover:text-deep-bronze font-semibold underline">
             Return to sign in
@@ -268,7 +296,22 @@ export default function ActivatePatientPage() {
           directly with no password ever set, which previously let
           this page report "Account activated" with no password set at
           all. Mandatory activation must never be skippable. */}
-      <ResetPasswordPage forced={true} activationMode={true} userEmail={email ?? undefined} client={client} onComplete={() => { void handleComplete(); }} />
+      <ResetPasswordPage
+        forced={true}
+        activationMode={true}
+        userEmail={email ?? undefined}
+        client={client}
+        onPasswordSaved={isEmployeeInvite ? async () => {
+          // The authenticated employee—not the manager—accepts their
+          // organization membership only after their password is saved.
+          const { data, error } = await client.rpc('hcn_activate_my_caregiver_invites');
+          if (error) throw new Error(error.message);
+          if (typeof data !== 'number' || data < 1) {
+            throw new Error('Your password was saved, but no active-organization caregiver invitation was found. Contact your employer.');
+          }
+        } : undefined}
+        onComplete={() => { void handleComplete(); }}
+      />
     </div>
   );
 }
