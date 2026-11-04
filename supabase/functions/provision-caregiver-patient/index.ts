@@ -36,8 +36,8 @@
 //   5. Call caregiver_claim_new_patient() AS THE CALLER — unchanged from
 //      migration 030, preserving every existing single-use-token,
 //      refuse-not-adopt, and idempotent-retry guarantee.
-//   6. Generate a one-time activation link via the ADMIN client
-//      (auth.admin.generateLink, type: 'recovery') — this reuses the
+//   6. Send a password-setup email via Supabase Auth
+//      (auth.resetPasswordForEmail, recovery flow) — this reuses the
 //      EXISTING, already-working ResetPasswordPage / PASSWORD_RECOVERY
 //      flow (App.tsx) rather than inventing a new one, and crucially
 //      never sends an email itself (generateLink only returns a URL) — so
@@ -300,32 +300,45 @@ serve(async (request) => {
     // project has SMTP configured, which is a separate, owner-controlled
     // setting documented in the final report, not something this
     // function can verify or claim.
-    const resolvedRedirect = resolveRedirectOrigin(body.callbackOrigin);
-    let activationLink: string | null = null;
-    if (!resolvedRedirect) {
-      console.error('No allowlisted callback origin and no APP_URL secret configured — activation link withheld rather than risking an incorrect redirect.');
-    } else {
-      // REMEDIATION B: lands on the isolated /activate route (never the
-      // app root) — the shared, persistent client disables
-      // detectSessionInUrl specifically for that path, so this token is
-      // only ever consumed by a separate, non-persisted client built
-      // just to parse it (src/pages/common/ActivatePatientPage.tsx).
-      const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
-        type: 'recovery',
-        email: registration.patient_email,
-        options: { redirectTo: `${resolvedRedirect}/activate` },
+    // The patient has a distinct Auth identity and may now be invited
+    // through the managed email provider. generateLink() does NOT send.
+    // Never send a reset token to an unapproved client callback host.
+    const isHaneenProduction = supabaseUrl.includes('zgkghauitpyzzljbtrxk');
+    const origin = isHaneenProduction
+      ? 'https://www.haneencarenetwork.com'
+      : resolveRedirectOrigin(body.callbackOrigin);
+    if (!origin) {
+      return jsonResponse({
+        success: true, patientId: patient.id,
+        activationEmailSent: false,
+        activationEmailError: 'Patient created but no approved password-setup redirect is configured. Use the authorized resend action after configuration.',
       });
-      if (linkError) {
-        console.error('generateLink error (patient account still created and claimed):', linkError.message);
-      } else {
-        activationLink = linkData?.properties?.action_link ?? null;
-      }
+    }
+
+    const { error: emailError } = await adminClient.auth.resetPasswordForEmail(
+      registration.patient_email, { redirectTo: origin + '/activate' },
+    );
+    if (emailError) {
+      // The patient account and its caregiver relationship already exist.
+      // Never roll these back or create duplicates because email failed.
+      const isRateLimited = emailError.status === 429 ||
+        /rate limit|too many email/i.test(emailError.message);
+      return jsonResponse({
+        success: true, patientId: patient.id,
+        activationEmailSent: false,
+        activationEmailError: isRateLimited
+          ? 'Email provider rate limit exceeded. The patient account is preserved; resend later from My Patients.'
+          : 'The patient account was created, but password setup email could not be sent. Use My Patients to retry.',
+      });
     }
 
     return jsonResponse({
       success: true,
       patientId: patient.id,
-      activationLink,
+      // The provider accepted the send request; mailbox delivery and link
+      // consumption still require independent end-to-end confirmation.
+      activationEmailSent: true,
+      activationLink: null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
