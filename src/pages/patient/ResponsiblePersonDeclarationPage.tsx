@@ -3,7 +3,7 @@
 // Authorizations folder and the recipient's invitation activation journey.
 // Not routed into production until the protected signing/storage workflow
 // and jurisdiction-specific legal review have been accepted.
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import {
   DECLARATION_ID, DECLARATION_DRAFT_VERSION,
   RESPONSIBLE_PERSON_AFFIRMATIONS, RESPONSIBLE_PERSON_ECONSENTS,
@@ -42,7 +42,7 @@ export default function ResponsiblePersonDeclarationPage({
     && context.counselApproved && !!onExecute && errors.length === 0 && !submitting;
   const displayStatus = state === 'executed' && receipt ? 'Signed declaration' : 'Awaiting responsible-person signature';
 
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!signable || !onExecute || !context.reviewedLegalClauseId) {
       setMessage('Signature is unavailable. Complete every declaration and wait for legal review.');
