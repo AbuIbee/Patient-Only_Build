@@ -515,6 +515,7 @@ function StaffCard({ orgId, members, onChanged }: {
   const [role, setRole] = useState<Exclude<OrgRole, 'director'>>('caregiver');
   const [inviting, setInviting] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   const invite = async () => {
     if (!email.trim()) { toast.error('An email address is required.'); return; }
@@ -545,6 +546,27 @@ function StaffCard({ orgId, members, onChanged }: {
       onChanged();
     } finally {
       setInviting(false);
+    }
+  };
+
+  const resendEmployeeInvite = async (
+    member: OrgMembershipRow & { firstName: string; lastName: string; email: string },
+  ) => {
+    if (member.orgRole !== 'caregiver' || member.status !== 'invited' ||
+      !member.email || !member.firstName || !member.lastName) {
+      toast.error('This employee is not eligible for a password-setup resend.');
+      return;
+    }
+    setResendingId(member.id);
+    try {
+      const { error, message } = await createCaregiverEmployee(
+        orgId, member.firstName, member.lastName, member.email,
+      );
+      if (error) { toast.error(error); return; }
+      toast.success(message ?? 'Password-setup email requested.');
+      onChanged();
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -612,15 +634,23 @@ function StaffCard({ orgId, members, onChanged }: {
                 <p className="text-sm font-medium text-ent-ink truncate">{m.firstName} {m.lastName} <span className="text-xs text-ent-muted">({m.email})</span></p>
                 <p className="text-xs text-ent-muted">{ROLE_LABELS[m.orgRole]} — {m.status}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => { void remove(m.userId, `${m.firstName} ${m.lastName}`); }}
-                disabled={removingId === m.userId}
-                className="flex-shrink-0 p-2 rounded-lg text-ent-rust hover:bg-ent-rust/10 disabled:opacity-60"
-                aria-label="Remove staff member"
-              >
-                {removingId === m.userId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-              </button>
+              <div className="flex flex-shrink-0 flex-col sm:flex-row gap-1 items-end sm:items-center">
+                {m.orgRole === 'caregiver' && m.status === 'invited' && (
+                  <button type="button"
+                    onClick={() => { void resendEmployeeInvite(m); }}
+                    disabled={resendingId === m.id}
+                    className="rounded-lg border border-ent-line px-2.5 py-2 text-xs font-semibold text-ent-bronze disabled:opacity-50">
+                    {resendingId === m.id ? 'Sending…' : 'Resend setup email'}
+                  </button>
+                )}
+                <button type="button"
+                  onClick={() => { void remove(m.userId, `${m.firstName} ${m.lastName}`); }}
+                  disabled={removingId === m.userId}
+                  className="flex-shrink-0 p-2 rounded-lg text-ent-rust hover:bg-ent-rust/10 disabled:opacity-60"
+                  aria-label="Remove staff member">
+                  {removingId === m.userId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                </button>
+              </div>
             </li>
           ))}
         </ul>
