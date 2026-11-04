@@ -119,12 +119,13 @@ describe('regenerateActivationLink — Critical 2: a successful claim-only retry
     expect(functionsInvokeMock).not.toHaveBeenCalled();
   });
 
-  it('returns the regenerated link on success, passing the real browser origin as callbackOrigin', async () => {
+  it('requests a new activation email without exposing a recovery token to the caregiver', async () => {
     getSessionMock.mockResolvedValue({ data: { session: { access_token: 'tok' } } });
-    functionsInvokeMock.mockResolvedValue({ data: { success: true, activationLink: 'https://example.test/auth/v1/verify?...' }, error: null });
-    const { link, error } = await regenerateActivationLink('patient-1');
+    functionsInvokeMock.mockResolvedValue({ data: { success: true, activationEmailSent: true, activationLink: null }, error: null });
+    const { link, emailSent, error } = await regenerateActivationLink('patient-1');
     expect(error).toBeNull();
-    expect(link).toMatch(/^https:\/\//);
+    expect(emailSent).toBe(true);
+    expect(link).toBeNull();
     expect(functionsInvokeMock).toHaveBeenCalledWith('regenerate-activation-link', expect.objectContaining({ body: expect.objectContaining({ patientId: 'patient-1' }) }));
   });
 
