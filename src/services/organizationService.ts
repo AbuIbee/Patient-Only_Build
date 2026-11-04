@@ -343,26 +343,64 @@ export async function getOrgCommunicationsOverview(orgId: string): Promise<OrgCo
 }
 
 export async function getOrgMembers(orgId: string): Promise<(OrgMembershipRow & { firstName: string; lastName: string; email: string })[]> {
-  const { data, error } = await supabase
-    .from('organization_memberships')
-    .select('id, user_id, org_role, status, created_at, profiles:user_id(first_name, last_name, email)')
-    .eq('organization_id', orgId);
-  if (error || !data) return [];
-  return data.map((r) => {
-    const profile = r.profiles as unknown as { first_name: string; last_name: string; email: string } | null;
-    return {
-      id: r.id,
-      userId: r.user_id,
-      orgRole: r.org_role as OrgRole,
-      status: r.status,
-      createdAt: r.created_at,
-      firstName: profile?.first_name ?? '',
-      lastName: profile?.last_name ?? '',
-      email: profile?.email ?? '',
-    };
-  });
+  // This narrow Owner/Director RPC includes the profile of INVITED staff.
+  // A direct membership-to-profiles embed was hidden by profiles RLS until
+  // activation, producing anonymous-looking "() Caregiver - invited" rows.
+  const { data, error } = await supabase.rpc('hcn_get_org_staff_roster', { p_org_id: orgId });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => ({
+    id: r.id, userId: r.user_id, orgRole: r.org_role as OrgRole,
+    status: r.status as OrgMembershipRow['status'], createdAt: r.created_at,
+    firstName: r.first_name ?? '', lastName: r.last_name ?? '',
+    email: r.email ?? '',
+  }));
 }
 
+export async function createDirectorPatient(
+  orgId: string, firstName: string, lastName: string, email: string,
+  dateOfBirth?: string,
+): Promise<{ patientId: string | null; alreadyEnrolled: boolean; error: string | null; message: string | null }> {
+  const { data, error } = await supabase.functions.invoke<{
+    success?: boolean; patientId?: string; alreadyEnrolled?: boolean;
+    message?: string; error?: string;
+  }>('hcn-director-create-patient', {
+    body: { organizationId: orgId, firstName: firstName.trim(), lastName: lastName.trim(),
+      email: email.trim().toLowerCase(), dateOfBirth: dateOfBirth || null },
+  });
+  if (error) {
+    const context=(error as {context?: Response}).context;
+    if (context && typeof context.clone==='function') {
+      try {
+        const response=await context.clone().json() as {error?: string};
+        if(response.error)return {patientId:null,alreadyEnrolled:false,error:response.error,message:null};
+      } catch { /* caller receives the transport failure */ }
+    }
+    return {patientId:null,alreadyEnrolled:false,error:error.message,message:null};
+  }
+  if (!data?.success || !data.patientId) {
+    return {patientId:null,alreadyEnrolled:false,error:data?.error??'Patient enrollment did not complete',message:null};
+  }
+  return { patientId:data.patientId, alreadyEnrolled:!!data.alreadyEnrolled,
+    error:null,message:data.message??'Patient enrolled' };
+}
+
+export async function assignCaregiverToPatient(
+  orgId: string, caregiverId: string, patientId: string,
+): Promise<{error: string | null}> {
+  const {error}=await supabase.rpc('hcn_assign_caregiver_to_patient', {
+    p_org_id:orgId,p_caregiver_id:caregiverId,p_patient_id:patientId,
+  });
+  return {error:error?.message??null};
+}
+
+export async function unassignCaregiverFromPatient(
+  orgId: string, caregiverId: string, patientId: string,
+): Promise<{error: string | null}> {
+  const {error}=await supabase.rpc('hcn_unassign_caregiver_from_patient', {
+    p_org_id:orgId,p_caregiver_id:caregiverId,p_patient_id:patientId,
+  });
+  return {error:error?.message??null};
+}
 
 /**
  * Owner/Director-created caregiver employment identity.
