@@ -10,6 +10,7 @@ import {
 const ctx: ResponsiblePersonLegalContext = {
   patientId: 'test-patient-uuid',
   patientDisplayName: 'Test Patient',
+  patientIdentityMatchConfirmed: true,
   organizationDisplayName: 'HCN Synthetic Organization',
   representativeDisplayName: 'Test Representative',
   representativeEmail: 'controlled@example.test',
@@ -56,6 +57,10 @@ describe('HCN-RP-DECL-001 responsible person declaration safety gates', () => {
   it('requires evidence and approved scope; no mere point of contact is authorized', () => {
     const noEvidence = {...ctx, authorityEvidenceLabel: '', authorityScope: ''};
     expect(validateResponsiblePersonSignature(noEvidence, 'Test Representative', affirmations, consents).join(' ')).toContain('evidence');
+  });
+  it('fails closed until the backend confirms the signer knows the correct patient subject', () => {
+    const unconfirmed = {...ctx, patientIdentityMatchConfirmed: false};
+    expect(validateResponsiblePersonSignature(unconfirmed, 'Test Representative', affirmations, consents).join(' ')).toContain('Patient identity confirmation');
   });
   it('requires signing jurisdiction', () => {
     const noJurisdiction = {...ctx, signerJurisdiction: ''};
