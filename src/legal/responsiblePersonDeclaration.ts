@@ -78,6 +78,8 @@ export type ResponsiblePersonEConsentId = (typeof RESPONSIBLE_PERSON_ECONSENTS)[
 export interface ResponsiblePersonLegalContext {
   patientId: string;
   patientDisplayName: string;
+  /** Server-confirmed match of recipient to the claimed patient subject; email ownership alone is insufficient. */
+  patientIdentityMatchConfirmed: boolean;
   organizationDisplayName: string;
   representativeDisplayName: string;
   representativeEmail: string;
@@ -127,6 +129,9 @@ export function validateResponsiblePersonSignature(
   eConsents: Readonly<Record<string, boolean>>,
 ): string[] {
   const errors: string[] = [];
+  if (!context.patientIdentityMatchConfirmed) {
+    errors.push('Patient identity confirmation is required before this declaration can be signed.');
+  }
   if (!context.patientId || !context.patientDisplayName || !context.representativeDisplayName) {
     errors.push('A specific patient and authenticated signer are required.');
   }
