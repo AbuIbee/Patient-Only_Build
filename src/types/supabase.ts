@@ -4425,6 +4425,19 @@ export interface Database {
       }
     }
     Functions: {
+      // First-party Haneen SaaS/BAA signature RPC (production migration
+      // 20261104000100); previously missing from this hand-maintained map.
+      self_service_execute_agreement: {
+        Args: {
+          p_application_id: string
+          p_contract_type: 'saas_license' | 'baa'
+          p_signatory_name: string
+          p_signatory_title: string | null
+          p_consent_to_electronic_records: boolean
+          p_user_agent?: string | null
+        }
+        Returns: Database['public']['Tables']['enterprise_contracts']['Row']
+      }
       // HCN 2026-11-04 manager-created employee lifecycle.
       hcn_activate_my_caregiver_invites: {
         Args: Record<string, never>
