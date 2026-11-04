@@ -114,8 +114,12 @@ describe('ACT-02 — ActivatePatientPage source still reflects the late-event an
   });
 
   it('a successful PASSWORD_RECOVERY handler saves the resume record using the SESSION tokens, never the spent one-time URL token', () => {
-    const handler = source.split("event === 'PASSWORD_RECOVERY'")[1];
-    expect(handler).toMatch(/accessToken:\s*session\.access_token/);
+    // The recovery and invite branches deliberately share one verified
+    // session-capture helper; do not depend on inlining its implementation.
+    expect(source).toContain("event === 'PASSWORD_RECOVERY'");
+    const captureHelper = source.split('const acceptVerifiedSession =')[1];
+    expect(captureHelper).toMatch(/accessToken:\s*session\.access_token/);
+    expect(captureHelper).toMatch(/refreshToken:\s*session\.refresh_token/);
     expect(handler).toMatch(/refreshToken:\s*session\.refresh_token/);
   });
 
