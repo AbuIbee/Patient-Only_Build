@@ -89,17 +89,87 @@ serve(async (request) => {
       return jsonResponse({ error: 'patientId is required.' }, 400);
     }
 
-    // Server-verified ownership — re-checked here, never trusted from
-    // the request alone. Uses the caller's OWN session, so this is
-    // exactly the same caregiver_patients RLS every other patient-scoped
-    // read in this app already relies on.
-    const { data: link, error: linkCheckError } = await callerClient
-      .from('caregiver_patients')
-      .select('patient_id')
-      .eq('patient_id', patientId)
+    // Both legacy residential caregiver links AND active Enterprise
+    // staff assignments are valid. The latter is checked through the
+    // authenticated get_my_staff_patients RPC, which joins active member,
+    // organization license, covered patient and active assignment.
+    const [personal, enterprise] = await Promise.all([
+      callerClient.from('caregiver_patients').select('patient_id')
+        .eq('patient_id', patientId).maybeSingle(),
+      callerClient.rpc('get_my_staff_patients'),
+    ]);
+    const isResidentialCaregiver = !personal.error && !!personal.data;
+    const isAssignedEnterpriseCaregiver = !enterprise.error &&
+      Array.isArray(enterprise.data) &&
+      enterprise.data.some((p: { patient_id: string; org_role: string }) =>
+        p.patient_id === patientId && p.org_role === 'caregiver');
+    if (!isResidentialCaregiver && !isAssignedEnterpriseCaregiver) {
+      return jsonResponse({
+        error: 'Only a currently assigned, authorized caregiver may resend this patient setup email.',
+      }, 403);
+    }
+
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const { data: patientProfile, error: profileError } = await adminClient
+      .from('profiles')
+      .select('email, role')
+      .eq('id', patientId)
       .maybeSingle();
-    if (linkCheckError || !link) {
-      return jsonResponse({ error: 'This account is not linked to you as an authorized caregiver.' }, 403);
+    if (profileError || !patientProfile || patientProfile.role !== 'patient') {
+      return jsonResponse({ error: 'No patient profile found for this id.' }, 404);
+    }
+
+    const { data: target, error: authLookupError } =
+      await adminClient.auth.admin.getUserById(patientId);
+    if (authLookupError || !target.user || target.user.email?.toLowerCase() !== patientProfile.email.toLowerCase()) {
+      return jsonResponse({ error: 'The existing patient identity could not be verified.' }, 409);
+    }
+    // An employee must never be able to send recovery challenges to an
+    // established patient's account. Those patients can use the normal
+    // self-service Forgot Password link instead.
+    if (target.user.last_sign_in_at) {
+      return jsonResponse({
+        error: 'This patient has signed in previously. They can reset their own password from Sign In.',
+      }, 409);
+    }
+
+    const isHaneenProduction = supabaseUrl.includes('zgkghauitpyzzljbtrxk');
+    const origin = isHaneenProduction
+      ? 'https://www.haneencarenetwork.com'
+      : resolveRedirectOrigin(callbackOrigin);
+    if (!origin) {
+      return jsonResponse({ error: 'A trusted patient password-setup callback is not configured.' }, 503);
+    }
+
+    // The previous generateLink() issued a raw token to the caregiver
+    // and never sent the patient an email. Send via Auth itself instead.
+    const { error: sendError } = await adminClient.auth.resetPasswordForEmail(
+      patientProfile.email, { redirectTo: origin + '/activate' },
+    );
+    if (sendError) {
+      const rateLimited = sendError.status === 429 ||
+        /rate limit|too many email/i.test(sendError.message);
+      return jsonResponse({
+        error: rateLimited
+          ? 'Email provider rate limit exceeded. This patient account is preserved; retry later.'
+          : 'Password setup email could not be requested. Patient account was not changed.',
+      }, rateLimited ? 429 : 503);
+    }
+
+    // Mail provider accepted the request, NOT independently delivered.
+    // Never expose the one-time Auth token to the caregiver.
+    return jsonResponse({ success: true, activationEmailSent: true, activationLink: null });
+isAssignedEnterpriseCaregiver = !enterprise.error &&
+      Array.isArray(enterprise.data) &&
+      enterprise.data.some((p: { patient_id: string; org_role: string }) =>
+        p.patient_id === patientId && p.org_role === 'caregiver');
+    if (!isResidentialCaregiver && !isAssignedEnterpriseCaregiver) {
+      return jsonResponse({
+        error: 'Only a currently assigned, authorized caregiver may resend this patient setup email.',
+      }, 403);
     }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
