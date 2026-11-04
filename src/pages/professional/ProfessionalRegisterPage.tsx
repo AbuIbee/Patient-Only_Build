@@ -9,8 +9,8 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '@/store/useApp';
 import { toast } from 'sonner';
-import { Sparkles, Building2, Users, Stethoscope, HeartPulse, Loader2, Upload, CheckCircle2 } from 'lucide-react';
-import { signUpCaregiver } from '@/services/caregiverRegistrationService';
+import { Sparkles, Building2, Stethoscope, HeartPulse, Loader2, Upload, CheckCircle2 } from 'lucide-react';
+import { signUpProfessionalApplicant } from '@/services/caregiverRegistrationService';
 import {
   submitProfessionalApplication, findOrganizationForApplication, uploadApplicationDocument,
   type RequestedOffice,
@@ -19,7 +19,6 @@ import SelfServiceApplicationFlow from './SelfServiceApplicationFlow';
 
 const OFFICE_OPTIONS: { key: RequestedOffice; label: string; description: string; icon: typeof Building2 }[] = [
   { key: 'director', label: 'Purchase a License / Become a Director', description: 'Select a license tier and complete a self-service application to start and lead a new Enterprise organization.', icon: Building2 },
-  { key: 'caregiver', label: 'Enterprise Caregiver', description: 'Join an existing organization as a professional caregiver.', icon: Users },
   { key: 'medical_professional', label: 'Medical Professional', description: 'Join an existing organization in a clinical medical role.', icon: Stethoscope },
   { key: 'therapist', label: 'Therapist Professional', description: 'Join an existing organization in a licensed therapy role.', icon: HeartPulse },
 ];
@@ -78,7 +77,7 @@ function AccountStep({ onDone }: { onDone: (identity: { firstName: string; lastN
     }
     setLoading(true);
     try {
-      const { confirmationRequired, error } = await signUpCaregiver({ firstName, lastName, email, password });
+      const { confirmationRequired, error } = await signUpProfessionalApplicant({ firstName, lastName, email, password });
       if (error) { toast.error(error.message); return; }
       if (confirmationRequired) {
         setConfirmationNeeded(true);
@@ -169,7 +168,7 @@ export default function ProfessionalRegisterPage() {
   // -- "staff invitations remain distinct from customer licensing
   // invitations."
   const submit = async () => {
-    if (!office || office === 'director') return;
+    if (!office || office === 'director' || office === 'caregiver') return;
     if (!legalName.trim() || !contactEmail.trim()) { toast.error('Legal name and contact email are required.'); return; }
     if (!orgLookup) { toast.error('Look up and confirm your target organization first.'); return; }
 
@@ -240,7 +239,7 @@ export default function ProfessionalRegisterPage() {
                   </button>
                 ))}
                 <p className="text-xs text-ent-muted text-center pt-2 border-t border-ent-line">
-                  Enterprise Patient accounts are created or invited by your care organization's authorized staff — not through this form.
+                  Enterprise Caregiver and Patient accounts are created by authorized organization management — not through this form. Caregiver employees receive a password-setup invitation from their employer.
                 </p>
               </div>
             )}
