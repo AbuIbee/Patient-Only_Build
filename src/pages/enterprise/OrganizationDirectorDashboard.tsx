@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import {
   getMyOrganizations, getOrgMembers, getOrgLicense, getOrgCoveredPatients, closePatientCoverage,
-  inviteOrgMember, removeOrgMember, createOrganization,
+  inviteOrgMember, createCaregiverEmployee, removeOrgMember, createOrganization,
   getOrgStaffPatientAssignments, assignStaffToPatient, unassignStaffFromPatient,
   getOrgCommunicationsOverview,
   amIOrgOwner, getMyOwnerCapabilityGrants, ownerSelfAssignCapability, ownerRevokeOwnCapability,
@@ -508,17 +508,31 @@ function StaffCard({ orgId, members, onChanged }: {
   onChanged: () => void;
 }) {
   const [email, setEmail] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [role, setRole] = useState<Exclude<OrgRole, 'director'>>('caregiver');
   const [inviting, setInviting] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   const invite = async () => {
     if (!email.trim()) { toast.error('An email address is required.'); return; }
+    if (role === 'caregiver' && (!firstName.trim() || !lastName.trim())) {
+      toast.error('Enter the employee\'s first and last name before creating their account.');
+      return;
+    }
     setInviting(true);
     try {
-      const { error } = await inviteOrgMember(orgId, email, role);
-      if (error) { toast.error(error); return; }
-      toast.success(`Invitation sent to ${email}.`);
+      if (role === 'caregiver') {
+        const { error, message } = await createCaregiverEmployee(orgId, firstName, lastName, email);
+        if (error) { toast.error(error); return; }
+        toast.success(message ?? 'Caregiver account created.');
+        setFirstName('');
+        setLastName('');
+      } else {
+        const { error } = await inviteOrgMember(orgId, email, role);
+        if (error) { toast.error(error); return; }
+        toast.success('Invitation created for an existing professional account.');
+      }
       setEmail('');
       onChanged();
     } finally {
@@ -546,8 +560,20 @@ function StaffCard({ orgId, members, onChanged }: {
         <h2 className="font-bold text-ent-ink">Staff</h2>
       </div>
 
+      {role === 'caregiver' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <label className="text-sm text-ent-ink">
+            Employee first name *
+            <input value={firstName} onChange={(e) => setFirstName(e.target.value)} autoComplete="off" maxLength={80} className={inputCls + ' mt-1'} />
+          </label>
+          <label className="text-sm text-ent-ink">
+            Employee last name *
+            <input value={lastName} onChange={(e) => setLastName(e.target.value)} autoComplete="off" maxLength={80} className={inputCls + ' mt-1'} />
+          </label>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row gap-2">
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="staff@example.com (must already have an account)" className={`${inputCls} flex-1`} />
+        <input type="email" aria-label="Employee email address" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="employee@example.com" className={`${inputCls} flex-1`} />
         <select value={role} onChange={(e) => setRole(e.target.value as Exclude<OrgRole, 'director'>)} className={inputCls + ' sm:w-56'}>
           <option value="caregiver">Caregiver</option>
           <option value="therapist">Therapist</option>
@@ -555,11 +581,13 @@ function StaffCard({ orgId, members, onChanged }: {
           <option value="billing_admin">Billing Administrator</option>
         </select>
         <button type="button" onClick={() => { void invite(); }} disabled={inviting} className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60 whitespace-nowrap">
-          <UserPlus className="w-4 h-4" /> {inviting ? 'Inviting…' : 'Invite'}
+          <UserPlus className="w-4 h-4" /> {inviting ? 'Processing…' : role === 'caregiver' ? 'Create Caregiver Account' : 'Invite'}
         </button>
       </div>
       <p className="text-xs text-ent-muted -mt-2">
-        The invited person must already have an account associated with this email — no invitation email is sent; they will see it waiting when they next sign in.
+        {role === 'caregiver'
+          ? 'Only the Organization Owner or an authorized Director can create caregiver accounts. The employee receives a password-setup email and cannot enter the workspace until activation. Do not create or share an employee password.'
+          : 'Other professional invitations use existing identities and may require separate credential verification. A direct invitation does not create an account.'}
       </p>
 
       {members.length === 0 ? (
