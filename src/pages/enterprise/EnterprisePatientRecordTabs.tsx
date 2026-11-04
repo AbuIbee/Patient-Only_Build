@@ -13,6 +13,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { supabase, logDocumentAccess } from '@/lib/supabase';
+import EnterpriseAGCheckinForm from './EnterpriseAGCheckinForm';
 import {
   ArrowLeft, Loader2, ClipboardList, ClipboardCheck, Calendar, MapPin, Stethoscope, Send,
   ShieldAlert, FileText, Pill, Heart, Activity, Target, Clock, Globe, Upload, Download, AlertTriangle, PencilLine,
@@ -121,7 +122,7 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         {tab === 'medical' && <MedicalTab patientId={patientId} staffRole={staffRole} />}
         {tab === 'medications' && <MedicationsTab patientId={patientId} />}
         {tab === 'tasks' && <TasksTab patientId={patientId} />}
-        {tab === 'ag' && <AGTab patientId={patientId} />}
+        {tab === 'ag' && <AGTab patientId={patientId} staffRole={staffRole} />}
         {tab === 'carePlan' && <CarePlanTab patientId={patientId} orgId={orgId} staffRole={staffRole} />}
         {tab === 'appointments' && <AppointmentsTab patientId={patientId} orgId={orgId} />}
         {tab === 'documents' && <DocumentsTab patientId={patientId} />}
@@ -899,7 +900,8 @@ function SleepOvernightCard({ patientId }: { patientId: string }) {
   );
 }
 
-function AGTab({ patientId }: { patientId: string }) {
+function AGTab({ patientId, staffRole }: { patientId: string; staffRole: StaffRole }) {
+  const [revision, setRevision] = useState(0);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [checkins, setCheckins] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -916,11 +918,12 @@ function AGTab({ patientId }: { patientId: string }) {
       setAgLoadError(errors.length > 0 ? errors[0] : null);
       setLoading(false);
     });
-  }, [patientId]);
+  }, [patientId, revision]);
 
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
   return (
     <>
+      {staffRole === 'caregiver' && <EnterpriseAGCheckinForm patientId={patientId} onSaved={() => setRevision(v => v + 1)} />}
       {loadError && (
         <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30">
           <p className="text-sm text-gentle-coral font-medium">Some A–G information could not be loaded: {loadError}</p>
