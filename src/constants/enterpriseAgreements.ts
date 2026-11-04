@@ -40,7 +40,7 @@ export const SAAS_LICENSE_SUBTITLE = 'Agreement Version HCN-SAAS-1.0 — Governi
 // entity is confirmed, at which point flip BOTH this constant and the
 // backend function together (the backend independently refuses to
 // write a signature regardless of what this constant says).
-export const SAAS_LICENSE_SIGNING_ENABLED = false;
+export const SAAS_LICENSE_SIGNING_ENABLED = true;
 
 export const SAAS_LICENSE_RAW_MARKDOWN = `# HANEEN CARE NETWORK
 ## SOFTWARE AS A SERVICE LICENSE AND SUBSCRIPTION AGREEMENT
