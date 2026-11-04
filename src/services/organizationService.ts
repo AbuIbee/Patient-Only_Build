@@ -363,6 +363,49 @@ export async function getOrgMembers(orgId: string): Promise<(OrgMembershipRow & 
   });
 }
 
+
+/**
+ * Owner/Director-created caregiver employment identity.
+ * New employees receive a Supabase Auth password-setup invitation.
+ * This is deliberately separate from legacy invite_org_member, which
+ * now refuses caregiver invitations and cannot create Auth users.
+ */
+export async function createCaregiverEmployee(
+  orgId: string,
+  firstName: string,
+  lastName: string,
+  email: string,
+): Promise<{ error: string | null; message: string | null }> {
+  const { data, error } = await supabase.functions.invoke<{
+    success?: boolean;
+    message?: string;
+    error?: string;
+  }>('hcn-create-caregiver-account', {
+    body: {
+      organizationId: orgId,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: email.trim().toLowerCase(),
+    },
+  });
+  if (error) {
+    // Supabase FunctionsHttpError exposes the server's JSON body through
+    // context; data is always null on an HTTP error.
+    const context = (error as { context?: Response }).context;
+    if (context && typeof context.clone === 'function') {
+      try {
+        const payload = await context.clone().json() as { error?: string };
+        if (payload.error) return { error: payload.error, message: null };
+      } catch { /* keep the original Functions error */ }
+    }
+    return { error: error.message, message: null };
+  }
+  if (!data?.success) {
+    return { error: data?.error ?? 'Could not create employee account.', message: null };
+  }
+  return { error: null, message: data.message ?? 'Employee account prepared.' };
+}
+
 export async function inviteOrgMember(orgId: string, email: string, orgRole: OrgRole): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('invite_org_member', { p_org_id: orgId, p_email: email.trim().toLowerCase(), p_org_role: orgRole });
   return { error: error ? errMsg(error, 'Could not invite this person.') : null };
