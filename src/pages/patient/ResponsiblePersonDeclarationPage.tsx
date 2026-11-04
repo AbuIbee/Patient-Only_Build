@@ -5,7 +5,7 @@
 // and jurisdiction-specific legal review have been accepted.
 import { useState, type FormEvent } from 'react';
 import {
-  DECLARATION_ID, DECLARATION_DRAFT_VERSION,
+  DECLARATION_ID,
   RESPONSIBLE_PERSON_AFFIRMATIONS, RESPONSIBLE_PERSON_ECONSENTS,
   validateResponsiblePersonSignature,
   type ResponsiblePersonLegalContext,
