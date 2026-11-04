@@ -43,6 +43,7 @@ import {
 import { getContractsForQuote, type EnterpriseContract } from '@/services/enterpriseContractService';
 import OrganizationBillingPage from './OrganizationBillingPage';
 import DirectorPatientEnrollmentCard from './DirectorPatientEnrollmentCard';
+import { regenerateActivationLink } from '@/services/caregiverRegistrationService';
 import CareConversations from '@/components/communications/CareConversations';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
@@ -735,6 +736,20 @@ function CoveredPatientsCard({ orgId, members, onChanged }: {
   const [patients, setPatients] = useState<OrgCoveredPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [closingTarget, setClosingTarget] = useState<OrgCoveredPatient | null>(null);
+  const [sendingSetupId, setSendingSetupId] = useState<string | null>(null);
+
+  const sendPatientSetupEmail = async (patientId: string) => {
+    if (sendingSetupId) return;
+    setSendingSetupId(patientId);
+    try {
+      const { emailSent, error } = await regenerateActivationLink(patientId);
+      if (error || !emailSent) {
+        toast.error(error || 'Patient setup email could not be requested.');
+        return;
+      }
+      toast.success('Patient setup email requested. Ask the patient to check inbox and junk folder.');
+    } finally { setSendingSetupId(null); }
+  };
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -764,9 +779,17 @@ function CoveredPatientsCard({ orgId, members, onChanged }: {
           {active.map((p) => (
             <li key={p.patientId} className="flex items-center justify-between gap-2 p-3 bg-ent-bg rounded-xl border border-ent-line text-sm font-medium text-ent-ink">
               <span>{p.preferredName || `${p.firstName} ${p.lastName}`}</span>
-              <button type="button" onClick={() => setClosingTarget(p)} className="px-2.5 py-1 rounded-lg border border-ent-line text-xs font-semibold text-ent-rust hover:bg-red-50 flex-shrink-0">
-                Close coverage
-              </button>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button type="button" disabled={sendingSetupId !== null}
+                  onClick={() => { void sendPatientSetupEmail(p.patientId); }}
+                  className="px-2.5 py-1 rounded-lg border border-ent-line text-xs font-semibold text-ent-bronze disabled:opacity-50">
+                  {sendingSetupId === p.patientId ? 'Sending…' : 'Send setup email'}
+                </button>
+                <button type="button" onClick={() => setClosingTarget(p)}
+                  className="px-2.5 py-1 rounded-lg border border-ent-line text-xs font-semibold text-ent-rust hover:bg-red-50 flex-shrink-0">
+                  Close coverage
+                </button>
+              </div>
             </li>
           ))}
         </ul>
