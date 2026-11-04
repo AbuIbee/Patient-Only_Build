@@ -113,5 +113,5 @@ export async function selfServiceExecuteAgreement(
     p_user_agent: typeof navigator === 'undefined' ? null : navigator.userAgent,
   });
   if (error || !data) return { data: null, error: errMsg(error, 'Could not execute this agreement.') };
-  return { data: mapContract(data as Record<string, unknown>), error: null };
+  return { data: mapContract(data as unknown as Record<string, unknown>), error: null };
 }
