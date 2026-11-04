@@ -178,8 +178,13 @@ serve(async (request: Request) => {
       redirectTo: SITE_ORIGIN + '/activate?employee_invite=1',
     });
     if (recoveryError) {
-      return response(origin, 503, {
-        error: 'Employee role was reserved, but the password-setup email could not be sent. Retry sending or contact support.',
+      const limitReached = recoveryError.status === 429 ||
+        /rate limit|too many email/i.test(recoveryError.message);
+      return response(origin, limitReached ? 429 : 503, {
+        code: limitReached ? 'EMAIL_RATE_LIMIT' : 'EMPLOYEE_EMAIL_DELIVERY_FAILED',
+        error: limitReached
+          ? 'Supabase Auth email rate limit reached. The employee account already exists and is awaiting activation. Configure production SMTP, then use Resend setup email; do not create a duplicate account.'
+          : 'Employee account is reserved, but the password-setup email could not be delivered. Check production Auth SMTP settings, then resend to this existing account.',
       });
     }
     return response(origin, 200, {
