@@ -202,7 +202,7 @@ BEGIN
 
   RETURN v_row;
 END;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.respond_to_org_invite(p_membership_id uuid, p_accept boolean)
  RETURNS organization_memberships
@@ -251,7 +251,7 @@ BEGIN
 
   RETURN v_row;
 END;
-$function$
+$function$;
 
 -- Public self-registration no longer grants an Enterprise Caregiver
 -- application, irrespective of handcrafted HTTP/RPC requests.
