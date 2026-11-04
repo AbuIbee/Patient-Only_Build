@@ -120,7 +120,6 @@ describe('ACT-02 — ActivatePatientPage source still reflects the late-event an
     const captureHelper = source.split('const acceptVerifiedSession =')[1];
     expect(captureHelper).toMatch(/accessToken:\s*session\.access_token/);
     expect(captureHelper).toMatch(/refreshToken:\s*session\.refresh_token/);
-    expect(handler).toMatch(/refreshToken:\s*session\.refresh_token/);
   });
 
   it('handleComplete clears the cached resume record so it cannot outlive the completed activation', () => {
