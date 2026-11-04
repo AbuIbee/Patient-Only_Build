@@ -22,11 +22,10 @@ import {
   AlertTriangle, CheckCircle2, PlayCircle, StopCircle, Sparkles, Flag, Moon, Upload, ArrowLeft,
 } from 'lucide-react';
 import {
-  getMyCareTeamResult, getMyOrgSupervisorResult, getMyOrganizationsResult, getMyStaffPatientsResult, coverPatientViaStaffRegistration, setStaffPatientLabel,
+  getMyCareTeamResult, getMyOrgSupervisorResult, getMyOrganizationsResult, getMyStaffPatientsResult, setStaffPatientLabel,
   type StaffPatient, type CareTeamMember, type MyOrganization,
 } from '@/services/organizationService';
-import { getMyPendingRegistrations, regenerateActivationLink, type PendingRegistrationSummary } from '@/services/caregiverRegistrationService';
-import { RegisterPatientForm, IncompleteRegistrations } from '@/pages/caregiver/CaregiverPortal';
+import { regenerateActivationLink } from '@/services/caregiverRegistrationService';
 import { getMyConversationsResult, createConversation, searchMyConversationsResult, type ConversationSummary } from '@/services/communicationsService';
 import CareConversations, { ConversationThread } from '@/components/communications/CareConversations';
 import { inviteTherapist } from '@/services/therapistConnectionService';
@@ -1227,74 +1226,24 @@ function MyDocumentationHistoryView() {
   );
 }
 
-// H15 — "Register a new patient and provide Edit/Resume/Delete for
-// incomplete registrations, activation/resend status and link
-// management without orphaned or duplicate Auth identities. One
-// primary registration action when no patients." Reuses
-// RegisterPatientForm/IncompleteRegistrations verbatim (the real,
-// already-reviewed residential registration flow — never
-// reimplemented) and folds a newly registered patient into this
-// organization's coverage + this caregiver's own staff assignment via
-// the same cover_patient_via_staff_registration() RPC the residential
-// "cover an existing patient" action already uses.
-// `compact`: the pill-style "+ Register a New Patient" trigger shown in
-// the Dashboard header row per the approved design, in place of the
-// full-width dashed card button used inside the My Patients list.
-function RegistrationAction({ orgId, onChanged, compact = false }: { orgId: string; onChanged: () => void; compact?: boolean }) {
-  const [showForm, setShowForm] = useState(false);
-  const [pending, setPending] = useState<PendingRegistrationSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(() => void getMyPendingRegistrations().then((p) => { setPending(p); setLoading(false); }), []);
-  useEffect(() => { load(); }, [load]);
-
-  const handleRegistered = async (patientId?: string) => {
-    setShowForm(false);
-    if (patientId) {
-      const { error } = await coverPatientViaStaffRegistration(orgId, patientId);
-      if (error) toast.error(`Patient registered, but could not be covered under this organization: ${error}`);
-      else toast.success('Patient registered and covered under this organization.');
-    }
-    load();
-    onChanged();
-  };
-
-  if (showForm) {
-    return (
-      <div className={compact ? 'bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6' : undefined}>
-        <RegisterPatientForm onRegistered={(id) => { void handleRegistered(id); }} onBack={() => setShowForm(false)} />
-      </div>
-    );
-  }
-
-  if (compact) {
-    return (
-      <>
-        {!loading && pending.length > 0 && (
-          <div className="mb-3"><IncompleteRegistrations pending={pending} onResumed={() => { load(); onChanged(); }} /></div>
-        )}
-        <button type="button" onClick={() => setShowForm(true)} className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-ent-line bg-ent-panel text-ent-ink font-semibold text-sm hover:bg-ent-pale flex-shrink-0 whitespace-nowrap">
-          <Users className="w-4 h-4" /> Register a New Patient
-        </button>
-      </>
-    );
-  }
-
-  return (
-    <>
-      {!loading && pending.length > 0 && <IncompleteRegistrations pending={pending} onResumed={() => { load(); onChanged(); }} />}
-      <button type="button" onClick={() => setShowForm(true)} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-2 border-dashed border-ent-bronze/40 text-ent-bronze font-semibold text-sm hover:bg-ent-bronze/5">
-        <Users className="w-4 h-4" /> Register a new patient
-      </button>
-    </>
+// Enterprise policy: only an Organization Owner or authorized Director
+// creates patient clinical accounts. Caregiver must receive an explicit
+// patient assignment from management; no self-service registration UI.
+function RegistrationAction({ compact = false }: {
+  orgId: string; onChanged: () => void; compact?: boolean;
+}) {
+  return compact ? (
+    <p className="text-xs text-ent-muted max-w-sm">
+      Patient accounts are created by your Organization Director.
+    </p>
+  ) : (
+    <p className="text-sm text-ent-muted">
+      Need another patient assigned? Ask your Organization Director to
+      register the patient and assign them to your caregiver workspace.
+    </p>
   );
 }
 
-// MMA-ENT-CAREGIVER-MASTER-004 D03: a short, stable, non-sensitive
-// reference derived from the patient's immutable UUID — the exact
-// pattern already established for residential caregivers
-// (caregiverRegistrationService.ts shortReferenceFor), reused here
-// rather than inventing a second convention. Display only; every real
 // access check still uses the full patientId.
 function staffPatientShortReference(patientId: string): string {
   return patientId.replace(/-/g, '').slice(-8).toUpperCase();
