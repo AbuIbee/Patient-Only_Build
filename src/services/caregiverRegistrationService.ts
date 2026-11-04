@@ -129,6 +129,10 @@ export interface CaregiverPatientRegistrationResult {
    * supports a caregiver-managed patient with no independent email access,
    * since generating this link never sends an email itself. */
   activationLink?: string | null;
+  /** Auth email provider accepted a patient setup email request, not proof of inbox delivery. */
+  activationEmailSent?: boolean;
+  /** A failed send NEVER invalidates or duplicates the already-created patient. */
+  activationEmailError?: string | null;
   /** True when the server-side call failed after the registration was
    * already initiated — a resumable state used by the Edge Function's own
    * error response. */
@@ -161,6 +165,8 @@ export async function registerPatientAsCaregiver(
     success?: boolean;
     patientId?: string;
     activationLink?: string | null;
+    activationEmailSent?: boolean;
+    activationEmailError?: string | null;
     error?: string;
     resumable?: boolean;
     resumeRegistrationId?: string;
@@ -209,7 +215,12 @@ export async function registerPatientAsCaregiver(
     };
   }
 
-  return { success: true, patientId: data.patientId, activationLink: data.activationLink ?? null };
+  return {
+    success: true, patientId: data.patientId,
+    activationLink: data.activationLink ?? null,
+    activationEmailSent: data.activationEmailSent === true,
+    activationEmailError: data.activationEmailError ?? null,
+  };
 }
 
 /**
@@ -251,8 +262,9 @@ export async function finishCaregiverPatientClaim(
   // best-effort: a failure here does not undo the successful claim
   // above (the caregiver can still use "Regenerate Activation Link"
   // afterward), it only means activationLink comes back null this time.
-  const { link } = await regenerateActivationLink(patient.id);
-  return { success: true, patientId: patient.id, activationLink: link };
+  const { emailSent, error } = await regenerateActivationLink(patient.id);
+  return { success: true, patientId: patient.id,
+    activationEmailSent: emailSent, activationEmailError: error };
 }
 
 /**
@@ -264,12 +276,12 @@ export async function finishCaregiverPatientClaim(
  * is re-verified server-side inside the Edge Function — never trusted
  * from this call alone.
  */
-export async function regenerateActivationLink(patientId: string): Promise<{ link: string | null; error: string | null }> {
+export async function regenerateActivationLink(patientId: string): Promise<{ link: string | null; emailSent: boolean; error: string | null }> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) {
-    return { link: null, error: 'You must be signed in as a caregiver.' };
+    return { link: null, emailSent: false, error: 'You must be signed in as a caregiver.' };
   }
-  const { data, error } = await supabase.functions.invoke<{ success?: boolean; activationLink?: string | null; error?: string }>(
+  const { data, error } = await supabase.functions.invoke<{ success?: boolean; activationEmailSent?: boolean; activationLink?: string | null; error?: string }>(
     'regenerate-activation-link',
     { body: { patientId, callbackOrigin: typeof window !== 'undefined' ? window.location.origin : null } },
   );
@@ -277,9 +289,10 @@ export async function regenerateActivationLink(patientId: string): Promise<{ lin
     const { message } = error
       ? await extractEdgeFunctionError(error, 'Could not generate a new activation link.')
       : { message: data?.error || 'Could not generate a new activation link.' };
-    return { link: null, error: message };
+    return { link: null, emailSent: false, error: message };
   }
-  return { link: data.activationLink ?? null, error: null };
+  return { link: null, emailSent: data.activationEmailSent === true,
+    error: data.activationEmailSent ? null : 'Patient activation email was not confirmed as requested.' };
 }
 
 // ─── My Patients ──────────────────────────────────────────────────────────
