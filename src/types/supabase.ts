@@ -4425,6 +4425,15 @@ export interface Database {
       }
     }
     Functions: {
+      // HCN 2026-11-04 manager-created employee lifecycle.
+      hcn_activate_my_caregiver_invites: {
+        Args: Record<string, never>
+        Returns: number
+      }
+      hcn_manager_add_caregiver: {
+        Args: { p_org_id: string; p_employee_id: string }
+        Returns: Database['public']['Tables']['organization_memberships']['Row']
+      }
       has_patient_access: { Args: { p_patient_id: string }; Returns: boolean }
       is_professional_staff_for_patient: {
         Args: { p_patient_id: string }
