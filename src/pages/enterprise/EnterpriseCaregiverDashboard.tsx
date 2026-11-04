@@ -25,7 +25,7 @@ import {
   getMyCareTeamResult, getMyOrgSupervisorResult, getMyOrganizationsResult, getMyStaffPatientsResult, coverPatientViaStaffRegistration, setStaffPatientLabel,
   type StaffPatient, type CareTeamMember, type MyOrganization,
 } from '@/services/organizationService';
-import { getMyPendingRegistrations, type PendingRegistrationSummary } from '@/services/caregiverRegistrationService';
+import { getMyPendingRegistrations, regenerateActivationLink, type PendingRegistrationSummary } from '@/services/caregiverRegistrationService';
 import { RegisterPatientForm, IncompleteRegistrations } from '@/pages/caregiver/CaregiverPortal';
 import { getMyConversationsResult, createConversation, searchMyConversationsResult, type ConversationSummary } from '@/services/communicationsService';
 import CareConversations, { ConversationThread } from '@/components/communications/CareConversations';
@@ -1311,6 +1311,7 @@ function PatientsListView({ patients, onOpenPatient, title, orgId, onChanged }: 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState('');
   const [savingLabel, setSavingLabel] = useState(false);
+  const [sendingPatientId, setSendingPatientId] = useState<string | null>(null);
   const [labels, setLabels] = useState<Record<string, string | null>>({});
 
   const normalizedQuery = query.trim().toLowerCase();
@@ -1323,6 +1324,21 @@ function PatientsListView({ patients, onOpenPatient, title, orgId, onChanged }: 
       || label.includes(normalizedQuery)
       || ref.includes(normalizedQuery);
   });
+
+  const sendPatientSetupEmail = async (p: StaffPatient) => {
+    if (!p.assignmentId || sendingPatientId) return;
+    setSendingPatientId(p.patientId);
+    try {
+      const { emailSent, error } = await regenerateActivationLink(p.patientId);
+      if (error || !emailSent) {
+        toast.error(error || 'Patient setup email could not be requested.');
+        return;
+      }
+      toast.success('Patient password-setup email requested. Ask the patient to check inbox and junk folder.');
+    } finally {
+      setSendingPatientId(null);
+    }
+  };
 
   const startEditingLabel = (p: StaffPatient) => {
     if (!p.assignmentId) return; // a direct therapist connection has no assignment row to label
@@ -1389,6 +1405,14 @@ function PatientsListView({ patients, onOpenPatient, title, orgId, onChanged }: 
                 ) : p.assignmentId && (
                   <button type="button" onClick={() => startEditingLabel(p)} className="self-start text-[11px] font-semibold text-ent-bronze hover:underline">
                     {label ? 'Edit label' : '+ Add a label'}
+                  </button>
+                )}
+                {p.assignmentId && (
+                  <button type="button"
+                    disabled={sendingPatientId !== null}
+                    onClick={() => { void sendPatientSetupEmail(p); }}
+                    className="self-start rounded-lg border border-ent-line px-3 py-2 text-xs font-semibold text-ent-bronze disabled:opacity-50">
+                    {sendingPatientId===p.patientId?'Sending setup email…':'Send Patient Password Setup Email'}
                   </button>
                 )}
               </div>
