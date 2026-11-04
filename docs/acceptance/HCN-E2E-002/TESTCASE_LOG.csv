@@ -1,0 +1,34 @@
+test_id,status,actual,evidence,utc,role,org_id,patient_id,http_status,server_function,correlation_id,git_sha
+0.1,PASS,Production deployment and backend confirmed,E01,2026-11-04T19:12:47Z,anonymous/operator,,,200,,,6621b4b755b8d682135cf075ab60712803e8762f
+0.2,BLOCKED,Catalog coupon schema and exact-label inventory measured; unknown alias inventory unresolved,E02,2026-11-04T19:12:47Z,anonymous/operator,,,,calculate_monthly_patient_fee_cents,,6621b4b755b8d682135cf075ab60712803e8762f
+0.3,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+0.4,BLOCKED,Browser available; 22 controlled aliases inbox access and encrypted vault absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+0.5,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+1.1,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+1.2,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+1.3,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+1.4,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+1.5,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+2.1,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+2.2,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+2.3,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+2.4,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+2.5,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+3.1,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+3.2,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+3.3,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+3.4,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+3.5,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+4.1,BLOCKED,Schema lacks distinct Nutritionist/PT offices,E02,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+4.2,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+4.3,FAIL,Complete has 3 slots; four simultaneous specialists cannot fit,E02,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+4.4,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+5.1,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+5.2,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+5.3,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+5.4,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+6.security,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+6.finance,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+6.invites,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+6.mobile,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f
+6.reliability,BLOCKED,Not executed: required controlled inbox vault and activated identities absent,E03,2026-11-04T19:12:47Z,anonymous/operator,,,,,,6621b4b755b8d682135cf075ab60712803e8762f

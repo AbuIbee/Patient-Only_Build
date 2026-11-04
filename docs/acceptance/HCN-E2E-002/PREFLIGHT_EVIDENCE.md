@@ -1,0 +1,8 @@
+# Redacted measured evidence
+Run HCN-E2E-002; observed 2026-11-04 19:11–19:13 UTC. Production SHA 6621b4b755b8d682135cf075ab60712803e8762f. No authenticated test identities; organization/patient IDs unavailable.
+
+E01 — 2026-11-04T19:12:47.323787Z GET canonical Professional URL: HTTP 200; script /assets/index-xPEGYREh.js; extracted backend URL https://zgkghauitpyzzljbtrxk.supabase.co. Vercel alias/deployment read confirms deployment ID/SHA in FINAL_PRODUCTION_PARITY.md. Browser accessibility observations show Sign In and Create Enterprise account link; registration renders First Name, Last Name, Email Address, Password, Continue. No submit.
+
+E02 — Read-only production SQL 2026-11-04T19:11:50.721217Z: catalog [{essential,39900,0,published},{plus,59900,1,published},{complete,79900,3,published}]; calculate_monthly_patient_fee_cents(12)=25000. Exact case-insensitive organization/application name or HCN-E2E-002 label counts=0; profile email/name run-tag count=0; Auth email run-tag count=0. No raw emails/PHI retrieved. At 19:12:07.407566Z coupon WELCOME100 active/full_waiver/first_annual_license_only, limit null, expires null, used 1. Constraints and migration fingerprint in accompanying reports. No SQL mutations.
+
+E03 — Connected browser inventory: cloud Chrome, initially no tabs; opened public target. TinyFish default profile prof_75a65946157a4f9c, domain_count 0, signed_in_sites empty. No connected email or encrypted credential-vault tool; no 22 owned aliases available. Activation deliverability not tested. No passwords, OTPs, tokens, full invitation links or API keys captured. No tests left running.

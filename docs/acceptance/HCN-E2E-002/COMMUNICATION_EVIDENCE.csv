@@ -1,0 +1,13 @@
+test_id,patient_fixture_id,conversation_id,message_id,author_id,author_role,recipient_ids,created_at,delivered_at,read_at,notification_id,status,evidence
+5.1,P01,,,,,,,,,,BLOCKED,No activated patient caregiver or Director session
+5.1,P02,,,,,,,,,,BLOCKED,No activated patient caregiver or Director session
+5.1,P03,,,,,,,,,,BLOCKED,No activated patient caregiver or Director session
+5.1,P04,,,,,,,,,,BLOCKED,No activated patient caregiver or Director session
+5.1,P05,,,,,,,,,,BLOCKED,No activated patient caregiver or Director session
+5.1,P06,,,,,,,,,,BLOCKED,No activated patient caregiver or Director session
+5.1,P07,,,,,,,,,,BLOCKED,No activated patient caregiver or Director session
+5.1,P08,,,,,,,,,,BLOCKED,No activated patient caregiver or Director session
+5.1,P09,,,,,,,,,,BLOCKED,No activated patient caregiver or Director session
+5.1,P10,,,,,,,,,,BLOCKED,No activated patient caregiver or Director session
+5.1,P11,,,,,,,,,,BLOCKED,No activated patient caregiver or Director session
+5.1,P12,,,,,,,,,,BLOCKED,No activated patient caregiver or Director session
