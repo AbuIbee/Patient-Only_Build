@@ -83,6 +83,41 @@ export async function signUpCaregiver(input: CaregiverSignUpInput): Promise<{ co
   return { confirmationRequired: !data.session, error: null };
 }
 
+/**
+ * Identity signup for new Organization Owners/Director applicants and
+ * independently credentialed specialist applicants. Never self-assign
+ * the caregiver profile role: Enterprise caregiver employment identities
+ * are created exclusively by the Owner/Director provisioning endpoint.
+ */
+export async function signUpProfessionalApplicant(input: CaregiverSignUpInput): Promise<{ confirmationRequired: boolean; error: Error | null }> {
+  const normalizedEmail = normalizeEmail(input.email);
+  try {
+    await assertUniqueProfileIdentity({ email: normalizedEmail });
+  } catch (err) {
+    return { confirmationRequired: false, error: err instanceof Error ? err : new Error(getErrorMessage(err, 'Could not verify that email address.')) };
+  }
+
+  const { data, error } = await supabase.auth.signUp({
+    email: normalizedEmail,
+    password: input.password,
+    options: {
+      data: {
+        first_name: input.firstName.trim(),
+        last_name: input.lastName.trim(),
+        // No role claim. The database derives all Enterprise office
+        // privileges from authorized organization_memberships.
+      },
+    },
+  });
+  if (error) {
+    return { confirmationRequired: false, error: new Error(isUniqueConstraintError(error) ? uniqueIdentityMessage(error) : error.message) };
+  }
+  if (!data.user) {
+    return { confirmationRequired: false, error: new Error('Sign-up failed. Please try again.') };
+  }
+  return { confirmationRequired: !data.session, error: null };
+}
+
 // ─── New patient registration (no administrator approval) ──────────────────
 export interface CaregiverPatientRegistrationResult {
   success: boolean;
