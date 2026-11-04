@@ -101,7 +101,7 @@ export default function ResponsiblePersonDeclarationPage({
       <section className={area} aria-label="Patient and signer details">
         <h2 className="text-lg font-semibold">Patient and responsible person</h2>
         <dl className="grid gap-3 sm:grid-cols-2 text-sm">
-          <div><dt className="font-semibold">Patient</dt><dd>{context.patientDisplayName}</dd></div>
+          <div><dt className="font-semibold">Patient</dt><dd>{context.patientIdentityMatchConfirmed ? context.patientDisplayName : 'Protected until patient identity confirmation'}</dd></div>
           <div><dt className="font-semibold">Care organization</dt><dd>{context.organizationDisplayName}</dd></div>
           <div><dt className="font-semibold">Responsible person's legal name</dt><dd>{context.representativeDisplayName}</dd></div>
           <div><dt className="font-semibold">Relationship</dt><dd>{context.relationshipToPatient}</dd></div>
