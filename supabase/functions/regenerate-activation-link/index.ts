@@ -106,6 +106,12 @@ serve(async (request) => {
         .eq('status','active');
       if (!coverageError && Array.isArray(coverageRows)) {
         for (const coverage of coverageRows) {
+          const { data: license, error: licenseError } = await adminClient
+            .from('organization_licenses')
+            .select('status,license_number')
+            .eq('organization_id',coverage.organization_id)
+            .maybeSingle();
+          if (licenseError || !license || license.status !== 'active' || !license.license_number) continue;
           const [director, owner] = await Promise.all([
             callerClient.rpc('is_active_org_director',{p_org_id:coverage.organization_id}),
             callerClient.rpc('am_i_org_owner',{p_org_id:coverage.organization_id}),
