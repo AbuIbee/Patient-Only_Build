@@ -186,46 +186,6 @@ serve(async (request) => {
     // Mail provider accepted the request, NOT independently delivered.
     // Never expose the one-time Auth token to the caregiver.
     return jsonResponse({ success: true, activationEmailSent: true, activationLink: null });
-isAssignedEnterpriseCaregiver = !enterprise.error &&
-      Array.isArray(enterprise.data) &&
-      enterprise.data.some((p: { patient_id: string; org_role: string }) =>
-        p.patient_id === patientId && p.org_role === 'caregiver');
-    if (!isResidentialCaregiver && !isAssignedEnterpriseCaregiver) {
-      return jsonResponse({
-        error: 'Only a currently assigned, authorized caregiver may resend this patient setup email.',
-      }, 403);
-    }
-
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-
-    const { data: patientProfile, error: profileError } = await adminClient
-      .from('profiles')
-      .select('email, role')
-      .eq('id', patientId)
-      .maybeSingle();
-    if (profileError || !patientProfile || patientProfile.role !== 'patient') {
-      return jsonResponse({ error: 'No patient profile found for this id.' }, 404);
-    }
-
-    const resolvedRedirect = resolveRedirectOrigin(callbackOrigin);
-    if (!resolvedRedirect) {
-      return jsonResponse({ error: 'No allowlisted callback origin and no APP_URL secret configured — cannot safely generate an activation link.' }, 500);
-    }
-
-    // REMEDIATION B: lands on the isolated /activate route — see the
-    // identical note in provision-caregiver-patient/index.ts.
-    const { data: linkData, error: generateError } = await adminClient.auth.admin.generateLink({
-      type: 'recovery',
-      email: patientProfile.email,
-      options: { redirectTo: `${resolvedRedirect}/activate` },
-    });
-    if (generateError) {
-      return jsonResponse({ error: generateError.message }, 500);
-    }
-
-    return jsonResponse({ success: true, activationLink: linkData?.properties?.action_link ?? null });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('FATAL regenerate-activation-link error:', message);
