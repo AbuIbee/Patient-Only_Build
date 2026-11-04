@@ -26,6 +26,8 @@ export interface ResumeRecord {
   refreshToken: string;
   email: string;
   savedAt: number;
+  /** Distinguishes an employer-issued invite from a patient recovery link. */
+  employeeInvite?: boolean;
 }
 
 export function saveResumeRecord(record: ResumeRecord) {
