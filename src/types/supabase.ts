@@ -4425,6 +4425,29 @@ export interface Database {
       }
     }
     Functions: {
+      // HCN signed onboarding: invited staff are visible to their own
+      // Owner/Director without exposing profiles to unrelated tenants.
+      hcn_get_org_staff_roster: {
+        Args: { p_org_id: string }
+        Returns: Array<{
+          id: string
+          user_id: string
+          org_role: string
+          status: string
+          created_at: string
+          first_name: string | null
+          last_name: string | null
+          email: string | null
+        }>
+      }
+      hcn_assign_caregiver_to_patient: {
+        Args: { p_org_id: string; p_caregiver_id: string; p_patient_id: string }
+        Returns: Record<string, unknown>
+      }
+      hcn_unassign_caregiver_from_patient: {
+        Args: { p_org_id: string; p_caregiver_id: string; p_patient_id: string }
+        Returns: boolean
+      }
       // First-party Haneen SaaS/BAA signature RPC (production migration
       // 20261104000100); previously missing from this hand-maintained map.
       self_service_execute_agreement: {
