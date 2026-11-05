@@ -39,9 +39,9 @@ import { toast } from 'sonner';
 // The approved My Memoria Ally patient experience is shared with Haneen.
 // Only visible branding changes on the dedicated enterprise deployment.
 const patientPortalName = import.meta.env.VITE_ENTERPRISE_SITE === 'true'
-  ? 'Haneen Care Network' : 'My Memoria Ally';
+  ? 'Haneen Care Network' : 'Haneen Care Network';
 const patientPortalLogo = import.meta.env.VITE_ENTERPRISE_SITE === 'true'
-  ? '/haneen-favicon.svg' : '/images/MymemoriaDayTime.png';
+  ? '/haneen-favicon.svg' : '/haneen-favicon.svg';
 
 type NavigationItem = {
   id: PatientView;
