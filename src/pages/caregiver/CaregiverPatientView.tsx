@@ -203,7 +203,7 @@ interface CheckinRow {
 // clinical_observation — migration 044) — all already caregiver-
 // readable via existing RLS, simply never queried by this view before.
 interface MedicationLogRow { id: string; medication_name: string | null; scheduled_time: string | null; taken_time: string | null; status: string | null; date: string; notes: string | null }
-interface HomeReportRow { id: string; report_date: string; submitted_at: string; mood: string | null; meals: string | null; hydration: string | null; medications: string | null; mobility: string | null; exercise: string | null; sleep_quality: string | null; pain_level: number | null; notes: string | null; answers: Record<string, unknown> | null }
+interface HomeReportRow { id: string; report_date: string; submitted_at: string; mood: string | null; meals: string | null; hydration: string | null; medications: string | null; mobility: string | null; exercise: string | null; sleep_quality: string | null; pain_level: number | null }
 interface TaskRow { id: string; title: string; description: string | null; status: string; scheduled_time: string | null; is_active: boolean }
 interface ProfessionalNoteRow { id: string; note: string; note_type: string; created_at: string }
 
@@ -304,8 +304,8 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
         supabase.from('care_partner_checkins')
           .select('id, check_in_date, submitted_by_name, fn_dressing, fn_bathing, fn_toileting, fn_transfers, fn_mobility, fn_medication, fn_comments, nu_appetite, nu_meal_pct, nu_fluids, nu_swallowing, nu_comments, co_urinary, co_bowel, co_skin, co_comments, sa_falls, sa_injury_details, sa_wandering, sa_safety_concerns, sa_safety_checklist, sa_comments, be_behaviors, be_trigger, be_comments, be_agitation, be_wandering_risk, be_responsiveness, be_hallucinations, mo_mood, mo_social, mo_sleep, mo_comments, sy_symptoms, sy_severity, sy_other, sy_comments, sy_pain, sy_respiratory, sy_gi, sy_neurological')
           .eq('patient_id', patientId).order('check_in_date', { ascending: false }).limit(10),
-        supabase.from('care_partner_logs')
-          .select('id, report_date, submitted_at, mood, meals, hydration, medications, mobility, exercise, sleep_quality, pain_level, notes, answers')
+        (supabase as any).from('care_team_home_reports')
+          .select('id, patient_id, report_date, submitted_at, mood, meals, hydration, medications, mobility, exercise, sleep_quality, pain_level')
           .eq('patient_id', patientId).order('report_date', { ascending: false }).limit(30),
         supabase.from('medication_logs')
           .select('id, medication_name, scheduled_time, taken_time, status, date, notes')
@@ -391,12 +391,31 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
     void loadPatient();
   }, [loadPatient]);
 
+  const refreshHomeReports = useCallback(async () => {
+    const authorized = await verifyCaregiverPatientLink(patientId);
+    if (!authorized) { setLoadState('denied'); return; }
+    const { data, error } = await (supabase as any).from('care_team_home_reports')
+      .select('id, patient_id, report_date, submitted_at, mood, meals, hydration, medications, mobility, exercise, sleep_quality, pain_level')
+      .eq('patient_id', patientId).order('report_date', { ascending: false }).limit(30);
+    if (error) {
+      setSectionErrors((prev) => ({ ...prev, homeReports: error.message }));
+      return;
+    }
+    setHomeReports((data ?? []) as HomeReportRow[]);
+    setSectionErrors((prev) => { const next = { ...prev }; delete next.homeReports; return next; });
+  }, [patientId]);
+
+  useEffect(() => {
+    const timer = setInterval(() => { void refreshHomeReports(); }, 10000);
+    return () => clearInterval(timer);
+  }, [refreshHomeReports]);
+
   // Keep the caregiver's open patient record current when the patient or
   // another authorized care-team member records a relevant change. RLS
   // remains the authorization boundary; the patient filter only narrows the
   // Realtime stream and every refresh re-verifies the caregiver-patient link.
   useEffect(() => {
-    const tables = ['mood_entries', 'care_partner_checkins', 'care_partner_logs', 'medications', 'medication_logs', 'care_partner_notes', 'patient_notes'];
+    const tables = ['mood_entries', 'care_partner_checkins', 'medications', 'medication_logs', 'care_partner_notes', 'patient_notes'];
     const channel = supabase.channel(`caregiver-patient-updates-${patientId}`);
     for (const table of tables) {
       channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `patient_id=eq.${patientId}` }, () => {
@@ -674,8 +693,6 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
                 report.exercise && `Exercise: ${report.exercise}`,
                 report.sleep_quality && `Sleep: ${report.sleep_quality}`,
                 report.pain_level != null && `Pain level: ${report.pain_level}`,
-                report.notes,
-                ...Object.entries(report.answers ?? {}).map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`),
               ].filter(Boolean);
               return (
                 <li key={report.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
