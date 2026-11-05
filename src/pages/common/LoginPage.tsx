@@ -332,7 +332,7 @@ export function SignInForm({
     <div className="space-y-5">
       <div className="text-center space-y-1">
         <h2 className="text-2xl font-bold text-charcoal">Sign In</h2>
-        <p className="text-medium-gray text-sm">Welcome back to {import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'}</p>
+        <p className="text-medium-gray text-sm">Welcome back to {import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'Haneen Care Network'}</p>
       </div>
 
       <form
@@ -424,7 +424,7 @@ function LandingButtons({
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold text-charcoal">{import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'}</h1>
+        <h1 className="text-3xl font-bold text-charcoal">{import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'Haneen Care Network'}</h1>
         <p className="text-medium-gray">Compassionate care, every day</p>
       </div>
 
@@ -600,11 +600,11 @@ export default function LoginPage() {
 
           <div className="flex items-center gap-2">
             <img
-              src={import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? '/haneen-favicon.svg' : '/images/MymemoriaDayTime.png'}
-              alt={import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'}
+              src={import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? '/haneen-favicon.svg' : '/haneen-favicon.svg'}
+              alt={import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'Haneen Care Network'}
               className="w-8 h-8 rounded-lg object-cover"
             />
-            <span className="font-semibold text-charcoal">{import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'}</span>
+            <span className="font-semibold text-charcoal">{import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'Haneen Care Network'}</span>
           </div>
         </div>
       </header>
