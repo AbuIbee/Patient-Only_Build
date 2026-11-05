@@ -140,13 +140,48 @@ serve(async (request) => {
 
     const { data: target, error: authLookupError } =
       await adminClient.auth.admin.getUserById(patientId);
-    if (authLookupError || !target.user || target.user.email?.toLowerCase() !== patientProfile.email.toLowerCase()) {
+    if (authLookupError || !target.user) {
       return jsonResponse({ error: 'The existing patient identity could not be verified.' }, 409);
+    }
+
+    // HCN-PATIENT-EMAIL-001. The owner explicitly verified this one patient's
+    // correct activation address. Reconcile the existing AUTH identity using
+    // the supported admin API, never by SQL on auth.users / auth.identities,
+    // and never by provisioning a second identity. Only an authorized org
+    // Owner/Director may initiate this one-time repair; ordinary assigned
+    // caregivers can resend after the identity has been reconciled.
+    let patientAuthUser = target.user;
+    if (patientAuthUser.email?.toLowerCase() !== patientProfile.email.toLowerCase()) {
+      const isApprovedOneTimeRepair =
+        isAuthorizedManager &&
+        patientId === '17132b04-fda8-4638-9357-e80a3ed26c66' &&
+        patientProfile.email.toLowerCase() === 'yousufhea@gmail.com' &&
+        patientAuthUser.email?.toLowerCase() === 'youheath@gmail.com' &&
+        !patientAuthUser.last_sign_in_at;
+      if (!isApprovedOneTimeRepair) {
+        return jsonResponse({ error: 'The existing patient identity could not be verified.' }, 409);
+      }
+      const { data: corrected, error: correctionError } =
+        await adminClient.auth.admin.updateUserById(patientId, {
+          email: patientProfile.email.toLowerCase(),
+        });
+      if (correctionError || corrected.user?.id !== patientId ||
+          corrected.user.email?.toLowerCase() !== patientProfile.email.toLowerCase()) {
+        console.error('Approved patient identity reconciliation failed', correctionError?.code ?? 'verification');
+        return jsonResponse({ error: 'Patient email reconciliation failed; no new account was created.' }, 409);
+      }
+      const { data: readback, error: readbackError } =
+        await adminClient.auth.admin.getUserById(patientId);
+      if (readbackError || readback.user?.id !== patientId ||
+          readback.user.email?.toLowerCase() !== patientProfile.email.toLowerCase()) {
+        return jsonResponse({ error: 'Patient email reconciliation could not be verified. Please retry.' }, 503);
+      }
+      patientAuthUser = readback.user;
     }
     // An employee must never be able to send recovery challenges to an
     // established patient's account. Those patients can use the normal
     // self-service Forgot Password link instead.
-    if (target.user.last_sign_in_at) {
+    if (patientAuthUser.last_sign_in_at) {
       return jsonResponse({
         error: 'This patient has signed in previously. They can reset their own password from Sign In.',
       }, 409);
@@ -165,7 +200,7 @@ serve(async (request) => {
     // Unconfirmed identities need an invitation (email confirmation +
     // password setup). Existing confirmed users who have never signed in
     // may use the recovery flow. Do NOT create another Auth identity.
-    const sendResult = !target.user.email_confirmed_at
+    const sendResult = !patientAuthUser.email_confirmed_at
       ? await adminClient.auth.admin.inviteUserByEmail(
           patientProfile.email, { redirectTo: origin + '/activate' },
         )
