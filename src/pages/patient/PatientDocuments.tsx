@@ -232,8 +232,8 @@ export default function PatientDocuments({ patientId: subjectPatientId }: { pati
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 30);
       const cutoffDate = format(cutoff, 'yyyy-MM-dd'); // report_date is a calendar day, not an instant
-      const { data, error } = await supabase
-        .from('care_partner_logs')
+      const { data, error } = await (supabase as any)
+        .from('patient_home_reports_self')
         .select('id, patient_id, report_date, submitted_at, mood, meals, hydration, medications, mobility, exercise, sleep_quality, pain_level, notes, answers')
         .eq('patient_id', patientId)
         .gte('report_date', cutoffDate)
