@@ -1095,11 +1095,35 @@ function DashboardHome({ orgName, members, license, visits, incidents, handoffs,
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <MetricCard label="Care Team Inventory" value={String(activeStaff+invitedStaff)}
-          sub={`${activeStaff} active · ${invitedStaff} pending activation`} />
-        <MetricCard label="Open Incidents" value={String(openIncidents)} sub="need review" />
-        <MetricCard label="Scheduled Visits" value={String(scheduledVisits)} sub="upcoming or in progress" />
-        <MetricCard label="License" value={license?.status ?? 'proposed'} sub="current status" />
+          sub={`${activeStaff} active · ${invitedStaff} pending activation`} onClick={() => onNavigate('staff')} />
+        <MetricCard label="Open Incidents" value={String(openIncidents)} sub="need review" onClick={() => onNavigate('incidents')} />
+        <MetricCard label="Scheduled Visits" value={String(scheduledVisits)} sub="upcoming or in progress" onClick={() => onNavigate('scheduling')} />
+        <MetricCard label="License" value={license?.status ?? 'proposed'} sub="current status" onClick={() => onNavigate('licensing')} />
       </div>
+
+      <section aria-label="Director quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-bold text-ent-ink">Director Quick Actions</h2>
+          <span className="text-xs text-ent-muted">Open the workflow directly, without using the sidebar</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+          {([
+            { label: 'Manage Patients', key: 'patients' as DirectorNavKey, icon: UserCog },
+            { label: 'Staff & Credentials', key: 'staff' as DirectorNavKey, icon: Users },
+            { label: 'Assign Caregivers', key: 'assignments' as DirectorNavKey, icon: Link2 },
+            { label: 'Schedule Visits', key: 'scheduling' as DirectorNavKey, icon: CalendarClock },
+            { label: 'Review Incidents', key: 'incidents' as DirectorNavKey, icon: ShieldAlert },
+            { label: 'Care Communications', key: 'communications' as DirectorNavKey, icon: MessageSquare },
+          ]).map((action) => (
+            <button key={action.key} type="button" onClick={() => onNavigate(action.key)}
+              className="flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg px-3 py-3 text-left text-sm font-semibold text-ent-ink transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze"
+              aria-label={`Open ${action.label}`}>
+              <action.icon className="h-5 w-5 shrink-0 text-ent-bronze" aria-hidden="true" />
+              <span>{action.label}</span>
+            </button>
+          ))}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <OfficeCard>
@@ -1143,13 +1167,18 @@ function DashboardHome({ orgName, members, license, visits, incidents, handoffs,
   );
 }
 
-function MetricCard({ label, value, sub }: { label: string; value: string; sub: string }) {
+function MetricCard({ label, value, sub, onClick }: { label: string; value: string; sub: string; onClick: () => void }) {
   return (
-    <div className="bg-ent-panel rounded-2xl border border-ent-line p-4">
+    <button type="button" onClick={onClick}
+      aria-label={`View ${label}: ${value}. ${sub}`}
+      className="w-full rounded-2xl border border-ent-line bg-ent-panel p-4 text-left transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze">
       <p className="text-xs font-semibold text-ent-muted capitalize">{label}</p>
-      <p className="text-2xl font-bold text-ent-ink mt-1 capitalize">{value}</p>
+      <p className="mt-1 text-2xl font-bold text-ent-ink capitalize">{value}</p>
       <p className="text-[11px] text-ent-muted">{sub}</p>
-    </div>
+      <span className="mt-2 inline-flex items-center text-xs font-semibold text-ent-bronze">
+        View details <ChevronRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+      </span>
+    </button>
   );
 }
 
