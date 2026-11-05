@@ -37,8 +37,8 @@ export default function LandingPage() {
   ];
 
   const faqs = [
-    { q: 'Who is My Memoria Ally designed for?', a: "It supports people living with Alzheimer's, Dementia, Parkinson's, MS, ALS, Huntington's, PSP, or MSA, Traumatic Brain Injury, ADHD, Autism or other cognitive needs — and the families who care for them." },
-    { q: 'Do I need technical experience to use it?', a: 'Not at all. The interface is designed to be large, clear, and intuitive. If you can tap a button, you can use My Memoria Ally.' },
+    { q: 'Who is Haneen Care Network designed for?', a: "It supports people living with Alzheimer's, Dementia, Parkinson's, MS, ALS, Huntington's, PSP, or MSA, Traumatic Brain Injury, ADHD, Autism or other cognitive needs — and the families who care for them." },
+    { q: 'Do I need technical experience to use it?', a: 'Not at all. The interface is designed to be large, clear, and intuitive. If you can tap a button, you can use Haneen Care Network.' },
     { q: 'Can family members see what\'s happening?', a: 'Yes. Care partners get updates, can log check-ins, and stay connected — all without disrupting the patient\'s experience.' },
     { q: 'Is my health data kept private?', a: 'Absolutely. All data is stored securely and never sold. We follow strict privacy standards to protect you and your loved one.' },
   ];
@@ -50,8 +50,8 @@ export default function LandingPage() {
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-soft-taupe">
         <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-9 h-9 rounded-xl object-cover shadow-sm" />
-            <span className="text-lg font-bold text-charcoal tracking-tight">My Memoria Ally</span>
+            <img src="/haneen-favicon.svg" alt="Haneen Care Network" className="w-9 h-9 rounded-xl object-cover shadow-sm" />
+            <span className="text-lg font-bold text-charcoal tracking-tight">Haneen Care Network</span>
           </div>
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-medium-gray">
             <button onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })} className="hover:text-charcoal transition-colors">Features</button>
@@ -87,15 +87,15 @@ export default function LandingPage() {
               <div className="mb-8 max-w-lg space-y-3">
 
               <p className="text-medium text-medium-gray leading-relaxed text-justify"> <br/>
-                  <span className="text-base text-charcoal font-semibold mb-5"> Being a caregiver is one of the most important—and overwhelming—responsibilities a person can have.</span> Between medications, appointments, mood changes, daily routines, emergency contacts, and countless small details, it can feel impossible to keep everything organized. My Memoria Ally was created to give caregivers a single place to manage, document, and understand every aspect of their loved one's care so nothing important gets overlooked.  
+                  <span className="text-base text-charcoal font-semibold mb-5"> Being a caregiver is one of the most important—and overwhelming—responsibilities a person can have.</span> Between medications, appointments, mood changes, daily routines, emergency contacts, and countless small details, it can feel impossible to keep everything organized. Haneen Care Network was created to give caregivers a single place to manage, document, and understand every aspect of their loved one's care so nothing important gets overlooked.  
               </p>
 
               <p className="text-medium text-medium-gray leading-relaxed text-justify">
-                  Instead of relying on memory, notebooks, sticky notes, text messages, or scattered records, <span className="text-base text-charcoal font-semibold mb-5">My Memoria Ally helps you build a complete picture of your loved one's health and daily life.</span> Track medications, monitor mood and behavior changes, record important events, manage daily activities, store family memories, and maintain a detailed history of care. Over time, the app becomes a living record that helps you recognize patterns, identify concerns earlier, and make more informed caregiving decisions.  
+                  Instead of relying on memory, notebooks, sticky notes, text messages, or scattered records, <span className="text-base text-charcoal font-semibold mb-5">Haneen Care Network helps you build a complete picture of your loved one's health and daily life.</span> Track medications, monitor mood and behavior changes, record important events, manage daily activities, store family memories, and maintain a detailed history of care. Over time, the app becomes a living record that helps you recognize patterns, identify concerns earlier, and make more informed caregiving decisions.  
               </p>
 
               <p className="text-medium text-medium-gray leading-relaxed text-justify">
-                  When it's time to meet with a doctor, specialist, therapist, or care team, you're no longer trying to remember what happened over the past week, month, or year. <span className="text-base text-charcoal font-semibold mb-5">My Memoria Ally provides a clear history of symptoms, behaviors, routines, medications, and changes in condition</span> —allowing healthcare professionals to see what is improving, what is declining, and what interventions have been effective. The result is better conversations, more accurate treatment decisions, less stress for caregivers, and better care for the people who depend on you most.
+                  When it's time to meet with a doctor, specialist, therapist, or care team, you're no longer trying to remember what happened over the past week, month, or year. <span className="text-base text-charcoal font-semibold mb-5">Haneen Care Network provides a clear history of symptoms, behaviors, routines, medications, and changes in condition</span> —allowing healthcare professionals to see what is improving, what is declining, and what interventions have been effective. The result is better conversations, more accurate treatment decisions, less stress for caregivers, and better care for the people who depend on you most.
               </p>
               </div>
 
@@ -144,7 +144,7 @@ export default function LandingPage() {
             >
 
               <p className="text-base text-charcoal font-semibold mb-5">
-                  My Memoria Ally helps caregivers organize medications, monitor changes, document daily care, and walk into every doctor's appointment with the complete story—not just what they can remember.
+                  Haneen Care Network helps caregivers organize medications, monitor changes, document daily care, and walk into every doctor's appointment with the complete story—not just what they can remember.
               </p>
 
               <span className="inline-flex items-center gap-2 bg-warm-bronze/10 text-warm-bronze text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-6">
@@ -178,7 +178,7 @@ export default function LandingPage() {
                 
                 <p className="text-medium text-medium-gray leading-relaxed">
                   You're not a doctor or a nurse. You're someone who loves deeply and wants
-                  to do right by them. My Memoria Ally gives you the tools to make every
+                  to do right by them. Haneen Care Network gives you the tools to make every
                   day a little calmer — for both of you.
                 </p>
                 <br/>
@@ -262,7 +262,7 @@ export default function LandingPage() {
               Everything You Need
             </span>
             <h2 className="text-3xl lg:text-4xl font-bold text-charcoal">Orientation. Routine. Reassurance.</h2>
-            <p className="text-medium-gray mt-3 max-w-md mx-auto">Unlike generic reminder or care apps, My Memoria Ally combines daily orientation, emotional reassurance, and caregiver visibility in one calm experience.</p>
+            <p className="text-medium-gray mt-3 max-w-md mx-auto">Unlike generic reminder or care apps, Haneen Care Network combines daily orientation, emotional reassurance, and caregiver visibility in one calm experience.</p>
           </motion.div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -300,7 +300,7 @@ export default function LandingPage() {
             </span>
             <h2 className="text-3xl lg:text-4xl font-bold text-charcoal">Families who found their footing</h2>
             <p className="text-medium-gray mt-3 max-w-lg mx-auto">
-              From early mornings to quiet evenings, My Memoria Ally is there.
+              From early mornings to quiet evenings, Haneen Care Network is there.
             </p>
           </motion.div>
 
@@ -308,7 +308,7 @@ export default function LandingPage() {
             {[
               { quote: "Mom used to wake up confused and frightened every morning. Now she opens the app, sees her name, the date, and a kind message — and her whole face relaxes. That small thing changed everything for us.", name: "Sandra M.", role: "Daughter & Primary Caregiver", location: "Austin, TX", emoji: "👩‍👧", tag: "Caregiver", tagColor: "bg-calm-blue/15 text-calm-blue" },
               { quote: "I was losing track of my medications and feeling embarrassed to ask for help. This app just quietly reminds me — no fuss, no judgment. I feel like myself again.", name: "Walter B.", role: "Patient, 78 years young", location: "Charleston, SC", emoji: "👴", tag: "Patient", tagColor: "bg-soft-sage/20 text-soft-sage" },
-              { quote: "Our nursing staff used to spend hours fielding calls from worried family members. Since partnering with My Memoria Ally, those calls have dropped dramatically and families feel genuinely supported.", name: "Rebecca T.", role: "Director of Care, Sunrise Living", location: "Denver, CO", emoji: "👩‍⚕️", tag: "Care Facility", tagColor: "bg-warm-bronze/15 text-warm-bronze" },
+              { quote: "Our nursing staff used to spend hours fielding calls from worried family members. Since partnering with Haneen Care Network, those calls have dropped dramatically and families feel genuinely supported.", name: "Rebecca T.", role: "Director of Care, Sunrise Living", location: "Denver, CO", emoji: "👩‍⚕️", tag: "Care Facility", tagColor: "bg-warm-bronze/15 text-warm-bronze" },
               { quote: "My husband has Alzheimer's and every day used to feel like a battle. Now I log his mood, his meals, how he slept — and I actually feel in control. I can breathe again.", name: "Darlene H.", role: "Wife & Full-time Caregiver", location: "Nashville, TN", emoji: "❤️", tag: "Caregiver", tagColor: "bg-calm-blue/15 text-calm-blue" },
               { quote: "I told my daughter I didn't want some complicated computer thing. But this is so simple — big buttons, kind words, and it always knows my name. I actually look forward to checking in.", name: "Evelyn R.", role: "Patient, 82", location: "Savannah, GA", emoji: "🌸", tag: "Patient", tagColor: "bg-soft-sage/20 text-soft-sage" },
               { quote: "I work two jobs and live three hours away. I used to lie awake worrying about Dad. Now I get a little update and I know he's on track. I sleep better. He's happier. We're closer.", name: "Marcus J.", role: "Son & Long-distance Caregiver", location: "Philadelphia, PA", emoji: "👨‍👦", tag: "Caregiver", tagColor: "bg-calm-blue/15 text-calm-blue" },
@@ -426,8 +426,8 @@ export default function LandingPage() {
       <footer className="bg-charcoal border-t border-white/10 px-6 py-8">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-white/40">
           <div className="flex items-center gap-2">
-            <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-7 h-7 rounded-lg object-cover" />
-            <span className="font-semibold text-white/60">My Memoria Ally</span>
+            <img src="/haneen-favicon.svg" alt="Haneen Care Network" className="w-7 h-7 rounded-lg object-cover" />
+            <span className="font-semibold text-white/60">Haneen Care Network</span>
           </div>
             <span className="font-semibold text-white/60">
             <a href="/privacy" className="hover:underline">
@@ -437,7 +437,7 @@ export default function LandingPage() {
             <a href="/about-us" className="hover:underline">
               About Us
             </a></span>
-          <p>© 2025 My Memoria Ally. All rights reserved.</p>
+          <p>© 2025 Haneen Care Network. All rights reserved.</p>
         </div>
       </footer>
 
@@ -464,13 +464,13 @@ export default function LandingPage() {
               className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl"
             >
               <div className="flex justify-between items-start mb-4">
-                <h2 className="text-xl font-bold text-charcoal">About My Memoria Ally</h2>
+                <h2 className="text-xl font-bold text-charcoal">About Haneen Care Network</h2>
                 <button onClick={() => setShowLearnMore(false)} className="text-medium-gray hover:text-charcoal p-1">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <p className="text-medium-gray text-sm leading-relaxed">
-                My Memoria Ally is a daily support system designed to help individuals maintain
+                Haneen Care Network is a daily support system designed to help individuals maintain
                 structure, stay on track with routines, and feel reassured throughout the day.
                 Designed for people living with cognitive challenges and the families who love them.
               </p>
