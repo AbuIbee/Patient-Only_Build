@@ -304,7 +304,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
         supabase.from('care_partner_checkins')
           .select('id, check_in_date, submitted_by_name, fn_dressing, fn_bathing, fn_toileting, fn_transfers, fn_mobility, fn_medication, fn_comments, nu_appetite, nu_meal_pct, nu_fluids, nu_swallowing, nu_comments, co_urinary, co_bowel, co_skin, co_comments, sa_falls, sa_injury_details, sa_wandering, sa_safety_concerns, sa_safety_checklist, sa_comments, be_behaviors, be_trigger, be_comments, be_agitation, be_wandering_risk, be_responsiveness, be_hallucinations, mo_mood, mo_social, mo_sleep, mo_comments, sy_symptoms, sy_severity, sy_other, sy_comments, sy_pain, sy_respiratory, sy_gi, sy_neurological')
           .eq('patient_id', patientId).order('check_in_date', { ascending: false }).limit(10),
-        (supabase as any).from('care_team_home_reports')
+        supabase.from('care_team_home_reports')
           .select('id, patient_id, report_date, submitted_at, mood, meals, hydration, medications, mobility, exercise, sleep_quality, pain_level')
           .eq('patient_id', patientId).order('report_date', { ascending: false }).limit(30),
         supabase.from('medication_logs')
@@ -394,7 +394,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
   const refreshHomeReports = useCallback(async () => {
     const authorized = await verifyCaregiverPatientLink(patientId);
     if (!authorized) { setLoadState('denied'); return; }
-    const { data, error } = await (supabase as any).from('care_team_home_reports')
+    const { data, error } = await supabase.from('care_team_home_reports')
       .select('id, patient_id, report_date, submitted_at, mood, meals, hydration, medications, mobility, exercise, sleep_quality, pain_level')
       .eq('patient_id', patientId).order('report_date', { ascending: false }).limit(30);
     if (error) {
