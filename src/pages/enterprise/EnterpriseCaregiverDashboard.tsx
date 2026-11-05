@@ -886,6 +886,34 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
         <RegistrationAction orgId={orgId} onChanged={onPatientRegistered} compact />
       </div>
 
+      <section aria-label="Caregiver quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="font-bold text-ent-ink">What do you need to do next?</h2>
+          <span className="text-[11px] text-ent-muted">Tap once to open your assigned workflow</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          {([
+            { label: "Today's Visits", nav: 'schedule' as NavItem, Icon: Calendar },
+            { label: 'Clock In / Out', nav: 'visits' as NavItem, Icon: Clock },
+            { label: 'Care Tasks', nav: 'tasks' as NavItem, Icon: ClipboardCheck },
+            { label: 'Patient Records', nav: 'patients' as NavItem, Icon: Users },
+            { label: 'Report an Incident', nav: 'alerts' as NavItem, Icon: ShieldAlert },
+            { label: 'Secure Messages', nav: 'communications' as NavItem, Icon: MessageSquare },
+          ]).map(({ label, nav, Icon }) => (
+            <button type="button" key={label} onClick={() => onNavigate(nav)}
+              className="flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg px-3 py-3 text-left text-sm font-semibold text-ent-ink transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze"
+              aria-label={`Open ${label}`}>
+              <Icon className="h-5 w-5 shrink-0 text-ent-bronze" aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-ent-muted">
+          Visit verification, offline storage, and clinical authorization follow the workflows you open.
+          An offline indicator alone does not mean a note has been saved or synchronized.
+        </p>
+      </section>
+
       {/* H02 — the FIVE approved summary counts ("assigned patients,
           scheduled visits, unfinished tasks, unread messages, and
           outstanding alerts"); each count navigates to its underlying
