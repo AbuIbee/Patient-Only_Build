@@ -30,7 +30,8 @@ import {
 } from '@/services/professionalApplicationService';
 import {
   getOrgVisitsResult, getOrgIncidentReportsResult, getOrgShiftHandoffsResult, resolveOrgIncidentReport,
-  type OrgVisit, type OrgIncidentReport, type OrgShiftHandoff, type IncidentResolutionStatus,
+  getOrgOperationalSnapshot,
+  type OrgVisit, type OrgIncidentReport, type OrgShiftHandoff, type IncidentResolutionStatus, type OrgOperationalSnapshot,
 } from '@/services/organizationDirectorOpsService';
 import {
   getMyOrganizationOriginatingQuoteId, getMyEnterpriseBillingStatus, startEnterpriseCheckout, openEnterpriseBillingPortal,
@@ -1074,17 +1075,49 @@ const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ADMINISTRATION', items: ['reports', 'licensing', 'ownership', 'settings'] },
 ];
 
-function DashboardHome({ orgName, members, license, visits, incidents, handoffs, onNavigate }: {
-  orgName: string; members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
-  license: OrgLicense | null; visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
+const SEVERITY_BADGE: Record<string, string> = {
+  critical: 'text-white bg-ent-rust', high: 'text-ent-rust bg-ent-rust/15',
+  moderate: 'text-amber-700 bg-amber-100', low: 'text-ent-muted bg-ent-pale',
+};
+const ALERT_NAV: Record<string, DirectorNavKey> = {
+  missed_visit: 'scheduling', open_incident: 'incidents', unresolved_handoff: 'operations',
+  unassigned_patient: 'assignments', expiring_credential: 'staff', expired_credential: 'staff',
+};
+
+// HCN-DASH-MASTER-001 Workstream 1 (CLAUDE-01) -- the Director
+// Strategic Command Center. Extends the approved (ChatGPT release)
+// clickable KPI cards and quick actions above/below with: the full
+// required KPI set (not just 4), an hourly staffing-vs-demand view
+// (DASH-01 Section B), a unified compliance/safety action queue
+// (Section C, now also covering credentials and unassigned patients,
+// not just incidents), and organization financial/license health
+// (Section D). Every number is derived from getOrgOperationalSnapshot
+// (real org-scoped records only, migration-free -- existing RLS); a
+// failed sub-query is surfaced via partialErrors, never silently
+// folded into a false "0" (DIR-006).
+function DashboardHome({ organizationId, orgName, members, coveredPatients, license, handoffs, onNavigate }: {
+  organizationId: string; orgName: string; members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
+  coveredPatients: OrgCoveredPatient[];
+  license: OrgLicense | null; handoffs: OrgShiftHandoff[];
   onNavigate: (key: DirectorNavKey) => void;
 }) {
-  const activeStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'active').length;
-  const invitedStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'invited').length;
-  const openIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').length;
-  const scheduledVisits = visits.filter((v) => v.status === 'scheduled' || v.status === 'in_progress').length;
+  const [snapshot, setSnapshot] = useState<OrgOperationalSnapshot | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSnapshotLoading(true);
+    getOrgOperationalSnapshot(organizationId, { members, coveredPatients }).then((s) => {
+      if (!cancelled) { setSnapshot(s); setSnapshotLoading(false); }
+    });
+    return () => { cancelled = true; };
+    // members/coveredPatients are refreshed by the parent as a unit on every
+    // refresh() -- re-running whenever organizationId changes (org switch)
+    // is what actually matters; re-deriving on every members/coveredPatients
+    // array identity change keeps this in sync with the parent's own refresh.
+  }, [organizationId, members, coveredPatients]);
+
   const recentHandoffs = handoffs.slice(0, 5);
-  const recentIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').slice(0, 5);
 
   return (
     <div className="space-y-5">
@@ -1093,13 +1126,35 @@ function DashboardHome({ orgName, members, license, visits, incidents, handoffs,
         <p className="text-sm text-ent-muted mt-0.5">Organization-wide oversight for {orgName || 'your organization'}.</p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard label="Care Team Inventory" value={String(activeStaff+invitedStaff)}
-          sub={`${activeStaff} active · ${invitedStaff} pending activation`} onClick={() => onNavigate('staff')} />
-        <MetricCard label="Open Incidents" value={String(openIncidents)} sub="need review" onClick={() => onNavigate('incidents')} />
-        <MetricCard label="Scheduled Visits" value={String(scheduledVisits)} sub="upcoming or in progress" onClick={() => onNavigate('scheduling')} />
-        <MetricCard label="License" value={license?.status ?? 'proposed'} sub="current status" onClick={() => onNavigate('licensing')} />
-      </div>
+      {snapshot && snapshot.partialErrors.length > 0 && (
+        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 text-sm text-gentle-coral font-medium">
+          Some operational data could not be loaded: {snapshot.partialErrors.join(' · ')} — the KPIs below may be incomplete, not confirmed.
+        </div>
+      )}
+
+      <section aria-label="Today's operational overview">
+        <h2 className="font-bold text-ent-ink mb-2">Today&apos;s Operational Overview</h2>
+        {snapshotLoading || !snapshot ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-ent-forest" /></div>
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <MetricCard label="Active Patient Census" value={String(snapshot.activePatientCensus)} sub="currently covered" onClick={() => onNavigate('patients')} />
+            <MetricCard label="Visits Today" value={String(snapshot.visitsToday)} sub="scheduled for today" onClick={() => onNavigate('scheduling')} />
+            <MetricCard label="Completed Today" value={String(snapshot.visitsCompletedToday)} sub="visits completed" onClick={() => onNavigate('scheduling')} />
+            <MetricCard label="In Progress" value={String(snapshot.visitsInProgressToday)} sub="visits in progress" onClick={() => onNavigate('scheduling')} />
+            <MetricCard label="Missed Today" value={String(snapshot.visitsMissedToday)} sub="need follow-up" onClick={() => onNavigate('scheduling')} />
+            <MetricCard label="Running Late" value={String(snapshot.visitsLateToday)} sub="past scheduled start" onClick={() => onNavigate('scheduling')} />
+            <MetricCard label="Unassigned Patients" value={String(snapshot.unassignedPatients)} sub="no active caregiver" onClick={() => onNavigate('assignments')} />
+            <MetricCard label="Open Incidents" value={String(snapshot.openIncidents)} sub="need review" onClick={() => onNavigate('incidents')} />
+            <MetricCard label="Active Caregivers" value={String(snapshot.activeCaregivers)} sub="currently active" onClick={() => onNavigate('staff')} />
+            <MetricCard label="Awaiting Activation" value={String(snapshot.caregiversAwaitingActivation)} sub="invited, not yet active" onClick={() => onNavigate('staff')} />
+            <MetricCard label="Pending Acknowledgments"
+              value={snapshot.unacknowledgedHandoffs === null ? 'Unavailable' : String(snapshot.unacknowledgedHandoffs)}
+              sub="shift handoffs" onClick={() => onNavigate('operations')} />
+            <MetricCard label="License Status" value={license?.status ?? 'proposed'} sub="current status" onClick={() => onNavigate('licensing')} />
+          </div>
+        )}
+      </section>
 
       <section aria-label="Director quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -1125,29 +1180,99 @@ function DashboardHome({ orgName, members, license, visits, incidents, handoffs,
         </div>
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <section aria-label="Staffing and patient demand">
+        <h2 className="font-bold text-ent-ink mb-2">Staffing and Patient Demand</h2>
         <OfficeCard>
-          <div className="flex items-center justify-between">
-            <h2 className="font-bold text-ent-ink">Needs Your Attention</h2>
-            {recentIncidents.length > 0 && <span className="text-xs font-bold text-ent-rust">{recentIncidents.length}</span>}
-          </div>
-          {recentIncidents.length === 0 ? (
-            <p className="text-sm text-ent-text">No unresolved incidents across your organization right now.</p>
+          {snapshotLoading || !snapshot ? (
+            <Loader2 className="w-5 h-5 animate-spin text-ent-forest" />
+          ) : !snapshot.staffingDataSufficient ? (
+            <p className="text-sm text-ent-muted">Insufficient scheduling data — no visits are scheduled for today yet.</p>
+          ) : (
+            <>
+              <p className="text-xs text-ent-muted">
+                Required staff = distinct caregivers with an overlapping visit each hour. Available = {snapshot.activeCaregivers} active caregivers
+                org-wide (this schema has no per-caregiver hourly availability calendar yet, so org-wide active headcount is the denominator).
+              </p>
+              <div className="overflow-x-auto">
+                <div className="flex gap-1 min-w-[640px] pt-2">
+                  {snapshot.hourlyStaffing.filter((b) => b.hour >= 6 && b.hour <= 21).map((block) => (
+                    <button key={block.hour} type="button" onClick={() => onNavigate('scheduling')}
+                      disabled={block.scheduledVisits === 0}
+                      className={`flex-1 min-w-[22px] flex flex-col items-center gap-1 rounded-lg p-1.5 text-center transition-colors ${
+                        block.deficit > 0 ? 'bg-ent-rust/15 hover:bg-ent-rust/25' : block.scheduledVisits > 0 ? 'bg-ent-green-active hover:opacity-80' : 'bg-ent-bg'
+                      } ${block.scheduledVisits > 0 ? 'cursor-pointer' : 'cursor-default'}`}
+                      aria-label={`${block.hour}:00 — ${block.scheduledVisits} visits, ${block.caregiversRequired} caregivers required, deficit ${block.deficit}`}
+                      title={`${block.hour}:00 — ${block.scheduledVisits} visit(s), ${block.caregiversRequired} required${block.deficit > 0 ? `, short by ${block.deficit}` : ''}${block.overlappingVisits > 0 ? `, ${block.overlappingVisits} overlapping` : ''}`}
+                    >
+                      <span className="text-[10px] text-ent-muted">{block.hour}:00</span>
+                      <span className="text-xs font-bold text-ent-ink">{block.scheduledVisits}</span>
+                      {block.deficit > 0 && <span className="text-[10px] font-bold text-ent-rust">-{block.deficit}</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {snapshot.hourlyStaffing.some((b) => b.deficit > 0) && (
+                <p className="text-xs text-ent-rust font-semibold">
+                  {snapshot.hourlyStaffing.filter((b) => b.deficit > 0).length} hour(s) today show a staffing shortage. Click a shortage block to review the affected visits.
+                </p>
+              )}
+            </>
+          )}
+        </OfficeCard>
+      </section>
+
+      <section aria-label="Compliance and safety">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-bold text-ent-ink">Compliance and Safety</h2>
+          {snapshot && snapshot.complianceAlerts.length > 0 && <span className="text-xs font-bold text-ent-rust">{snapshot.complianceAlerts.length}</span>}
+        </div>
+        <OfficeCard>
+          {snapshotLoading || !snapshot ? (
+            <Loader2 className="w-5 h-5 animate-spin text-ent-forest" />
+          ) : snapshot.complianceAlerts.length === 0 ? (
+            <p className="text-sm text-ent-text">Nothing needs attention across your organization right now.</p>
           ) : (
             <ul className="space-y-2">
-              {recentIncidents.map((i) => (
-                <li key={i.id} className="p-2.5 bg-ent-bg rounded-xl border border-ent-line text-sm">
-                  <p className="font-semibold text-ent-ink capitalize">{i.incidentType.replace('_', ' ')} — {i.patientName}</p>
-                  <p className="text-xs text-ent-muted">{new Date(i.occurredAt).toLocaleString()} · {i.severity}</p>
+              {snapshot.complianceAlerts.slice(0, 8).map((alert) => (
+                <li key={alert.id}>
+                  <button type="button" onClick={() => onNavigate(ALERT_NAV[alert.category] ?? 'dashboard')}
+                    className="w-full flex items-start justify-between gap-3 p-2.5 bg-ent-bg rounded-xl border border-ent-line text-left hover:border-ent-bronze transition-colors">
+                    <span className="min-w-0">
+                      <span className="block font-semibold text-ent-ink text-sm">{alert.title}</span>
+                      <span className="block text-xs text-ent-muted line-clamp-1">{alert.detail}</span>
+                      <span className="block text-[11px] text-ent-muted">{new Date(alert.occurredAt).toLocaleString()}</span>
+                    </span>
+                    <span className={`flex-shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${SEVERITY_BADGE[alert.severity]}`}>{alert.severity}</span>
+                  </button>
                 </li>
               ))}
             </ul>
           )}
-          <button type="button" onClick={() => onNavigate('incidents')} className="text-sm font-semibold text-ent-bronze hover:underline">View all incidents →</button>
+          {snapshot && snapshot.complianceAlerts.length > 8 && (
+            <button type="button" onClick={() => onNavigate('incidents')} className="text-sm font-semibold text-ent-bronze hover:underline">View all ({snapshot.complianceAlerts.length}) →</button>
+          )}
         </OfficeCard>
+      </section>
 
+      <section aria-label="Financial and subscription health">
+        <h2 className="font-bold text-ent-ink mb-2">Financial and Subscription Health</h2>
         <OfficeCard>
-          <h2 className="font-bold text-ent-ink">Recent Staff Activity</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm text-ent-ink">
+            <p><span className="block text-xs text-ent-muted">License number</span><strong>{license?.licenseNumber ?? 'Not yet issued'}</strong></p>
+            <p><span className="block text-xs text-ent-muted">License status</span><strong className="capitalize">{license?.status ?? 'proposed'}</strong></p>
+            <p><span className="block text-xs text-ent-muted">Patient capacity</span><strong>{snapshot ? `${snapshot.activePatientCensus} / ${license?.coveredPatientCapacity ?? '—'}` : '—'}</strong></p>
+            <p><span className="block text-xs text-ent-muted">Specialist seats</span><strong>{license?.maxMedicalProfessionalSeats != null || license?.maxTherapistSeats != null ? `${(members.filter(m=>m.orgRole==='medical_professional'||m.orgRole==='therapist').length)} used` : 'Not configured'}</strong></p>
+          </div>
+          <p className="text-xs text-ent-muted pt-2 border-t border-ent-line">
+            Revenue, unbilled visits, claim denials, and reimbursement exceptions require a connected billing/claims integration beyond Stripe subscription status — <strong>Not connected</strong>. Monthly billing and payment-method status are available under Licensing.
+          </p>
+          <button type="button" onClick={() => onNavigate('licensing')} className="text-sm font-semibold text-ent-bronze hover:underline">Review licensing &amp; billing →</button>
+        </OfficeCard>
+      </section>
+
+      <section aria-label="Recent staff activity">
+        <h2 className="font-bold text-ent-ink mb-2">Recent Staff Activity</h2>
+        <OfficeCard>
           {recentHandoffs.length === 0 ? (
             <p className="text-sm text-ent-text">No shift handoffs recorded yet across your organization.</p>
           ) : (
@@ -1162,7 +1287,7 @@ function DashboardHome({ orgName, members, license, visits, incidents, handoffs,
           )}
           <button type="button" onClick={() => onNavigate('operations')} className="text-sm font-semibold text-ent-bronze hover:underline">View care operations →</button>
         </OfficeCard>
-      </div>
+      </section>
     </div>
   );
 }
@@ -1675,6 +1800,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   const [orgName, setOrgName] = useState('');
   const [packageType, setPackageType] = useState<OrgPackageType>('integrated_care');
   const [coveredCount, setCoveredCount] = useState(0);
+  const [coveredPatients, setCoveredPatients] = useState<OrgCoveredPatient[]>([]);
   const [visits, setVisits] = useState<OrgVisit[]>([]);
   const [incidents, setIncidents] = useState<OrgIncidentReport[]>([]);
   const [handoffs, setHandoffs] = useState<OrgShiftHandoff[]>([]);
@@ -1708,6 +1834,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       setOrgName(org?.organizationName ?? '');
       setPackageType(org?.packageType ?? 'integrated_care');
       setCoveredCount(covered.filter((r) => r.status === 'active').length);
+      setCoveredPatients(covered);
       setVisits(v.data ?? []);
       setIncidents(inc.data ?? []);
       setHandoffs(hoffs.data ?? []);
@@ -1746,7 +1873,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : nav === 'dashboard' ? (
-        <DashboardHome orgName={orgName} members={members} license={license} visits={visits} incidents={incidents} handoffs={handoffs} onNavigate={navigate} />
+        <DashboardHome organizationId={organizationId} orgName={orgName} members={members} coveredPatients={coveredPatients} license={license} handoffs={handoffs} onNavigate={navigate} />
       ) : nav === 'overview' ? (
         <OrganizationOverviewView orgName={orgName} packageType={packageType} members={members} coveredCount={coveredCount} />
       ) : nav === 'applications' ? (
