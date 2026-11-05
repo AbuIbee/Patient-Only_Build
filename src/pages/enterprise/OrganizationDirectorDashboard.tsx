@@ -742,12 +742,14 @@ function CoveredPatientsCard({ orgId, members, onChanged }: {
     if (sendingSetupId) return;
     setSendingSetupId(patientId);
     try {
-      const { emailSent, error } = await regenerateActivationLink(patientId);
+      const { emailSent, emailPurpose, error } = await regenerateActivationLink(patientId);
       if (error || !emailSent) {
         toast.error(error || 'Patient setup email could not be requested.');
         return;
       }
-      toast.success('Patient setup email requested. Ask the patient to check inbox and junk folder.');
+      toast.success(emailPurpose === 'reset'
+        ? 'Password-reset email requested. The patient can use the link in their inbox to change their password.'
+        : 'Patient setup email requested. Ask the patient to check inbox and junk folder.');
     } finally { setSendingSetupId(null); }
   };
 
@@ -783,7 +785,7 @@ function CoveredPatientsCard({ orgId, members, onChanged }: {
                 <button type="button" disabled={sendingSetupId !== null}
                   onClick={() => { void sendPatientSetupEmail(p.patientId); }}
                   className="px-2.5 py-1 rounded-lg border border-ent-line text-xs font-semibold text-ent-bronze disabled:opacity-50">
-                  {sendingSetupId === p.patientId ? 'Sending…' : 'Send setup email'}
+                  {sendingSetupId === p.patientId ? 'Sending…' : 'Email password setup / reset'}
                 </button>
                 <button type="button" onClick={() => setClosingTarget(p)}
                   className="px-2.5 py-1 rounded-lg border border-ent-line text-xs font-semibold text-ent-rust hover:bg-red-50 flex-shrink-0">
