@@ -52,6 +52,17 @@ describe('HCN patient password email server contracts', () => {
     expect(resend).not.toContain('adminClient.auth.admin.deleteUser(');
   });
 
+  it('established patients receive recovery email rather than a signed-in rejection', () => {
+    expect(resend).toContain("target.user.last_sign_in_at || patientAuthUser.email_confirmed_at ? 'reset' : 'setup'");
+    expect(resend).toContain("const sendResult = emailPurpose === 'setup'");
+    expect(resend).toContain('adminClient.auth.resetPasswordForEmail(');
+    expect(resend).toContain('emailPurpose });');
+    expect(resend).not.toContain('This patient has signed in previously.');
+    expect(resend).not.toContain('adminClient.auth.admin.generateLink({');
+    expect(resend).not.toContain('adminClient.auth.admin.createUser(');
+    expect(resend).not.toContain('adminClient.auth.admin.deleteUser(');
+  });
+
   it('preserves existing patient on rate-limit and records a send failure', () => {
     expect(provision).toContain('activationEmailSent: false');
     expect(provision).toContain('activationEmailError:');
