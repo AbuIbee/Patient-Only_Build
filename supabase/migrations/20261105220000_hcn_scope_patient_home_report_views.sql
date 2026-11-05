@@ -22,7 +22,7 @@ SELECT id, patient_id, report_date, submitted_at, mood, meals, hydration,
 FROM public.care_partner_logs
 WHERE public.hcn_can_read_care_partner_notes(patient_id);
 
-REVOKE ALL ON public.patient_home_reports_self, public.care_team_home_reports FROM PUBLIC, anon;
+REVOKE ALL ON public.patient_home_reports_self, public.care_team_home_reports FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.patient_home_reports_self, public.care_team_home_reports TO authenticated;
 
 DO $migration$
