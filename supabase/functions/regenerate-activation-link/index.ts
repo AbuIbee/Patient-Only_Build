@@ -2,8 +2,8 @@
 // email to the existing patient identity; no new Auth user, raw token
 // delivery to staff or untrusted redirect hostname. The caller must be an
 // active assigned caregiver, personal caregiver or this organization's
-// active Director/Owner. A previously signed-in patient must use their
-// own self-service password recovery flow.
+// active Director/Owner. Established patients receive only an emailed Auth
+// password-recovery link; staff never receive a token or change a password.
 // Historical Critical 2 claim-only retry still uses this endpoint;
 // the delivery result is an email-send request, NOT a generated link.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -178,14 +178,13 @@ serve(async (request) => {
       }
       patientAuthUser = readback.user;
     }
-    // An employee must never be able to send recovery challenges to an
-    // established patient's account. Those patients can use the normal
-    // self-service Forgot Password link instead.
-    if (target.user.last_sign_in_at) {
-      return jsonResponse({
-        error: 'This patient has signed in previously. They can reset their own password from Sign In.',
-      }, 409);
-    }
+    // A currently authorized caregiver/manager may ASK Auth to email the
+    // established patient a recovery link. The email goes only to the
+    // patient's server-verified Auth address; no staff-controlled redirect,
+    // password, or one-time token is ever returned to the caller.
+    // Authentication provider rate limits remain enforced below.
+    const emailPurpose: 'setup' | 'reset' =
+      target.user.last_sign_in_at || patientAuthUser.email_confirmed_at ? 'reset' : 'setup';
 
     const isHaneenProduction = supabaseUrl.includes('zgkghauitpyzzljbtrxk');
     const origin = isHaneenProduction
@@ -197,10 +196,10 @@ serve(async (request) => {
 
     // The previous generateLink() issued a raw token to the caregiver
     // and never sent the patient an email. Send via Auth itself instead.
-    // Unconfirmed identities need an invitation (email confirmation +
-    // password setup). Existing confirmed users who have never signed in
-    // may use the recovery flow. Do NOT create another Auth identity.
-    const sendResult = !patientAuthUser.email_confirmed_at
+    // Unconfirmed, never-signed-in identities receive invitations. Existing
+    // confirmed or previously signed-in patients receive a recovery email.
+    // Do NOT create another Auth identity.
+    const sendResult = emailPurpose === 'setup'
       ? await adminClient.auth.admin.inviteUserByEmail(
           patientProfile.email, { redirectTo: origin + '/activate' },
         )
@@ -220,7 +219,8 @@ serve(async (request) => {
 
     // Mail provider accepted the request, NOT independently delivered.
     // Never expose the one-time Auth token to the caregiver.
-    return jsonResponse({ success: true, activationEmailSent: true, activationLink: null });
+    console.info('HCN patient password email requested', { patientId, actorId: caller.id, emailPurpose });
+    return jsonResponse({ success: true, activationEmailSent: true, activationLink: null, emailPurpose });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('FATAL regenerate-activation-link error:', message);
