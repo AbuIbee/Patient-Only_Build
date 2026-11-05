@@ -710,7 +710,7 @@ useEffect(() => {
     isActive = false;
     supabase.removeChannel(channel);
   };
-}, [patientId]);
+}, [patientId, dispatch]);
 
   const stopCalmingMusic = () => {
     const nodes = musicNodesRef.current;
