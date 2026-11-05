@@ -177,7 +177,7 @@ interface PatientHeader {
   emergencyContactPhone: string | null;
 }
 
-interface MedicationRow { id: string; name: string; dosage: string; instructions: string; side_effects: string | null; is_active: boolean }
+interface MedicationRow { id: string; name: string; dosage: string; instructions: string; side_effects: string[]; is_active: boolean }
 interface MoodRow { id: string; mood: string; intensity: number; note: string | null; timestamp: string }
 interface IntakeRow {
   doctor_therapist_name: string | null; doctor_therapist_phone: string | null; preferred_hospital: string | null;
@@ -202,7 +202,7 @@ interface CheckinRow {
 // routine tasks, and authorized clinical notes (therapist_session /
 // clinical_observation — migration 044) — all already caregiver-
 // readable via existing RLS, simply never queried by this view before.
-interface MedicationLogRow { id: string; medication_name: string | null; scheduled_time: string | null; taken_time: string | null; status: string | null; date: string; notes: string | null }
+interface MedicationLogRow { id: string; medication_name: string | null; scheduled_time: string | null; taken_time: string | null; status: string | null; date: string }
 interface HomeReportRow { id: string; report_date: string; submitted_at: string; mood: string | null; meals: string | null; hydration: string | null; medications: string | null; mobility: string | null; exercise: string | null; sleep_quality: string | null; pain_level: number | null }
 interface TaskRow { id: string; title: string; description: string | null; status: string; scheduled_time: string | null; is_active: boolean }
 interface ProfessionalNoteRow { id: string; note: string; note_type: string; created_at: string }
@@ -308,7 +308,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
           .select('id, patient_id, report_date, submitted_at, mood, meals, hydration, medications, mobility, exercise, sleep_quality, pain_level')
           .eq('patient_id', patientId).order('report_date', { ascending: false }).limit(30),
         supabase.from('medication_logs')
-          .select('id, medication_name, scheduled_time, taken_time, status, date, notes')
+          .select('id, medication_name, scheduled_time, taken_time, status, date')
           .eq('patient_id', patientId).order('date', { ascending: false }).limit(30),
         supabase.from('tasks')
           .select('id, title, description, status, scheduled_time, is_active')
@@ -573,7 +573,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
               <li key={m.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
                 <p className="font-medium text-charcoal text-sm">{m.name} — {m.dosage}</p>
                 <p className="text-xs text-medium-gray">{m.instructions}</p>
-                  {m.side_effects && <p className="text-xs text-gentle-coral mt-1"><span className="font-semibold">Reported reactions / side effects:</span> {m.side_effects}</p>}
+                  {m.side_effects?.length > 0 && <p className="text-xs text-gentle-coral mt-1"><span className="font-semibold">Reported reactions / side effects:</span> {m.side_effects.join(', ')}</p>}
               </li>
             ))}
           </ul>
@@ -607,7 +607,6 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
                 <li key={l.id} className="flex items-center justify-between px-3 py-1.5 bg-warm-ivory rounded-lg border border-soft-taupe text-xs">
                   <span className="text-charcoal">{l.medication_name || 'Medication'} — {l.scheduled_time || ''}</span>
                   <span className={l.status === 'taken' ? 'text-soft-sage font-semibold' : 'text-medium-gray'}>{l.status || 'unknown'}{l.taken_time ? ` · ${new Date(l.taken_time).toLocaleString()}` : ''}</span>
-                  {l.notes && <span className="block text-gentle-coral mt-1">Note / reaction: {l.notes}</span>}
                 </li>
               ))}
             </ul>
@@ -652,7 +651,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
         <h2 className="font-bold text-charcoal">Share a mood update with the patient</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm text-charcoal">How is the patient feeling?
-            <select value={caregiverMood} onChange={(e) => setCaregiverMood(e.target.value)} className="mt-1 w-full px-3 py-2 border border-soft-taupe rounded-xl bg-white">
+            <select value={caregiverMood} onChange={(e) => setCaregiverMood(e.target.value as MoodType | '')} className="mt-1 w-full px-3 py-2 border border-soft-taupe rounded-xl bg-white">
               <option value="">Select a mood</option>
               {['happy', 'calm', 'sad', 'angry', 'confused', 'worried', 'anxious', 'scared'].map((mood) => <option key={mood} value={mood}>{mood[0].toUpperCase() + mood.slice(1)}</option>)}
             </select>
