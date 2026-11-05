@@ -42,6 +42,7 @@ import {
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import { acknowledgeHelpActivation } from '@/services/patientClinicalRecordService';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
+import { selectCurrentOrNextVisit } from './selectCurrentOrNextVisit';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
 
 type NavItem =
@@ -865,7 +866,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
 
   const unreadCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
   const todayVisits = visits.filter((v) => v.scheduledStart && new Date(v.scheduledStart).toDateString() === new Date().toDateString());
-  const nextVisit = todayVisits.find((v) => v.status === 'scheduled' || v.status === 'in_progress');
+  const nextVisit = selectCurrentOrNextVisit(todayVisits);
   const nextVisitPatient = nextVisit ? patients.find((p) => p.patientId === nextVisit.patientId) : undefined;
   const needsAttentionCount = incidents.length + helpCount + unacknowledgedHandoffs + missingVisitNotes + unfinishedCareLists;
 
@@ -885,6 +886,34 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
         </div>
         <RegistrationAction orgId={orgId} onChanged={onPatientRegistered} compact />
       </div>
+
+      <section aria-label="Caregiver quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="font-bold text-ent-ink">What do you need to do next?</h2>
+          <span className="text-[11px] text-ent-muted">Tap once to open your assigned workflow</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          {([
+            { label: "Today's Visits", nav: 'schedule' as NavItem, Icon: Calendar },
+            { label: 'Clock In / Out', nav: 'visits' as NavItem, Icon: Clock },
+            { label: 'Care Tasks', nav: 'tasks' as NavItem, Icon: ClipboardCheck },
+            { label: 'Patient Records', nav: 'patients' as NavItem, Icon: Users },
+            { label: 'Report an Incident', nav: 'alerts' as NavItem, Icon: ShieldAlert },
+            { label: 'Secure Messages', nav: 'communications' as NavItem, Icon: MessageSquare },
+          ]).map(({ label, nav, Icon }) => (
+            <button type="button" key={label} onClick={() => onNavigate(nav)}
+              className="flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg px-3 py-3 text-left text-sm font-semibold text-ent-ink transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze"
+              aria-label={`Open ${label}`}>
+              <Icon className="h-5 w-5 shrink-0 text-ent-bronze" aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-ent-muted">
+          Visit verification, offline storage, and clinical authorization follow the workflows you open.
+          An offline indicator alone does not mean a note has been saved or synchronized.
+        </p>
+      </section>
 
       {/* H02 — the FIVE approved summary counts ("assigned patients,
           scheduled visits, unfinished tasks, unread messages, and
@@ -991,11 +1020,11 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
         <div className="space-y-5">
           <Card>
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-ent-ink">Next scheduled visit</h2>
+              <h2 className="font-bold text-ent-ink">Current or next visit</h2>
               {nextVisit && <span className="text-[11px] font-semibold text-ent-forest bg-ent-green-active px-2.5 py-1 rounded-full">Today</span>}
             </div>
             {!nextVisit ? (
-              <p className="text-sm text-ent-muted">No visit is scheduled for today.</p>
+              <p className="text-sm text-ent-muted">No active or upcoming visit is currently scheduled for today.</p>
             ) : (
               <div className="flex items-start gap-3">
                 <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">
