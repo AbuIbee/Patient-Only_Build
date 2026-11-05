@@ -1307,12 +1307,14 @@ function PatientsListView({ patients, onOpenPatient, title, orgId, onChanged }: 
     if (!p.assignmentId || sendingPatientId) return;
     setSendingPatientId(p.patientId);
     try {
-      const { emailSent, error } = await regenerateActivationLink(p.patientId);
+      const { emailSent, emailPurpose, error } = await regenerateActivationLink(p.patientId);
       if (error || !emailSent) {
         toast.error(error || 'Patient setup email could not be requested.');
         return;
       }
-      toast.success('Patient password-setup email requested. Ask the patient to check inbox and junk folder.');
+      toast.success(emailPurpose === 'reset'
+        ? 'Password-reset email requested. The patient can use the link in their inbox to change their password.'
+        : 'Patient setup email requested. Ask the patient to check inbox and junk folder.');
     } finally {
       setSendingPatientId(null);
     }
@@ -1390,7 +1392,7 @@ function PatientsListView({ patients, onOpenPatient, title, orgId, onChanged }: 
                     disabled={sendingPatientId !== null}
                     onClick={() => { void sendPatientSetupEmail(p); }}
                     className="self-start rounded-lg border border-ent-line px-3 py-2 text-xs font-semibold text-ent-bronze disabled:opacity-50">
-                    {sendingPatientId===p.patientId?'Sending setup email…':'Send Patient Password Setup Email'}
+                    {sendingPatientId===p.patientId?'Sending password email…':'Email password setup / reset'}
                   </button>
                 )}
               </div>
