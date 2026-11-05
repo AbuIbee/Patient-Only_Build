@@ -202,6 +202,7 @@ interface CheckinRow {
 // clinical_observation — migration 044) — all already caregiver-
 // readable via existing RLS, simply never queried by this view before.
 interface MedicationLogRow { id: string; medication_name: string | null; scheduled_time: string | null; taken_time: string | null; status: string | null; date: string; notes: string | null }
+interface HomeReportRow { id: string; report_date: string; submitted_at: string; mood: string | null; meals: string | null; hydration: string | null; medications: string | null; mobility: string | null; exercise: string | null; sleep_quality: string | null; pain_level: number | null; notes: string | null; answers: Record<string, unknown> | null }
 interface TaskRow { id: string; title: string; description: string | null; status: string; scheduled_time: string | null; is_active: boolean }
 interface ProfessionalNoteRow { id: string; note: string; note_type: string; created_at: string }
 
@@ -231,6 +232,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContactRow[]>([]);
   const [checkins, setCheckins] = useState<CheckinRow[]>([]);
+  const [homeReports, setHomeReports] = useState<HomeReportRow[]>([]);
   const [medicationLogs, setMedicationLogs] = useState<MedicationLogRow[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [professionalNotes, setProfessionalNotes] = useState<ProfessionalNoteRow[]>([]);
@@ -268,7 +270,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
         { data: medRows, error: medError }, { data: moodRows, error: moodError }, { data: noteRows, error: noteError },
         { data: intakeRow, error: intakeError }, { data: apptRows, error: apptError }, { data: teamRows, error: teamError },
         { data: docRows, error: docError }, { data: contactRows, error: contactError },
-        { data: checkinRows, error: checkinError }, { data: medLogRows, error: medLogError },
+        { data: checkinRows, error: checkinError }, { data: homeReportRows, error: homeReportError }, { data: medLogRows, error: medLogError },
         { data: taskRows, error: taskError }, { data: profNoteRows, error: profNoteError }, helpRows,
       ] = await Promise.all([
         supabase.from('patients')
@@ -301,6 +303,9 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
         supabase.from('care_partner_checkins')
           .select('id, check_in_date, submitted_by_name, fn_dressing, fn_bathing, fn_toileting, fn_transfers, fn_mobility, fn_medication, fn_comments, nu_appetite, nu_meal_pct, nu_fluids, nu_swallowing, nu_comments, co_urinary, co_bowel, co_skin, co_comments, sa_falls, sa_injury_details, sa_wandering, sa_safety_concerns, sa_safety_checklist, sa_comments, be_behaviors, be_trigger, be_comments, be_agitation, be_wandering_risk, be_responsiveness, be_hallucinations, mo_mood, mo_social, mo_sleep, mo_comments, sy_symptoms, sy_severity, sy_other, sy_comments, sy_pain, sy_respiratory, sy_gi, sy_neurological')
           .eq('patient_id', patientId).order('check_in_date', { ascending: false }).limit(10),
+        supabase.from('care_partner_logs')
+          .select('id, report_date, submitted_at, mood, meals, hydration, medications, mobility, exercise, sleep_quality, pain_level, notes, answers')
+          .eq('patient_id', patientId).order('report_date', { ascending: false }).limit(30),
         supabase.from('medication_logs')
           .select('id, medication_name, scheduled_time, taken_time, status, date, notes')
           .eq('patient_id', patientId).order('date', { ascending: false }).limit(30),
@@ -347,6 +352,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
       setCareTeam(teamRows ?? []);
       setEmergencyContacts(contactRows ?? []);
       setCheckins(checkinRows ?? []);
+      setHomeReports(homeReportRows ?? []);
       setMedicationLogs(medLogRows ?? []);
       setTasks(taskRows ?? []);
       setProfessionalNotes(profNoteRows ?? []);
@@ -365,6 +371,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
       if (docError) newSectionErrors.documents = docError.message;
       if (contactError) newSectionErrors.emergencyContacts = contactError.message;
       if (checkinError) newSectionErrors.checkins = checkinError.message;
+      if (homeReportError) newSectionErrors.homeReports = homeReportError.message;
       if (medLogError) newSectionErrors.medicationLogs = medLogError.message;
       if (taskError) newSectionErrors.tasks = taskError.message;
       if (profNoteError) newSectionErrors.professionalNotes = profNoteError.message;
@@ -388,7 +395,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
   // remains the authorization boundary; the patient filter only narrows the
   // Realtime stream and every refresh re-verifies the caregiver-patient link.
   useEffect(() => {
-    const tables = ['mood_entries', 'care_partner_checkins', 'medications', 'medication_logs', 'care_partner_notes', 'patient_notes'];
+    const tables = ['mood_entries', 'care_partner_checkins', 'care_partner_logs', 'medications', 'medication_logs', 'care_partner_notes', 'patient_notes'];
     const channel = supabase.channel(`caregiver-patient-updates-${patientId}`);
     for (const table of tables) {
       channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `patient_id=eq.${patientId}` }, () => {
@@ -648,6 +655,34 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
                 <span className="text-xs text-medium-gray flex-shrink-0 ml-2">{new Date(m.timestamp).toLocaleDateString()}</span>
               </li>
             ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+        <div className="flex items-center gap-2"><FileText className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Patient Portal Home Reports</h2></div>
+        {sectionErrors.homeReports ? <p className="text-sm text-gentle-coral">Could not load home reports: {sectionErrors.homeReports}</p> : homeReports.length === 0 ? <p className="text-sm text-medium-gray">No home reports have been shared yet.</p> : (
+          <ul className="space-y-2">
+            {homeReports.map((report) => {
+              const details = [
+                report.mood && `Mood: ${report.mood}`,
+                report.meals && `Meals: ${report.meals}`,
+                report.hydration && `Hydration: ${report.hydration}`,
+                report.medications && `Medication: ${report.medications}`,
+                report.mobility && `Mobility: ${report.mobility}`,
+                report.exercise && `Exercise: ${report.exercise}`,
+                report.sleep_quality && `Sleep: ${report.sleep_quality}`,
+                report.pain_level != null && `Pain level: ${report.pain_level}`,
+                report.notes,
+                ...Object.entries(report.answers ?? {}).map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`),
+              ].filter(Boolean);
+              return (
+                <li key={report.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+                  <p className="font-semibold text-charcoal">{new Date(report.report_date + 'T00:00:00').toLocaleDateString()}</p>
+                  {details.length ? <p className="mt-1 text-medium-gray whitespace-pre-wrap">{details.join(' · ')}</p> : <p className="mt-1 text-medium-gray">No details entered.</p>}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
