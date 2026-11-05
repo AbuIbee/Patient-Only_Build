@@ -654,7 +654,7 @@ useEffect(() => {
   loadCheckIns();
 
   const channel = supabase
-    .channel(`care_partner_checkins_${patientId}`)
+    .channel(`patient-care-updates_${patientId}`)
     .on(
       'postgres_changes',
       {
@@ -665,6 +665,43 @@ useEffect(() => {
       },
       async () => {
         await loadCheckIns();
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'mood_entries',
+        filter: `patient_id=eq.${patientId}`,
+      },
+      async () => {
+        const { data, error } = await supabase
+          .from('mood_entries')
+          .select('id, patient_id, mood, intensity, note, triggers, time_of_day, timestamp, recorded_by')
+          .eq('patient_id', patientId)
+          .order('timestamp', { ascending: false })
+          .limit(100);
+        if (error) {
+          console.error('Error refreshing shared mood updates:', error);
+          return;
+        }
+        if (isActive) {
+          dispatch({
+            type: 'SET_MOOD_ENTRIES',
+            payload: (data || []).map((entry) => ({
+              id: entry.id,
+              patientId: entry.patient_id,
+              mood: entry.mood as MoodType,
+              intensity: entry.intensity,
+              note: entry.note ?? undefined,
+              triggers: entry.triggers ?? [],
+              timeOfDay: entry.time_of_day ?? undefined,
+              timestamp: entry.timestamp,
+              recordedBy: entry.recorded_by ?? undefined,
+            })),
+          });
+        }
       }
     )
     .subscribe();
