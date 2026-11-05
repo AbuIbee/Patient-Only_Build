@@ -276,12 +276,12 @@ export async function finishCaregiverPatientClaim(
  * is re-verified server-side inside the Edge Function — never trusted
  * from this call alone.
  */
-export async function regenerateActivationLink(patientId: string): Promise<{ link: string | null; emailSent: boolean; error: string | null }> {
+export async function regenerateActivationLink(patientId: string): Promise<{ link: string | null; emailSent: boolean; error: string | null; emailPurpose?: 'setup' | 'reset' }> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) {
     return { link: null, emailSent: false, error: 'You must be signed in as a caregiver.' };
   }
-  const { data, error } = await supabase.functions.invoke<{ success?: boolean; activationEmailSent?: boolean; activationLink?: string | null; error?: string }>(
+  const { data, error } = await supabase.functions.invoke<{ success?: boolean; activationEmailSent?: boolean; activationLink?: string | null; emailPurpose?: 'setup' | 'reset'; error?: string }>(
     'regenerate-activation-link',
     { body: { patientId, callbackOrigin: typeof window !== 'undefined' ? window.location.origin : null } },
   );
@@ -292,7 +292,8 @@ export async function regenerateActivationLink(patientId: string): Promise<{ lin
     return { link: null, emailSent: false, error: message };
   }
   return { link: null, emailSent: data.activationEmailSent === true,
-    error: data.activationEmailSent ? null : 'Patient activation email was not confirmed as requested.' };
+    emailPurpose: data.emailPurpose === 'reset' ? 'reset' : 'setup',
+    error: data.activationEmailSent ? null : 'Patient password email request was not accepted.' };
 }
 
 // ─── My Patients ──────────────────────────────────────────────────────────
