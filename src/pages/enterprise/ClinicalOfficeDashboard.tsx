@@ -230,7 +230,7 @@ export default function ClinicalOfficeDashboard({ filterRole, basePath = null }:
           ) : undefined}
         />
       ) : nav === 'dashboard' ? (
-        <DashboardHome isTherapy={isTherapy} roleLabel={roleLabel} patients={patients} commsOverview={commsOverview} onOpenPatient={(p) => openPatientRecord(p)} loadError={loadError} />
+        <DashboardHome isTherapy={isTherapy} roleLabel={roleLabel} patients={patients} commsOverview={commsOverview} onOpenPatient={(p) => openPatientRecord(p)} onNavigate={navigate} loadError={loadError} />
       ) : PATIENT_PICKER_DESTINATIONS.includes(nav) ? (
         <PatientPicker
           patients={patients}
@@ -249,9 +249,9 @@ export default function ClinicalOfficeDashboard({ filterRole, basePath = null }:
   );
 }
 
-function DashboardHome({ isTherapy, roleLabel, patients, commsOverview, onOpenPatient, loadError }: {
+function DashboardHome({ isTherapy, roleLabel, patients, commsOverview, onOpenPatient, onNavigate, loadError }: {
   isTherapy: boolean; roleLabel: string; patients: StaffPatient[]; commsOverview: { activeConversations: number; unresolvedFollowUps: number } | null;
-  onOpenPatient: (p: StaffPatient) => void; loadError?: string | null;
+  onOpenPatient: (p: StaffPatient) => void; onNavigate: (key: ClinicalNavKey) => void; loadError?: string | null;
 }) {
   return (
     <div className="space-y-5">
@@ -261,10 +261,31 @@ function DashboardHome({ isTherapy, roleLabel, patients, commsOverview, onOpenPa
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <MetricCard label={isTherapy ? 'Therapy patients' : 'Clinical patients'} value={String(patients.length)} sub="active" />
-        <MetricCard label="Care team messages" value={String(commsOverview?.activeConversations ?? 0)} sub="active conversations" />
-        <MetricCard label="Unresolved follow-ups" value={String(commsOverview?.unresolvedFollowUps ?? 0)} sub="care team" />
+        <MetricCard label={isTherapy ? 'Therapy patients' : 'Clinical patients'} value={String(patients.length)} sub="assigned" onClick={() => onNavigate('patients')} />
+        <MetricCard label="Care team messages" value={commsOverview ? String(commsOverview.activeConversations) : '—'} sub={commsOverview ? 'active conversations' : 'status unavailable'} onClick={() => onNavigate('communication')} />
+        <MetricCard label="Unresolved follow-ups" value={commsOverview ? String(commsOverview.unresolvedFollowUps) : '—'} sub={commsOverview ? 'care team' : 'status unavailable'} onClick={() => onNavigate('communication')} />
       </div>
+
+      <section aria-label={isTherapy ? 'Therapy office quick actions' : 'Medical office quick actions'}
+        className="rounded-2xl border border-ent-line bg-ent-panel p-4">
+        <h2 className="mb-3 font-bold text-ent-ink">{isTherapy ? 'Therapy Actions' : 'Clinical Actions'}</h2>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {([
+            { label: 'My Patients', key: 'patients' as ClinicalNavKey, Icon: Users },
+            { label: isTherapy ? 'Session Schedule' : 'Clinical Schedule', key: 'schedule' as ClinicalNavKey, Icon: Calendar },
+            { label: isTherapy ? 'Treatment Goals' : 'Patient Assessments', key: isTherapy ? 'goals' as ClinicalNavKey : 'assessments' as ClinicalNavKey, Icon: Target },
+            { label: 'Document Encounter', key: 'documentation' as ClinicalNavKey, Icon: FileText },
+            { label: 'Care Team Messages', key: 'communication' as ClinicalNavKey, Icon: MessageSquare },
+            { label: 'My Credentials', key: 'credentials' as ClinicalNavKey, Icon: Award },
+          ]).map(({ label, key, Icon }) => (
+            <button key={key} type="button" onClick={() => onNavigate(key)}
+              className="flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg p-3 text-left text-sm font-semibold text-ent-ink hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze">
+              <Icon className="h-5 w-5 shrink-0 text-ent-bronze" aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </div>
+      </section>
 
       <OfficeCard>
         <div className="flex items-center justify-between">
@@ -301,13 +322,17 @@ function DashboardHome({ isTherapy, roleLabel, patients, commsOverview, onOpenPa
   );
 }
 
-function MetricCard({ label, value, sub }: { label: string; value: string; sub: string }) {
+function MetricCard({ label, value, sub, onClick }: { label: string; value: string; sub: string; onClick: () => void }) {
   return (
-    <div className="bg-ent-panel rounded-2xl border border-ent-line p-4">
+    <button type="button" onClick={onClick} aria-label={`Open ${label}: ${value}. ${sub}`}
+      className="w-full rounded-2xl border border-ent-line bg-ent-panel p-4 text-left hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze">
       <p className="text-xs font-semibold text-ent-muted">{label}</p>
-      <p className="text-2xl font-bold text-ent-ink mt-1">{value}</p>
+      <p className="mt-1 text-2xl font-bold text-ent-ink">{value}</p>
       <p className="text-[11px] text-ent-muted">{sub}</p>
-    </div>
+      <span className="mt-2 inline-flex items-center text-xs font-semibold text-ent-bronze">View details
+        <ChevronRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+      </span>
+    </button>
   );
 }
 
