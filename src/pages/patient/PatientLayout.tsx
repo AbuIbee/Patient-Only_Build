@@ -36,6 +36,13 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
+// The approved My Memoria Ally patient experience is shared with Haneen.
+// Only visible branding changes on the dedicated enterprise deployment.
+const patientPortalName = import.meta.env.VITE_ENTERPRISE_SITE === 'true'
+  ? 'Haneen Care Network' : 'My Memoria Ally';
+const patientPortalLogo = import.meta.env.VITE_ENTERPRISE_SITE === 'true'
+  ? '/haneen-favicon.svg' : '/images/MymemoriaDayTime.png';
+
 type NavigationItem = {
   id: PatientView;
   label: string;
@@ -556,7 +563,7 @@ function PatientLayoutInner() {
       <div className="min-h-screen bg-warm-ivory flex items-center justify-center">
         <div className="text-center space-y-6">
           <div className="w-20 h-20 rounded-full mx-auto overflow-hidden shadow-lg">
-            <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-full h-full object-cover animate-pulse" />
+            <img src={patientPortalLogo} alt={patientPortalName} className="w-full h-full object-cover animate-pulse" />
           </div>
           <div>
             <p className="text-2xl font-semibold text-charcoal">
@@ -576,8 +583,8 @@ function PatientLayoutInner() {
         className={`fixed left-0 top-0 bottom-0 ${getSidebarBg()} border-r border-soft-taupe z-40 w-64 hidden md:flex flex-col`}
       >
         <div className="h-14 flex items-center px-4 border-b border-soft-taupe flex-shrink-0">
-          <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
-          <span className="ml-3 font-semibold text-charcoal">My Memoria Ally</span>
+          <img src={patientPortalLogo} alt={patientPortalName} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
+          <span className="ml-3 font-semibold text-charcoal">{patientPortalName}</span>
         </div>
 
         {(
@@ -846,7 +853,7 @@ function PatientLayoutInner() {
                   </div>
                   <div>
                     <p className="font-semibold text-charcoal text-sm">
-                      {patient?.preferredName || patient?.firstName || 'My Memoria Ally'}
+                      {patient?.preferredName || patient?.firstName || patientPortalName}
                     </p>
                     <p className="text-xs text-medium-gray">
                       {isEvening ? 'Good Evening' : hour < 12 ? 'Good Morning' : 'Good Afternoon'}
