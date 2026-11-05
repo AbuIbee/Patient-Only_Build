@@ -4,7 +4,7 @@ import { Heart, Shield, Lock, FileText, CheckCircle } from 'lucide-react';
 const EFFECTIVE_DATE = 'April 19, 2026';
 const COMPANY = 'Salahuddeen Enterprises LLC';
 const EMAIL = 's.muhammad@salahuddeenenterprises.com';
-const APP_URL = 'mymemoriaally.com';
+const APP_URL = 'www.HaneenCareNetwork.com';
 
 type DocId = 'privacy' | 'hipaa' | 'baa' | 'consent' | 'security' | 'terms';
 
@@ -83,7 +83,7 @@ function PrivacyPolicyContent() {
       <DocHeader
         title="Privacy Policy"
         subtitle="How We Collect, Use, Protect, and Disclose Your Information"
-        tag="My Memoria Ally"
+        tag="Haneen Care Network"
       />
 
       <InfoBox color="blue">
@@ -93,13 +93,13 @@ function PrivacyPolicyContent() {
       <div className="my-6" />
 
       <Sec title="1. Introduction and Scope">
-        <p>{COMPANY} ("we," "us," or "our") operates the My Memoria Ally mobile and web application (the "App") available at {APP_URL}. My Memoria Ally is a dementia and cognitive care support platform serving patients, family caregivers, Patient Care Coordinators, licensed therapists, and healthcare facility administrators.</p>
+        <p>{COMPANY} ("we," "us," or "our") operates the Haneen Care Network mobile and web application (the "App") available at {APP_URL}. Haneen Care Network is a dementia and cognitive care support platform serving patients, family caregivers, Patient Care Coordinators, licensed therapists, and healthcare facility administrators.</p>
         <p>This Privacy Policy describes how we collect, use, disclose, and protect your personal information and Protected Health Information (PHI) when you use the App. It applies to all users of the App regardless of how they access it — via web browser, iOS app, or Android app.</p>
         <p>By creating an account or using the App, you acknowledge that you have read and understood this Privacy Policy. If you do not agree with any part of this policy, please discontinue use of the App immediately.</p>
       </Sec>
 
       <Sec title="2. Who This Policy Covers">
-        <p>This Privacy Policy applies to all categories of users of the My Memoria Ally platform:</p>
+        <p>This Privacy Policy applies to all categories of users of the Haneen Care Network platform:</p>
         <Ul items={[
           "Patients — individuals living with dementia, Alzheimer's disease, mild cognitive impairment, ADHD, autism, traumatic brain injury (TBI), anxiety disorders, or other cognitive conditions who use the App directly for daily support",
           "Patient Care Coordinators — professional caregivers, family members, or designated support persons who manage a patient's care within the App",
@@ -163,7 +163,7 @@ function PrivacyPolicyContent() {
       </Sec>
 
       <Sec title="4. Protected Health Information (PHI) and HIPAA Compliance">
-        <p>Because My Memoria Ally is used to manage care for individuals with cognitive conditions, certain information you provide constitutes Protected Health Information (PHI) under the Health Insurance Portability and Accountability Act of 1996 (HIPAA) and the Health Information Technology for Economic and Clinical Health Act (HITECH).</p>
+        <p>Because Haneen Care Network is used to manage care for individuals with cognitive conditions, certain information you provide constitutes Protected Health Information (PHI) under the Health Insurance Portability and Accountability Act of 1996 (HIPAA) and the Health Information Technology for Economic and Clinical Health Act (HITECH).</p>
         <p>We treat all health-related information with the highest level of protection. Our specific HIPAA compliance program is described in detail in the HIPAA Compliance Statement tab. Key points:</p>
         <Ul items={[
           "We function as a Business Associate under HIPAA when processing PHI on behalf of healthcare provider Covered Entities",
@@ -261,12 +261,12 @@ function PrivacyPolicyContent() {
       </Sec>
 
       <Sec title="11. Children's Privacy">
-        <p>My Memoria Ally is not directed to children under 13 years of age. We do not knowingly collect personal information from children under 13 without verifiable parental consent. Patient accounts may be created on behalf of minors by a parent or legal guardian who accepts this Privacy Policy on their behalf and remains responsible for the minor's use of the App.</p>
+        <p>Haneen Care Network is not directed to children under 13 years of age. We do not knowingly collect personal information from children under 13 without verifiable parental consent. Patient accounts may be created on behalf of minors by a parent or legal guardian who accepts this Privacy Policy on their behalf and remains responsible for the minor's use of the App.</p>
         <p>If we become aware that we have collected personal information from a child under 13 without parental consent, we will take steps to delete that information promptly. Contact us at <a href={"mailto:" + EMAIL} className="text-warm-bronze underline">{EMAIL}</a> with concerns.</p>
       </Sec>
 
       <Sec title="12. International Data Transfers">
-        <p>My Memoria Ally is operated from the United States. If you access the App from outside the United States, your information will be transferred to, stored, and processed in the United States. By using the App, you consent to this transfer. Our infrastructure provider (Supabase / AWS) maintains appropriate safeguards for international data transfers.</p>
+        <p>Haneen Care Network is operated from the United States. If you access the App from outside the United States, your information will be transferred to, stored, and processed in the United States. By using the App, you consent to this transfer. Our infrastructure provider (Supabase / AWS) maintains appropriate safeguards for international data transfers.</p>
       </Sec>
 
       <Sec title="13. Security">
@@ -309,22 +309,22 @@ function HIPAAContent() {
       <DocHeader
         title="HIPAA Compliance Statement"
         subtitle="Health Insurance Portability and Accountability Act — Compliance Program"
-        tag="My Memoria Ally"
+        tag="Haneen Care Network"
       />
 
       <InfoBox color="blue">
-        <strong>Overview:</strong> {COMPANY} operates as a HIPAA Business Associate. We implement the Privacy Rule, Security Rule, and Breach Notification Rule in full. All organizations using My Memoria Ally for patient care must execute a Business Associate Agreement with us before processing PHI.
+        <strong>Overview:</strong> {COMPANY} operates as a HIPAA Business Associate. We implement the Privacy Rule, Security Rule, and Breach Notification Rule in full. All organizations using Haneen Care Network for patient care must execute a Business Associate Agreement with us before processing PHI.
       </InfoBox>
 
       <div className="my-6" />
 
       <Sec title="1. Our Role Under HIPAA">
-        <p>{COMPANY}, as the operator of My Memoria Ally, recognizes that we function as a <strong>Business Associate</strong> under HIPAA (45 CFR §160.103) when we create, receive, maintain, or transmit Protected Health Information (PHI) on behalf of Covered Entities — specifically the healthcare providers, facilities, and care organizations that use our platform to manage patient care.</p>
+        <p>{COMPANY}, as the operator of Haneen Care Network, recognizes that we function as a <strong>Business Associate</strong> under HIPAA (45 CFR §160.103) when we create, receive, maintain, or transmit Protected Health Information (PHI) on behalf of Covered Entities — specifically the healthcare providers, facilities, and care organizations that use our platform to manage patient care.</p>
         <p>This document describes our HIPAA compliance program in detail, including our obligations under the HIPAA Privacy Rule (45 CFR Part 164, Subpart E), Security Rule (45 CFR Part 164, Subpart C), and Breach Notification Rule (45 CFR Part 164, Subpart D).</p>
       </Sec>
 
       <Sec title="2. Covered Entities and Business Associate Relationships">
-        <p>The following entities are Covered Entities under HIPAA that may use My Memoria Ally:</p>
+        <p>The following entities are Covered Entities under HIPAA that may use Haneen Care Network:</p>
         <Ul items={[
           "Memory care facilities and nursing homes",
           "Home health agencies",
@@ -333,7 +333,7 @@ function HIPAAContent() {
           "Individual licensed healthcare providers (physicians, neurologists, psychiatrists)",
           "Licensed therapists providing cognitive rehabilitation services",
         ]} />
-        <p>Prior to receiving access to My Memoria Ally for any use involving PHI, each Covered Entity must execute a signed Business Associate Agreement (BAA) with {COMPANY}. Our BAA template is available for review under the Business Associate Agreement tab.</p>
+        <p>Prior to receiving access to Haneen Care Network for any use involving PHI, each Covered Entity must execute a signed Business Associate Agreement (BAA) with {COMPANY}. Our BAA template is available for review under the Business Associate Agreement tab.</p>
       </Sec>
 
       <Sec title="3. Categories of PHI We Process">
@@ -462,18 +462,18 @@ function BAAContent() {
       <DocHeader
         title="Business Associate Agreement"
         subtitle="HIPAA-Compliant Data Processing Agreement Template"
-        tag="My Memoria Ally"
+        tag="Haneen Care Network"
       />
 
       <InfoBox color="amber">
-        <strong>Note for Healthcare Organizations:</strong> This page displays the standard terms of our Business Associate Agreement. To execute a legally binding, signed BAA with {COMPANY} for your organization, please contact us at <a href={"mailto:" + EMAIL} className="underline font-medium">{EMAIL}</a>. A BAA must be in place before your organization processes any Protected Health Information through My Memoria Ally.
+        <strong>Note for Healthcare Organizations:</strong> This page displays the standard terms of our Business Associate Agreement. To execute a legally binding, signed BAA with {COMPANY} for your organization, please contact us at <a href={"mailto:" + EMAIL} className="underline font-medium">{EMAIL}</a>. A BAA must be in place before your organization processes any Protected Health Information through Haneen Care Network.
       </InfoBox>
 
       <div className="my-6" />
 
       <Sec title="Recitals">
         <p>THIS BUSINESS ASSOCIATE AGREEMENT ("Agreement") is entered into by and between <strong>{COMPANY}</strong> ("Business Associate") and the healthcare provider, facility, or organization executing this Agreement ("Covered Entity"), each a "Party" and collectively the "Parties."</p>
-        <p><strong>WHEREAS,</strong> Business Associate provides care coordination technology services through the My Memoria Ally application;</p>
+        <p><strong>WHEREAS,</strong> Business Associate provides care coordination technology services through the Haneen Care Network application;</p>
         <p><strong>WHEREAS,</strong> in the course of providing such services, Business Associate may create, receive, maintain, or transmit Protected Health Information (PHI) on behalf of Covered Entity;</p>
         <p><strong>WHEREAS,</strong> HIPAA, HITECH, and their implementing regulations require Covered Entity to enter into a Business Associate Agreement with Business Associate prior to the disclosure of PHI;</p>
         <p><strong>NOW THEREFORE,</strong> in consideration of the mutual promises set forth herein, the Parties agree as follows:</p>
@@ -483,12 +483,12 @@ function BAAContent() {
         <p>All capitalized terms in this Agreement shall have the meanings given under HIPAA and its implementing regulations (45 CFR Parts 160 and 164), unless otherwise defined herein.</p>
         <Ul items={[
           '"Breach" means the acquisition, access, use, or disclosure of PHI in a manner not permitted by the HIPAA Privacy Rule that compromises the security or privacy of the PHI (45 CFR §164.402)',
-          '"Business Associate" means Salahuddeen Enterprises LLC, the entity providing care coordination technology services through the My Memoria Ally application',
+          '"Business Associate" means Salahuddeen Enterprises LLC, the entity providing care coordination technology services through the Haneen Care Network application',
           '"Covered Entity" means the healthcare provider, facility, or organization entering into this Agreement',
           '"Electronic Protected Health Information" or "ePHI" means PHI that is created, received, maintained, or transmitted in electronic form',
           '"HIPAA Rules" means the Privacy, Security, Breach Notification, and Enforcement Rules at 45 CFR Parts 160 and 164',
           '"Protected Health Information" or "PHI" has the meaning given under 45 CFR §160.103',
-          '"Services" means the care coordination technology services provided through the My Memoria Ally application',
+          '"Services" means the care coordination technology services provided through the Haneen Care Network application',
           '"Subcontractor" means a person to whom a Business Associate delegates a function, activity, or service',
           '"Unsecured PHI" means PHI that is not rendered unusable, unreadable, or indecipherable to unauthorized persons through a technology or methodology specified by the Secretary of HHS',
         ]} />
@@ -601,18 +601,18 @@ function DataConsentContent() {
       <DocHeader
         title="Data Consent and Authorization"
         subtitle="Informed Consent for Collection and Processing of Personal and Health Information"
-        tag="My Memoria Ally"
+        tag="Haneen Care Network"
       />
 
       <InfoBox color="green">
-        <strong>Plain Language Summary:</strong> By using My Memoria Ally, you consent to us collecting and using the information described below to provide your care support services. We will never sell your information or use it for advertising. You can withdraw your consent and request deletion of your data at any time.
+        <strong>Plain Language Summary:</strong> By using Haneen Care Network, you consent to us collecting and using the information described below to provide your care support services. We will never sell your information or use it for advertising. You can withdraw your consent and request deletion of your data at any time.
       </InfoBox>
 
       <div className="my-6" />
 
       <Sec title="1. Purpose of This Document">
-        <p>This Data Consent and Authorization ("Consent") is provided by {COMPANY}, operator of the My Memoria Ally application at {APP_URL}. This document explains, in plain language, what personal and health information we collect, how we use it, who has access to it, and what rights you have.</p>
-        <p>This Consent is required for all users of My Memoria Ally. By creating an account or using the App, you confirm that you have read and understood this document and consent to the data practices described herein.</p>
+        <p>This Data Consent and Authorization ("Consent") is provided by {COMPANY}, operator of the Haneen Care Network application at {APP_URL}. This document explains, in plain language, what personal and health information we collect, how we use it, who has access to it, and what rights you have.</p>
+        <p>This Consent is required for all users of Haneen Care Network. By creating an account or using the App, you confirm that you have read and understood this document and consent to the data practices described herein.</p>
         <p>For patients who lack legal capacity to consent for themselves, this Consent must be given by the patient's legal guardian, healthcare proxy, or authorized representative.</p>
       </Sec>
 
@@ -742,18 +742,18 @@ function SecurityContent() {
     <>
       <DocHeader
         title="Security Practices"
-        subtitle="Technical and Organizational Security Measures for My Memoria Ally"
-        tag="My Memoria Ally"
+        subtitle="Technical and Organizational Security Measures for Haneen Care Network"
+        tag="Haneen Care Network"
       />
 
       <InfoBox color="green">
-        <strong>Security Overview:</strong> My Memoria Ally implements enterprise-grade security controls meeting HIPAA Security Rule requirements. All health data is encrypted at rest and in transit, access is strictly controlled by role, and every action affecting patient records is permanently logged.
+        <strong>Security Overview:</strong> Haneen Care Network implements enterprise-grade security controls meeting HIPAA Security Rule requirements. All health data is encrypted at rest and in transit, access is strictly controlled by role, and every action affecting patient records is permanently logged.
       </InfoBox>
 
       <div className="my-6" />
 
       <Sec title="1. Overview and Commitment">
-        <p>{COMPANY} is committed to protecting the security, integrity, and confidentiality of all information processed through the My Memoria Ally application. The App handles Protected Health Information (PHI) for vulnerable individuals living with cognitive conditions, and we take this responsibility with the utmost seriousness.</p>
+        <p>{COMPANY} is committed to protecting the security, integrity, and confidentiality of all information processed through the Haneen Care Network application. The App handles Protected Health Information (PHI) for vulnerable individuals living with cognitive conditions, and we take this responsibility with the utmost seriousness.</p>
         <p>Our security program is designed to meet or exceed the requirements of the HIPAA Security Rule (45 CFR Part 164, Subparts A and C), and draws upon industry frameworks including NIST Cybersecurity Framework and SOC 2 Type II controls.</p>
       </Sec>
 
@@ -797,7 +797,7 @@ function SecurityContent() {
 
       <Sec title="3. Access Controls">
         <Sub title="3.1 Role-Based Access Control (RBAC)">
-          <p>Every user of My Memoria Ally operates within a strictly defined role. The roles and their data access scopes are:</p>
+          <p>Every user of Haneen Care Network operates within a strictly defined role. The roles and their data access scopes are:</p>
           <Ul items={[
             "Patient — read/write access to their own records only; cannot access any other patient's data",
             "Patient Care Coordinator — full access to the records of patients explicitly assigned to them by an administrator; cannot access unassigned patients",
@@ -849,7 +849,7 @@ function SecurityContent() {
       </Sec>
 
       <Sec title="5. Audit Logging and Monitoring">
-        <p>My Memoria Ally maintains comprehensive, immutable audit logs of all significant system events:</p>
+        <p>Haneen Care Network maintains comprehensive, immutable audit logs of all significant system events:</p>
         <Ul items={[
           "Authentication events: login successes, login failures, password resets, session timeouts, logouts",
           "Patient record access: every view, creation, update, and deletion of patient records",
@@ -920,23 +920,23 @@ function TermsContent() {
     <>
       <DocHeader
         title="Terms of Service"
-        subtitle="User Agreement Governing Access to and Use of My Memoria Ally"
-        tag="My Memoria Ally"
+        subtitle="User Agreement Governing Access to and Use of Haneen Care Network"
+        tag="Haneen Care Network"
       />
 
       <InfoBox color="amber">
-        <strong>Important:</strong> Please read these Terms of Service carefully before using My Memoria Ally. By creating an account or using the App in any way, you agree to be legally bound by these Terms. If you do not agree, you must not use the App.
+        <strong>Important:</strong> Please read these Terms of Service carefully before using Haneen Care Network. By creating an account or using the App in any way, you agree to be legally bound by these Terms. If you do not agree, you must not use the App.
       </InfoBox>
 
       <div className="my-6" />
 
       <Sec title="1. Acceptance of Terms">
-        <p>These Terms of Service ("Terms") constitute a legally binding agreement between you ("User," "you," or "your") and {COMPANY} ("Company," "we," "us," or "our"), governing your access to and use of the My Memoria Ally application ("App") available at {APP_URL} and via the iOS and Android mobile apps.</p>
+        <p>These Terms of Service ("Terms") constitute a legally binding agreement between you ("User," "you," or "your") and {COMPANY} ("Company," "we," "us," or "our"), governing your access to and use of the Haneen Care Network application ("App") available at {APP_URL} and via the iOS and Android mobile apps.</p>
         <p>By creating an account, clicking "I Agree," accessing, or using the App in any manner — including accessing any feature or content — you acknowledge that you have read, understood, and agree to be bound by these Terms and our Privacy Policy, which is incorporated herein by reference. If you do not agree, you must immediately cease all use of the App.</p>
       </Sec>
 
       <Sec title="2. Description of Service">
-        <p>My Memoria Ally is a dementia and cognitive care coordination platform designed to support:</p>
+        <p>Haneen Care Network is a dementia and cognitive care coordination platform designed to support:</p>
         <Ul items={[
           "Patients living with dementia, Alzheimer's disease, mild cognitive impairment, ADHD, autism, traumatic brain injury (TBI), anxiety disorders, or other cognitive conditions",
           "Patient Care Coordinators including family caregivers, professional caregivers, and designated support persons",
@@ -945,12 +945,12 @@ function TermsContent() {
         ]} />
         <p>The App provides tools and features including: daily orientation and routine support, medication tracking and reminders, mood monitoring and behavioral logging, therapy notes and goal tracking, care plan management, activities of daily living (ADL) documentation, family connection features, memory activities, brain training games, secure care team communication, and care partner check-in tools.</p>
         <InfoBox color="red">
-          <strong>Medical Disclaimer:</strong> My Memoria Ally is intended as a care support and coordination tool ONLY. The App does NOT constitute medical advice, medical diagnosis, or medical treatment. The App is not a substitute for professional medical judgment, care, or supervision. Always consult a qualified and licensed healthcare professional for all medical decisions, diagnoses, and treatment plans. In a medical emergency, call 911 immediately.
+          <strong>Medical Disclaimer:</strong> Haneen Care Network is intended as a care support and coordination tool ONLY. The App does NOT constitute medical advice, medical diagnosis, or medical treatment. The App is not a substitute for professional medical judgment, care, or supervision. Always consult a qualified and licensed healthcare professional for all medical decisions, diagnoses, and treatment plans. In a medical emergency, call 911 immediately.
         </InfoBox>
       </Sec>
 
       <Sec title="3. Eligibility Requirements">
-        <p>To use My Memoria Ally, you must meet the following eligibility requirements:</p>
+        <p>To use Haneen Care Network, you must meet the following eligibility requirements:</p>
         <Ul items={[
           "You must be at least 18 years of age to create an account as a care coordinator, therapist, or administrator",
           "Patient accounts may be created on behalf of individuals under 18 by a parent, legal guardian, or authorized healthcare representative who accepts these Terms on the minor's behalf",
@@ -982,7 +982,7 @@ function TermsContent() {
 
       <Sec title="5. Subscription, Fees, and Payment">
         <Sub title="5.1 Subscription Requirement">
-          <p>Access to My Memoria Ally requires a paid subscription. The App offers monthly subscription plans at rates published at {APP_URL}/pricing. All plan pricing is inclusive of applicable taxes where required.</p>
+          <p>Access to Haneen Care Network requires a paid subscription. The App offers monthly subscription plans at rates published at {APP_URL}/pricing. All plan pricing is inclusive of applicable taxes where required.</p>
         </Sub>
         <Sub title="5.2 Automatic Renewal">
           <p>All subscriptions automatically renew at the end of each billing period unless you cancel before the renewal date. You authorize us to charge your payment method for each renewal. Renewal charges will be at the then-current rate for your plan.</p>
@@ -1032,7 +1032,7 @@ function TermsContent() {
 
       <Sec title="8. Health Information, HIPAA, and Compliance Obligations">
         <p>You agree to use the App in full compliance with HIPAA, the HITECH Act, and all other applicable federal and state laws governing the privacy and security of health information.</p>
-        <p>Healthcare organizations using My Memoria Ally must execute a Business Associate Agreement with {COMPANY} before any PHI is transmitted through the App. Organizations that use the App without an executed BAA are in violation of HIPAA.</p>
+        <p>Healthcare organizations using Haneen Care Network must execute a Business Associate Agreement with {COMPANY} before any PHI is transmitted through the App. Organizations that use the App without an executed BAA are in violation of HIPAA.</p>
         <p>You are responsible for ensuring that your organization's use of the App complies with all regulatory requirements applicable to your jurisdiction and practice area, including but not limited to state privacy laws, professional licensing requirements, and facility accreditation standards.</p>
       </Sec>
 
@@ -1155,7 +1155,7 @@ export default function PrivacyPage({ initialDoc }: { initialDoc?: DocId } = {})
               <Heart className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="font-bold text-charcoal leading-tight">My Memoria Ally</p>
+              <p className="font-bold text-charcoal leading-tight">Haneen Care Network</p>
               <p className="text-xs text-charcoal/50 leading-tight">Privacy & Legal Documents</p>
             </div>
           </div>
