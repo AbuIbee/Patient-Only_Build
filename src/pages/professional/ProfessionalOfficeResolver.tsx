@@ -25,6 +25,8 @@ import { PendingInvitesBanner } from '@/pages/enterprise/EnterpriseDashboardRout
 import EnterpriseCaregiverDashboard from '@/pages/enterprise/EnterpriseCaregiverDashboard';
 import ClinicalOfficeDashboard from '@/pages/enterprise/ClinicalOfficeDashboard';
 import EnterprisePatientDashboard from '@/pages/patient/EnterprisePatientDashboard';
+import PatientLayout from '@/pages/patient/PatientLayout';
+import { shouldRenderHaneenClassicPatientPortal } from '@/pages/patient/shouldRenderHaneenClassicPatientPortal';
 import ApplicationStatusPage from './ApplicationStatusPage';
 
 const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
@@ -506,6 +508,20 @@ export default function ProfessionalOfficeResolver() {
   if (!requestedIsAuthorized && requestedOffice !== effective) {
     const path = `/Professional/${OFFICE_SEGMENT[effective]}`;
     if (window.location.pathname.toLowerCase() !== path.toLowerCase()) window.history.replaceState({}, '', path);
+  }
+
+  // HCN-PATIENT-HOME-001: the patient must see the approved familiar
+  // My Memoria Ally patient home, not a new clinical Office shell. This
+  // is allowed ONLY for a patient viewing their OWN identity. Keep the
+  // explicitly patient-scoped EnterprisePatientDashboard for authorized
+  // representatives, whose auth.uid() differs from the patient subject.
+  if (effective === 'patient' && shouldRenderHaneenClassicPatientPortal({
+    haneenEnterpriseSite: import.meta.env.VITE_ENTERPRISE_SITE === 'true',
+    authenticatedUserId: state.currentUser?.id,
+    authenticatedRole: state.currentUser?.role,
+    subjectPatientId: patientOfficeSubjectId,
+  })) {
+    return <PatientLayout />;
   }
 
   const switcher = <OfficeSwitcherBar offices={availableOffices} selected={effective} onSelect={navigateToOffice} />;
