@@ -85,7 +85,7 @@ export function EnterpriseOfficeShell<K extends string>({
             {isHaneenSite ? <img src="/haneen-favicon.svg" alt="" className="w-9 h-9 rounded-lg" /> : <Sparkles className="w-5 h-5 text-ent-forest" />}
           </div>
           <div className="min-w-0">
-            <div className="font-bold text-ent-ink text-sm leading-tight truncate">{isHaneenSite ? 'Haneen Care Network' : 'My Memoria Ally'}</div>
+            <div className="font-bold text-ent-ink text-sm leading-tight truncate">{isHaneenSite ? 'Haneen Care Network' : 'Haneen Care Network'}</div>
             <div className="text-[10px] font-extrabold tracking-[0.14em] text-ent-bronze mt-0.5">{officeBadge}</div>
           </div>
         </div>
