@@ -181,7 +181,7 @@ serve(async (request) => {
     // An employee must never be able to send recovery challenges to an
     // established patient's account. Those patients can use the normal
     // self-service Forgot Password link instead.
-    if (patientAuthUser.last_sign_in_at) {
+    if (target.user.last_sign_in_at) {
       return jsonResponse({
         error: 'This patient has signed in previously. They can reset their own password from Sign In.',
       }, 409);
