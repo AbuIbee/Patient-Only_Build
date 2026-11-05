@@ -1,0 +1,438 @@
+{
+  "runId": "HCN-E2E-002-V4",
+  "organizationName": "Bilal Family Care Network",
+  "scope": "production only after valid customer-org exists and controlled mailbox mapping",
+  "ownerAndDirector": "EXCLUDED — must already exist and be independently authenticated",
+  "accountTargets": {
+    "caregiver": 4,
+    "specialist": 4,
+    "patient_self_login": 12,
+    "responsible_person": 12,
+    "total": 32
+  },
+  "patientSubjects": 12,
+  "specialistSeatRequirement": 4,
+  "publishedCompleteSeatLimit": 3,
+  "creationPermission": "No direct SQL/Auth seeding; ordinary manager/patient/representative invitation workflows with JWTs",
+  "status": "NOT_PROVISIONED — manifest only, no account or patient record inserted",
+  "patients": [
+    {
+      "id": "P01",
+      "first": "Farah",
+      "last": "Karim",
+      "caregiver": "C01",
+      "specialists": [
+        "S01",
+        "S02"
+      ],
+      "challenge": "Fictional heart-condition monitoring, fatigue, anxiety and medication precautions",
+      "notes": "SYNTHETIC TEST DATA ONLY; NOT A REAL DIAGNOSIS"
+    },
+    {
+      "id": "P02",
+      "first": "Yusuf",
+      "last": "Nadir",
+      "caregiver": "C01",
+      "specialists": [
+        "S01",
+        "S03"
+      ],
+      "challenge": "Fictional diabetes, hypertension and nutritional support",
+      "notes": "SYNTHETIC TEST DATA ONLY; NOT A REAL DIAGNOSIS"
+    },
+    {
+      "id": "P03",
+      "first": "Leila",
+      "last": "Sayeed",
+      "caregiver": "C01",
+      "specialists": [
+        "S02",
+        "S03",
+        "S04"
+      ],
+      "challenge": "Fictional post-stroke rehabilitation, gait limitations, nutritional support",
+      "notes": "SYNTHETIC TEST DATA ONLY; NOT A REAL DIAGNOSIS"
+    },
+    {
+      "id": "P04",
+      "first": "Mariam",
+      "last": "Hadi",
+      "caregiver": "C02",
+      "specialists": [],
+      "challenge": "Fictional arthritis, pain and fall-risk observations",
+      "notes": "SYNTHETIC TEST DATA ONLY; NOT A REAL DIAGNOSIS"
+    },
+    {
+      "id": "P05",
+      "first": "Samir",
+      "last": "Rami",
+      "caregiver": "C02",
+      "specialists": [],
+      "challenge": "Fictional low-vision accommodation and navigation",
+      "notes": "SYNTHETIC TEST DATA ONLY; NOT A REAL DIAGNOSIS"
+    },
+    {
+      "id": "P06",
+      "first": "Amina",
+      "last": "Noor",
+      "caregiver": "C02",
+      "specialists": [],
+      "challenge": "Fictional respiratory support and observations",
+      "notes": "SYNTHETIC TEST DATA ONLY; NOT A REAL DIAGNOSIS"
+    },
+    {
+      "id": "P07",
+      "first": "Tariq",
+      "last": "Basri",
+      "caregiver": "C03",
+      "specialists": [],
+      "challenge": "Fictional postoperative mobility assistance",
+      "notes": "SYNTHETIC TEST DATA ONLY; NOT A REAL DIAGNOSIS"
+    },
+    {
+      "id": "P08",
+      "first": "Nadia",
+      "last": "Faris",
+      "caregiver": "C03",
+      "specialists": [],
+      "challenge": "Fictional memory and communication assistance",
+      "notes": "SYNTHETIC TEST DATA ONLY; NOT A REAL DIAGNOSIS"
+    },
+    {
+      "id": "P09",
+      "first": "Ibrahim",
+      "last": "Tariq",
+      "caregiver": "C03",
+      "specialists": [],
+      "challenge": "Fictional tremor and daily living assistance",
+      "notes": "SYNTHETIC TEST DATA ONLY; NOT A REAL DIAGNOSIS"
+    },
+    {
+      "id": "P10",
+      "first": "Salma",
+      "last": "Adeel",
+      "caregiver": "C04",
+      "specialists": [],
+      "challenge": "Fictional hearing accessibility support",
+      "notes": "SYNTHETIC TEST DATA ONLY; NOT A REAL DIAGNOSIS"
+    },
+    {
+      "id": "P11",
+      "first": "Omar",
+      "last": "Rahim",
+      "caregiver": "C04",
+      "specialists": [],
+      "challenge": "Fictional sleep and wellness routines",
+      "notes": "SYNTHETIC TEST DATA ONLY; NOT A REAL DIAGNOSIS"
+    },
+    {
+      "id": "P12",
+      "first": "Hana",
+      "last": "Zaki",
+      "caregiver": "C04",
+      "specialists": [],
+      "challenge": "Fictional blood-pressure observations",
+      "notes": "SYNTHETIC TEST DATA ONLY; NOT A REAL DIAGNOSIS"
+    }
+  ],
+  "caregivers": [
+    {
+      "id": "C01",
+      "first": "Aisha",
+      "last": "Caregiver",
+      "role": "caregiver",
+      "emailEnvKey": "BILAL_E2E_EMAIL_C01",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "C02",
+      "first": "Kareem",
+      "last": "Caregiver",
+      "role": "caregiver",
+      "emailEnvKey": "BILAL_E2E_EMAIL_C02",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "C03",
+      "first": "Noura",
+      "last": "Caregiver",
+      "role": "caregiver",
+      "emailEnvKey": "BILAL_E2E_EMAIL_C03",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "C04",
+      "first": "Hassan",
+      "last": "Caregiver",
+      "role": "caregiver",
+      "emailEnvKey": "BILAL_E2E_EMAIL_C04",
+      "provisionStatus": "NOT_PROVISIONED"
+    }
+  ],
+  "specialists": [
+    {
+      "id": "S01",
+      "first": "Safiya",
+      "last": "Demo",
+      "specialty": "doctor",
+      "office": "medical_professional",
+      "role": "specialist",
+      "emailEnvKey": "BILAL_E2E_EMAIL_S01",
+      "credentialStatus": "UNVERIFIED_SYNTHETIC",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "S02",
+      "first": "Layla",
+      "last": "Demo",
+      "specialty": "therapist",
+      "office": "therapist",
+      "role": "specialist",
+      "emailEnvKey": "BILAL_E2E_EMAIL_S02",
+      "credentialStatus": "UNVERIFIED_SYNTHETIC",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "S03",
+      "first": "Rami",
+      "last": "Demo",
+      "specialty": "nutritionist",
+      "office": "credential_model_pending",
+      "role": "specialist",
+      "emailEnvKey": "BILAL_E2E_EMAIL_S03",
+      "credentialStatus": "UNVERIFIED_SYNTHETIC",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "S04",
+      "first": "Samira",
+      "last": "Demo",
+      "specialty": "physical_therapist",
+      "office": "therapist",
+      "role": "specialist",
+      "emailEnvKey": "BILAL_E2E_EMAIL_S04",
+      "credentialStatus": "UNVERIFIED_SYNTHETIC",
+      "provisionStatus": "NOT_PROVISIONED"
+    }
+  ],
+  "patientAccounts": [
+    {
+      "id": "P01",
+      "role": "patient_self_login",
+      "patientSubjectId": "P01",
+      "displayName": "Farah Karim",
+      "emailEnvKey": "BILAL_E2E_EMAIL_P01",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "P02",
+      "role": "patient_self_login",
+      "patientSubjectId": "P02",
+      "displayName": "Yusuf Nadir",
+      "emailEnvKey": "BILAL_E2E_EMAIL_P02",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "P03",
+      "role": "patient_self_login",
+      "patientSubjectId": "P03",
+      "displayName": "Leila Sayeed",
+      "emailEnvKey": "BILAL_E2E_EMAIL_P03",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "P04",
+      "role": "patient_self_login",
+      "patientSubjectId": "P04",
+      "displayName": "Mariam Hadi",
+      "emailEnvKey": "BILAL_E2E_EMAIL_P04",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "P05",
+      "role": "patient_self_login",
+      "patientSubjectId": "P05",
+      "displayName": "Samir Rami",
+      "emailEnvKey": "BILAL_E2E_EMAIL_P05",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "P06",
+      "role": "patient_self_login",
+      "patientSubjectId": "P06",
+      "displayName": "Amina Noor",
+      "emailEnvKey": "BILAL_E2E_EMAIL_P06",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "P07",
+      "role": "patient_self_login",
+      "patientSubjectId": "P07",
+      "displayName": "Tariq Basri",
+      "emailEnvKey": "BILAL_E2E_EMAIL_P07",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "P08",
+      "role": "patient_self_login",
+      "patientSubjectId": "P08",
+      "displayName": "Nadia Faris",
+      "emailEnvKey": "BILAL_E2E_EMAIL_P08",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "P09",
+      "role": "patient_self_login",
+      "patientSubjectId": "P09",
+      "displayName": "Ibrahim Tariq",
+      "emailEnvKey": "BILAL_E2E_EMAIL_P09",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "P10",
+      "role": "patient_self_login",
+      "patientSubjectId": "P10",
+      "displayName": "Salma Adeel",
+      "emailEnvKey": "BILAL_E2E_EMAIL_P10",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "P11",
+      "role": "patient_self_login",
+      "patientSubjectId": "P11",
+      "displayName": "Omar Rahim",
+      "emailEnvKey": "BILAL_E2E_EMAIL_P11",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "P12",
+      "role": "patient_self_login",
+      "patientSubjectId": "P12",
+      "displayName": "Hana Zaki",
+      "emailEnvKey": "BILAL_E2E_EMAIL_P12",
+      "provisionStatus": "NOT_PROVISIONED"
+    }
+  ],
+  "representatives": [
+    {
+      "id": "R01",
+      "role": "responsible_person",
+      "patientSubjectId": "P01",
+      "displayName": "Proxy Trial 01",
+      "emailEnvKey": "BILAL_E2E_EMAIL_R01",
+      "authorizationStatus": "NOT_VERIFIED",
+      "declarationStatus": "NOT_SIGNED",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "R02",
+      "role": "responsible_person",
+      "patientSubjectId": "P02",
+      "displayName": "Proxy Trial 02",
+      "emailEnvKey": "BILAL_E2E_EMAIL_R02",
+      "authorizationStatus": "NOT_VERIFIED",
+      "declarationStatus": "NOT_SIGNED",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "R03",
+      "role": "responsible_person",
+      "patientSubjectId": "P03",
+      "displayName": "Proxy Trial 03",
+      "emailEnvKey": "BILAL_E2E_EMAIL_R03",
+      "authorizationStatus": "NOT_VERIFIED",
+      "declarationStatus": "NOT_SIGNED",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "R04",
+      "role": "responsible_person",
+      "patientSubjectId": "P04",
+      "displayName": "Proxy Trial 04",
+      "emailEnvKey": "BILAL_E2E_EMAIL_R04",
+      "authorizationStatus": "NOT_VERIFIED",
+      "declarationStatus": "NOT_SIGNED",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "R05",
+      "role": "responsible_person",
+      "patientSubjectId": "P05",
+      "displayName": "Proxy Trial 05",
+      "emailEnvKey": "BILAL_E2E_EMAIL_R05",
+      "authorizationStatus": "NOT_VERIFIED",
+      "declarationStatus": "NOT_SIGNED",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "R06",
+      "role": "responsible_person",
+      "patientSubjectId": "P06",
+      "displayName": "Proxy Trial 06",
+      "emailEnvKey": "BILAL_E2E_EMAIL_R06",
+      "authorizationStatus": "NOT_VERIFIED",
+      "declarationStatus": "NOT_SIGNED",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "R07",
+      "role": "responsible_person",
+      "patientSubjectId": "P07",
+      "displayName": "Proxy Trial 07",
+      "emailEnvKey": "BILAL_E2E_EMAIL_R07",
+      "authorizationStatus": "NOT_VERIFIED",
+      "declarationStatus": "NOT_SIGNED",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "R08",
+      "role": "responsible_person",
+      "patientSubjectId": "P08",
+      "displayName": "Proxy Trial 08",
+      "emailEnvKey": "BILAL_E2E_EMAIL_R08",
+      "authorizationStatus": "NOT_VERIFIED",
+      "declarationStatus": "NOT_SIGNED",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "R09",
+      "role": "responsible_person",
+      "patientSubjectId": "P09",
+      "displayName": "Proxy Trial 09",
+      "emailEnvKey": "BILAL_E2E_EMAIL_R09",
+      "authorizationStatus": "NOT_VERIFIED",
+      "declarationStatus": "NOT_SIGNED",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "R10",
+      "role": "responsible_person",
+      "patientSubjectId": "P10",
+      "displayName": "Proxy Trial 10",
+      "emailEnvKey": "BILAL_E2E_EMAIL_R10",
+      "authorizationStatus": "NOT_VERIFIED",
+      "declarationStatus": "NOT_SIGNED",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "R11",
+      "role": "responsible_person",
+      "patientSubjectId": "P11",
+      "displayName": "Proxy Trial 11",
+      "emailEnvKey": "BILAL_E2E_EMAIL_R11",
+      "authorizationStatus": "NOT_VERIFIED",
+      "declarationStatus": "NOT_SIGNED",
+      "provisionStatus": "NOT_PROVISIONED"
+    },
+    {
+      "id": "R12",
+      "role": "responsible_person",
+      "patientSubjectId": "P12",
+      "displayName": "Proxy Trial 12",
+      "emailEnvKey": "BILAL_E2E_EMAIL_R12",
+      "authorizationStatus": "NOT_VERIFIED",
+      "declarationStatus": "NOT_SIGNED",
+      "provisionStatus": "NOT_PROVISIONED"
+    }
+  ]
+}
