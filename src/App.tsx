@@ -744,6 +744,9 @@ function AppContent() {
     // organizational flows" — redirecting it was judged not safe to do
     // this round; see the delivery report).
     if (isBusinessRoute) {
+      // Haneen has one central professional entrance: do not expose the
+      // separate consumer-branded business landing or residential sign-in.
+      if (import.meta.env.VITE_ENTERPRISE_SITE === 'true') return <ProfessionalEntryRouter />;
       if (state.isAuthenticated && state.selectedRole === 'caregiver') {
         // P1 OWNER-VISIBLE DASHBOARD DELIVERY — businessWorkspace=true
         // tells the router this is the explicit Business entry point,
@@ -764,6 +767,9 @@ function AppContent() {
     }
 
     if (!state.isAuthenticated) {
+      // Haneen's unknown/legacy routes must never display the consumer
+      // My Memoria Ally landing. ProfessionalEntryRouter enforces auth.
+      if (import.meta.env.VITE_ENTERPRISE_SITE === 'true') return <ProfessionalEntryRouter />;
       return state.currentView === 'login' ? <LoginPage /> : <LandingPage />;
     }
 

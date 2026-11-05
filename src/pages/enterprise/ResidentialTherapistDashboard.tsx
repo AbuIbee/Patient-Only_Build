@@ -46,9 +46,9 @@ export default function ResidentialTherapistDashboard() {
       <header className="bg-white border-b border-soft-taupe px-4 py-3">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-8 h-8 rounded-lg object-cover" />
+            <img src={import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? '/haneen-favicon.svg' : '/images/MymemoriaDayTime.png'} alt={import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'} className="w-8 h-8 rounded-lg object-cover" />
             <div>
-              <div className="font-semibold text-charcoal">My Memoria Ally</div>
+              <div className="font-semibold text-charcoal">{import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'}</div>
               <div className="text-xs text-medium-gray">Therapist</div>
             </div>
           </div>

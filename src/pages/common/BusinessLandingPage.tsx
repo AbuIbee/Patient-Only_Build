@@ -62,9 +62,9 @@ export default function BusinessLandingPage() {
       <header className="bg-white border-b border-soft-taupe">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-9 h-9 rounded-xl object-cover" />
+            <img src={import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? '/haneen-favicon.svg' : '/images/MymemoriaDayTime.png'} alt={import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'} className="w-9 h-9 rounded-xl object-cover" />
             <div>
-              <span className="font-bold text-charcoal">My Memoria Ally</span>
+              <span className="font-bold text-charcoal">{import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'}</span>
               <span className="block text-[11px] font-semibold uppercase tracking-wide text-warm-bronze">For Organizations</span>
             </div>
           </div>
@@ -176,10 +176,10 @@ export default function BusinessLandingPage() {
             billed — nothing here reflects a final commercial price.
           </p>
           <a
-            href="mailto:hello@mymemoriaally.com"
+            href={import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? '/Professional' : 'mailto:hello@mymemoriaally.com'}
             className="inline-flex items-center gap-2 bg-white text-charcoal font-semibold px-6 py-3 rounded-xl hover:bg-warm-ivory transition-colors"
           >
-            <Mail className="w-4 h-4" /> Talk to our team
+            <Mail className="w-4 h-4" /> {import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Access professional workspace' : 'Talk to our team'}
           </a>
         </section>
 
