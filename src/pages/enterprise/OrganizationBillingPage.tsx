@@ -126,7 +126,7 @@ export default function OrganizationBillingPage({ organizationId, orgName, packa
       <SectionCard icon={<ShieldAlert className="w-5 h-5 text-gentle-coral" />} title="Professional-Services Billing (Insurance, EVV, Payer Claims)">
         <p className="text-sm text-charcoal font-medium">This module is not implemented.</p>
         <p className="text-xs text-medium-gray">
-          {import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'} Enterprise does not currently submit insurance claims, Electronic Visit Verification (EVV) records, or process payer billing on behalf of your organization. This is a separate, optional module from the subscription billing shown above and is not operational in this build.
+          {import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'Haneen Care Network'} Enterprise does not currently submit insurance claims, Electronic Visit Verification (EVV) records, or process payer billing on behalf of your organization. This is a separate, optional module from the subscription billing shown above and is not operational in this build.
         </p>
       </SectionCard>
     </div>

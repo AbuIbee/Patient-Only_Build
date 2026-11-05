@@ -950,9 +950,9 @@ export default function CaregiverPortal({ onStartOrganization }: CaregiverPortal
       <header className="bg-white border-b border-soft-taupe px-4 py-3">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/images/MymemoriaDayTime.png" alt="My Memoria Ally" className="w-8 h-8 rounded-lg object-cover" />
+            <img src="/haneen-favicon.svg" alt="Haneen Care Network" className="w-8 h-8 rounded-lg object-cover" />
             <div>
-              <div className="font-semibold text-charcoal">My Memoria Ally</div>
+              <div className="font-semibold text-charcoal">Haneen Care Network</div>
               <div className="text-xs text-medium-gray">
                 {state.currentUser?.firstName ? `Caregiver: ${state.currentUser.firstName}` : 'Caregiver Portal'}
               </div>
