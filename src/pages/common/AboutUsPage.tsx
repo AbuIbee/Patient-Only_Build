@@ -2,7 +2,7 @@ import { Heart, Shield, Users, BarChart3, Building2, Lock, ArrowRight, CheckCirc
 
 const COMPANY = 'Salahuddeen Enterprises LLC';
 const EMAIL = 's.muhammad@salahuddeenenterprises.com';
-const APP_URL = 'mymemoriaally.com';
+const APP_URL = 'www.HaneenCareNetwork.com';
 
 function Section({ title, children, id }: { title: string; children: React.ReactNode; id?: string }) {
   return (
@@ -89,7 +89,7 @@ export default function AboutUsPage() {
               <Heart className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="font-bold text-charcoal leading-tight">My Memoria Ally</p>
+              <p className="font-bold text-charcoal leading-tight">Haneen Care Network</p>
               <p className="text-xs text-charcoal/50 leading-tight">About Us</p>
             </div>
           </div>
@@ -107,13 +107,13 @@ export default function AboutUsPage() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-14 md:py-20">
           <div className="max-w-3xl">
             <span className="inline-block text-xs font-bold uppercase tracking-widest text-warm-bronze bg-warm-bronze/10 px-3 py-1.5 rounded-full mb-5">
-              About My Memoria Ally
+              About Haneen Care Network
             </span>
             <h1 className="text-3xl md:text-5xl font-bold text-charcoal leading-tight mb-6">
               Structured care coordination for people when consistency matters most.
             </h1>
             <p className="text-lg text-charcoal/70 leading-8 mb-8">
-              My Memoria Ally is a care coordination platform built to support individuals experiencing cognitive, behavioral, or memory-related challenges — and every person responsible for their daily well-being. We replace fragmentation with structure, and uncertainty with a system that works.
+              Haneen Care Network is a care coordination platform built to support individuals experiencing cognitive, behavioral, or memory-related challenges — and every person responsible for their daily well-being. We replace fragmentation with structure, and uncertainty with a system that works.
             </p>
             <div className="flex flex-wrap gap-3">
               <a
@@ -173,7 +173,7 @@ export default function AboutUsPage() {
           <SubSection title="What Is Dementia and Cognitive Decline">
             <p>Dementia is not a single disease — it is a term describing a decline in cognitive function severe enough to interfere with daily life. It can affect memory, reasoning, language, spatial orientation, and emotional regulation. Individuals experiencing dementia often struggle with recognizing familiar people, recalling recent events, following routines, or understanding where they are and what is happening around them.</p>
             <p>Alzheimer's disease is the most common form, accounting for roughly 60–80% of all dementia cases. Other forms include vascular dementia, Lewy body dementia, and frontotemporal dementia. Each progresses differently, but all share a common outcome: the individual becomes increasingly dependent on their environment and support system to maintain stability and quality of life.</p>
-            <p>The challenges addressed by My Memoria Ally, however, extend beyond dementia alone. Similar patterns of disruption occur in individuals experiencing traumatic brain injury (TBI), neurological disorders, aging-related mild cognitive impairment (MCI), anxiety disorders, autism spectrum conditions, ADHD, and disorientation related to medical treatment or medication changes. In all of these cases, the core issue is not simply memory loss — it is <strong>loss of consistency</strong>. When consistency is lost, individuals become dependent on external systems to restore structure.</p>
+            <p>The challenges addressed by Haneen Care Network, however, extend beyond dementia alone. Similar patterns of disruption occur in individuals experiencing traumatic brain injury (TBI), neurological disorders, aging-related mild cognitive impairment (MCI), anxiety disorders, autism spectrum conditions, ADHD, and disorientation related to medical treatment or medication changes. In all of these cases, the core issue is not simply memory loss — it is <strong>loss of consistency</strong>. When consistency is lost, individuals become dependent on external systems to restore structure.</p>
           </SubSection>
 
           <SubSection title="The Reality of Care Today">
@@ -183,13 +183,13 @@ export default function AboutUsPage() {
           </SubSection>
 
           <CalloutBox icon={BarChart3} title="The Scale of the Challenge" color="blue">
-            <p>Over 55 million people worldwide live with dementia. In the United States alone, more than 11 million family members and friends provide unpaid care. The vast majority of this care is managed without a structured digital system — relying instead on informal coordination, memory, and improvisation. My Memoria Ally is designed to change that.</p>
+            <p>Over 55 million people worldwide live with dementia. In the United States alone, more than 11 million family members and friends provide unpaid care. The vast majority of this care is managed without a structured digital system — relying instead on informal coordination, memory, and improvisation. Haneen Care Network is designed to change that.</p>
           </CalloutBox>
         </Section>
 
         {/* ── 2. What We Do ──────────────────────────────────────────────────── */}
-        <Section title="What My Memoria Ally Is Designed to Do" id="what-we-do">
-          <p>My Memoria Ally is not simply a tracking tool or a reminder application. It is a structured care environment that organizes the essential components of daily care into a coherent, repeatable system. At its core, the platform functions as a <strong>daily operational layer for care</strong> — a consistent interface through which patients can orient themselves and caregivers can manage responsibilities without relying on memory or improvised coordination alone.</p>
+        <Section title="What Haneen Care Network Is Designed to Do" id="what-we-do">
+          <p>Haneen Care Network is not simply a tracking tool or a reminder application. It is a structured care environment that organizes the essential components of daily care into a coherent, repeatable system. At its core, the platform functions as a <strong>daily operational layer for care</strong> — a consistent interface through which patients can orient themselves and caregivers can manage responsibilities without relying on memory or improvised coordination alone.</p>
 
           <SubSection title="The Patient Experience">
             <p>The patient-facing interface is intentionally simplified and designed to reduce cognitive load. Every element — from the greeting screen to the routine display to the medication reminder — is built around one principle: predictability reduces anxiety. Individuals experiencing cognitive challenges rely heavily on environmental cues and repetition to maintain a sense of stability. The App reinforces time, routine, and familiarity through consistent, calm patterns that feel the same every day.</p>
@@ -231,7 +231,7 @@ export default function AboutUsPage() {
 
         {/* ── 3. Stability ───────────────────────────────────────────────────── */}
         <Section title="How the Platform Supports Stability" id="stability">
-          <p>The design of My Memoria Ally is built on a single foundational principle: <strong>stability is achieved through consistency</strong>. This is not a philosophical position — it is a clinical reality documented across dementia care research. Predictable environments, consistent routines, and familiar cues directly reduce anxiety, agitation, and behavioral disruption in individuals with cognitive impairment.</p>
+          <p>The design of Haneen Care Network is built on a single foundational principle: <strong>stability is achieved through consistency</strong>. This is not a philosophical position — it is a clinical reality documented across dementia care research. Predictable environments, consistent routines, and familiar cues directly reduce anxiety, agitation, and behavioral disruption in individuals with cognitive impairment.</p>
 
           <SubSection title="For Patients">
             <p>When a patient interacts with the platform, they encounter the same structure every time. The greeting uses their name. The time and date are always present. The routine appears at the same points in the day. Familiar faces are one tap away. This predictability does not merely provide comfort — it actively reduces disorientation, which is one of the most significant triggers of distress in dementia care.</p>
@@ -244,13 +244,13 @@ export default function AboutUsPage() {
           </SubSection>
 
           <SubSection title="Over Time: The Value of Continuity">
-            <p>Perhaps the most significant benefit of My Memoria Ally is what accumulates over time. When information is captured consistently, patterns become visible. A gradual decline in medication adherence. A shift in mood trends over a three-week period. An increase in missed ADL tasks that might signal a physical or cognitive change. These patterns are invisible when care is managed informally — they only emerge when there is a structured longitudinal record. My Memoria Ally provides that record.</p>
+            <p>Perhaps the most significant benefit of Haneen Care Network is what accumulates over time. When information is captured consistently, patterns become visible. A gradual decline in medication adherence. A shift in mood trends over a three-week period. An increase in missed ADL tasks that might signal a physical or cognitive change. These patterns are invisible when care is managed informally — they only emerge when there is a structured longitudinal record. Haneen Care Network provides that record.</p>
           </SubSection>
         </Section>
 
         {/* ── 4. Broader Application ─────────────────────────────────────────── */}
         <Section title="Beyond Dementia: A Broader Application" id="broader">
-          <p>Although dementia is a primary use case for My Memoria Ally, the platform is intentionally designed to support a broader population. The underlying framework — structured routine, coordinated oversight, consistent documentation, and family visibility — is beneficial in any scenario where an individual requires external support to maintain stability in daily life.</p>
+          <p>Although dementia is a primary use case for Haneen Care Network, the platform is intentionally designed to support a broader population. The underlying framework — structured routine, coordinated oversight, consistent documentation, and family visibility — is beneficial in any scenario where an individual requires external support to maintain stability in daily life.</p>
 
           <div className="grid sm:grid-cols-2 gap-4 my-6">
             {[
@@ -278,15 +278,15 @@ export default function AboutUsPage() {
             ))}
           </div>
 
-          <p>By focusing on the underlying need for consistency rather than a single diagnosis, My Memoria Ally remains adaptable across care environments while maintaining a strong, purpose-built foundation.</p>
+          <p>By focusing on the underlying need for consistency rather than a single diagnosis, Haneen Care Network remains adaptable across care environments while maintaining a strong, purpose-built foundation.</p>
         </Section>
 
         {/* ── 5. Compliance ──────────────────────────────────────────────────── */}
         <Section title="Compliance, Data Security, and Trust" id="compliance">
-          <p>My Memoria Ally operates in a domain that involves highly sensitive personal and health-related information. This introduces a level of responsibility that extends far beyond typical software applications — and we treat it accordingly.</p>
+          <p>Haneen Care Network operates in a domain that involves highly sensitive personal and health-related information. This introduces a level of responsibility that extends far beyond typical software applications — and we treat it accordingly.</p>
 
           <CalloutBox icon={Lock} title="HIPAA Compliance" color="slate">
-            <p>My Memoria Ally is designed and operated in compliance with the Health Insurance Portability and Accountability Act (HIPAA). {COMPANY} functions as a Business Associate under HIPAA when processing Protected Health Information (PHI) on behalf of healthcare provider Covered Entities. We maintain a Business Associate Agreement (BAA) with all healthcare organizations and facilities using the platform. Full compliance documentation is available at <a href="/privacy" className="text-warm-bronze underline">mymemoriaally.com/privacy</a>.</p>
+            <p>Haneen Care Network is designed and operated in compliance with the Health Insurance Portability and Accountability Act (HIPAA). {COMPANY} functions as a Business Associate under HIPAA when processing Protected Health Information (PHI) on behalf of healthcare provider Covered Entities. We maintain a Business Associate Agreement (BAA) with all healthcare organizations and facilities using the platform. Full compliance documentation is available at <a href="/privacy" className="text-warm-bronze underline">www.HaneenCareNetwork.com/privacy</a>.</p>
           </CalloutBox>
 
           <SubSection title="Technical Security Standards">
@@ -303,7 +303,7 @@ export default function AboutUsPage() {
           </SubSection>
 
           <SubSection title="Access Control Architecture">
-            <p>My Memoria Ally implements a strict role-based access control (RBAC) model with database-level enforcement. Every user operates within a precisely defined scope: patients access only their own records; care coordinators access only patients explicitly assigned to them; administrators access only records within their organization. No user can access information outside their authorized boundary — not through the application, and not through direct API access.</p>
+            <p>Haneen Care Network implements a strict role-based access control (RBAC) model with database-level enforcement. Every user operates within a precisely defined scope: patients access only their own records; care coordinators access only patients explicitly assigned to them; administrators access only records within their organization. No user can access information outside their authorized boundary — not through the application, and not through direct API access.</p>
             <p>This architecture ensures that sensitive health information is protected not just by policy, but by technical design. Trust is built through consistent, reliable operation — not through statements alone.</p>
           </SubSection>
 
@@ -321,10 +321,10 @@ export default function AboutUsPage() {
 
         {/* ── 6. Enterprise ──────────────────────────────────────────────────── */}
         <Section title="For Healthcare Facilities and Enterprise Organizations" id="enterprise">
-          <p>My Memoria Ally is built not only for individual families but as a platform that can extend care infrastructure for healthcare organizations, memory care facilities, assisted living communities, home health agencies, and provider networks.</p>
+          <p>Haneen Care Network is built not only for individual families but as a platform that can extend care infrastructure for healthcare organizations, memory care facilities, assisted living communities, home health agencies, and provider networks.</p>
 
           <SubSection title="What Enterprise Deployment Looks Like">
-            <p>Organizations that deploy My Memoria Ally gain a structured digital layer that extends care continuity beyond the walls of the facility. Family members receive visibility and reassurance, reducing call volume to nursing staff. Care coordinators gain documentation tools that reduce administrative burden. Administrators gain oversight and compliance-grade audit records.</p>
+            <p>Organizations that deploy Haneen Care Network gain a structured digital layer that extends care continuity beyond the walls of the facility. Family members receive visibility and reassurance, reducing call volume to nursing staff. Care coordinators gain documentation tools that reduce administrative burden. Administrators gain oversight and compliance-grade audit records.</p>
             <p>The result is a measurable improvement in care consistency — across shifts, across staff changes, and across the transitions that are most vulnerable in care environments.</p>
           </SubSection>
 
@@ -342,25 +342,25 @@ export default function AboutUsPage() {
           </SubSection>
 
           <CalloutBox icon={Building2} title="Interested in Organizational Deployment?" color="bronze">
-            <p>We work directly with healthcare facilities, memory care communities, and care organizations to configure My Memoria Ally for organizational use. This includes BAA execution, staff onboarding, custom configuration, and ongoing support.</p>
+            <p>We work directly with healthcare facilities, memory care communities, and care organizations to configure Haneen Care Network for organizational use. This includes BAA execution, staff onboarding, custom configuration, and ongoing support.</p>
             <p className="mt-2">Contact us at <a href={'mailto:' + EMAIL} className="text-warm-bronze font-semibold underline">{EMAIL}</a> to discuss your organization's needs.</p>
           </CalloutBox>
         </Section>
 
         {/* ── 7. Company ─────────────────────────────────────────────────────── */}
         <Section title={'About ' + COMPANY} id="company">
-          <p>My Memoria Ally is developed and operated by {COMPANY}. The company was established with a focus on building structured digital systems that address complex, real-world challenges — particularly those where failure carries real consequences for real people.</p>
+          <p>Haneen Care Network is developed and operated by {COMPANY}. The company was established with a focus on building structured digital systems that address complex, real-world challenges — particularly those where failure carries real consequences for real people.</p>
           <p>Rather than creating isolated features or short-term solutions, {COMPANY} approaches product development as system design. This means prioritizing long-term usability, structural reliability, and the ability to function dependably within workflows where consistency is not optional.</p>
-          <p>In the context of care, this means creating systems that users can depend on every day — without ambiguity, without confusion, and without requiring technical expertise to operate. The design of My Memoria Ally reflects this commitment at every level, from the patient-facing interface to the underlying data architecture.</p>
+          <p>In the context of care, this means creating systems that users can depend on every day — without ambiguity, without confusion, and without requiring technical expertise to operate. The design of Haneen Care Network reflects this commitment at every level, from the patient-facing interface to the underlying data architecture.</p>
 
           <SubSection title="Our Philosophy">
             <p>We believe that the people who need the most support deserve the most thoughtfully designed tools. Cognitive care is not a niche market — it is one of the fastest-growing healthcare challenges of the 21st century. The families navigating it deserve more than repurposed productivity apps and disconnected reminder tools.</p>
-            <p>My Memoria Ally was built from the ground up for this specific context. Every feature, every design decision, and every security control reflects the weight of the domain it operates in.</p>
+            <p>Haneen Care Network was built from the ground up for this specific context. Every feature, every design decision, and every security control reflects the weight of the domain it operates in.</p>
           </SubSection>
 
           <SubSection title="Long-Term Vision">
-            <p>The long-term vision of My Memoria Ally is to redefine how care is coordinated in environments where consistency is critical. Instead of fragmented tools and informal processes, care becomes structured, trackable, and coordinated through a unified system — one that reduces caregiver burden, improves patient stability, and creates a more predictable and supportive daily experience for everyone involved.</p>
-            <p>My Memoria Ally represents the beginning of that shift. The platform is actively growing — in features, in supported care scenarios, and in its ability to serve organizations at scale.</p>
+            <p>The long-term vision of Haneen Care Network is to redefine how care is coordinated in environments where consistency is critical. Instead of fragmented tools and informal processes, care becomes structured, trackable, and coordinated through a unified system — one that reduces caregiver burden, improves patient stability, and creates a more predictable and supportive daily experience for everyone involved.</p>
+            <p>Haneen Care Network represents the beginning of that shift. The platform is actively growing — in features, in supported care scenarios, and in its ability to serve organizations at scale.</p>
           </SubSection>
         </Section>
 
