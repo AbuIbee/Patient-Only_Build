@@ -676,7 +676,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (v: AdminView) => void 
     <div className="space-y-8">
       <div className="bg-gradient-to-r from-deep-bronze to-warm-bronze rounded-2xl p-6 text-white">
         <h2 className="text-2xl font-bold">Admin Dashboard</h2>
-        <p className="text-white/75 mt-1">My Memoria Ally — User & Account Management</p>
+        <p className="text-white/75 mt-1">Haneen Care Network — User & Account Management</p>
         <p className="text-white/60 text-sm mt-1">{stats.newWeek} new users this week</p>
       </div>
 
@@ -817,7 +817,7 @@ export default function AdminLayout() {
             <Heart className="w-5 h-5 text-white" />
           </div>
           <div className="ml-3">
-            <p className="font-semibold text-charcoal text-sm">My Memoria Ally</p>
+            <p className="font-semibold text-charcoal text-sm">Haneen Care Network</p>
             <p className="text-xs text-medium-gray">Admin Center</p>
           </div>
         </div>
