@@ -42,6 +42,7 @@ import {
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import { acknowledgeHelpActivation } from '@/services/patientClinicalRecordService';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
+import { selectCurrentOrNextVisit } from './selectCurrentOrNextVisit';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
 
 type NavItem =
@@ -865,7 +866,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
 
   const unreadCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
   const todayVisits = visits.filter((v) => v.scheduledStart && new Date(v.scheduledStart).toDateString() === new Date().toDateString());
-  const nextVisit = todayVisits.find((v) => v.status === 'scheduled' || v.status === 'in_progress');
+  const nextVisit = selectCurrentOrNextVisit(todayVisits);
   const nextVisitPatient = nextVisit ? patients.find((p) => p.patientId === nextVisit.patientId) : undefined;
   const needsAttentionCount = incidents.length + helpCount + unacknowledgedHandoffs + missingVisitNotes + unfinishedCareLists;
 
@@ -1019,11 +1020,11 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
         <div className="space-y-5">
           <Card>
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-ent-ink">Next scheduled visit</h2>
+              <h2 className="font-bold text-ent-ink">Current or next visit</h2>
               {nextVisit && <span className="text-[11px] font-semibold text-ent-forest bg-ent-green-active px-2.5 py-1 rounded-full">Today</span>}
             </div>
             {!nextVisit ? (
-              <p className="text-sm text-ent-muted">No visit is scheduled for today.</p>
+              <p className="text-sm text-ent-muted">No active or upcoming visit is currently scheduled for today.</p>
             ) : (
               <div className="flex items-start gap-3">
                 <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">
