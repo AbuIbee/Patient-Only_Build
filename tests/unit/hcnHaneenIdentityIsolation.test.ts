@@ -13,7 +13,7 @@ describe('HCN-IDENTITY-001 Haneen-specific branding regression protection', () =
     const s=file('src/main.tsx');
     expect(s).toContain("document.title = 'Haneen Care Network'");
     expect(s).toContain("'/haneen-favicon.svg'");
-    expect(s).toContain('Enterprise care coordination').toBe(false);
+    expect(s).toContain('enterprise care coordination and professional care management');
     expect(s).toContain("import.meta.env.VITE_ENTERPRISE_SITE === 'true'");
   });
   it('does not render the consumer landing or login on Haneen legacy business and sign-out routes', () => {
