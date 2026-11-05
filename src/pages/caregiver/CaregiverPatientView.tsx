@@ -521,7 +521,6 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
                 <p className="font-medium text-charcoal text-sm">{m.name} — {m.dosage}</p>
                 <p className="text-xs text-medium-gray">{m.instructions}</p>
                   {m.side_effects && <p className="text-xs text-gentle-coral mt-1"><span className="font-semibold">Reported reactions / side effects:</span> {m.side_effects}</p>}
-                {m.side_effects && <p className="text-xs text-gentle-coral mt-1"><span className="font-semibold">Reported reactions / side effects:</span> {m.side_effects}</p>}
               </li>
             ))}
           </ul>
@@ -534,6 +533,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
                 <li key={m.id} className="p-3 bg-soft-taupe/10 rounded-xl border border-soft-taupe opacity-80">
                   <p className="font-medium text-charcoal text-sm">{m.name} — {m.dosage} <span className="text-xs text-medium-gray">(discontinued)</span></p>
                   <p className="text-xs text-medium-gray">{m.instructions}</p>
+                  {m.side_effects && <p className="text-xs text-gentle-coral mt-1"><span className="font-semibold">Reported reactions / side effects:</span> {m.side_effects}</p>}
                 </li>
               ))}
             </ul>
@@ -621,14 +621,24 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
                   <p className="font-semibold text-charcoal">{new Date(c.check_in_date).toLocaleDateString()}</p>
                   {c.submitted_by_name && <span className="text-xs text-medium-gray">by {c.submitted_by_name}</span>}
                 </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-medium-gray">
-                  {c.sa_safety_concerns && <span className="text-gentle-coral font-semibold">Safety concern flagged</span>}
-                  {c.sa_falls && <span>Falls: {c.sa_falls}</span>}
-                  {c.mo_mood && <span>Mood: {c.mo_mood}</span>}
-                  {c.be_agitation && <span>Agitation: {c.be_agitation}</span>}
-                  {c.be_wandering_risk && <span>Wandering risk: {c.be_wandering_risk}</span>}
-                  {c.sy_pain && <span>Pain: {c.sy_pain}</span>}
-                  {c.sy_symptoms && c.sy_symptoms.length > 0 && <span>Symptoms: {c.sy_symptoms.join(', ')}</span>}
+                <div className="space-y-2 text-xs text-medium-gray">
+                  {[
+                    ['A · Daily function', [c.fn_dressing && `Dressing: ${c.fn_dressing}`, c.fn_bathing && `Bathing: ${c.fn_bathing}`, c.fn_toileting && `Toileting: ${c.fn_toileting}`, c.fn_transfers && `Transfers: ${c.fn_transfers}`, c.fn_mobility && `Mobility: ${c.fn_mobility}`, c.fn_medication && `Medication support: ${c.fn_medication}`, c.fn_comments]],
+                    ['B · Nutrition', [c.nu_appetite && `Appetite: ${c.nu_appetite}`, c.nu_meal_pct != null && `Meal intake: ${c.nu_meal_pct}%`, c.nu_fluids && `Fluids: ${c.nu_fluids}`, c.nu_swallowing && `Swallowing: ${c.nu_swallowing}`, c.nu_comments]],
+                    ['C · Continence and skin', [c.co_urinary && `Urinary: ${c.co_urinary}`, c.co_bowel && `Bowel: ${c.co_bowel}`, c.co_skin && `Skin: ${c.co_skin}`, c.co_comments]],
+                    ['D · Safety', [c.sa_falls && `Falls: ${c.sa_falls}`, c.sa_injury_details && `Injury details: ${c.sa_injury_details}`, c.sa_wandering && `Wandering: ${c.sa_wandering}`, c.sa_safety_concerns ? 'Safety concern flagged' : null, ...(c.sa_safety_checklist ?? []), c.sa_comments]],
+                    ['E · Behavior and responsiveness', [c.be_behaviors?.length ? `Behaviors: ${c.be_behaviors.join(', ')}` : null, c.be_trigger && `Trigger: ${c.be_trigger}`, c.be_agitation && `Agitation: ${c.be_agitation}`, c.be_wandering_risk && `Wandering risk: ${c.be_wandering_risk}`, c.be_responsiveness && `Responsiveness: ${c.be_responsiveness}`, c.be_hallucinations && `Hallucinations: ${c.be_hallucinations}`, c.be_comments]],
+                    ['F · Mood and social', [c.mo_mood && `Mood: ${c.mo_mood}`, c.mo_social && `Social: ${c.mo_social}`, c.mo_sleep && `Sleep: ${c.mo_sleep}`, c.mo_comments]],
+                    ['G · Symptoms and comfort', [c.sy_symptoms?.length ? `Symptoms: ${c.sy_symptoms.join(', ')}` : null, c.sy_severity && `Severity: ${c.sy_severity}`, c.sy_other && `Other: ${c.sy_other}`, c.sy_pain && `Pain: ${c.sy_pain}`, c.sy_respiratory && `Respiratory: ${c.sy_respiratory}`, c.sy_gi && `Gastrointestinal: ${c.sy_gi}`, c.sy_neurological && `Neurological: ${c.sy_neurological}`, c.sy_comments]],
+                  ].map(([section, values]) => {
+                    const entries = (values as Array<string | null | false | undefined>).filter(Boolean);
+                    return entries.length ? (
+                      <div key={section as string}>
+                        <p className="font-semibold text-charcoal">{section}</p>
+                        <p className="whitespace-pre-wrap">{entries.join(' · ')}</p>
+                      </div>
+                    ) : null;
+                  })}
                 </div>
               </li>
             ))}
