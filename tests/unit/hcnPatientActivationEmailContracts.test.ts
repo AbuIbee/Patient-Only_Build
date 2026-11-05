@@ -39,6 +39,19 @@ describe('HCN patient password email server contracts', () => {
     }
   });
 
+  it('one-time patient email reconciliation is scoped to confirmed owner instruction and preserves the existing account', () => {
+    expect(resend).toContain("patientId === '17132b04-fda8-4638-9357-e80a3ed26c66'");
+    expect(resend).toContain("patientProfile.email.toLowerCase() === 'yousufhea@gmail.com'");
+    expect(resend).toContain("patientAuthUser.email?.toLowerCase() === 'youheath@gmail.com'");
+    expect(resend).toContain('isAuthorizedManager &&');
+    expect(resend).toContain('!patientAuthUser.last_sign_in_at');
+    expect(resend).toContain('adminClient.auth.admin.updateUserById(patientId');
+    expect(resend).toContain('readback.user?.id !== patientId');
+    expect(resend).toContain('target.user.last_sign_in_at');
+    expect(resend).not.toContain('adminClient.auth.admin.createUser(');
+    expect(resend).not.toContain('adminClient.auth.admin.deleteUser(');
+  });
+
   it('preserves existing patient on rate-limit and records a send failure', () => {
     expect(provision).toContain('activationEmailSent: false');
     expect(provision).toContain('activationEmailError:');
