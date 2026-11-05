@@ -33,6 +33,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase, logDocumentAccess } from '@/lib/supabase';
 import { toast } from 'sonner';
+import type { MoodType } from '@/types';
 import { verifyCaregiverPatientLink } from '@/services/caregiverRegistrationService';
 import { getHelpActivationHistory, type HelpActivationHistoryEntry } from '@/services/helpActivationService';
 import {
@@ -220,7 +221,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
   const [patient, setPatient] = useState<PatientHeader | null>(null);
   const [medications, setMedications] = useState<MedicationRow[]>([]);
   const [moods, setMoods] = useState<MoodRow[]>([]);
-  const [caregiverMood, setCaregiverMood] = useState('');
+  const [caregiverMood, setCaregiverMood] = useState<MoodType | ''>('');
   const [caregiverMoodNote, setCaregiverMoodNote] = useState('');
   const [savingMood, setSavingMood] = useState(false);
   const [notes, setNotes] = useState<Record<string, string>>({});
