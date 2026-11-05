@@ -4423,6 +4423,42 @@ export interface Database {
           },
         ]
       }
+      care_team_home_reports: {
+        Row: {
+          id: string
+          patient_id: string
+          report_date: string
+          submitted_at: string
+          mood: string | null
+          meals: string | null
+          hydration: string | null
+          medications: string | null
+          mobility: string | null
+          exercise: string | null
+          sleep_quality: string | null
+          pain_level: number | null
+        }
+        Relationships: []
+      }
+      patient_home_reports_self: {
+        Row: {
+          id: string
+          patient_id: string
+          report_date: string
+          submitted_at: string
+          mood: string | null
+          meals: string | null
+          hydration: string | null
+          medications: string | null
+          mobility: string | null
+          exercise: string | null
+          sleep_quality: string | null
+          pain_level: number | null
+          notes: string | null
+          answers: Json
+        }
+        Relationships: []
+      }
     }
     Functions: {
       // HCN signed onboarding: invited staff are visible to their own

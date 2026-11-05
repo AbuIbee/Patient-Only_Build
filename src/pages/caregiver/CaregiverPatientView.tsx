@@ -30,9 +30,10 @@
 // Per explicit instruction, entertainment photo/video content (memories)
 // and game-playing activity are excluded from this record — the former
 // Memories section is removed, not relocated.
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase, logDocumentAccess } from '@/lib/supabase';
 import { toast } from 'sonner';
+import type { MoodType } from '@/types';
 import { verifyCaregiverPatientLink } from '@/services/caregiverRegistrationService';
 import { getHelpActivationHistory, type HelpActivationHistoryEntry } from '@/services/helpActivationService';
 import {
@@ -176,7 +177,7 @@ interface PatientHeader {
   emergencyContactPhone: string | null;
 }
 
-interface MedicationRow { id: string; name: string; dosage: string; instructions: string; is_active: boolean }
+interface MedicationRow { id: string; name: string; dosage: string; instructions: string; side_effects: string[]; is_active: boolean }
 interface MoodRow { id: string; mood: string; intensity: number; note: string | null; timestamp: string }
 interface IntakeRow {
   doctor_therapist_name: string | null; doctor_therapist_phone: string | null; preferred_hospital: string | null;
@@ -189,15 +190,20 @@ interface DocumentRow { id: string; file_name: string; section: string | null; n
 interface EmergencyContactRow { id: string; full_name: string; relationship: string | null; phone: string | null; email: string | null; address: string | null }
 interface CheckinRow {
   id: string; check_in_date: string; submitted_by_name: string | null;
-  sa_falls: string | null; sa_safety_concerns: boolean | null;
-  be_agitation: string | null; be_wandering_risk: string | null;
-  mo_mood: string | null; sy_pain: string | null; sy_symptoms: string[] | null;
+  fn_dressing: string | null; fn_bathing: string | null; fn_toileting: string | null; fn_transfers: string | null; fn_mobility: string | null; fn_medication: string | null; fn_comments: string | null;
+  nu_appetite: string | null; nu_meal_pct: string | null; nu_fluids: string | null; nu_swallowing: string | null; nu_comments: string | null;
+  co_urinary: string | null; co_bowel: string | null; co_skin: string | null; co_comments: string | null;
+  sa_falls: string | null; sa_injury_details: string | null; sa_wandering: string | null; sa_safety_concerns: boolean | null; sa_safety_checklist: string[] | null; sa_comments: string | null;
+  be_behaviors: string[] | null; be_trigger: string | null; be_comments: string | null; be_agitation: string | null; be_wandering_risk: string | null; be_responsiveness: string | null; be_hallucinations: string | null;
+  mo_mood: string | null; mo_social: string | null; mo_sleep: string | null; mo_comments: string | null;
+  sy_symptoms: string[] | null; sy_severity: string | null; sy_other: string | null; sy_comments: string | null; sy_pain: string | null; sy_respiratory: string | null; sy_gi: string | null; sy_neurological: string | null;
 }
 // CODEX-VERIFIED CRITICAL REMEDIATION Critical 7: medication dose logs,
 // routine tasks, and authorized clinical notes (therapist_session /
 // clinical_observation — migration 044) — all already caregiver-
 // readable via existing RLS, simply never queried by this view before.
 interface MedicationLogRow { id: string; medication_name: string | null; scheduled_time: string | null; taken_time: string | null; status: string | null; date: string }
+interface HomeReportRow { id: string; report_date: string; submitted_at: string; mood: string | null; meals: string | null; hydration: string | null; medications: string | null; mobility: string | null; exercise: string | null; sleep_quality: string | null; pain_level: number | null }
 interface TaskRow { id: string; title: string; description: string | null; status: string; scheduled_time: string | null; is_active: boolean }
 interface ProfessionalNoteRow { id: string; note: string; note_type: string; created_at: string }
 
@@ -215,6 +221,9 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
   const [patient, setPatient] = useState<PatientHeader | null>(null);
   const [medications, setMedications] = useState<MedicationRow[]>([]);
   const [moods, setMoods] = useState<MoodRow[]>([]);
+  const [caregiverMood, setCaregiverMood] = useState<MoodType | ''>('');
+  const [caregiverMoodNote, setCaregiverMoodNote] = useState('');
+  const [savingMood, setSavingMood] = useState(false);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [openCategory, setOpenCategory] = useState<string>('A');
@@ -224,6 +233,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [emergencyContacts, setEmergencyContacts] = useState<EmergencyContactRow[]>([]);
   const [checkins, setCheckins] = useState<CheckinRow[]>([]);
+  const [homeReports, setHomeReports] = useState<HomeReportRow[]>([]);
   const [medicationLogs, setMedicationLogs] = useState<MedicationLogRow[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [professionalNotes, setProfessionalNotes] = useState<ProfessionalNoteRow[]>([]);
@@ -238,6 +248,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
   // silently-empty "No records," which would misrepresent an access or
   // connectivity problem as a clean medical history.
   const [sectionErrors, setSectionErrors] = useState<Record<string, string>>({});
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadPatient = useCallback(async () => {
     setLoadState('checking');
@@ -260,14 +271,14 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
         { data: medRows, error: medError }, { data: moodRows, error: moodError }, { data: noteRows, error: noteError },
         { data: intakeRow, error: intakeError }, { data: apptRows, error: apptError }, { data: teamRows, error: teamError },
         { data: docRows, error: docError }, { data: contactRows, error: contactError },
-        { data: checkinRows, error: checkinError }, { data: medLogRows, error: medLogError },
+        { data: checkinRows, error: checkinError }, { data: homeReportRows, error: homeReportError }, { data: medLogRows, error: medLogError },
         { data: taskRows, error: taskError }, { data: profNoteRows, error: profNoteError }, helpRows,
       ] = await Promise.all([
         supabase.from('patients')
           .select('id, first_name, last_name, preferred_name, date_of_birth, dementia_stage, diagnosis_date, location, emergency_contact_name, emergency_contact_phone')
           .eq('id', patientId).maybeSingle(),
         supabase.from('medications')
-          .select('id, name, dosage, instructions, is_active')
+          .select('id, name, dosage, instructions, side_effects, is_active')
           .eq('patient_id', patientId).order('is_active', { ascending: false }).limit(100),
         supabase.from('mood_entries')
           .select('id, mood, intensity, note, timestamp')
@@ -291,8 +302,11 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
           .select('id, full_name, relationship, phone, email, address')
           .eq('patient_id', patientId),
         supabase.from('care_partner_checkins')
-          .select('id, check_in_date, submitted_by_name, sa_falls, sa_safety_concerns, be_agitation, be_wandering_risk, mo_mood, sy_pain, sy_symptoms')
+          .select('id, check_in_date, submitted_by_name, fn_dressing, fn_bathing, fn_toileting, fn_transfers, fn_mobility, fn_medication, fn_comments, nu_appetite, nu_meal_pct, nu_fluids, nu_swallowing, nu_comments, co_urinary, co_bowel, co_skin, co_comments, sa_falls, sa_injury_details, sa_wandering, sa_safety_concerns, sa_safety_checklist, sa_comments, be_behaviors, be_trigger, be_comments, be_agitation, be_wandering_risk, be_responsiveness, be_hallucinations, mo_mood, mo_social, mo_sleep, mo_comments, sy_symptoms, sy_severity, sy_other, sy_comments, sy_pain, sy_respiratory, sy_gi, sy_neurological')
           .eq('patient_id', patientId).order('check_in_date', { ascending: false }).limit(10),
+        supabase.from('care_team_home_reports')
+          .select('id, patient_id, report_date, submitted_at, mood, meals, hydration, medications, mobility, exercise, sleep_quality, pain_level')
+          .eq('patient_id', patientId).order('report_date', { ascending: false }).limit(30),
         supabase.from('medication_logs')
           .select('id, medication_name, scheduled_time, taken_time, status, date')
           .eq('patient_id', patientId).order('date', { ascending: false }).limit(30),
@@ -339,6 +353,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
       setCareTeam(teamRows ?? []);
       setEmergencyContacts(contactRows ?? []);
       setCheckins(checkinRows ?? []);
+      setHomeReports(homeReportRows ?? []);
       setMedicationLogs(medLogRows ?? []);
       setTasks(taskRows ?? []);
       setProfessionalNotes(profNoteRows ?? []);
@@ -357,6 +372,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
       if (docError) newSectionErrors.documents = docError.message;
       if (contactError) newSectionErrors.emergencyContacts = contactError.message;
       if (checkinError) newSectionErrors.checkins = checkinError.message;
+      if (homeReportError) newSectionErrors.homeReports = homeReportError.message;
       if (medLogError) newSectionErrors.medicationLogs = medLogError.message;
       if (taskError) newSectionErrors.tasks = taskError.message;
       if (profNoteError) newSectionErrors.professionalNotes = profNoteError.message;
@@ -374,6 +390,68 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
   useEffect(() => {
     void loadPatient();
   }, [loadPatient]);
+
+  const refreshHomeReports = useCallback(async () => {
+    const authorized = await verifyCaregiverPatientLink(patientId);
+    if (!authorized) { setLoadState('denied'); return; }
+    const { data, error } = await supabase.from('care_team_home_reports')
+      .select('id, patient_id, report_date, submitted_at, mood, meals, hydration, medications, mobility, exercise, sleep_quality, pain_level')
+      .eq('patient_id', patientId).order('report_date', { ascending: false }).limit(30);
+    if (error) {
+      setSectionErrors((prev) => ({ ...prev, homeReports: error.message }));
+      return;
+    }
+    setHomeReports((data ?? []) as HomeReportRow[]);
+    setSectionErrors((prev) => { const next = { ...prev }; delete next.homeReports; return next; });
+  }, [patientId]);
+
+  useEffect(() => {
+    const timer = setInterval(() => { void refreshHomeReports(); }, 10000);
+    return () => clearInterval(timer);
+  }, [refreshHomeReports]);
+
+  // Keep the caregiver's open patient record current when the patient or
+  // another authorized care-team member records a relevant change. RLS
+  // remains the authorization boundary; the patient filter only narrows the
+  // Realtime stream and every refresh re-verifies the caregiver-patient link.
+  useEffect(() => {
+    const tables = ['mood_entries', 'care_partner_checkins', 'medications', 'medication_logs', 'care_partner_notes', 'patient_notes'];
+    const channel = supabase.channel(`caregiver-patient-updates-${patientId}`);
+    for (const table of tables) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `patient_id=eq.${patientId}` }, () => {
+        if (refreshTimer.current) clearTimeout(refreshTimer.current);
+        refreshTimer.current = setTimeout(() => { void loadPatient(); }, 180);
+      });
+    }
+    channel.subscribe();
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      supabase.removeChannel(channel);
+    };
+  }, [patientId, loadPatient]);
+
+  const saveCaregiverMood = async () => {
+    if (!caregiverMood) { toast.error('Select how the patient is feeling first.'); return; }
+    setSavingMood(true);
+    try {
+      const authorized = await verifyCaregiverPatientLink(patientId);
+      if (!authorized) { setLoadState('denied'); return; }
+      const { error } = await supabase.from('mood_entries').insert({
+        patient_id: patientId,
+        mood: caregiverMood,
+        intensity: 5,
+        note: caregiverMoodNote.trim() ? `Caregiver update: ${caregiverMoodNote.trim()}` : 'Caregiver update',
+        timestamp: new Date().toISOString(),
+        recorded_by: 'Caregiver',
+      });
+      if (error) throw error;
+      toast.success('Mood update shared with the patient.');
+      setCaregiverMood('');
+      setCaregiverMoodNote('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save mood update');
+    } finally { setSavingMood(false); }
+  };
 
   const saveNote = async (category: string) => {
     setSavingCategory(category);
@@ -495,6 +573,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
               <li key={m.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
                 <p className="font-medium text-charcoal text-sm">{m.name} — {m.dosage}</p>
                 <p className="text-xs text-medium-gray">{m.instructions}</p>
+                  {m.side_effects?.length > 0 && <p className="text-xs text-gentle-coral mt-1"><span className="font-semibold">Reported reactions / side effects:</span> {m.side_effects.join(', ')}</p>}
               </li>
             ))}
           </ul>
@@ -507,6 +586,7 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
                 <li key={m.id} className="p-3 bg-soft-taupe/10 rounded-xl border border-soft-taupe opacity-80">
                   <p className="font-medium text-charcoal text-sm">{m.name} — {m.dosage} <span className="text-xs text-medium-gray">(discontinued)</span></p>
                   <p className="text-xs text-medium-gray">{m.instructions}</p>
+                  {m.side_effects && <p className="text-xs text-gentle-coral mt-1"><span className="font-semibold">Reported reactions / side effects:</span> {m.side_effects}</p>}
                 </li>
               ))}
             </ul>
@@ -565,6 +645,24 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
         )}
       </div>
 
+      {/* Caregiver mood entries share through the same scoped mood history as
+          patient entries; the patient view will receive new rows in real time. */}
+      <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+        <h2 className="font-bold text-charcoal">Share a mood update with the patient</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-sm text-charcoal">How is the patient feeling?
+            <select value={caregiverMood} onChange={(e) => setCaregiverMood(e.target.value as MoodType | '')} className="mt-1 w-full px-3 py-2 border border-soft-taupe rounded-xl bg-white">
+              <option value="">Select a mood</option>
+              {['happy', 'calm', 'sad', 'angry', 'confused', 'worried', 'anxious', 'scared'].map((mood) => <option key={mood} value={mood}>{mood[0].toUpperCase() + mood.slice(1)}</option>)}
+            </select>
+          </label>
+          <label className="text-sm text-charcoal">Optional note
+            <input value={caregiverMoodNote} onChange={(e) => setCaregiverMoodNote(e.target.value)} maxLength={500} className="mt-1 w-full px-3 py-2 border border-soft-taupe rounded-xl" placeholder="A brief, respectful update" />
+          </label>
+        </div>
+        <button type="button" disabled={savingMood || !caregiverMood} onClick={() => { void saveCaregiverMood(); }} className="px-4 py-2 rounded-xl bg-warm-bronze text-white disabled:opacity-50">{savingMood ? 'Sharing…' : 'Share mood update'}</button>
+      </div>
+
       <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
         <div className="flex items-center gap-2"><Heart className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Mood &amp; Behavioral History</h2></div>
         {moods.length === 30 && <p className="text-xs text-medium-gray">Showing the 30 most recent — older entries may exist.</p>}
@@ -576,6 +674,32 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
                 <span className="text-xs text-medium-gray flex-shrink-0 ml-2">{new Date(m.timestamp).toLocaleDateString()}</span>
               </li>
             ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+        <div className="flex items-center gap-2"><FileText className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Patient Portal Home Reports</h2></div>
+        {sectionErrors.homeReports ? <p className="text-sm text-gentle-coral">Could not load home reports: {sectionErrors.homeReports}</p> : homeReports.length === 0 ? <p className="text-sm text-medium-gray">No home reports have been shared yet.</p> : (
+          <ul className="space-y-2">
+            {homeReports.map((report) => {
+              const details = [
+                report.mood && `Mood: ${report.mood}`,
+                report.meals && `Meals: ${report.meals}`,
+                report.hydration && `Hydration: ${report.hydration}`,
+                report.medications && `Medication: ${report.medications}`,
+                report.mobility && `Mobility: ${report.mobility}`,
+                report.exercise && `Exercise: ${report.exercise}`,
+                report.sleep_quality && `Sleep: ${report.sleep_quality}`,
+                report.pain_level != null && `Pain level: ${report.pain_level}`,
+              ].filter(Boolean);
+              return (
+                <li key={report.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
+                  <p className="font-semibold text-charcoal">{new Date(report.report_date + 'T00:00:00').toLocaleDateString()}</p>
+                  {details.length ? <p className="mt-1 text-medium-gray whitespace-pre-wrap">{details.join(' · ')}</p> : <p className="mt-1 text-medium-gray">No details entered.</p>}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -593,14 +717,24 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
                   <p className="font-semibold text-charcoal">{new Date(c.check_in_date).toLocaleDateString()}</p>
                   {c.submitted_by_name && <span className="text-xs text-medium-gray">by {c.submitted_by_name}</span>}
                 </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-medium-gray">
-                  {c.sa_safety_concerns && <span className="text-gentle-coral font-semibold">Safety concern flagged</span>}
-                  {c.sa_falls && <span>Falls: {c.sa_falls}</span>}
-                  {c.mo_mood && <span>Mood: {c.mo_mood}</span>}
-                  {c.be_agitation && <span>Agitation: {c.be_agitation}</span>}
-                  {c.be_wandering_risk && <span>Wandering risk: {c.be_wandering_risk}</span>}
-                  {c.sy_pain && <span>Pain: {c.sy_pain}</span>}
-                  {c.sy_symptoms && c.sy_symptoms.length > 0 && <span>Symptoms: {c.sy_symptoms.join(', ')}</span>}
+                <div className="space-y-2 text-xs text-medium-gray">
+                  {[
+                    ['A · Daily function', [c.fn_dressing && `Dressing: ${c.fn_dressing}`, c.fn_bathing && `Bathing: ${c.fn_bathing}`, c.fn_toileting && `Toileting: ${c.fn_toileting}`, c.fn_transfers && `Transfers: ${c.fn_transfers}`, c.fn_mobility && `Mobility: ${c.fn_mobility}`, c.fn_medication && `Medication support: ${c.fn_medication}`, c.fn_comments]],
+                    ['B · Nutrition', [c.nu_appetite && `Appetite: ${c.nu_appetite}`, c.nu_meal_pct != null && `Meal intake: ${c.nu_meal_pct}%`, c.nu_fluids && `Fluids: ${c.nu_fluids}`, c.nu_swallowing && `Swallowing: ${c.nu_swallowing}`, c.nu_comments]],
+                    ['C · Continence and skin', [c.co_urinary && `Urinary: ${c.co_urinary}`, c.co_bowel && `Bowel: ${c.co_bowel}`, c.co_skin && `Skin: ${c.co_skin}`, c.co_comments]],
+                    ['D · Safety', [c.sa_falls && `Falls: ${c.sa_falls}`, c.sa_injury_details && `Injury details: ${c.sa_injury_details}`, c.sa_wandering && `Wandering: ${c.sa_wandering}`, c.sa_safety_concerns ? 'Safety concern flagged' : null, ...(c.sa_safety_checklist ?? []), c.sa_comments]],
+                    ['E · Behavior and responsiveness', [c.be_behaviors?.length ? `Behaviors: ${c.be_behaviors.join(', ')}` : null, c.be_trigger && `Trigger: ${c.be_trigger}`, c.be_agitation && `Agitation: ${c.be_agitation}`, c.be_wandering_risk && `Wandering risk: ${c.be_wandering_risk}`, c.be_responsiveness && `Responsiveness: ${c.be_responsiveness}`, c.be_hallucinations && `Hallucinations: ${c.be_hallucinations}`, c.be_comments]],
+                    ['F · Mood and social', [c.mo_mood && `Mood: ${c.mo_mood}`, c.mo_social && `Social: ${c.mo_social}`, c.mo_sleep && `Sleep: ${c.mo_sleep}`, c.mo_comments]],
+                    ['G · Symptoms and comfort', [c.sy_symptoms?.length ? `Symptoms: ${c.sy_symptoms.join(', ')}` : null, c.sy_severity && `Severity: ${c.sy_severity}`, c.sy_other && `Other: ${c.sy_other}`, c.sy_pain && `Pain: ${c.sy_pain}`, c.sy_respiratory && `Respiratory: ${c.sy_respiratory}`, c.sy_gi && `Gastrointestinal: ${c.sy_gi}`, c.sy_neurological && `Neurological: ${c.sy_neurological}`, c.sy_comments]],
+                  ].map(([section, values]) => {
+                    const entries = (values as Array<string | null | false | undefined>).filter(Boolean);
+                    return entries.length ? (
+                      <div key={section as string}>
+                        <p className="font-semibold text-charcoal">{section}</p>
+                        <p className="whitespace-pre-wrap">{entries.join(' · ')}</p>
+                      </div>
+                    ) : null;
+                  })}
                 </div>
               </li>
             ))}
