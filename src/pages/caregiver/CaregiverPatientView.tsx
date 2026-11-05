@@ -190,7 +190,7 @@ interface EmergencyContactRow { id: string; full_name: string; relationship: str
 interface CheckinRow {
   id: string; check_in_date: string; submitted_by_name: string | null;
   fn_dressing: string | null; fn_bathing: string | null; fn_toileting: string | null; fn_transfers: string | null; fn_mobility: string | null; fn_medication: string | null; fn_comments: string | null;
-  nu_appetite: string | null; nu_meal_pct: number | null; nu_fluids: string | null; nu_swallowing: string | null; nu_comments: string | null;
+  nu_appetite: string | null; nu_meal_pct: string | null; nu_fluids: string | null; nu_swallowing: string | null; nu_comments: string | null;
   co_urinary: string | null; co_bowel: string | null; co_skin: string | null; co_comments: string | null;
   sa_falls: string | null; sa_injury_details: string | null; sa_wandering: string | null; sa_safety_concerns: boolean | null; sa_safety_checklist: string[] | null; sa_comments: string | null;
   be_behaviors: string[] | null; be_trigger: string | null; be_comments: string | null; be_agitation: string | null; be_wandering_risk: string | null; be_responsiveness: string | null; be_hallucinations: string | null;
@@ -219,6 +219,9 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
   const [patient, setPatient] = useState<PatientHeader | null>(null);
   const [medications, setMedications] = useState<MedicationRow[]>([]);
   const [moods, setMoods] = useState<MoodRow[]>([]);
+  const [caregiverMood, setCaregiverMood] = useState('');
+  const [caregiverMoodNote, setCaregiverMoodNote] = useState('');
+  const [savingMood, setSavingMood] = useState(false);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [openCategory, setOpenCategory] = useState<string>('A');
@@ -399,6 +402,29 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
       supabase.removeChannel(channel);
     };
   }, [patientId, loadPatient]);
+
+  const saveCaregiverMood = async () => {
+    if (!caregiverMood) { toast.error('Select how the patient is feeling first.'); return; }
+    setSavingMood(true);
+    try {
+      const authorized = await verifyCaregiverPatientLink(patientId);
+      if (!authorized) { setLoadState('denied'); return; }
+      const { error } = await supabase.from('mood_entries').insert({
+        patient_id: patientId,
+        mood: caregiverMood,
+        intensity: 5,
+        note: caregiverMoodNote.trim() ? `Caregiver update: ${caregiverMoodNote.trim()}` : 'Caregiver update',
+        timestamp: new Date().toISOString(),
+        recorded_by: 'Caregiver',
+      });
+      if (error) throw error;
+      toast.success('Mood update shared with the patient.');
+      setCaregiverMood('');
+      setCaregiverMoodNote('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save mood update');
+    } finally { setSavingMood(false); }
+  };
 
   const saveNote = async (category: string) => {
     setSavingCategory(category);
@@ -591,6 +617,24 @@ export default function CaregiverPatientView({ patientId, onBack }: { patientId:
             ))}
           </ul>
         )}
+      </div>
+
+      {/* Caregiver mood entries share through the same scoped mood history as
+          patient entries; the patient view will receive new rows in real time. */}
+      <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
+        <h2 className="font-bold text-charcoal">Share a mood update with the patient</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-sm text-charcoal">How is the patient feeling?
+            <select value={caregiverMood} onChange={(e) => setCaregiverMood(e.target.value)} className="mt-1 w-full px-3 py-2 border border-soft-taupe rounded-xl bg-white">
+              <option value="">Select a mood</option>
+              {['happy', 'calm', 'sad', 'angry', 'confused', 'worried', 'anxious', 'scared'].map((mood) => <option key={mood} value={mood}>{mood[0].toUpperCase() + mood.slice(1)}</option>)}
+            </select>
+          </label>
+          <label className="text-sm text-charcoal">Optional note
+            <input value={caregiverMoodNote} onChange={(e) => setCaregiverMoodNote(e.target.value)} maxLength={500} className="mt-1 w-full px-3 py-2 border border-soft-taupe rounded-xl" placeholder="A brief, respectful update" />
+          </label>
+        </div>
+        <button type="button" disabled={savingMood || !caregiverMood} onClick={() => { void saveCaregiverMood(); }} className="px-4 py-2 rounded-xl bg-warm-bronze text-white disabled:opacity-50">{savingMood ? 'Sharing…' : 'Share mood update'}</button>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-soft-taupe p-5 sm:p-6 space-y-3">
