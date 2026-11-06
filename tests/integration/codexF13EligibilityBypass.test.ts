@@ -58,8 +58,11 @@ describe('CODEX F-13 FIX (migration 124) — professional eligibility bypass clo
     expect(JSON.stringify(body)).toContain('independently verified credentials');
   });
 
-  it('regression guard: a director can still invite a caregiver or billing administrator directly, unaffected by this fix', async () => {
-    const [caregiverStatus] = await rpc('invite_org_member', { p_org_id: ORG, p_email: emails.target, p_org_role: 'caregiver' }, tok.director);
+  it('regression guard: a director must provision caregiver employment through the manager workflow while billing invitations remain available', async () => {
+    const [blockedStatus, blockedBody] = await rpc('invite_org_member', { p_org_id: ORG, p_email: emails.target, p_org_role: 'caregiver' }, tok.director);
+    expect(blockedStatus).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(blockedBody)).toContain('Create Caregiver Account');
+    const [caregiverStatus] = await rpc('hcn_manager_add_caregiver', { p_org_id: ORG, p_employee_id: ids.target }, tok.director);
     expect(caregiverStatus).toBe(200);
     sql(`DELETE FROM organization_memberships WHERE organization_id='${ORG}' AND user_id='${ids.target}';`);
 
