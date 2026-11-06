@@ -519,7 +519,8 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
               {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id)} onNavigate={navigateTo} onPatientRegistered={() => { void load(); }} />}
               {nav === 'patients' && (
                 <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)}
-                  onOpenContacts={(id) => navigateTo('patients', id, 'contacts')} orgId={orgId}
+                  onOpenContacts={(id) => navigateTo('patients', id, 'contacts')}
+                  onOpenInformation={(id) => navigateTo('patients', id, 'info')} orgId={orgId}
                   onChanged={() => { void load(); }} />
               )}
               {nav === 'records' && (
@@ -902,7 +903,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
             { label: "Today's Visits", nav: 'schedule' as NavItem, Icon: Calendar },
             { label: 'Clock In / Out', nav: 'visits' as NavItem, Icon: Clock },
             { label: 'Care Tasks', nav: 'tasks' as NavItem, Icon: ClipboardCheck },
-            { label: 'Patient Records', nav: 'patients' as NavItem, Icon: Users },
+            { label: 'Patient Records', nav: 'records' as NavItem, Icon: Users },
             { label: 'Report an Incident', nav: 'alerts' as NavItem, Icon: ShieldAlert },
             { label: 'Secure Messages', nav: 'communications' as NavItem, Icon: MessageSquare },
           ]).map(({ label, nav, Icon }) => (
@@ -1283,7 +1284,7 @@ function staffPatientShortReference(patientId: string): string {
   return patientId.replace(/-/g, '').slice(-8).toUpperCase();
 }
 
-function PatientsListView({ patients, onOpenPatient, onOpenContacts, title, orgId, onChanged }: { patients: StaffPatient[]; onOpenPatient: (id: string) => void; onOpenContacts?: (id: string) => void; title?: string; orgId?: string; onChanged?: () => void }) {
+function PatientsListView({ patients, onOpenPatient, onOpenContacts, onOpenInformation, title, orgId, onChanged }: { patients: StaffPatient[]; onOpenPatient: (id: string) => void; onOpenContacts?: (id: string) => void; onOpenInformation?: (id: string) => void; title?: string; orgId?: string; onChanged?: () => void }) {
   // MMA-ENT-CAREGIVER-MASTER-004 D03 (P2) — independent runtime audit
   // finding: "authenticated patient list has no search/filter/label
   // controls." Search is client-side (the full assigned-patient list is
@@ -1390,6 +1391,13 @@ function PatientsListView({ patients, onOpenPatient, onOpenContacts, title, orgI
                 ) : p.assignmentId && (
                   <button type="button" onClick={() => startEditingLabel(p)} className="self-start text-[11px] font-semibold text-ent-bronze hover:underline">
                     {label ? 'Edit label' : '+ Add a label'}
+                  </button>
+                )}
+                {onOpenInformation && (
+                  <button type="button" onClick={() => onOpenInformation(p.patientId)}
+                    aria-label={`Patient Information for ${displayName}`}
+                    className="self-start rounded-lg border border-ent-line px-3 py-2 text-xs font-semibold text-ent-bronze">
+                    Patient Information
                   </button>
                 )}
                 {onOpenContacts && (
