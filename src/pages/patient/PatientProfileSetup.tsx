@@ -132,6 +132,11 @@ export default function PatientProfileSetup() {
 
   // ── Save all steps to Supabase ─────────────────────────────────────────────
   const saveAll = async () => {
+    if (!userId) {
+      toast.error('Your session is missing. Sign in again before saving patient information.');
+      return;
+    }
+
     // Double-check: verify directly from auth in case TempUserProvider hasn't resolved
     const { data: { user: authUser } } = await supabase.auth.getUser();
     if (blockIfReadOnly() || isTempUser(authUser?.email)) return;
@@ -142,17 +147,18 @@ export default function PatientProfileSetup() {
     try {
       const now = new Date().toISOString();
 
-      // 1. Update profiles
-      await supabase.from('profiles').update({
+      // 1. Update the caller's profile and stop on failure.
+      const { error: profileErr } = await supabase.from('profiles').update({
         first_name: form.firstName.trim(),
         last_name:  form.lastName.trim(),
         phone:      form.phone.trim() || null,
         updated_at: now,
       }).eq('id', userId);
+      if (profileErr) throw new Error(`Failed to save profile: ${profileErr.message}`);
 
-      // 2. Upsert patients row
-      await supabase.from('patients').upsert({
-        id:                             userId,
+      // 2. Update the already-provisioned patient row. Do not upsert: enterprise
+      // patient INSERTs are intentionally restricted to the trusted server workflow.
+      const { data: patientRow, error: patientErr } = await supabase.from('patients').update({
         preferred_name:                 form.preferredName.trim()      || null,
         date_of_birth:                  form.dateOfBirth               || null,
         diagnosis_date:                 form.diagnosisDate             || null,
@@ -164,7 +170,9 @@ export default function PatientProfileSetup() {
         emergency_contact_relationship: form.ecRelationship.trim()     || null,
         emergency_contact_email:        form.ecEmail.trim()            || null,
         updated_at:                     now,
-      }, { onConflict: 'id' });
+      }).eq('id', userId).select('id').maybeSingle();
+      if (patientErr) throw new Error(`Failed to save patient record: ${patientErr.message}`);
+      if (!patientRow) throw new Error('Your patient record is not provisioned yet. Please contact your care team to complete account setup.');
 
       // 3. Upsert patient_intake record (linked to this patient's own profile)
       const intakePayload = {
