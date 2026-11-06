@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { AlertCircle, ClipboardList, HeartPulse, Loader2, PencilLine, Phone, RefreshCcw, Search, Users } from 'lucide-react';
+import { AlertCircle, Loader2, PencilLine, Phone, RefreshCcw, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import HealthcareContacts from '@/components/healthcare/HealthcareContacts';
