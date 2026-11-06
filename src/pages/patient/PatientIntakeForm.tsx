@@ -164,6 +164,11 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
 
   // ── Save ──────────────────────────────────────────────────────────────────
   const handleSave = async () => {
+    if (!userId) {
+      toast.error('Your session is missing. Sign in again before saving patient information.');
+      return;
+    }
+
     const errs = validate();
     setErrors(errs);
     if (Object.keys(errs).length) {
@@ -187,9 +192,10 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
         return;
       }
 
-      // 2. Upsert patients — column names match the actual patients table schema
-      const { error: patientErr } = await supabase.from('patients').upsert({
-        id: userId,
+      // 2. Update the already-provisioned patient row. Patient creation is restricted
+      // to the trusted server workflow; using upsert here incorrectly attempts INSERT
+      // and is rejected by the enterprise INSERT policy, even when the row exists.
+      const { data: patientRow, error: patientErr } = await supabase.from('patients').update({
         first_name:                     form.firstName.trim(),
         last_name:                       form.lastName.trim(),
         preferred_name:                  form.preferredName.trim() || null,
@@ -203,9 +209,13 @@ export default function PatientIntakeForm({ onCompleted }: { onCompleted?: () =>
         emergency_contact_relationship:  form.crRelationship.trim() || null,
         emergency_contact_email:         form.crEmail.trim() || null,
         updated_at: now,
-      }, { onConflict: 'id' });
+      }).eq('id', userId).select('id').maybeSingle();
       if (patientErr) {
         toast.error('Failed to save patient record: ' + patientErr.message);
+        return;
+      }
+      if (!patientRow) {
+        toast.error('Your patient record is not provisioned yet. Please contact your care team to complete account setup.');
         return;
       }
 
