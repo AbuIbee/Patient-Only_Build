@@ -26,13 +26,13 @@ function dialable(phone: string): string {
   return phone.replace(/[^+\d]/g, '');
 }
 
-export default function HealthcareContacts({ patientId }: { patientId: string }) {
+export default function HealthcareContacts({ patientId, onSaved }: { patientId: string; onSaved?: () => void }) {
   // Remount the editor when the subject changes: an unfinished contact from
   // patient A must never be submitted under patient B's authorization context.
-  return <PatientHealthcareContacts key={patientId} patientId={patientId} />;
+  return <PatientHealthcareContacts key={patientId} patientId={patientId} onSaved={onSaved} />;
 }
 
-function PatientHealthcareContacts({ patientId }: { patientId: string }) {
+function PatientHealthcareContacts({ patientId, onSaved }: { patientId: string; onSaved?: () => void }) {
   const [contacts, setContacts] = useState<HealthcareContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -105,6 +105,7 @@ function PatientHealthcareContacts({ patientId }: { patientId: string }) {
       setEditing(null);
       setForm(null);
       await refresh();
+      onSaved?.();
     } finally {
       setSaving(false);
     }
