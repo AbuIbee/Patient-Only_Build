@@ -16,7 +16,7 @@ import { supabase, logDocumentAccess } from '@/lib/supabase';
 import EnterpriseAGCheckinForm from './EnterpriseAGCheckinForm';
 import {
   ArrowLeft, Loader2, ClipboardList, ClipboardCheck, Calendar, MapPin, Stethoscope, Send,
-  ShieldAlert, FileText, Pill, Heart, Activity, Target, Clock, Globe, Upload, Download, AlertTriangle, PencilLine,
+  ShieldAlert, FileText, Pill, Heart, Activity, Target, Clock, Globe, Upload, Download, AlertTriangle, PencilLine, Search,
 } from 'lucide-react';
 import type { StaffRole } from '@/services/organizationService';
 import type { MoodType, TaskStatus } from '@/types/supabase';
@@ -24,6 +24,7 @@ import { CoverageBanner, type PatientHeader } from './EnterpriseStaffPatientView
 import { getProfessionalNotes, addProfessionalNote, type ProfessionalNote } from '@/services/professionalNotesService';
 import CareConversations from '@/components/communications/CareConversations';
 import HealthcareContacts from '@/components/healthcare/HealthcareContacts';
+import PatientInformation from '@/components/healthcare/PatientInformation';
 import { getMyConversationsResult } from '@/services/communicationsService';
 import { getHelpActivationHistory, type HelpActivationHistoryEntry } from '@/services/helpActivationService';
 import {
@@ -69,14 +70,23 @@ function professionalSourceFor(staffRole: StaffRole): ProvenanceSource {
 // the service layer. One additive tab, appended after the existing
 // eleven rather than altering any of them, is the minimal fix that
 // keeps every other tab's content and order exactly as approved.
-export type TabKey = 'overview' | 'medical' | 'contacts' | 'medications' | 'tasks' | 'ag' | 'carePlan' | 'appointments' | 'documents' | 'safety' | 'communications' | 'timeline' | 'handoffs';
-const TABS: { key: TabKey; label: string }[] = [
+export type TabKey = 'info' | 'overview' | 'medical' | 'contacts' | 'medications' | 'tasks' | 'ag' | 'carePlan' | 'appointments' | 'documents' | 'safety' | 'communications' | 'timeline' | 'handoffs';
+const TABS: { key: TabKey; label: string; keywords?: string }[] = [
+  { key: 'info', label: 'Patient Information', keywords: 'profile name address phone email mobile responsible person healthcare proxy emergency conditions allergies doctors hospital therapist clinics' },
   { key: 'overview', label: 'Overview' }, { key: 'medical', label: 'Medical' },
   { key: 'contacts', label: 'Healthcare Contacts' }, { key: 'medications', label: 'Medications' },
   { key: 'tasks', label: 'Tasks' },
   { key: 'ag', label: 'A–G' }, { key: 'carePlan', label: 'Care Plan' }, { key: 'appointments', label: 'Appointments' },
   { key: 'documents', label: 'Documents' }, { key: 'safety', label: 'Safety' }, { key: 'communications', label: 'Communications' },
   { key: 'timeline', label: 'Timeline' }, { key: 'handoffs', label: 'Shift Handoffs' },
+];
+
+type TabGroupKey = 'profile' | 'health' | 'operations' | 'history';
+const TAB_GROUPS: Array<{key:TabGroupKey;label:string;tabs:TabKey[]}> = [
+  { key:'profile',label:'Patient Profile',tabs:['info','overview','contacts'] },
+  { key:'health',label:'Health & Care',tabs:['medical','medications','ag','carePlan','safety'] },
+  { key:'operations',label:'Visits & Tasks',tabs:['tasks','appointments','handoffs'] },
+  { key:'history',label:'Records & Communication',tabs:['documents','communications','timeline'] },
 ];
 
 function SectionCard({ title, icon: Icon, children }: { title: string; icon: typeof FileText; children: React.ReactNode }) {
@@ -91,7 +101,11 @@ function SectionCard({ title, icon: Icon, children }: { title: string; icon: typ
 export default function EnterprisePatientRecordTabs({ patientId, patientHeader, staffRole, orgId, onBack, initialTab }: {
   patientId: string; patientHeader: PatientHeader; staffRole: StaffRole; orgId: string; onBack: () => void; initialTab?: TabKey;
 }) {
-  const [tab, setTab] = useState<TabKey>(initialTab ?? 'overview');
+  const [tab, setTab] = useState<TabKey>(initialTab ?? 'info');
+  const [tabSearch, setTabSearch] = useState('');
+  const activeGroup = TAB_GROUPS.find(group => group.tabs.includes(tab)) ?? TAB_GROUPS[0];
+  const matchingTabs = tabSearch.trim() ? TABS.filter(t =>
+    (t.label + ' ' + (t.keywords ?? '')).toLowerCase().includes(tabSearch.trim().toLowerCase())) : [];
   const displayName = patientHeader.preferredName || `${patientHeader.firstName} ${patientHeader.lastName}`;
 
   return (
@@ -106,20 +120,39 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         <CoverageBanner status={patientHeader.coverageStatus} />
       </div>
 
-      <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1">
-        {TABS.map((t) => (
-          <button
-            key={t.key} type="button" onClick={() => setTab(t.key)}
-            className={`flex-shrink-0 px-3 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-colors ${
-              tab === t.key ? 'bg-warm-bronze text-white' : 'bg-white text-charcoal border border-soft-taupe hover:bg-warm-ivory'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <section aria-label="Patient chart navigation" className="space-y-3">
+        <label className="flex items-center gap-2 rounded-xl border border-soft-taupe bg-white px-3 py-2">
+          <Search aria-hidden="true" className="h-4 w-4 text-medium-gray" />
+          <span className="sr-only">Find patient chart section</span>
+          <input type="search" value={tabSearch} onChange={e => setTabSearch(e.target.value)}
+            placeholder="Find a section (medications, contacts, allergies...)"
+            className="w-full min-w-0 bg-transparent text-sm text-charcoal outline-none" />
+        </label>
+        {tabSearch.trim() && <div aria-label="Matching patient chart sections" className="rounded-xl border border-soft-taupe bg-white p-3">
+          {matchingTabs.length ? matchingTabs.map(t => <button key={t.key} type="button"
+            className="block w-full rounded-lg px-3 py-2 text-left text-sm text-charcoal hover:bg-warm-ivory"
+            onClick={() => { setTab(t.key); setTabSearch(''); }}>{t.label}</button>) :
+            <p className="text-sm text-medium-gray">No matching section. Open Patient Information to search recorded details.</p>}
+        </div>}
+        <nav aria-label="Patient chart groups" className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          {TAB_GROUPS.map(group => <button key={group.key} type="button"
+            aria-current={activeGroup.key===group.key?'page':undefined}
+            className={`min-h-12 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${activeGroup.key===group.key?'border-warm-bronze bg-warm-bronze text-white':'border-soft-taupe bg-white text-charcoal hover:bg-warm-ivory'}`}
+            onClick={() => setTab(group.tabs[0])}>{group.label}</button>)}
+        </nav>
+        <nav aria-label={`${activeGroup.label} sections`} className="flex flex-wrap gap-2">
+          {activeGroup.tabs.map(key => {
+            const item=TABS.find(t => t.key===key);
+            if(!item)return null;
+            return <button key={key} type="button" aria-current={tab===key?'page':undefined}
+              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${tab===key?'border-warm-bronze bg-warm-ivory text-charcoal':'border-soft-taupe bg-white text-medium-gray hover:bg-warm-ivory'}`}
+              onClick={() => setTab(key)}>{item.label}</button>;
+          })}
+        </nav>
+      </section>
 
       <div className="space-y-4">
+        {tab === 'info' && <PatientInformation patientId={patientId} orgId={orgId} />}
         {tab === 'overview' && <OverviewTab patientId={patientId} patientHeader={patientHeader} />}
         {tab === 'medical' && <MedicalTab patientId={patientId} staffRole={staffRole} />}
         {tab === 'contacts' && <HealthcareContacts patientId={patientId} />}
