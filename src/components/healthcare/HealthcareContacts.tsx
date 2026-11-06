@@ -10,8 +10,8 @@ import {
 const CONTACT_CATEGORIES = [
   'Primary physician', 'Other treating physician', 'Preferred hospital',
   'Hospital', 'Physical therapist', 'Occupational therapist',
-  'Mental health professional', 'Nutritionist', 'Other specialist',
-  'Emergency contact',
+  'Mental health professional', 'Mental health clinic', 'Specialist clinic',
+  'Urgent care clinic', 'Nutritionist', 'Other specialist', 'Emergency contact',
 ];
 
 const EMPTY_FORM: HealthcareContactInput = {
