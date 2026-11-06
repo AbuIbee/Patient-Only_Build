@@ -16,7 +16,7 @@ This is execution evidence for a limited repair increment, not acceptance of eit
 - Staging Supabase: `axurszlibxwwptkczztt`; production: `zgkghauitpyzzljbtrxk`.
 - Vercel project: `prj_XmF8EOpV0PbA171Cmm9khJOSC8Zo`, `mymemoria-professional`.
 - Observed existing READY production deployment: `dpl_G1xJhJjGNN6nxmrQYB4VKYN2iLjA`. No claim that this deployment contains these repairs.
-- Live public homepage and professional sign-in were observed at https://www.haneencarenetwork.com/ and https://www.haneencarenetwork.com/Professional. Haneen branding and the five offices render. No authenticated account was present in the browser.
+- Live public homepage and professional sign-in were observed at https://www.haneencarenetwork.com/ and https://www.haneencarenetwork.com/Professional. Haneen branding and the five offices render. An initial browser inspection had no authenticated session. A subsequent secure sign-in reached the Salahuddeen Enterprises Caregiver Office and its assigned test patient record; the dashboard contains explicitly TEST ONLY updates. This was caregiver access, not Director access, and does not establish two-account synchronization.
 
 ## Confirmed defects and engineering changes
 
@@ -151,18 +151,28 @@ PASS below is limited to the explicit scope and environment described. A missing
 | Repair CI 42261082350 at `69cf097a` | Static checks PASS; integration in progress at checkpoint |
 | Vitest discovery of five changed integration files | PASS for import/discovery only; not test execution |
 | Configured Playwright three-patient acceptance | NOT RUN |
-| Live public homepage and sign-in browser check | PASS for public rendering only; no authenticated session |
+| Live public homepage/sign-in and existing caregiver record | PASS for public rendering and authenticated caregiver navigation to its assigned test patient; no Director or second-account workflow verified |
 
 The local runtime has no Docker executable, so the repository's Docker-based integration suite cannot run locally. The connected GitHub workflow is being used for the disposable-stack execution. A pending run is not a pass.
 
 Baseline failures include tests expecting direct caregiver invitations/self-registration that conflict with the newer manager-provisioned employment workflow; undefined application IDs then cause cascading UUID errors. Other failures involve billing fixtures, organization-license/roster expectations, timed archival and cleanup dependencies. Several obsolete fixture paths have now been repaired as described above, but their passing execution is not yet claimed. These failures have not been hidden, skipped, or converted to success. Do not change production authorization to satisfy obsolete test assumptions.
+
+## Latest integration results and billing fixture corrections
+
+CI run `42262601500` at `25e377840ca54a1ad4f6f3c01bba357d0d3a52df` completed with static checks PASS and integration **413 passed / 6 failed / 10 skipped**, compared with the original 385 passed / 32 failed / 10 skipped. The Director/RLS and provenance regression files passed, as did the genuine five-minute archival test, per-role seat-cap race, credential tests, organization/label fixtures and repaired role/package checks.
+
+The six remaining failures were isolated to three billing/agreement test files. Inspection identified prerequisites missing from older billing fixtures: both agreements must exist before `create_enterprise_billing_account`, and the activation fixture requires a provisioned Director membership. The signing test expected `agreements_executed` despite the owner's later approved deferred-billing activation, and its cleanup did not delete its own deferred-activation child rows before the application.
+
+Only test fixtures/assertions are adjusted: no price, Stripe, production agreement, payment or business rule changes. Added a negative test proving billing remains blocked without both agreements; strengthened the monthly authorization assertion to require the specific missing-recurring-authorization error. The signing test asserts the approved `active` application/license/Director state while requiring `provider_payment_confirmed=false` and zero billing-account creation. Fixture cleanup addresses only the disposable test's application IDs. The ensuing run is still required before calling these repairs passing.
+
+Additional changed files: `tests/integration/enterpriseBillingAccounts.test.ts`, `tests/integration/mmaProfOnboard004MonthlyBilling.test.ts`, `tests/integration/hcnSaasLicenseAgreementTemplate.test.ts`.
 
 ## Remaining release blockers and next execution order
 
 1. Finish and verify the two new regression files in disposable CI; inspect JSON artifact and repair baseline failures with production rules preserved.
 2. Complete the representative primary/secondary lifecycle, Director queue, Owner/Director role/office workflows and wellness/review/escalation functionality against the exact master specifications.
 3. Reconcile the inspected hosted authorization differences and finish schema/privilege parity. Apply only compatible, tested migration repairs to production after release gates permit it.
-4. Establish explicitly identified fictional accounts in separate browser sessions for the Director, caregiver, active/standby representative, patient and licensed specialists. No browser credential or authenticated session was available in this execution.
+4. Establish explicitly identified fictional accounts in separate browser sessions for the Director, caregiver, active/standby representative, patient and licensed specialists. The available authenticated session is a Caregiver, not the requested Director; no independent patient/representative/specialist sessions were established.
 5. Execute and retain all three fictional-patient scenarios, negative permissions, stale/concurrent writes, failed backend operations, logout/login persistence and cross-office updates.
 6. Build a preview tied to the exact release SHA and intended Supabase environment. Deploy to the verified Haneen Vercel project only after the mandatory gates pass; record IDs and verify the actual production bundle.
 

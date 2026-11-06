@@ -34,6 +34,15 @@ afterAll(async () => {
   for (const id of Object.values(ids)) await authDeleteUser(id);
 });
 
+
+function seedExecutedAgreementFixtures(quoteId: string): void {
+  // Isolate billing-component behavior after its prerequisite agreements.
+  // No actual legal acceptance or payment-provider operation is performed.
+  sql(`INSERT INTO enterprise_contracts(quote_id,contract_type,template_version,signatory_name,status,executed_by,executed_at,execution_method,execution_evidence_reference,created_by)
+    SELECT '${quoteId}',kind,'fixture-v1','Fictional monthly signatory','executed','${ids.bilal}',now(),'test','disposable monthly fixture','${ids.bilal}'
+    FROM unnest(ARRAY['saas_license','baa']) AS kind;`);
+}
+
 describe('MMA-PROF-ONBOARD-004 monthly billing component (migration 164)', () => {
   it('computes the first-of-month anchor, DST-aware, in a disclosed timezone -- next month when there is enough Stripe trial_end lead time, otherwise the month after next (owner-approved rollover correction, 2026-10-31)', async () => {
     const [status, rows] = (await rpc('compute_next_month_billing_anchor', { p_timezone: 'America/Chicago' }, tok.bilal)) as [number, { anchor_date: string; anchor_unix: number; rolled_over_to_month_after_next: boolean }[]];
@@ -77,7 +86,9 @@ describe('MMA-PROF-ONBOARD-004 monthly billing component (migration 164)', () =>
       VALUES ('${ids.bilal}', 'director', 'Monthly Billing Org ${stamp}', 'integrated_care', 'Bilal Applicant', '${emails.bilal}', 'agreements_pending', true, '{"originatingQuoteId":"${quoteId}"}'::jsonb, 'plus', 35);
     `);
 
-    const [, annualAccount] = (await rpc('create_enterprise_billing_account', { p_quote_id: quoteId, p_billing_contact_email: emails.bilal }, tok.bilal)) as [number, { id: string }];
+    seedExecutedAgreementFixtures(quoteId);
+    const [annualStatus, annualAccount] = (await rpc('create_enterprise_billing_account', { p_quote_id: quoteId, p_billing_contact_email: emails.bilal }, tok.bilal)) as [number, { id: string }];
+    expect(annualStatus, JSON.stringify(annualAccount)).toBe(200);
     expect(annualAccount.id).toBeTruthy();
 
     const [status, monthlyAccount] = (await rpc('create_enterprise_monthly_billing_component', { p_quote_id: quoteId, p_billing_timezone: 'America/Chicago' }, tok.bilal)) as [number, { billing_component: string; unit_amount_cents: number; billing_interval: string }];
@@ -100,6 +111,7 @@ describe('MMA-PROF-ONBOARD-004 monthly billing component (migration 164)', () =>
       INSERT INTO professional_applications (applicant_user_id, requested_office, proposed_organization_name, proposed_package_type, legal_name, contact_email, status, platform_owner_approval_required, application_details, selected_tier_code, initial_expected_active_patients)
       VALUES ('${ids.bilal}', 'director', 'Monthly Gate Org ${stamp}', 'integrated_care', 'Bilal Applicant', '${emails.bilal}', 'agreements_pending', true, '{"originatingQuoteId":"${quoteId}"}'::jsonb, 'plus', 35) RETURNING id;
     `);
+    seedExecutedAgreementFixtures(quoteId);
     await rpc('create_enterprise_billing_account', { p_quote_id: quoteId, p_billing_contact_email: emails.bilal }, tok.bilal);
     await rpc('create_enterprise_monthly_billing_component', { p_quote_id: quoteId, p_billing_timezone: 'America/Chicago' }, tok.bilal);
 
@@ -107,15 +119,14 @@ describe('MMA-PROF-ONBOARD-004 monthly billing component (migration 164)', () =>
     const orgId = sql(`INSERT INTO organizations (name, package_type, created_by) VALUES ('Monthly Gate Org ${stamp}', 'integrated_care', '${ids.bilal}') RETURNING id;`);
     sql(`UPDATE professional_applications SET status='approved', target_organization_id='${orgId}', platform_owner_approved_at=now() WHERE id='${appId}';`);
     sql(`INSERT INTO organization_licenses (organization_id, status) VALUES ('${orgId}', 'proposed');`);
-    sql(`INSERT INTO enterprise_contracts (quote_id, contract_type, template_version, signatory_name, status, executed_by, executed_at, execution_method, execution_evidence_reference, created_by) VALUES ('${quoteId}', 'saas_license', 'v1', 'Test', 'executed', '${ids.owner}', now(), 'test', 'test', '${ids.owner}');`);
-    sql(`INSERT INTO enterprise_contracts (quote_id, contract_type, template_version, signatory_name, status, executed_by, executed_at, execution_method, execution_evidence_reference, created_by) VALUES ('${quoteId}', 'baa', 'v1', 'Test', 'executed', '${ids.owner}', now(), 'test', 'test', '${ids.owner}');`);
+    sql(`INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${orgId}','${ids.bilal}','director','invited');`);
 
     // The monthly component exists but has NO stripe_subscription_id /
     // active status yet (no recurring authorization confirmed) --
     // activation must still be blocked.
-    let threw = false;
-    try { sql(`SELECT activate_enterprise_license_from_quote('${quoteId}');`); } catch { threw = true; }
-    expect(threw).toBe(true);
+    let rejection = '';
+    try { sql(`SELECT activate_enterprise_license_from_quote('${quoteId}');`); } catch (error) { rejection = String(error); }
+    expect(rejection).toContain('no confirmed recurring-payment authorization');
 
     // Now confirm the recurring authorization (as the webhook would) --
     // activation succeeds, and the license carries the disclosed anchor.
