@@ -43,13 +43,15 @@ import ActiveSessionsPanel from '@/components/ActiveSessionsPanel';
 import PatientMedications from './PatientMedications';
 import PatientDocuments from './PatientDocuments';
 import PatientCareTeam from './PatientCareTeam';
+import PatientInformation from '@/components/healthcare/PatientInformation';
 
 type PatientNavKey =
-  | 'dashboard' | 'careplan' | 'appointments' | 'health' | 'medications'
+  | 'dashboard' | 'information' | 'careplan' | 'appointments' | 'health' | 'medications'
   | 'messages' | 'careteam' | 'documents' | 'preferences' | 'settings';
 
 const NAV_ITEMS: OfficeNavItem<PatientNavKey>[] = [
   { key: 'dashboard', label: 'My Dashboard', icon: LayoutDashboard },
+  { key: 'information', label: 'My Information', icon: FileText },
   { key: 'careplan', label: 'My Care Plan', icon: ClipboardList },
   { key: 'appointments', label: 'My Appointments', icon: CalendarClock },
   { key: 'health', label: 'My Health Information', icon: HeartPulse },
@@ -61,7 +63,7 @@ const NAV_ITEMS: OfficeNavItem<PatientNavKey>[] = [
   { key: 'settings', label: 'Settings & Account', icon: SettingsIcon },
 ];
 const NAV_GROUPS: OfficeNavGroup<PatientNavKey>[] = [
-  { label: 'MY CARE', items: ['dashboard', 'careplan', 'appointments', 'health', 'medications'] },
+  { label: 'MY CARE', items: ['dashboard', 'information', 'careplan', 'appointments', 'health', 'medications'] },
   { label: 'COMMUNICATION', items: ['messages', 'careteam', 'documents'] },
   { label: 'ACCOUNT', items: ['preferences', 'settings'] },
 ];
@@ -170,6 +172,9 @@ export default function EnterprisePatientDashboard({ basePath = null, subjectPat
           unreadMessages={unreadMessages} teamCount={team.length} carePlans={carePlans} appointments={appointments}
           conversations={conversations} team={team} onNavigate={setNav}
         />
+      ) : nav === 'information' ? (
+        patientId && org ? <PatientInformation patientId={patientId} orgId={org.organizationId} /> :
+          <p role="alert" className="text-sm text-ent-muted">Patient and organization information could not be confirmed.</p>
       ) : nav === 'careplan' ? (
         <CarePlanView carePlans={carePlans} tasks={tasks} onRefresh={refresh} />
       ) : nav === 'appointments' ? (
