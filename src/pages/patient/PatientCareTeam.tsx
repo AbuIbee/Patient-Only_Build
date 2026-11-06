@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { User, Phone, Mail, Heart, Stethoscope, UserCheck, Building2 } from 'lucide-react';
 import CareConversations from '@/components/communications/CareConversations';
+import HealthcareContacts from '@/components/healthcare/HealthcareContacts';
 import { getMyEnterpriseCareTeam } from '@/services/enterprisePatientService';
 
 interface TeamMember {
@@ -99,6 +100,10 @@ export default function PatientCareTeam({ patientId: subjectPatientId }: { patie
         <h2 className="text-2xl font-semibold text-charcoal mb-1">My Care Team</h2>
         <p className="text-medium-gray text-sm">The people supporting your care</p>
       </div>
+
+      {(subjectPatientId || state.currentUser?.id) && (
+        <HealthcareContacts patientId={subjectPatientId || state.currentUser!.id} />
+      )}
 
       {team.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-2xl border border-soft-taupe">
