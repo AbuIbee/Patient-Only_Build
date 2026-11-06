@@ -8,7 +8,7 @@ describe('HCN Director patient authorization requires an active organization lic
     const rows = sql(script).split('\n').filter(Boolean).map(line => JSON.parse(line) as {
       check_name: string; actual: boolean; expected: boolean; passed: boolean;
     });
-    expect(rows).toHaveLength(18);
+    expect(rows).toHaveLength(22);
     for (const row of rows) expect(row.passed, row.check_name).toBe(true);
   });
 });

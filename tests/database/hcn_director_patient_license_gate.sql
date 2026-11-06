@@ -2,6 +2,7 @@
 -- Execute as the migration administrator against an explicitly selected target.
 BEGIN;
 CREATE TEMP TABLE hcn_gate_evidence (check_name text, actual boolean, expected boolean);
+GRANT INSERT ON hcn_gate_evidence TO authenticated;
 DO $test$
 DECLARE
   director_id uuid := gen_random_uuid();
@@ -59,6 +60,22 @@ BEGIN
   END;
   INSERT INTO hcn_gate_evidence VALUES('unrelated actor contact write denied',denied,true);
   PERFORM set_config('request.jwt.claim.sub',director_id::text,true);
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  INSERT INTO hcn_gate_evidence
+    SELECT 'authenticated director can read contact under RLS',count(*)=1,true
+    FROM public.patient_care_providers pc WHERE pc.id=contact.id;
+  INSERT INTO hcn_gate_evidence
+    SELECT 'authenticated director can read audit under RLS',count(*)=2,true
+    FROM public.hcn_patient_contact_history h WHERE h.provider_id=contact.id;
+  INSERT INTO hcn_gate_evidence VALUES
+    ('current actor wrapper permits authorized director',public.hcn_current_director_for_patient(contact.patient_id),true);
+  denied := false;
+  BEGIN
+    PERFORM public.is_org_director_for_patient(gen_random_uuid(),contact.patient_id);
+  EXCEPTION WHEN insufficient_privilege THEN denied := true;
+  END;
+  INSERT INTO hcn_gate_evidence VALUES('arbitrary-user helper execution denied',denied,true);
+  EXECUTE 'RESET ROLE';
   FOREACH license_state IN ARRAY ARRAY['suspended','expired','canceled'] LOOP
     UPDATE public.organization_licenses SET status=license_state WHERE organization_id=org_id;
     INSERT INTO hcn_gate_evidence VALUES

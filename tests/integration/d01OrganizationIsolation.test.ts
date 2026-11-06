@@ -47,8 +47,8 @@ beforeAll(async () => {
     INSERT INTO organizations(id,name,package_type,created_by) VALUES
       ('${ORG_A}','D01 Isolation Org A','integrated_care','${caregiverId}'),
       ('${ORG_B}','D01 Isolation Org B','integrated_care','${caregiverId}');
-    INSERT INTO organization_licenses(organization_id,licensed_seats,covered_patient_capacity,annual_license_fee,status) VALUES
-      ('${ORG_A}',20,20,9999,'active'),('${ORG_B}',20,20,9999,'active');
+    INSERT INTO organization_licenses(organization_id,licensed_seats,covered_patient_capacity,annual_license_fee,status,license_number) VALUES
+      ('${ORG_A}',20,20,9999,'active','HCN-D01-A-${stamp}'),('${ORG_B}',20,20,9999,'active','HCN-D01-B-${stamp}');
     INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES
       ('${ORG_A}','${caregiverId}','caregiver','active'),
       ('${ORG_B}','${caregiverId}','caregiver','active');

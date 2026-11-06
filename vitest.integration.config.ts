@@ -9,6 +9,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
+    // Archival suites share a database-level GUC and the same cron job.
+    // Running their setup/teardown concurrently unschedules a live test.
+    fileParallelism: false,
     reporters: ['default', 'json'],
     outputFile: { json: 'test-results/integration.json' },
     include: ['tests/integration/**/*.test.ts'],

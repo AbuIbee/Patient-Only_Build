@@ -26,7 +26,7 @@ This is execution evidence for a limited repair increment, not acceptance of eit
 
 Migration `supabase/migrations/20261106171202_hcn_director_patient_license_gate.sql` adds an organization-scoped join requiring `organization_licenses.status='active'`. It preserves the existing membership and coverage predicates, function signature, and the separate historical-read helper. It sets a fully qualified empty search path and denies anonymous execution. It does not grant a new patient relationship or role.
 
-Actual staging checks cover active access, wrong patient, wrong actor, null actor, three inactive license statuses, revoked membership, ended coverage, authorized contact creation, stale version rejection, incremented contact version, saved telephone number, authenticated audit actor/previous values, and unauthorized contact-write rejection. All 18 passed.
+Actual staging checks cover active access, wrong patient, wrong actor, null actor, three inactive license statuses, revoked membership, ended coverage, authorized contact creation, stale version rejection, incremented contact version, saved telephone number, authenticated audit actor/previous values, and unauthorized contact-write rejection. All 22 passed, including authenticated contact/history reads, current-actor wrapper access and denial of direct arbitrary-user helper execution.
 
 ### Forged healthcare-contact verification
 
@@ -35,6 +35,10 @@ The directory migration added `verification_status`, but the existing direct aut
 Migration `supabase/migrations/20261106171811_hcn_contact_verification_provenance.sql` adds the restrictive INSERT policy `HCN direct contact reports cannot assert verification`, requiring `verification_status='unverified'`. Existing authorization and professional-source policies still apply. Existing rows and the contact-save RPC are preserved. This does not implement the separate verification/restoration workflow required by the master.
 
 After repair, the authenticated-role test rejects the forged status and still permits an authorized unverified report. Both checks passed in staging.
+
+### Preserve the private arbitrary-user helper boundary
+
+The first repair mistakenly restored authenticated EXECUTE on the two-user Director helper. CI's existing cross-user-oracle regression caught this. The additional migration `20261106172913_hcn_contact_director_current_actor_scope.sql` revokes that grant and adds `hcn_current_director_for_patient(uuid)`, which derives the actor solely from `auth.uid()`. The directory and contact-history RLS policies use this wrapper. The original helper remains private to privileged backend callers. Authenticated contact/history reads and denied direct helper calls were then verified in staging and in the rolled-back production candidate.
 
 ### Contact editor context and failed operations
 
@@ -56,6 +60,10 @@ Three integration files were updated to exercise the approved `hcn_manager_add_c
 
 These changes do not alter application permissions or remove the negative credential/role/capacity assertions. Local Vitest discovery imports all five changed integration files successfully; actual execution remains a CI gate.
 
+Further fixture repairs move credential-verification/document-purge/last-seat tests onto supported therapist applications while retaining their credential, audit, revocation and concurrency assertions. Application submission status is now asserted before using returned IDs. Roster/label fixtures receive the numbered active licenses now required by the real roster RPC. The dual therapist relationship fixture receives an actual active membership and always cleans up that relationship in a finally block. Generic invite-notification deduplication/reinvitation coverage uses the still-supported billing-admin invitation role.
+
+The two archival suites both modify the same database-wide interval and `mma-archival-sweep` cron job. Their comments explicitly require serial execution, but the integration config ran files concurrently; one suite's teardown could unschedule the other's real five-minute test. `vitest.integration.config.ts` now sets `fileParallelism: false`. This preserves the real elapsed-time test, rather than replacing it with a manual sweep or backdated deadline. The repair awaits CI execution.
+
 ## Exact changed files and database objects
 
 | File | Function or purpose |
@@ -67,13 +75,22 @@ These changes do not alter application permissions or remove the negative creden
 | `vitest.integration.config.ts` | Persist JSON integration results |
 | `supabase/migrations/20261106171202_hcn_director_patient_license_gate.sql` | Replace `public.is_org_director_for_patient(uuid,uuid)` |
 | `supabase/migrations/20261106171811_hcn_contact_verification_provenance.sql` | Restrictive INSERT policy on `public.patient_care_providers` |
-| `tests/database/hcn_director_patient_license_gate.sql` | 18 rollback-only database checks |
+| `tests/database/hcn_director_patient_license_gate.sql` | 22 rollback-only database checks |
 | `tests/database/hcn_contact_verification_provenance.sql` | 2 rollback-only authenticated RLS checks |
 | `tests/integration/hcnDirectorPatientLicenseGate.test.ts` | Run/assert the Director/contact database script in disposable CI |
 | `tests/integration/hcnContactVerificationProvenance.test.ts` | Run/assert the provenance script in disposable CI |
 | `tests/integration/codex011PerRoleLicenseCaps.test.ts` | Per-role caregiver capacity and real license-lock race through manager provisioning |
 | `tests/integration/codexF13EligibilityBypass.test.ts` | Preserve specialist credential denials; assert direct caregiver invite denial and manager provisioning |
 | `tests/integration/roleDelegation.test.ts` | Co-Director manager provisioning; office-administrator caregiver denial and permitted billing invite |
+| `supabase/migrations/20261106172913_hcn_contact_director_current_actor_scope.sql` | Private raw helper; current-actor wrapper; contact/history RLS predicates |
+| `tests/integration/credentialVerificationGate.test.ts` | Supported therapist credential application, actual submission assertions |
+| `tests/integration/credentialDocumentPurge.test.ts` | Supported therapist application, document terminal-state purge |
+| `tests/integration/lastSeatApprovalConcurrency.test.ts` | Supported therapist application, same real license-row concurrency |
+| `tests/integration/d01OrganizationIsolation.test.ts` | Numbered active test licenses |
+| `tests/integration/d03PatientLabels.test.ts` | Numbered active test licenses |
+| `tests/integration/enterpriseNotifications.test.ts` | Generic invitation/reinvitation notification coverage on billing-admin role |
+| `tests/integration/f09TherapistPackageOfficeScope.test.ts` | Reject caregiver self-registration, require manager workflow and Integrated Care package |
+| `tests/integration/round7MasterCorrectiveSecurity.test.ts` | Numbered license, actual therapist membership, finally cleanup |
 
 No Edge Function changed. No billing, pricing, agreement, domain or Vercel project setting changed.
 
@@ -81,7 +98,7 @@ No Edge Function changed. No billing, pricing, agreement, domain or Vercel proje
 
 The previous shared-directory migration is already present in production as ledger version `20261106164903`, name `hcn_care_master_shared_healthcare_directory_20261106`. It was not reapplied.
 
-Both new repair migrations were applied to staging and verified there. On production, both repair definitions plus isolated fixture checks were executed within one transaction and rolled back. All 20 checks passed under the candidate definitions. Production repair definitions were not persisted, and no test users, organizations, patient rows or contacts from these scripts were retained.
+All three repair migrations were applied to staging and verified there. On production, all three repair definitions plus isolated fixture checks were executed within one transaction and rolled back. All 24 checks passed under the candidate definitions. Production repair definitions were not persisted, and no test users, organizations, patient rows or contacts from these scripts were retained.
 
 **Staging and production are intentionally not yet at repair parity.** Persisting the repairs in production remains a release operation pending the required gates. Production therefore still has the two reproduced defects until that operation occurs.
 
@@ -126,11 +143,11 @@ PASS below is limited to the explicit scope and environment described. A missing
 | `npm run lint` | PASS with one pre-existing unused-disable warning; zero errors |
 | `npm run test:unit` | PASS: 464 tests, 41 files after expanding discovery |
 | `npm run build` | PASS; existing large-chunk warning |
-| Hosted staging Director/contact SQL | PASS: 18 checks; fixtures rolled back |
+| Hosted staging Director/contact SQL | PASS: 22 checks; fixtures rolled back |
 | Hosted staging authenticated provenance SQL | PASS: 2 checks; fixtures rolled back |
-| Production candidate compatibility SQL | PASS: 20 checks, candidate definitions and fixtures rolled back |
+| Production candidate compatibility SQL | PASS: 24 checks, candidate definitions and fixtures rolled back |
 | Baseline integration CI 42255338986 | FAIL: 32 failed, 385 passed, 10 skipped; 15 failing files |
-| Repair CI 42260234663 at `b6819df8` | Static checks PASS; integration in progress at checkpoint |
+| Repair CI 42260234663 at `b6819df8` | Static checks PASS; integration FAIL: 33 failed, 385 passed, 10 skipped. The new Director regression file passed. CI exposed the extra raw-helper EXECUTE grant, corrected by the subsequent current-actor migration. |
 | Repair CI 42261082350 at `69cf097a` | Static checks PASS; integration in progress at checkpoint |
 | Vitest discovery of five changed integration files | PASS for import/discovery only; not test execution |
 | Configured Playwright three-patient acceptance | NOT RUN |
@@ -138,7 +155,7 @@ PASS below is limited to the explicit scope and environment described. A missing
 
 The local runtime has no Docker executable, so the repository's Docker-based integration suite cannot run locally. The connected GitHub workflow is being used for the disposable-stack execution. A pending run is not a pass.
 
-Baseline failures include tests expecting direct caregiver invitations/self-registration that conflict with the newer manager-provisioned employment workflow; undefined application IDs then cause cascading UUID errors. Other failures involve billing fixtures, organization-license/roster expectations, timed archival and cleanup dependencies. These failures have not been hidden, skipped, or converted to success. Do not change production authorization to satisfy obsolete test assumptions.
+Baseline failures include tests expecting direct caregiver invitations/self-registration that conflict with the newer manager-provisioned employment workflow; undefined application IDs then cause cascading UUID errors. Other failures involve billing fixtures, organization-license/roster expectations, timed archival and cleanup dependencies. Several obsolete fixture paths have now been repaired as described above, but their passing execution is not yet claimed. These failures have not been hidden, skipped, or converted to success. Do not change production authorization to satisfy obsolete test assumptions.
 
 ## Remaining release blockers and next execution order
 
