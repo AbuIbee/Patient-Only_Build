@@ -167,6 +167,16 @@ Only test fixtures/assertions are adjusted: no price, Stripe, production agreeme
 
 Additional changed files: `tests/integration/enterpriseBillingAccounts.test.ts`, `tests/integration/mmaProfOnboard004MonthlyBilling.test.ts`, `tests/integration/hcnSaasLicenseAgreementTemplate.test.ts`.
 
+## Additional hosted-environment blocker
+
+A rollback-only five-check billing fixture was executed against both hosted environments. It passed all five in production, but failed two in staging: staging allowed `create_enterprise_billing_account` without both prerequisite agreements, and its `activate_enterprise_license_from_quote` left the fixture Director invited after activating the license. The quote-price derivation, monthly estimate and specific missing-monthly-authorization rejection passed in both. All candidate rows were rolled back; no real payments or actual agreements were executed.
+
+Read-only routine inspection confirmed different bodies between staging and production. This is an existing environment-parity defect, separate from the three new staged contact repairs. Neither billing routine was modified by this work. The approved agreement/activation implementations must be reconciled before treating staging as a production-equivalent release target.
+
+The available browser account was verified as a Caregiver. The active Director account for the same observed organization is `solodeen@gmail.com` (Salahuddeen Enterprises), confirmed from that organization's active Director membership. Use a secure sign-in prompt for its password; no password has been read or recorded. Independent Director, patient, representative and specialist browser sessions remain prerequisites for acceptance.
+
+Latest published code/test repair: `547042d1ad1456e5eced39a170f11612af32948c`; CI run `42266286366` is pending. The completed preceding run remains 413 passed / 6 failed / 10 skipped until the newer run supplies actual results.
+
 ## Remaining release blockers and next execution order
 
 1. Finish and verify the two new regression files in disposable CI; inspect JSON artifact and repair baseline failures with production rules preserved.
