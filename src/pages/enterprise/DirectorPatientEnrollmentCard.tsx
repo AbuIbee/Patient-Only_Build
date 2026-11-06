@@ -12,7 +12,7 @@ type Member = OrgMembershipRow & { firstName:string; lastName:string; email:stri
 
 export default function DirectorPatientEnrollmentCard({
   orgId, members, onCreated,
-}: { orgId:string; members:Member[]; onCreated:()=>void }) {
+}: { orgId:string; members:Member[]; onCreated:(patientId?:string)=>void }) {
   const [firstName,setFirstName]=useState('');
   const [lastName,setLastName]=useState('');
   const [email,setEmail]=useState('');
@@ -48,7 +48,7 @@ export default function DirectorPatientEnrollmentCard({
         if(error){
           toast.error('Patient enrolled, but NOT assigned: '+error+
             '. Use Staff-to-Patient Assignments to retry.');
-          onCreated();
+          onCreated(enrollment.patientId);
           return;
         }
         toast.success('Patient enrolled and assigned to the selected caregiver.');
@@ -58,7 +58,7 @@ export default function DirectorPatientEnrollmentCard({
           : 'Patient account created. Caregiver access remains blocked until assignment.');
       }
       setFirstName('');setLastName('');setEmail('');setDob('');setCaregiverId('');
-      onCreated();
+      onCreated(enrollment.patientId);
     }catch(err){
       toast.error(err instanceof Error?err.message:'Patient enrollment failed. Review inventory before retrying.');
     }finally{setSaving(false)}
