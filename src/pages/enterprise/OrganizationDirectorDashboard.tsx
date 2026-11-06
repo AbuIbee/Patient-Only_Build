@@ -46,6 +46,7 @@ import DirectorPatientEnrollmentCard from './DirectorPatientEnrollmentCard';
 import { regenerateActivationLink } from '@/services/caregiverRegistrationService';
 import CareConversations from '@/components/communications/CareConversations';
 import HealthcareContacts from '@/components/healthcare/HealthcareContacts';
+import PatientInformation from '@/components/healthcare/PatientInformation';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
@@ -739,6 +740,8 @@ function CoveredPatientsCard({ orgId, members, onChanged }: {
   const [closingTarget, setClosingTarget] = useState<OrgCoveredPatient | null>(null);
   const [sendingSetupId, setSendingSetupId] = useState<string | null>(null);
   const [openContactsPatientId, setOpenContactsPatientId] = useState<string | null>(null);
+  const [openInformationPatientId, setOpenInformationPatientId] = useState<string | null>(null);
+  const [patientQuery, setPatientQuery] = useState('');
 
   const sendPatientSetupEmail = async (patientId: string) => {
     if (sendingSetupId) return;
@@ -763,6 +766,8 @@ function CoveredPatientsCard({ orgId, members, onChanged }: {
   useEffect(() => { refresh(); }, [refresh]);
 
   const active = patients.filter((p) => p.status === 'active');
+  const matchingActive = active.filter(p => [p.firstName,p.lastName,p.preferredName,p.patientId].some(value =>
+    (value??'').toLowerCase().includes(patientQuery.trim().toLowerCase())));
   const closedOrArchived = patients.filter((p) => p.status === 'closed' || p.status === 'archived');
 
   return (
@@ -774,17 +779,25 @@ function CoveredPatientsCard({ orgId, members, onChanged }: {
         <ClipboardList className="w-5 h-5 text-ent-bronze" />
         <h2 className="font-bold text-ent-ink">Covered Patients ({active.length})</h2>
       </div>
+      <label className="block space-y-1 text-xs font-semibold text-ent-muted">Search covered patients
+        <input type="search" value={patientQuery} onChange={e=>setPatientQuery(e.target.value)}
+          placeholder="Search name or patient reference..." className={inputCls} />
+      </label>
       {loading ? (
         <Loader2 className="w-5 h-5 animate-spin text-ent-bronze" />
       ) : active.length === 0 ? (
         <p className="text-sm text-ent-muted">No patients are covered yet. Create a patient above; then assign an activated caregiver to grant patient-specific access.</p>
       ) : (
         <ul className="space-y-2">
-          {active.map((p) => (
+          {matchingActive.map((p) => (
             <li key={p.patientId} className="flex items-center justify-between gap-2 p-3 bg-ent-bg rounded-xl border border-ent-line text-sm font-medium text-ent-ink">
               <span>{p.preferredName || `${p.firstName} ${p.lastName}`}</span>
               <div className="flex flex-col sm:flex-row gap-2">
-                <button type="button" onClick={() => setOpenContactsPatientId(p.patientId)}
+                <button type="button" onClick={() => { setOpenContactsPatientId(null); setOpenInformationPatientId(p.patientId); }}
+                  className="px-2.5 py-1 rounded-lg border border-ent-line text-xs font-semibold text-ent-bronze">
+                  Patient Information
+                </button>
+                <button type="button" onClick={() => { setOpenInformationPatientId(null); setOpenContactsPatientId(p.patientId); }}
                   className="px-2.5 py-1 rounded-lg border border-ent-line text-xs font-semibold text-ent-bronze">
                   Healthcare contacts
                 </button>
@@ -801,6 +814,17 @@ function CoveredPatientsCard({ orgId, members, onChanged }: {
             </li>
           ))}
         </ul>
+      )}
+      {openInformationPatientId && active.some(p=>p.patientId===openInformationPatientId) && (
+        <div className="space-y-2 rounded-xl border border-ent-line bg-white p-3" aria-label="Director Patient Information">
+          <button type="button" onClick={()=>setOpenInformationPatientId(null)} className="text-xs font-semibold text-ent-bronze hover:underline">
+            Close Patient Information
+          </button>
+          <PatientInformation patientId={openInformationPatientId} orgId={orgId}/>
+        </div>
+      )}
+      {active.length > 0 && matchingActive.length === 0 && (
+        <p className="text-sm text-ent-muted">No covered patient matches this search.</p>
       )}
       {openContactsPatientId && active.some((p) => p.patientId === openContactsPatientId) && (
         <div className="space-y-2 rounded-xl border border-ent-line p-3" aria-label="Director patient healthcare contacts">
