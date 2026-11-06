@@ -681,16 +681,6 @@ export interface Database {
       patient_care_providers: {
         Row: {
           author_id: string
-          address?: string | null
-          alternate_phone?: string | null
-          is_active?: boolean
-          is_preferred_hospital?: boolean
-          practice_name?: string | null
-          preferred_contact_method?: string | null
-          updated_at?: string
-          updated_by?: string | null
-          verification_status?: string
-          version?: number
           address: string | null
           alternate_phone: string | null
           is_active: boolean
@@ -713,6 +703,16 @@ export interface Database {
         }
         Insert: {
           author_id: string
+          address?: string | null
+          alternate_phone?: string | null
+          is_active?: boolean
+          is_preferred_hospital?: boolean
+          practice_name?: string | null
+          preferred_contact_method?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          verification_status?: string
+          version?: number
           created_at?: string
           email?: string | null
           id?: string
