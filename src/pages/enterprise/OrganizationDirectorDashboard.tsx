@@ -45,6 +45,7 @@ import OrganizationBillingPage from './OrganizationBillingPage';
 import DirectorPatientEnrollmentCard from './DirectorPatientEnrollmentCard';
 import { regenerateActivationLink } from '@/services/caregiverRegistrationService';
 import CareConversations from '@/components/communications/CareConversations';
+import HealthcareContacts from '@/components/healthcare/HealthcareContacts';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
@@ -737,6 +738,7 @@ function CoveredPatientsCard({ orgId, members, onChanged }: {
   const [loading, setLoading] = useState(true);
   const [closingTarget, setClosingTarget] = useState<OrgCoveredPatient | null>(null);
   const [sendingSetupId, setSendingSetupId] = useState<string | null>(null);
+  const [openContactsPatientId, setOpenContactsPatientId] = useState<string | null>(null);
 
   const sendPatientSetupEmail = async (patientId: string) => {
     if (sendingSetupId) return;
@@ -766,7 +768,7 @@ function CoveredPatientsCard({ orgId, members, onChanged }: {
   return (
     <div className="space-y-4">
     <DirectorPatientEnrollmentCard orgId={orgId} members={members}
-      onCreated={() => { refresh(); onChanged(); }} />
+      onCreated={(patientId) => { refresh(); onChanged(); if (patientId) setOpenContactsPatientId(patientId); }} />
     <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
       <div className="flex items-center gap-2">
         <ClipboardList className="w-5 h-5 text-ent-bronze" />
@@ -782,6 +784,10 @@ function CoveredPatientsCard({ orgId, members, onChanged }: {
             <li key={p.patientId} className="flex items-center justify-between gap-2 p-3 bg-ent-bg rounded-xl border border-ent-line text-sm font-medium text-ent-ink">
               <span>{p.preferredName || `${p.firstName} ${p.lastName}`}</span>
               <div className="flex flex-col sm:flex-row gap-2">
+                <button type="button" onClick={() => setOpenContactsPatientId(p.patientId)}
+                  className="px-2.5 py-1 rounded-lg border border-ent-line text-xs font-semibold text-ent-bronze">
+                  Healthcare contacts
+                </button>
                 <button type="button" disabled={sendingSetupId !== null}
                   onClick={() => { void sendPatientSetupEmail(p.patientId); }}
                   className="px-2.5 py-1 rounded-lg border border-ent-line text-xs font-semibold text-ent-bronze disabled:opacity-50">
@@ -795,6 +801,13 @@ function CoveredPatientsCard({ orgId, members, onChanged }: {
             </li>
           ))}
         </ul>
+      )}
+      {openContactsPatientId && active.some((p) => p.patientId === openContactsPatientId) && (
+        <div className="space-y-2 rounded-xl border border-ent-line p-3" aria-label="Director patient healthcare contacts">
+          <button type="button" onClick={() => setOpenContactsPatientId(null)}
+            className="text-xs font-semibold text-ent-bronze hover:underline">Close healthcare contacts</button>
+          <HealthcareContacts patientId={openContactsPatientId} />
+        </div>
       )}
       {closedOrArchived.length > 0 && (
         <div className="pt-2 border-t border-ent-line space-y-2">
