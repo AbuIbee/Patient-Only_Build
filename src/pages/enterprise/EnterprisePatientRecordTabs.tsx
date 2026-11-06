@@ -23,6 +23,7 @@ import type { MoodType, TaskStatus } from '@/types/supabase';
 import { CoverageBanner, type PatientHeader } from './EnterpriseStaffPatientView';
 import { getProfessionalNotes, addProfessionalNote, type ProfessionalNote } from '@/services/professionalNotesService';
 import CareConversations from '@/components/communications/CareConversations';
+import HealthcareContacts from '@/components/healthcare/HealthcareContacts';
 import { getMyConversationsResult } from '@/services/communicationsService';
 import { getHelpActivationHistory, type HelpActivationHistoryEntry } from '@/services/helpActivationService';
 import {
@@ -68,9 +69,10 @@ function professionalSourceFor(staffRole: StaffRole): ProvenanceSource {
 // the service layer. One additive tab, appended after the existing
 // eleven rather than altering any of them, is the minimal fix that
 // keeps every other tab's content and order exactly as approved.
-export type TabKey = 'overview' | 'medical' | 'medications' | 'tasks' | 'ag' | 'carePlan' | 'appointments' | 'documents' | 'safety' | 'communications' | 'timeline' | 'handoffs';
+export type TabKey = 'overview' | 'medical' | 'contacts' | 'medications' | 'tasks' | 'ag' | 'carePlan' | 'appointments' | 'documents' | 'safety' | 'communications' | 'timeline' | 'handoffs';
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'overview', label: 'Overview' }, { key: 'medical', label: 'Medical' }, { key: 'medications', label: 'Medications' },
+  { key: 'overview', label: 'Overview' }, { key: 'medical', label: 'Medical' },
+  { key: 'contacts', label: 'Healthcare Contacts' }, { key: 'medications', label: 'Medications' },
   { key: 'tasks', label: 'Tasks' },
   { key: 'ag', label: 'A–G' }, { key: 'carePlan', label: 'Care Plan' }, { key: 'appointments', label: 'Appointments' },
   { key: 'documents', label: 'Documents' }, { key: 'safety', label: 'Safety' }, { key: 'communications', label: 'Communications' },
@@ -120,6 +122,7 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
       <div className="space-y-4">
         {tab === 'overview' && <OverviewTab patientId={patientId} patientHeader={patientHeader} />}
         {tab === 'medical' && <MedicalTab patientId={patientId} staffRole={staffRole} />}
+        {tab === 'contacts' && <HealthcareContacts patientId={patientId} />}
         {tab === 'medications' && <MedicationsTab patientId={patientId} />}
         {tab === 'tasks' && <TasksTab patientId={patientId} />}
         {tab === 'ag' && <AGTab patientId={patientId} staffRole={staffRole} />}
