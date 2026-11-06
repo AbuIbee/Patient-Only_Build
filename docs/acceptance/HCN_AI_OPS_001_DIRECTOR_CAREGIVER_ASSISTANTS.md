@@ -4,11 +4,11 @@ Owner decision: November 6, 2026. Addendum to HCN-CARE-MASTER-001/002 and HCN_CA
 
 ## Product naming and purpose
 
-**Director:** "Haneen AI Operations Assistant" (NOT "Daily Director Brief"). It is a continuing work assistant throughout the day, not a one-time digest. Covers (1) scheduling, (2) all Care Operations, and (3) all Administration accessible to the Director. It should explain current state, answer questions, find records and propose next steps; it should not fabricate action completion.
+**Director:** "Director's Assistant" (NOT "Daily Director Brief"). It is a continuing work assistant throughout the day, not a one-time digest. Covers (1) scheduling, (2) all Care Operations, and (3) all Administration accessible to the Director. It should explain current state, answer questions, find records and propose next steps; it should not fabricate action completion.
 
-**Caregiver:** "Haneen AI Care Brief" (patient/visit scoped). Short, source-linked synopsis of updates since the assigned caregiver's previous completed visit, or a clearly labelled fallback period if no prior visit exists. Explicit submitter, observed/reported clinical provenance and acknowledgment status. Not a diagnosis, risk score, or unverified medication order.
+**Caregiver:** "Caregiver Helper" (patient/visit scoped). Short, source-linked synopsis of updates since the assigned caregiver's previous completed visit, or a clearly labelled fallback period if no prior visit exists. Explicit submitter, observed/reported clinical provenance and acknowledgment status. Not a diagnosis, risk score, or unverified medication order.
 
-**Placement:** Director dashboard, immediately BELOW the welcome/header and ABOVE metrics and Director Quick Actions: one high-visibility Operations Assistant panel showing an "Ask Haneen" input and three explicit entry points: Scheduling, Care Operations and Administration. Persistent accessible entry in the Director shell under an "AI Assistant" navigation item without hiding existing modules. Caregiver dashboard, immediately BELOW greeting and ABOVE "What do you need to do next?": compact "AI Care Brief" panel with a patient selector restricted to assigned patients, "Generate Care Brief" action and a timestamped read-only result; also from an individual patient's chart "Pre-Visit Care Brief" action. On mobile buttons wrap; no forced horizontal scrolling.
+**Placement:** Director dashboard, immediately BELOW the welcome/header and ABOVE metrics and Director Quick Actions: one high-visibility Operations Assistant panel showing an "Ask Director's Assistant" input and three explicit entry points: Scheduling, Care Operations and Administration. Persistent accessible entry in the Director shell under an "Director's Assistant" navigation item without hiding existing modules. Caregiver dashboard, immediately BELOW greeting and ABOVE "What do you need to do next?": compact "AI Care Brief" panel with a patient selector restricted to assigned patients, "Generate Care Brief" action and a timestamped read-only result; also from an individual patient's chart "Pre-Visit Care Brief" action. On mobile buttons wrap; no forced horizontal scrolling.
 
 ## Director tasks and data contracts
 
@@ -91,3 +91,7 @@ D. Integrate approved AI provider via server gateway with approved safeguards an
 E. Preview deployment, authenticated browser acceptance, safe release and production verification.
 
 **Stop only affected operations** for missing permissions, genuine privacy/clinical risks, incompatible schema, irreversible changes or mandatory deployment approval. Continue independent safe work; do not turn a provider-configuration blocker into a blanket refusal to implement UI/data/test components.
+
+## Approved names and release order (November 6)
+
+Visible product names: **Director's Assistant** and **Caregiver Helper**. Caregiver Helper includes the source-linked Care Brief feature. Preferred candidate integration: Vercel AI Gateway, only after independent verification of healthcare data-processing terms and downstream model provider safeguards. **The Patient Information, grouped navigation and Search production release must contain NO live AI feature**, no unapproved model calls or PHI transmission. After that release passes, build AI assistants independently with fictional data and gated provider authorization.
