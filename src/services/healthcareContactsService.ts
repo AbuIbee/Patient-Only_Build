@@ -80,14 +80,21 @@ export async function loadHealthcareContacts(patientId: string): Promise<{
   error: string | null;
 }> {
   if (!patientId) return { data: null, error: 'Patient context is required.' };
-  const { data, error } = await supabase
-    .from('patient_care_providers')
-    .select('id,patient_id,provider_name,provider_role,phone,email,alternate_phone,practice_name,address,preferred_contact_method,notes,is_preferred_hospital,verification_status,is_active,version,updated_at')
-    .eq('patient_id', patientId)
-    .eq('is_active', true)
-    .order('provider_role');
-  if (error) return { data: null, error: error.message };
-  return { data: (data ?? []).map((row) => fromRow(row as DbContact)), error: null };
+  try {
+    const { data, error } = await supabase
+      .from('patient_care_providers')
+      .select('id,patient_id,provider_name,provider_role,phone,email,alternate_phone,practice_name,address,preferred_contact_method,notes,is_preferred_hospital,verification_status,is_active,version,updated_at')
+      .eq('patient_id', patientId)
+      .eq('is_active', true)
+      .order('provider_role');
+    if (error) return { data: null, error: error.message };
+    if ((data ?? []).some(row => row.patient_id !== patientId)) {
+      return { data: null, error: 'The directory response did not match the selected patient. Refresh and try again.' };
+    }
+    return { data: (data ?? []).map((row) => fromRow(row as DbContact)), error: null };
+  } catch {
+    return { data: null, error: 'Healthcare contacts could not be loaded. Check your connection and retry.' };
+  }
 }
 
 export async function saveHealthcareContact(
@@ -98,22 +105,31 @@ export async function saveHealthcareContact(
   if (!patientId || !input.name.trim() || !input.role.trim()) {
     return { data: null, error: 'Patient, contact name, and contact category are required.' };
   }
-  const { data, error } = await supabase.rpc('hcn_save_patient_contact', {
-    p_patient_id: patientId,
-    p_provider_id: existing?.id ?? null,
-    p_expected_version: existing?.version ?? null,
-    p_provider_name: input.name.trim(),
-    p_provider_role: input.role.trim(),
-    p_phone: input.phone.trim() || null,
-    p_email: input.email.trim() || null,
-    p_alternate_phone: input.alternatePhone.trim() || null,
-    p_practice_name: input.practiceName.trim() || null,
-    p_address: input.address.trim() || null,
-    p_preferred_contact_method: input.preferredContactMethod.trim() || null,
-    p_notes: input.notes.trim() || null,
-    p_is_preferred_hospital: input.isPreferredHospital,
-  });
-  if (error) return { data: null, error: error.message };
-  if (!data) return { data: null, error: 'The contact save returned no record.' };
-  return { data: fromRow(data as DbContact), error: null };
+  try {
+    const { data, error } = await supabase.rpc('hcn_save_patient_contact', {
+      p_patient_id: patientId,
+      p_provider_id: existing?.id ?? null,
+      p_expected_version: existing?.version ?? null,
+      p_provider_name: input.name.trim(),
+      p_provider_role: input.role.trim(),
+      p_phone: input.phone.trim() || null,
+      p_email: input.email.trim() || null,
+      p_alternate_phone: input.alternatePhone.trim() || null,
+      p_practice_name: input.practiceName.trim() || null,
+      p_address: input.address.trim() || null,
+      p_preferred_contact_method: input.preferredContactMethod.trim() || null,
+      p_notes: input.notes.trim() || null,
+      p_is_preferred_hospital: input.isPreferredHospital,
+    });
+    if (error) return { data: null, error: error.message };
+    if (!data) return { data: null, error: 'The contact save returned no record.' };
+    const saved = data as DbContact;
+    if (saved.patient_id !== patientId || (existing && saved.id !== existing.id)) {
+      return { data: null, error: 'The contact save response did not match the selected patient and contact. Refresh before retrying.' };
+    }
+    return { data: fromRow(saved), error: null };
+  } catch {
+    // A lost response does not establish whether the transaction committed.
+    return { data: null, error: 'The contact save could not be confirmed. Refresh the directory before retrying.' };
+  }
 }

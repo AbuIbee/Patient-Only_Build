@@ -82,4 +82,36 @@ describe('HCN shared healthcare contacts', () => {
     expect((await saveHealthcareContact('patient-1', { ...form, role: ' ' })).error).toBeTruthy();
     expect(mock.rpc).not.toHaveBeenCalled();
   });
+
+  it('returns a recoverable load failure when the network promise rejects', async () => {
+    mock.from.mockImplementation(() => { throw new TypeError('Failed to fetch'); });
+    const result = await loadHealthcareContacts('patient-1');
+    expect(result.data).toBeNull();
+    expect(result.error).toContain('connection');
+  });
+
+  it('does not claim a save failed or succeeded when its network response was lost', async () => {
+    mock.rpc.mockRejectedValue(new TypeError('Failed to fetch'));
+    const result = await saveHealthcareContact('patient-1', form);
+    expect(result.data).toBeNull();
+    expect(result.error).toContain('could not be confirmed');
+    expect(result.error).toContain('Refresh');
+  });
+
+  it('rejects a save response belonging to another patient or contact', async () => {
+    mock.rpc.mockResolvedValue({ data: { ...dbRow, patient_id: 'patient-2' }, error: null });
+    expect((await saveHealthcareContact('patient-1', form)).data).toBeNull();
+    mock.rpc.mockResolvedValue({ data: { ...dbRow, id: 'provider-2' }, error: null });
+    expect((await saveHealthcareContact('patient-1', form, { id: 'provider-1', version: 3 })).data).toBeNull();
+  });
+
+  it('rejects a directory response containing another patient record', async () => {
+    mock.from.mockReturnValue({ select: () => ({ eq: () => ({ eq: () => ({
+      order: async () => ({ data: [{ ...dbRow, patient_id: 'patient-2' }], error: null }),
+    }) }) }) });
+    const result = await loadHealthcareContacts('patient-1');
+    expect(result.data).toBeNull();
+    expect(result.error).toContain('selected patient');
+  });
+
 });

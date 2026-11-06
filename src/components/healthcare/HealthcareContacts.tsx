@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Loader2, Phone, PencilLine, Plus, RefreshCcw, Stethoscope } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -27,6 +27,12 @@ function dialable(phone: string): string {
 }
 
 export default function HealthcareContacts({ patientId }: { patientId: string }) {
+  // Remount the editor when the subject changes: an unfinished contact from
+  // patient A must never be submitted under patient B's authorization context.
+  return <PatientHealthcareContacts key={patientId} patientId={patientId} />;
+}
+
+function PatientHealthcareContacts({ patientId }: { patientId: string }) {
   const [contacts, setContacts] = useState<HealthcareContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -34,9 +40,12 @@ export default function HealthcareContacts({ patientId }: { patientId: string })
   const [form, setForm] = useState<HealthcareContactInput | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const refreshSequence = useRef(0);
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     setLoading(true);
     const result = await loadHealthcareContacts(patientId);
+    if (sequence !== refreshSequence.current) return;
     if (result.error) {
       setLoadError(result.error);
       // Do not misrepresent a failed read as an empty directory.
