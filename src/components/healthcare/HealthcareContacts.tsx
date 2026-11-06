@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Loader2, Phone, PencilLine, Plus, RefreshCcw, Stethoscope } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
 import {
   loadHealthcareContacts, saveHealthcareContact,
   type HealthcareContact, type HealthcareContactInput,
@@ -47,6 +48,23 @@ export default function HealthcareContacts({ patientId }: { patientId: string })
   }, [patientId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  // One authoritative row set: subscriptions refresh other authenticated
+  // offices after edits, while focus refresh handles dropped connections.
+  useEffect(() => {
+    if (!patientId) return;
+    const channel = supabase.channel(`hcn-patient-providers-${patientId}`)
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'patient_care_providers',
+        filter: `patient_id=eq.${patientId}`,
+      }, () => { void refresh(); })
+      .subscribe();
+    const onFocus = () => { void refresh(); };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      void supabase.removeChannel(channel);
+    };
+  }, [patientId, refresh]);
 
   const openEdit = (contact: HealthcareContact) => {
     setEditing(contact);
