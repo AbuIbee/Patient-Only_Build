@@ -202,3 +202,19 @@ REVOKE ALL ON FUNCTION public.hcn_save_patient_contact(uuid,uuid,text,text,text,
   FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.hcn_save_patient_contact(uuid,uuid,text,text,text,text,text,text,text,text,text,boolean,integer)
   TO authenticated,service_role;
+
+-- Publish patient-scoped contact changes for cross-office synchronization.
+-- Only authenticated subscribers passing the existing SELECT RLS may read rows.
+DO $publication$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname='supabase_realtime')
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_publication_tables
+       WHERE pubname='supabase_realtime' AND schemaname='public'
+         AND tablename='patient_care_providers'
+     )
+  THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.patient_care_providers;
+  END IF;
+END;
+$publication$;
