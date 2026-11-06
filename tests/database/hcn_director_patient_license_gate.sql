@@ -33,6 +33,32 @@ BEGIN
     p_provider_name => 'Fictional test physician',p_provider_role => 'Primary physician');
   INSERT INTO hcn_gate_evidence VALUES
     ('active director contact write',contact.patient_id=patient_id,true);
+  denied := false;
+  BEGIN
+    PERFORM public.hcn_save_patient_contact(p_patient_id => patient_id,p_provider_id => contact.id,
+      p_provider_name => 'Stale edit',p_provider_role => 'Primary physician',p_expected_version => 0);
+  EXCEPTION WHEN serialization_failure THEN denied := true;
+  END;
+  INSERT INTO hcn_gate_evidence VALUES('stale contact edit denied',denied,true);
+  contact := public.hcn_save_patient_contact(p_patient_id => patient_id,p_provider_id => contact.id,
+    p_provider_name => 'Fictional test physician',p_provider_role => 'Primary physician',
+    p_phone => '202-555-0100',p_expected_version => 1);
+  INSERT INTO hcn_gate_evidence VALUES('contact version increments',contact.version=2,true);
+  INSERT INTO hcn_gate_evidence VALUES('contact edit persists',contact.phone='202-555-0100',true);
+  INSERT INTO hcn_gate_evidence
+    SELECT 'audit preserves authenticated actor and old values',count(*)=1,true
+    FROM public.hcn_patient_contact_history h WHERE h.provider_id=contact.id
+      AND h.action_type='updated' AND h.actor_user_id=director_id
+      AND (h.old_value->>'version')::integer=1 AND (h.new_value->>'version')::integer=2;
+  PERFORM set_config('request.jwt.claim.sub',gen_random_uuid()::text,true);
+  denied := false;
+  BEGIN
+    PERFORM public.hcn_save_patient_contact(p_patient_id => patient_id,
+      p_provider_name => 'Wrong user',p_provider_role => 'Primary physician');
+  EXCEPTION WHEN insufficient_privilege THEN denied := true;
+  END;
+  INSERT INTO hcn_gate_evidence VALUES('unrelated actor contact write denied',denied,true);
+  PERFORM set_config('request.jwt.claim.sub',director_id::text,true);
   FOREACH license_state IN ARRAY ARRAY['suspended','expired','canceled'] LOOP
     UPDATE public.organization_licenses SET status=license_state WHERE organization_id=org_id;
     INSERT INTO hcn_gate_evidence VALUES
