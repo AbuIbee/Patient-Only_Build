@@ -510,8 +510,9 @@ function LicenseCard({ orgId, license }: { orgId: string; license: OrgLicense | 
   );
 }
 
-function StaffCard({ orgId, members, onChanged }: {
+function StaffCard({ orgId, orgName, members, onChanged }: {
   orgId: string;
+  orgName: string;
   members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
   onChanged: () => void;
 }) {
@@ -524,6 +525,16 @@ function StaffCard({ orgId, members, onChanged }: {
   const [resendingId, setResendingId] = useState<string | null>(null);
 
   const invite = async () => {
+    if (role === 'therapist' || role === 'medical_professional') {
+      const address=email.trim();
+      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(address)) { toast.error('Enter a valid professional email address.'); return; }
+      const roleName=role==='therapist'?'Therapist':'Medical Professional';
+      const subject=encodeURIComponent('Haneen Care Network — '+roleName+' application invitation');
+      const body=encodeURIComponent('You are invited to apply as a '+roleName+' with '+orgName+'.\\n\\nApply at: https://www.haneencarenetwork.com/Professional/Register\\n\\nChoose '+roleName+' and look up the organization by its exact name: '+orgName+'. Your credentials must be independently verified before access can be granted. An application is not an activated office.\\n');
+      window.location.href='mailto:'+encodeURIComponent(address)+'?subject='+subject+'&body='+body;
+      toast('Email invitation draft opened. Send it using your email app; no in-app invite has been created.');
+      return;
+    }
     if (!email.trim()) { toast.error('An email address is required.'); return; }
     if (role === 'caregiver' && (!firstName.trim() || !lastName.trim())) {
       toast.error('Enter the employee\'s first and last name before creating their account.');
@@ -621,12 +632,13 @@ function StaffCard({ orgId, members, onChanged }: {
           <option value="billing_admin">Billing Administrator</option>
         </select>
         <button type="button" onClick={() => { void invite(); }} disabled={inviting} className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60 whitespace-nowrap">
-          <UserPlus className="w-4 h-4" /> {inviting ? 'Processing…' : role === 'caregiver' ? 'Create Caregiver Account' : 'Invite'}
+          <UserPlus className="w-4 h-4" /> {inviting ? 'Processing…' : role === 'caregiver' ? 'Create Caregiver Account' : role==='therapist'||role==='medical_professional' ? 'Prepare Application Invite' : 'Invite'}
         </button>
       </div>
       <p className="text-xs text-ent-muted -mt-2">
         {role === 'caregiver'
           ? 'Only the Organization Owner or an authorized Director can create caregiver accounts. The employee receives a password-setup email and cannot enter the workspace until activation. Do not create or share an employee password.'
+          : role==='therapist'||role==='medical_professional' ? 'Therapist and Medical Professional offices require an application and independent credential review. Prepare Application Invite opens a prefilled message in your email app; it does not send an email or provision access automatically.'
           : 'Other professional invitations use existing identities and may require separate credential verification. A direct invitation does not create an account.'}
       </p>
 
@@ -1898,7 +1910,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       ) : nav === 'applications' ? (
         <ApplicationsReviewView organizationId={organizationId} />
       ) : nav === 'staff' ? (
-        <StaffCard orgId={organizationId} members={members} onChanged={() => { void refresh(); }} />
+        <StaffCard orgId={organizationId} orgName={orgName} members={members} onChanged={() => { void refresh(); }} />
       ) : nav === 'patients' ? (
         <CoveredPatientsCard orgId={organizationId} members={members} initialInformationPatientId={selectedInformationPatientId} onChanged={() => { void refresh(); }} />
       ) : nav === 'assignments' ? (
