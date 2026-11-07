@@ -38,8 +38,22 @@ DROP POLICY IF EXISTS "HCN scoped previsit reads" ON public.hcn_previsit_acknowl
 CREATE POLICY "HCN scoped previsit reads" ON public.hcn_previsit_acknowledgments
 FOR SELECT TO authenticated
 USING (
-  caregiver_id=(SELECT auth.uid())
-  OR public.is_active_org_director(organization_id)
+  EXISTS(SELECT 1 FROM public.organization_licenses license
+    WHERE license.organization_id=hcn_previsit_acknowledgments.organization_id AND license.status='active')
+  AND (
+    public.is_active_org_director(organization_id)
+    OR (
+      caregiver_id=(SELECT auth.uid())
+      AND EXISTS(SELECT 1 FROM public.organization_memberships m
+        JOIN public.staff_patient_assignments a
+          ON a.organization_id=m.organization_id AND a.user_id=m.user_id
+        JOIN public.covered_patient_memberships c
+          ON c.organization_id=a.organization_id AND c.patient_id=a.patient_id AND c.status='active'
+        WHERE m.organization_id=hcn_previsit_acknowledgments.organization_id
+          AND m.user_id=(SELECT auth.uid()) AND m.org_role='caregiver' AND m.status='active'
+          AND a.patient_id=hcn_previsit_acknowledgments.patient_id AND a.is_active)
+    )
+  )
 );
 
 CREATE OR REPLACE FUNCTION public.hcn_acknowledge_previsit(
@@ -103,8 +117,23 @@ AS $fn$
     JOIN public.caregiver_visits v ON v.id=ack.visit_id
     WHERE ack.visit_id=p_visit_id
       AND ack.caregiver_id=v.caregiver_id AND ack.organization_id=v.organization_id
-      AND (v.caregiver_id=(SELECT auth.uid()) OR public.is_active_org_director(v.organization_id))
       AND ack.patient_id=v.patient_id
+      AND EXISTS(SELECT 1 FROM public.organization_licenses l
+        WHERE l.organization_id=v.organization_id AND l.status='active')
+      AND (
+        public.is_active_org_director(v.organization_id)
+        OR (
+          v.caregiver_id=(SELECT auth.uid())
+          AND EXISTS(SELECT 1 FROM public.organization_memberships m
+            JOIN public.staff_patient_assignments a
+              ON a.organization_id=m.organization_id AND a.user_id=m.user_id
+            JOIN public.covered_patient_memberships c
+              ON c.organization_id=a.organization_id AND c.patient_id=a.patient_id AND c.status='active'
+            WHERE m.organization_id=v.organization_id
+              AND m.user_id=(SELECT auth.uid()) AND m.org_role='caregiver' AND m.status='active'
+              AND a.patient_id=v.patient_id AND a.is_active)
+        )
+      )
       AND ack.id=(SELECT recent.id FROM public.hcn_previsit_acknowledgments recent
         WHERE recent.visit_id=v.id AND recent.caregiver_id=v.caregiver_id
         ORDER BY recent.review_sequence DESC LIMIT 1)
@@ -184,7 +213,8 @@ DROP POLICY IF EXISTS "HCN scoped care escalation read" ON public.hcn_care_escal
 CREATE POLICY "HCN scoped care escalation read" ON public.hcn_care_escalations
 FOR SELECT TO authenticated
 USING (
-  public.is_active_org_director(organization_id)
+  EXISTS(SELECT 1 FROM public.organization_licenses l WHERE l.organization_id=hcn_care_escalations.organization_id AND l.status='active')
+  AND (public.is_active_org_director(organization_id)
   OR EXISTS(
     SELECT 1 FROM public.staff_patient_assignments a
     JOIN public.organization_memberships m ON m.organization_id=a.organization_id
@@ -192,7 +222,7 @@ USING (
     WHERE a.organization_id=hcn_care_escalations.organization_id
       AND a.patient_id=hcn_care_escalations.patient_id
       AND a.user_id=(SELECT auth.uid()) AND a.is_active
-  )
+  ))
 );
 
 CREATE TABLE IF NOT EXISTS public.hcn_care_escalation_events (
