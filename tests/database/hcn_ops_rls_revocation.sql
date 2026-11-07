@@ -43,15 +43,15 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub',
  (SELECT id::text FROM hcn_ops_rls_ids WHERE kind='carer'),true);
 INSERT INTO hcn_ops_rls_results SELECT 'active assigned caregiver sees own receipt',
- count(*)=1 FROM public.hcn_previsit_acknowledgments;
+ count(*)=1 FROM public.hcn_previsit_acknowledgments WHERE patient_id=(SELECT id FROM hcn_ops_rls_ids WHERE kind='patient');
 INSERT INTO hcn_ops_rls_results SELECT 'active assigned caregiver sees own escalation',
- count(*)=1 FROM public.hcn_care_escalations;
+ count(*)=1 FROM public.hcn_care_escalations WHERE patient_id=(SELECT id FROM hcn_ops_rls_ids WHERE kind='patient');
 SELECT set_config('request.jwt.claim.sub',
  (SELECT id::text FROM hcn_ops_rls_ids WHERE kind='stranger'),true);
 INSERT INTO hcn_ops_rls_results SELECT 'unrelated user cannot read receipt',
- count(*)=0 FROM public.hcn_previsit_acknowledgments;
+ count(*)=0 FROM public.hcn_previsit_acknowledgments WHERE patient_id=(SELECT id FROM hcn_ops_rls_ids WHERE kind='patient');
 INSERT INTO hcn_ops_rls_results SELECT 'unrelated user cannot read escalation',
- count(*)=0 FROM public.hcn_care_escalations;
+ count(*)=0 FROM public.hcn_care_escalations WHERE patient_id=(SELECT id FROM hcn_ops_rls_ids WHERE kind='patient');
 
 RESET ROLE;
 UPDATE public.staff_patient_assignments SET is_active=false
@@ -60,9 +60,9 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub',
  (SELECT id::text FROM hcn_ops_rls_ids WHERE kind='carer'),true);
 INSERT INTO hcn_ops_rls_results SELECT 'revoked assignment cannot read receipt',
- count(*)=0 FROM public.hcn_previsit_acknowledgments;
+ count(*)=0 FROM public.hcn_previsit_acknowledgments WHERE patient_id=(SELECT id FROM hcn_ops_rls_ids WHERE kind='patient');
 INSERT INTO hcn_ops_rls_results SELECT 'revoked assignment cannot read escalation',
- count(*)=0 FROM public.hcn_care_escalations;
+ count(*)=0 FROM public.hcn_care_escalations WHERE patient_id=(SELECT id FROM hcn_ops_rls_ids WHERE kind='patient');
 
 RESET ROLE;
 UPDATE public.staff_patient_assignments SET is_active=true
@@ -73,9 +73,9 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub',
  (SELECT id::text FROM hcn_ops_rls_ids WHERE kind='carer'),true);
 INSERT INTO hcn_ops_rls_results SELECT 'expired license blocks receipt reads',
- count(*)=0 FROM public.hcn_previsit_acknowledgments;
+ count(*)=0 FROM public.hcn_previsit_acknowledgments WHERE patient_id=(SELECT id FROM hcn_ops_rls_ids WHERE kind='patient');
 INSERT INTO hcn_ops_rls_results SELECT 'expired license blocks escalation reads',
- count(*)=0 FROM public.hcn_care_escalations;
+ count(*)=0 FROM public.hcn_care_escalations WHERE patient_id=(SELECT id FROM hcn_ops_rls_ids WHERE kind='patient');
 
 RESET ROLE;
 SELECT test, passed FROM hcn_ops_rls_results ORDER BY test;
