@@ -9,6 +9,7 @@ DECLARE
   v_patient uuid:=gen_random_uuid();
   v_org uuid:=gen_random_uuid();
   v_visit uuid:=gen_random_uuid();
+  v_visit_revoked uuid:=gen_random_uuid();
   v_case uuid;
   v_deny boolean;
   v_attestation text := 'I reviewed the available records and understand that this acknowledgment does not authorize clinical decisions.';
@@ -77,6 +78,20 @@ BEGIN
     SELECT count(*) FROM public.hcn_previsit_acknowledgments WHERE visit_id=v_visit)=3);
   INSERT INTO hcn_ops_results VALUES('visit can start after review',
     (public.start_caregiver_visit(v_visit)).status='in_progress');
+
+  INSERT INTO public.caregiver_visits(id,organization_id,patient_id,caregiver_id,scheduled_start,scheduled_end,status)
+    VALUES(v_visit_revoked,v_org,v_patient,v_carer,now()+interval '2 hours',now()+interval '3 hours','scheduled');
+  PERFORM public.hcn_acknowledge_previsit(v_visit_revoked,v_sections,v_attestation);
+  UPDATE public.staff_patient_assignments SET is_active=false
+    WHERE organization_id=v_org AND patient_id=v_patient AND user_id=v_carer;
+  INSERT INTO hcn_ops_results VALUES('revoked caregiver review becomes invalid',
+    NOT public.hcn_is_previsit_current(v_visit_revoked));
+  v_deny:=false;
+  BEGIN PERFORM public.start_caregiver_visit(v_visit_revoked);
+  EXCEPTION WHEN invalid_parameter_value THEN v_deny:=true; END;
+  INSERT INTO hcn_ops_results VALUES('revoked caregiver cannot start formerly assigned visit',v_deny);
+  UPDATE public.staff_patient_assignments SET is_active=true
+    WHERE organization_id=v_org AND patient_id=v_patient AND user_id=v_carer;
 
   v_case:=public.hcn_submit_care_escalation(
     v_org,v_patient,'Fictional patient reports new dizziness and declined meal.', 'priority');
