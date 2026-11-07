@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 import { safeSessionStorage, installVolatileSessionStorageIfDenied } from './safeSessionStorage';
+import { enterpriseAuthLock } from './tabScopedAuthLock';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -34,6 +35,10 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
     autoRefreshToken:   true,
     detectSessionInUrl: !isActivationRoute,
     storage:            sessionStorageAdapter, // ← sessionStorage, not localStorage
+    // Haneen Edge can deny navigator.locks.request() (SecurityError), blocking
+    // both session restore and password login. Scope the compatibility lock
+    // to the professional deployment; do not alter the residential client.
+    lock:               import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? enterpriseAuthLock : undefined,
   },
 });
 
