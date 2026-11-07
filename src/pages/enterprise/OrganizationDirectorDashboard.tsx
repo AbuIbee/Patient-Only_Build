@@ -1157,6 +1157,30 @@ function DashboardHome({ orgId, orgName, members, visits, incidents, handoffs, p
         <p className="text-sm text-ent-muted mt-0.5">Organization-wide oversight for {orgName || 'your organization'}.</p>
       </div>
 
+      <section aria-label="Director quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-bold text-ent-ink">Director Quick Actions</h2>
+          <span className="text-xs text-ent-muted">Open the workflow directly, without using the sidebar</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+          {([
+            { label: 'Manage Patients', key: 'patients' as DirectorNavKey, icon: UserCog },
+            { label: 'Staff & Credentials', key: 'staff' as DirectorNavKey, icon: Users },
+            { label: 'Assign Caregivers', key: 'assignments' as DirectorNavKey, icon: Link2 },
+            { label: 'Schedule Visits', key: 'scheduling' as DirectorNavKey, icon: CalendarClock },
+            { label: 'Review Incidents', key: 'incidents' as DirectorNavKey, icon: ShieldAlert },
+            { label: 'Care Communications', key: 'communications' as DirectorNavKey, icon: MessageSquare },
+          ]).map((action) => (
+            <button key={action.key} type="button" onClick={() => onNavigate(action.key)}
+              className="flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg px-3 py-3 text-left text-sm font-semibold text-ent-ink transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze"
+              aria-label={`Open ${action.label}`}>
+              <action.icon className="h-5 w-5 shrink-0 text-ent-bronze" aria-hidden="true" />
+              <span>{action.label}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <HaneenAssistantPanel role="director" organizationId={orgId}/>
 
       <section aria-label="Search organization patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
@@ -1183,30 +1207,6 @@ function DashboardHome({ orgId, orgName, members, visits, incidents, handoffs, p
         <MetricCard label="Open Incidents" value={String(openIncidents)} sub="need review" onClick={() => onNavigate('incidents')} />
         <MetricCard label="Scheduled Visits" value={String(scheduledVisits)} sub="upcoming or in progress" onClick={() => onNavigate('scheduling')} />
       </div>
-
-      <section aria-label="Director quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-bold text-ent-ink">Director Quick Actions</h2>
-          <span className="text-xs text-ent-muted">Open the workflow directly, without using the sidebar</span>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-          {([
-            { label: 'Manage Patients', key: 'patients' as DirectorNavKey, icon: UserCog },
-            { label: 'Staff & Credentials', key: 'staff' as DirectorNavKey, icon: Users },
-            { label: 'Assign Caregivers', key: 'assignments' as DirectorNavKey, icon: Link2 },
-            { label: 'Schedule Visits', key: 'scheduling' as DirectorNavKey, icon: CalendarClock },
-            { label: 'Review Incidents', key: 'incidents' as DirectorNavKey, icon: ShieldAlert },
-            { label: 'Care Communications', key: 'communications' as DirectorNavKey, icon: MessageSquare },
-          ]).map((action) => (
-            <button key={action.key} type="button" onClick={() => onNavigate(action.key)}
-              className="flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg px-3 py-3 text-left text-sm font-semibold text-ent-ink transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze"
-              aria-label={`Open ${action.label}`}>
-              <action.icon className="h-5 w-5 shrink-0 text-ent-bronze" aria-hidden="true" />
-              <span>{action.label}</span>
-            </button>
-          ))}
-        </div>
-      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <OfficeCard>
