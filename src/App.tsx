@@ -12,6 +12,7 @@ import PrivacyPage from '@/pages/privacy/PrivacyPage';
 import { Toaster } from '@/components/ui/sonner';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
+import { safeSessionStorage } from '@/lib/safeSessionStorage';
 import type { Database } from '@/types/supabase';
 import { cancelAllReminderNotifications } from '@/lib/reminderScheduler';
 import { selfHealMissingProfile } from '@/services/profileService';
@@ -386,7 +387,7 @@ function AppContent() {
                   'Payment pending. Please complete checkout to access your account.';
               }
 
-              sessionStorage.setItem('paymentRequiredMessage', errorMessage);
+              safeSessionStorage.setItem('paymentRequiredMessage', errorMessage);
               window.location.href = '/pricing';
               return;
             }
