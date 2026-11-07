@@ -18,7 +18,6 @@ function headers(origin:string|null){
 function response(origin:string|null,code:number,data:Record<string,unknown>){
   return new Response(JSON.stringify(data),{status:code,headers:headers(origin)});
 }
-function int(x:unknown){return typeof x==='number'&&Number.isFinite(x)?x:0;}
 function educational(question:string){
   if(/dizz|lightheaded|vertigo/i.test(question))return disclaimer+
     ' Dizziness can be associated with dehydration, changes in blood pressure, medication effects, or other causes. Record the timing, symptoms, fluid intake, and any reported medication change; refer the information to the responsible clinician. Sudden severe symptoms, fainting, chest pain, difficulty breathing, or stroke-like signs require emergency services.';
@@ -88,7 +87,7 @@ Deno.serve(async(req:Request)=>{
     if(authError||!user)return response(origin,401,{error:'Session expired'});
     const {data:memberships,error:membershipError}=await db.rpc('get_my_organizations');
     if(membershipError)return response(origin,503,{error:'Could not verify organization license and membership'});
-    if(!Array.isArray(memberships)||!memberships.some((m:any)=>
+    if(!Array.isArray(memberships)||!memberships.some((m:{organization_id:string;org_role:string})=>
       m.organization_id===orgId&&m.org_role===role)){
       return response(origin,403,{error:'Active licensed office access required'});
     }
@@ -117,7 +116,7 @@ Deno.serve(async(req:Request)=>{
     }else{
       const {data:assignments,error:assignmentError}=await db.rpc('get_my_staff_patients');
       if(assignmentError)return response(origin,503,{error:'Patient assignment could not be verified'});
-      if(!Array.isArray(assignments)||!assignments.some((x:any)=>
+      if(!Array.isArray(assignments)||!assignments.some((x:{organization_id:string;patient_id:string;org_role:string})=>
         x.organization_id===orgId&&x.patient_id===patientId&&x.org_role==='caregiver')){
         return response(origin,403,{error:'Patient is not actively assigned to this caregiver'});
       }
