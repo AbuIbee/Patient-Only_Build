@@ -4509,6 +4509,16 @@ export interface Database {
         }
         Returns: Json
       }
+      hcn_director_schedule_assigned_visit: {
+        Args: {
+          p_org_id: string
+          p_patient_id: string
+          p_caregiver_id: string
+          p_scheduled_start: string
+          p_scheduled_end: string
+        }
+        Returns: Database['public']['Tables']['caregiver_visits']['Row']
+      }
       hcn_get_patient_information: { Args: { p_org_id: string; p_patient_id: string }; Returns: Json }
       hcn_save_patient_information: { Args: { p_org_id: string; p_patient_id: string; p_changes: Json; p_expected_version?: number | null }; Returns: Json }
       // HCN-CARE-MASTER-001/002: version-checked patient healthcare directory.
