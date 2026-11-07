@@ -12,7 +12,7 @@ const DEFINITIONS:Record<ReportKind,{title:string;columns:Column[]}> = {
     {key:'date',label:'Scheduled date'},{key:'patient',label:'Patient'},{key:'caregiver',label:'Caregiver'},
     {key:'status',label:'Status'},{key:'scheduledStart',label:'Scheduled start'},{key:'scheduledEnd',label:'Scheduled end'},
     {key:'actualStart',label:'Clock in'},{key:'actualEnd',label:'Clock out'}]},
-  incidents:{title:'Incident & Escalation Overview',columns:[
+  incidents:{title:'Incident Reports',columns:[
     {key:'date',label:'Occurred'},{key:'patient',label:'Patient'},{key:'caregiver',label:'Reported by'},
     {key:'status',label:'Status'},{key:'severity',label:'Severity'},{key:'type',label:'Incident type'},
     {key:'details',label:'Description'},{key:'resolution',label:'Resolution notes'}]},
@@ -127,7 +127,7 @@ export default function DirectorReportBuilder({
   };
   const input='w-full rounded-lg border border-ent-line bg-white px-3 py-2 text-sm text-ent-ink';
   return <div className="space-y-4">
-    <section className="rounded-2xl border border-ent-line bg-ent-panel p-5 space-y-4 print:border-none">
+    <section className="hcn-director-report-print rounded-2xl border border-ent-line bg-ent-panel p-5 space-y-4 print:border-none">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h2 className="flex items-center gap-2 font-bold text-ent-ink"><BarChart3 className="h-5 w-5 text-ent-bronze"/>Reports &amp; Insights</h2>
           <p className="text-sm text-ent-muted">Build an organization-scoped report from verified records, customize columns, filter and print.</p></div>
@@ -140,8 +140,8 @@ export default function DirectorReportBuilder({
         <label className="text-xs font-semibold">Report category<select aria-label="Report category" value={kind} className={input} onChange={e=>setKind(e.target.value as ReportKind)}>
           {(Object.keys(DEFINITIONS) as ReportKind[]).map(k=><option key={k} value={k}>{DEFINITIONS[k].title}</option>)}
         </select></label>
-        <label className="text-xs font-semibold">From (inclusive)<input type="date" value={from} onChange={e=>{setFrom(e.target.value);setLoadedKey('');}} className={input}/></label>
-        <label className="text-xs font-semibold">Through (inclusive)<input type="date" value={to} onChange={e=>{setTo(e.target.value);setLoadedKey('');}} className={input}/></label>
+        {kind!=='staff'&&kind!=='patients'&&<label className="text-xs font-semibold">From (inclusive)<input type="date" value={from} onChange={e=>{setFrom(e.target.value);setLoadedKey('');}} className={input}/></label>}
+        {kind!=='staff'&&kind!=='patients'&&<label className="text-xs font-semibold">Through (inclusive)<input type="date" value={to} onChange={e=>{setTo(e.target.value);setLoadedKey('');}} className={input}/></label>}
       </div>
       {kind!=='staff'&&kind!=='patients'&&<button type="button" onClick={()=>{void load();}} disabled={loading||!validRange}
         className="flex items-center gap-2 rounded-lg bg-ent-bronze px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 print:hidden">
