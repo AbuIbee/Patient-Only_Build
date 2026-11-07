@@ -9,6 +9,9 @@ CREATE TABLE IF NOT EXISTS public.hcn_previsit_acknowledgments (
   reviewed_sections text[] NOT NULL,
   latest_handoff_at timestamptz,
   latest_patient_note_at timestamptz,
+  latest_medications_at timestamptz,
+  latest_contacts_at timestamptz,
+  latest_patient_information_at timestamptz,
   attestation text NOT NULL,
   acknowledged_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (visit_id,caregiver_id)
@@ -33,6 +36,7 @@ CREATE OR REPLACE FUNCTION public.hcn_acknowledge_previsit(
 AS $fn$
 DECLARE v_visit public.caregiver_visits; v_id uuid;
   v_handoff timestamptz; v_note timestamptz;
+  v_meds timestamptz;v_contacts timestamptz;v_info timestamptz;
 BEGIN
   SELECT * INTO v_visit FROM public.caregiver_visits
     WHERE id=p_visit_id FOR UPDATE;
@@ -61,17 +65,24 @@ BEGIN
   THEN RAISE EXCEPTION 'Complete the required five-section acknowledgment' USING ERRCODE='22023'; END IF;
   SELECT max(created_at) INTO v_handoff FROM public.shift_handoffs
     WHERE organization_id=v_visit.organization_id AND patient_id=v_visit.patient_id;
-  SELECT max(created_at) INTO v_note FROM public.patient_notes
+  SELECT max(updated_at) INTO v_note FROM public.patient_notes
     WHERE patient_id=v_visit.patient_id AND note_type NOT IN
       ('therapist_session','clinical_observation','care_partner_personal');
+  SELECT max(updated_at) INTO v_meds FROM public.medications WHERE patient_id=v_visit.patient_id;
+  SELECT max(updated_at) INTO v_contacts FROM public.patient_care_providers WHERE patient_id=v_visit.patient_id;
+  SELECT max(updated_at) INTO v_info FROM public.hcn_patient_information
+    WHERE patient_id=v_visit.patient_id AND organization_id=v_visit.organization_id;
   INSERT INTO public.hcn_previsit_acknowledgments
-    (visit_id,organization_id,patient_id,caregiver_id,reviewed_sections,latest_handoff_at,latest_patient_note_at,attestation)
+    (visit_id,organization_id,patient_id,caregiver_id,reviewed_sections,latest_handoff_at,latest_patient_note_at,latest_medications_at,latest_contacts_at,latest_patient_information_at,attestation)
   VALUES(p_visit_id,v_visit.organization_id,v_visit.patient_id,auth.uid(),
-         p_sections,v_handoff,v_note,p_attestation)
+         p_sections,v_handoff,v_note,v_meds,v_contacts,v_info,p_attestation)
   ON CONFLICT (visit_id,caregiver_id) DO UPDATE SET
     reviewed_sections=EXCLUDED.reviewed_sections,
     latest_handoff_at=EXCLUDED.latest_handoff_at,
     latest_patient_note_at=EXCLUDED.latest_patient_note_at,
+    latest_medications_at=EXCLUDED.latest_medications_at,
+    latest_contacts_at=EXCLUDED.latest_contacts_at,
+    latest_patient_information_at=EXCLUDED.latest_patient_information_at,
     attestation=EXCLUDED.attestation, acknowledged_at=now()
   RETURNING id INTO v_id;
   RETURN v_id;
@@ -88,6 +99,7 @@ AS $fn$
     JOIN public.caregiver_visits v ON v.id=ack.visit_id
     WHERE ack.visit_id=p_visit_id
       AND ack.caregiver_id=v.caregiver_id AND ack.organization_id=v.organization_id
+      AND (v.caregiver_id=(SELECT auth.uid()) OR public.is_active_org_director(v.organization_id))
       AND ack.patient_id=v.patient_id
       AND ack.acknowledged_at>now()-interval '24 hours'
       AND ack.latest_handoff_at IS NOT DISTINCT FROM (
@@ -95,10 +107,16 @@ AS $fn$
          WHERE h.organization_id=v.organization_id AND h.patient_id=v.patient_id
       )
       AND ack.latest_patient_note_at IS NOT DISTINCT FROM (
-        SELECT max(n.created_at) FROM public.patient_notes n
+        SELECT max(n.updated_at) FROM public.patient_notes n
          WHERE n.patient_id=v.patient_id AND n.note_type NOT IN
            ('therapist_session','clinical_observation','care_partner_personal')
       )
+      AND ack.latest_medications_at IS NOT DISTINCT FROM
+        (SELECT max(m.updated_at) FROM public.medications m WHERE m.patient_id=v.patient_id)
+      AND ack.latest_contacts_at IS NOT DISTINCT FROM
+        (SELECT max(p.updated_at) FROM public.patient_care_providers p WHERE p.patient_id=v.patient_id)
+      AND ack.latest_patient_information_at IS NOT DISTINCT FROM
+        (SELECT max(i.updated_at) FROM public.hcn_patient_information i WHERE i.patient_id=v.patient_id AND i.organization_id=v.organization_id)
   );
 $fn$;
 REVOKE ALL ON FUNCTION public.hcn_is_previsit_current(uuid) FROM PUBLIC,anon;
@@ -179,6 +197,8 @@ BEGIN
   IF auth.uid() IS NULL OR p_urgency NOT IN ('routine','priority','urgent')
     OR length(btrim(coalesce(p_reason,''))) NOT BETWEEN 10 AND 4000 THEN
     RAISE EXCEPTION 'Authenticated author, valid reason and urgency required' USING ERRCODE='22023'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.organization_licenses l WHERE l.organization_id=v_case.organization_id AND l.status='active') THEN
+    RAISE EXCEPTION 'Active organization license required' USING ERRCODE='42501'; END IF;
   IF NOT EXISTS(
     SELECT 1 FROM public.staff_patient_assignments a
     JOIN public.organization_memberships m ON m.organization_id=a.organization_id
@@ -208,6 +228,9 @@ BEGIN
   SELECT * INTO v_case FROM public.hcn_care_escalations WHERE id=p_id FOR UPDATE;
   IF NOT FOUND OR NOT public.is_active_org_director(v_case.organization_id) THEN
     RAISE EXCEPTION 'Only this organization Director may triage' USING ERRCODE='42501'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.organization_licenses l
+    WHERE l.organization_id=v_case.organization_id AND l.status='active') THEN
+    RAISE EXCEPTION 'Active organization license required' USING ERRCODE='42501'; END IF;
   IF v_case.status<>'director_pending'
     OR p_action NOT IN ('request_clinical_review','resolve_nonclinical')
     OR length(btrim(coalesce(p_note,'')))<10 THEN
@@ -260,6 +283,8 @@ BEGIN
   SELECT * INTO v_case FROM public.hcn_care_escalations WHERE id=p_id FOR UPDATE;
   IF NOT FOUND OR NOT public.is_active_org_director(v_case.organization_id) THEN
     RAISE EXCEPTION 'Only organization Director may close an escalation' USING ERRCODE='42501'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.organization_licenses l WHERE l.organization_id=v_case.organization_id AND l.status='active') THEN
+    RAISE EXCEPTION 'Active organization license required' USING ERRCODE='42501'; END IF;
   IF v_case.status<>'clinical_reviewed' OR length(btrim(coalesce(p_note,'')))<10 THEN
     RAISE EXCEPTION 'Clinical review and closure notes required' USING ERRCODE='22023'; END IF;
   UPDATE public.hcn_care_escalations
