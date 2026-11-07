@@ -34,13 +34,16 @@ import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDelet
 import MFASettings from '@/components/MFASettings';
 import ActiveSessionsPanel from '@/components/ActiveSessionsPanel';
 import {
-  startCaregiverVisit, endCaregiverVisit, scheduleCaregiverVisit,
+  startCaregiverVisit, endCaregiverVisit,
   fileIncidentReport, uploadIncidentAttachment,
   reportScopeConcern,
   getMyVisitsResult, getPatientIncidentReportsResult, getPatientShiftHandoffsResult, getIncidentAttachmentsResult, getMyCredentialsResult,
   type CaregiverVisit, type IncidentReport, type CaregiverCredential, type IncidentSeverity,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import { acknowledgeHelpActivation } from '@/services/patientClinicalRecordService';
+import { PREVISIT_SECTIONS, acknowledgePrevisit } from '@/services/hcnCareOperationsService';
+import CareEscalationPanel from './CareEscalationPanel';
+import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import { selectCurrentOrNextVisit } from './selectCurrentOrNextVisit';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
@@ -526,8 +529,8 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
               {nav === 'records' && (
                 <PatientHealthRecordsView patients={patients} onOpenRecord={(id) => navigateTo('records', id, 'medical')} />
               )}
-              {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} />}
-              {nav === 'visits' && <VisitsListView />}
+              {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'info')} />}
+              {nav === 'visits' && <><ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'medical')} showAll /><VisitsListView orgId={orgId} /></>}
               {nav === 'tasks' && <TasksView patients={patients} />}
               {nav === 'communications' && <CommunicationsView patients={patients} />}
               {nav === 'notes' && (
@@ -537,7 +540,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
                 </>
               )}
               {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id, 'handoffs')} title="Select a patient to record or review Shift Handoffs" />}
-              {nav === 'alerts' && <AlertsView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id, 'safety')} />}
+              {nav === 'alerts' && <><CareEscalationPanel orgId={orgId} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><AlertsView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id, 'safety')} /></>}
               {nav === 'careTeam' && <CareTeamView orgId={orgId} patients={patients} />}
               {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view their Documents" />}
               {nav === 'organization' && <OrganizationView orgId={orgId} orgName={orgName} patients={patients} />}
@@ -897,24 +900,6 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
         <RegistrationAction orgId={orgId} onChanged={onPatientRegistered} compact />
       </div>
 
-      <section aria-label="Search assigned patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
-        <label htmlFor="caregiver-dashboard-search" className="block text-sm font-bold text-ent-ink">Search my assigned patients</label>
-        <input id="caregiver-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
-          placeholder="Search patient name or reference…" autoComplete="off"
-          className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
-        {dashboardSearch.trim() && (
-          <div role="region" aria-label="Matching assigned patients" className="space-y-2">
-            {matchingPatients.length ? matchingPatients.map(patient => (
-              <button type="button" key={patient.patientId} onClick={() => onOpenInformation(patient.patientId)}
-                className="flex w-full items-center justify-between rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
-                <span>{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-xs text-ent-bronze">Open Patient Information →</span>
-              </button>
-            )) : <p className="text-sm text-ent-muted">No assigned patient matches this search.</p>}
-          </div>
-        )}
-        <p className="text-xs text-ent-muted">Select a patient to search their allergies, conditions, providers and care information.</p>
-      </section>
-
       <section aria-label="Caregiver quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="font-bold text-ent-ink">What do you need to do next?</h2>
@@ -941,6 +926,27 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
           Visit verification, offline storage, and clinical authorization follow the workflows you open.
           An offline indicator alone does not mean a note has been saved or synchronized.
         </p>
+      </section>
+
+      <HaneenAssistantPanel role="caregiver" organizationId={orgId}
+        patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
+
+      <section aria-label="Search assigned patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
+        <label htmlFor="caregiver-dashboard-search" className="block text-sm font-bold text-ent-ink">Search my assigned patients</label>
+        <input id="caregiver-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
+          placeholder="Search patient name or reference…" autoComplete="off"
+          className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
+        {dashboardSearch.trim() && (
+          <div role="region" aria-label="Matching assigned patients" className="space-y-2">
+            {matchingPatients.length ? matchingPatients.map(patient => (
+              <button type="button" key={patient.patientId} onClick={() => onOpenInformation(patient.patientId)}
+                className="flex w-full items-center justify-between rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
+                <span>{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-xs text-ent-bronze">Open Patient Information →</span>
+              </button>
+            )) : <p className="text-sm text-ent-muted">No assigned patient matches this search.</p>}
+          </div>
+        )}
+        <p className="text-xs text-ent-muted">Select a patient to search their allergies, conditions, providers and care information.</p>
       </section>
 
       {/* H02 — the FIVE approved summary counts ("assigned patients,
@@ -1503,14 +1509,13 @@ function isToday(isoTimestamp: string | null): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
-function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatient[] }) {
+function ScheduleView({ orgId, patients, onOpenPatient, showAll = false }: { orgId: string; patients: StaffPatient[]; onOpenPatient:(id:string)=>void; showAll?: boolean }) {
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedPatient, setSelectedPatient] = useState('');
-  const [start, setStart] = useState('');
-  const [end, setEnd] = useState('');
   const [saving, setSaving] = useState(false);
-  const [todayOnly, setTodayOnly] = useState(true);
+  const [reviewVisitId,setReviewVisitId]=useState<string|null>(null);
+  const [reviewSections,setReviewSections]=useState<string[]>([]);
+  const [todayOnly, setTodayOnly] = useState(!showAll);
   // APPROVED ENTERPRISE UI DIRECTIVE follow-up — CONFIRMED DEFECT
   // (FUNC01-UI-COMPLETION, codex_master_9023_acceptance/browser_verify.mjs):
   // end_caregiver_visit() has required non-empty visit notes since
@@ -1528,30 +1533,28 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
   const [loadError, setScheduleLoadError] = useState<string | null>(null);
   const load = useCallback(async () => {
     const { data, error } = await getMyVisitsResult();
-    setVisits(data ?? []);
+    setVisits((data ?? []).filter(v => v.organizationId === orgId));
     setScheduleLoadError(error);
     setLoading(false);
-  }, []);
+  }, [orgId]);
   useEffect(() => { void load(); }, [load]);
   const visibleVisits = todayOnly ? visits.filter((v) => isToday(v.scheduledStart)) : visits;
 
-  const schedule = async () => {
-    if (!selectedPatient || !start || !end) return;
-    setSaving(true);
-    try {
-      const { error } = await scheduleCaregiverVisit(orgId, selectedPatient, new Date(start).toISOString(), new Date(end).toISOString());
-      if (error) { toast.error(error); return; }
-      setStart(''); setEnd('');
-      await load();
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const startVisit = async (visitId: string) => {
-    const { error } = await startCaregiverVisit(visitId);
-    if (error) { toast.error(error); return; }
-    await load();
+    if (!PREVISIT_SECTIONS.every(s=>reviewSections.includes(s.id))) {
+      toast.error('Review all five sections before acknowledging the visit.'); return;
+    }
+    setSaving(true);
+    try {
+      const attestation=await acknowledgePrevisit(visitId,reviewSections);
+      if(attestation.error){toast.error(attestation.error);return;}
+      const {error}=await startCaregiverVisit(visitId);
+      if(error){toast.error(error);return;}
+      toast.success('Arrival time recorded; visit is in progress.');
+      setReviewVisitId(null);setReviewSections([]);
+      await load();
+    }finally{setSaving(false);}
   };
 
   const completeVisit = async (visitId: string) => {
@@ -1569,18 +1572,8 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
 
   return (
     <Card>
-      <div className="flex items-center gap-2"><Calendar className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Schedule</h2></div>
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-        <select value={selectedPatient} onChange={(e) => setSelectedPatient(e.target.value)} className="px-3 py-2 rounded-xl border border-soft-taupe text-sm sm:col-span-2">
-          <option value="">Select patient…</option>
-          {patients.map((p) => <option key={p.patientId} value={p.patientId}>{p.preferredName || p.firstName}</option>)}
-        </select>
-        <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} className="px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
-        <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} className="px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
-      </div>
-      <button type="button" onClick={() => { void schedule(); }} disabled={saving || !selectedPatient || !start || !end} className="px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">
-        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Schedule Visit'}
-      </button>
+      <div className="flex items-center gap-2"><Calendar className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">{showAll ? "Clock In / Out — My Assigned Visits" : "My Schedule"}</h2></div>
+      <p className="text-sm text-medium-gray">Visit times are assigned by your Director. Use this page to review your schedule, acknowledge patient updates before the visit, and record your actual arrival and departure times.</p>
       <label className="flex items-center gap-2 text-xs font-semibold text-medium-gray">
         <input type="checkbox" checked={todayOnly} onChange={(e) => setTodayOnly(e.target.checked)} /> Today only
       </label>
@@ -1617,11 +1610,35 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
                   {tzLabel && <> ({tzLabel})</>}
                 </p>
                 {facility && <p className="text-xs text-medium-gray">{facility}</p>}
+                {v.actualStart && <p className="text-xs font-semibold text-ent-forest">Clocked in: {new Date(v.actualStart).toLocaleString()}{v.actualEnd ? ' · Clocked out: ' + new Date(v.actualEnd).toLocaleString() : ''}</p>}
+                {v.status === 'scheduled' && reviewVisitId === v.id && (
+                  <section className="mt-3 space-y-3 rounded-xl border border-warm-bronze bg-white p-3" aria-label="Pre-visit acknowledgment">
+                    <h3 className="text-sm font-bold text-charcoal">Pre-Visit Review Required</h3>
+                    <p className="text-xs text-medium-gray">Open the assigned patient's record and review these sections before arriving. Updated notes or handoffs after review will require a fresh acknowledgment.</p>
+                    <button type="button" onClick={()=>onOpenPatient(v.patientId)} className="text-xs font-semibold text-warm-bronze underline">Open Patient Information</button>
+                    <div className="space-y-2">
+                      {PREVISIT_SECTIONS.map(section=>(
+                        <label className="flex items-start gap-2 text-sm text-charcoal" key={section.id}>
+                          <input type="checkbox" checked={reviewSections.includes(section.id)} onChange={e=>setReviewSections(prev=>e.target.checked?[...prev,section.id]:prev.filter(x=>x!==section.id))}/>
+                          {section.label}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-medium-gray">Acknowledgment documents review only; it does not authorize medical decisions.</p>
+                    <div className="flex gap-2">
+                      <button type="button" disabled={saving||!PREVISIT_SECTIONS.every(section=>reviewSections.includes(section.id))}
+                        onClick={()=>{void startVisit(v.id);}} className="rounded-xl bg-warm-bronze px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
+                        {saving?'Processing…':'Acknowledge & Clock In'}
+                      </button>
+                      <button type="button" onClick={()=>{setReviewVisitId(null);setReviewSections([]);}} className="rounded-xl border border-soft-taupe px-3 py-2 text-xs">Cancel</button>
+                    </div>
+                  </section>
+                )}
                 {v.status === 'in_progress' && endingVisitId === v.id && (
                   <div className="mt-2 space-y-1.5 w-full">
                     <textarea
                       value={endNotesDraft} onChange={(e) => setEndNotesDraft(e.target.value)} autoFocus
-                      placeholder="Visit notes (required to complete this visit)…"
+                      placeholder="What care was provided, tasks completed, patient response, and any follow-up needed? (required to clock out)…"
                       className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm"
                       rows={2}
                     />
@@ -1634,9 +1651,9 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
                   </div>
                 )}
               </div>
-              {v.status === 'scheduled' && <button type="button" onClick={() => { void startVisit(v.id); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-soft-sage text-white text-xs font-semibold flex-shrink-0"><PlayCircle className="w-3.5 h-3.5" /> Start</button>}
+              {v.status === 'scheduled' && <button type="button" onClick={() => { setReviewVisitId(v.id);setReviewSections([]); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-soft-sage text-white text-xs font-semibold flex-shrink-0"><PlayCircle className="w-3.5 h-3.5" /> Review & Clock In</button>}
               {v.status === 'in_progress' && endingVisitId !== v.id && (
-                <button type="button" onClick={() => { setEndingVisitId(v.id); setEndNotesDraft(''); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gentle-coral text-white text-xs font-semibold flex-shrink-0"><StopCircle className="w-3.5 h-3.5" /> End</button>
+                <button type="button" onClick={() => { setEndingVisitId(v.id); setEndNotesDraft(''); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gentle-coral text-white text-xs font-semibold flex-shrink-0"><StopCircle className="w-3.5 h-3.5" /> Clock Out</button>
               )}
             </li>
             );
@@ -1647,7 +1664,7 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
   );
 }
 
-function VisitsListView() {
+function VisitsListView({ orgId }: { orgId: string }) {
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [loading, setLoading] = useState(true);
   // MMA-ENT-CAREGIVER-MASTER-005 D02-007: same defect as ScheduleView —
@@ -1656,10 +1673,10 @@ function VisitsListView() {
   const [loadError, setVisitsLoadError] = useState<string | null>(null);
   const load = useCallback(async () => {
     const { data, error } = await getMyVisitsResult();
-    setVisits(data ?? []);
+    setVisits((data ?? []).filter(v => v.organizationId === orgId));
     setVisitsLoadError(error);
     setLoading(false);
-  }, []);
+  }, [orgId]);
   useEffect(() => { void load(); }, [load]);
   return (
     <Card>

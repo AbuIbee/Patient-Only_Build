@@ -372,30 +372,51 @@ html.haneen-site {
   --charcoal: #081c3e;
   --medium-gray: #536a82;
   --calm-blue: #08779d;
-  --ent-bg: #f5faff;
+  --ent-bg: #e8f0f6;
   --ent-panel: #ffffff;
   --ent-ink: #081c3e;
   --ent-text: #344d67;
-  --ent-muted: #647c94;
-  --ent-line: #d3e4ef;
+  --ent-muted: #536b82;
+  --ent-line: #bbcedc;
   --ent-forest: #0b6689;
   --ent-green: #e8f6fc;
   --ent-green-active: #d7eff8;
   --ent-bronze: #b77a09;
   --ent-amber: #fff2d7;
-  --ent-pale: #f1f8fc;
-  --background: #f5faff;
+  --ent-pale: #edf4f9;
+  --background: #e8f0f6;
   --foreground: #081c3e;
-  --border: #d3e4ef;
-  --input: #d3e4ef;
+  --border: #bbcedc;
+  --input: #bbcedc;
   --primary: #0a6486;
   --ring: #0a6486;
 }
 html.haneen-site body {
-  background: #f5faff;
+  background: #e8f0f6;
   color: #081c3e;
 }
 html.haneen-site :where(a, button, input, select, textarea):focus-visible {
   outline: 2px solid #0b6689;
   outline-offset: 3px;
+}
+
+/* Print only the Director's authorized report. Navigation, toolbars and assistant panels stay off paper. */
+@media print {
+  body:has(.hcn-director-report-print) * { visibility: hidden !important; }
+  body:has(.hcn-director-report-print) .hcn-director-report-print,
+  body:has(.hcn-director-report-print) .hcn-director-report-print * {
+    visibility: visible !important;
+  }
+  body:has(.hcn-director-report-print) .hcn-director-report-print {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    background: white !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    padding: 0 !important;
+  }
+  .hcn-director-report-print .print\\:hidden { display: none !important; }
+  .hcn-director-report-print table { width: 100%; border-collapse: collapse; }
+  .hcn-director-report-print tr { break-inside: avoid; }
 }

@@ -74,6 +74,10 @@ afterAll(async () => {
   // (all FK patient_id ... ON DELETE CASCADE) -- without this, a
   // hardcoded fixture title (e.g. 'R7MC task') would collide with a
   // leftover row from a prior run's aborted/failed teardown.
+  // New care-operations records intentionally use restrictive patient FKs for audit
+  // integrity. Delete only this synthetic test patient's dependent records first.
+  sql(`DELETE FROM public.hcn_previsit_acknowledgments WHERE patient_id='${ids.patientA}';
+       DELETE FROM public.hcn_care_escalations WHERE patient_id='${ids.patientA}';`);
   sql(`DELETE FROM public.patients WHERE id='${ids.patientA}';`);
   sql(`DELETE FROM organizations WHERE id='${ORG}';`);
   for (const id of Object.values(ids)) await authDeleteUser(id);
@@ -137,6 +141,16 @@ describe('SEC-02 — revoked staff cannot amend notes or start/end visits for a 
     expect(startStatus).toBeGreaterThanOrEqual(400);
 
     sql(`UPDATE public.staff_patient_assignments SET is_active=true WHERE user_id='${ids.caregiverA}' AND patient_id='${ids.patientA}';`);
+    // HCN pre-visit safety gate: assignment restoration alone is not enough.
+    // Acknowledgment is independently required for a legitimate visit start.
+    const [beforeReviewStatus] = await rpc('start_caregiver_visit', { p_visit_id: visitId }, tok.caregiverA);
+    expect(beforeReviewStatus).toBeGreaterThanOrEqual(400);
+    const [ackStatus] = await rpc('hcn_acknowledge_previsit', {
+      p_visit_id: visitId,
+      p_sections: ['patient_updates','care_plan','medications','healthcare_contacts','handoffs'],
+      p_attestation: 'I reviewed the available records and understand that this acknowledgment does not authorize clinical decisions.',
+    }, tok.caregiverA);
+    expect(ackStatus).toBe(200);
     const [resumedStartStatus] = await rpc('start_caregiver_visit', { p_visit_id: visitId }, tok.caregiverA);
     expect(resumedStartStatus).toBe(200);
 

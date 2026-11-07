@@ -69,6 +69,34 @@ export async function getOrgVisitsResult(orgId: string, limit = 50): Promise<{ d
   return { data: data.map(mapOrgVisit), error: null };
 }
 
+/** Fetch every visit in the requested calendar window. RLS scopes all rows. */
+export async function getOrgVisitsWindow(orgId: string, from: string, to: string): Promise<{data: OrgVisit[] | null; error: string | null}> {
+  const all: OrgVisit[] = [];
+  const pageSize = 500;
+  for (let offset = 0; offset < 5000; offset += pageSize) {
+    const {data,error} = await supabase.from('caregiver_visits').select(ORG_VISIT_SELECT)
+      .eq('organization_id',orgId).gte('scheduled_start',from).lt('scheduled_start',to)
+      .order('scheduled_start',{ascending:true}).range(offset,offset+pageSize-1);
+    if(error)return {data:null,error:error.message};
+    if(!data)return {data:null,error:'Visit query did not return a result.'};
+    all.push(...data.map(mapOrgVisit));
+    if(data.length < pageSize)return {data:all,error:null};
+  }
+  return {data:null,error:'More than 5,000 visits in this range. Reduce the date window to avoid incomplete scheduling results.'};
+}
+
+export async function scheduleAssignedCaregiverVisit(
+  orgId:string,patientId:string,caregiverId:string,start:string,end:string,
+):Promise<{visitId:string|null;error:string|null}> {
+  const {data,error}=await supabase.rpc('hcn_director_schedule_assigned_visit',{
+    p_org_id:orgId,p_patient_id:patientId,p_caregiver_id:caregiverId,
+    p_scheduled_start:start,p_scheduled_end:end,
+  });
+  if(error)return {visitId:null,error:error.message};
+  const row=data as {id?:string}|null;
+  return row?.id ? {visitId:row.id,error:null} : {visitId:null,error:'Scheduling response was not confirmed.'};
+}
+
 export type IncidentResolutionStatus = 'open' | 'under_review' | 'resolved';
 export type IncidentSeverity = 'low' | 'moderate' | 'high' | 'critical';
 
@@ -120,6 +148,21 @@ export async function getOrgIncidentReportsResult(orgId: string, limit = 50): Pr
   return { data: data.map(mapOrgIncidentReport), error: null };
 }
 
+export async function getOrgIncidentReportsWindow(orgId:string,from:string,to:string):
+  Promise<{data:OrgIncidentReport[]|null;error:string|null}> {
+  const all:OrgIncidentReport[]=[];
+  for(let offset=0;offset<5000;offset+=500){
+    const {data,error}=await supabase.from('incident_reports').select(ORG_INCIDENT_SELECT)
+      .eq('organization_id',orgId).gte('occurred_at',from).lt('occurred_at',to)
+      .order('occurred_at',{ascending:true}).range(offset,offset+499);
+    if(error)return {data:null,error:error.message};
+    if(!data)return {data:null,error:'Incident report query did not return a result.'};
+    all.push(...data.map(mapOrgIncidentReport));
+    if(data.length<500)return {data:all,error:null};
+  }
+  return {data:null,error:'More than 5,000 incidents in this range. Reduce the report date range.'};
+}
+
 export interface OrgShiftHandoff {
   id: string; patientId: string; patientName: string; authorId: string; authorName: string;
   summary: string; pendingTasks: string | null; concerns: string | null; createdAt: string;
@@ -149,6 +192,21 @@ export async function getOrgShiftHandoffs(orgId: string, limit = 50): Promise<Or
     .limit(limit);
   if (error || !data) return [];
   return data.map(mapOrgShiftHandoff);
+}
+
+export async function getOrgShiftHandoffsWindow(orgId:string,from:string,to:string):
+  Promise<{data:OrgShiftHandoff[]|null;error:string|null}> {
+  const all:OrgShiftHandoff[]=[];
+  for(let offset=0;offset<5000;offset+=500){
+    const {data,error}=await supabase.from('shift_handoffs').select(ORG_HANDOFF_SELECT)
+      .eq('organization_id',orgId).gte('created_at',from).lt('created_at',to)
+      .order('created_at',{ascending:true}).range(offset,offset+499);
+    if(error)return {data:null,error:error.message};
+    if(!data)return {data:null,error:'Handoff query did not return a result.'};
+    all.push(...data.map(mapOrgShiftHandoff));
+    if(data.length<500)return {data:all,error:null};
+  }
+  return {data:null,error:'More than 5,000 handoffs in this range. Reduce the report date range.'};
 }
 
 // See getOrgVisitsResult() above -- same finding 011-03, same fix shape.

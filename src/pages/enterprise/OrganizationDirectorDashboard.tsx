@@ -48,6 +48,10 @@ import CareConversations from '@/components/communications/CareConversations';
 import HealthcareContacts from '@/components/healthcare/HealthcareContacts';
 import PatientInformation from '@/components/healthcare/PatientInformation';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
+import CareEscalationPanel from './CareEscalationPanel';
+import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
+import DirectorScheduleCalendar from './DirectorScheduleCalendar';
+import DirectorReportBuilder from './DirectorReportBuilder';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
 const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
@@ -507,8 +511,9 @@ function LicenseCard({ orgId, license }: { orgId: string; license: OrgLicense | 
   );
 }
 
-function StaffCard({ orgId, members, onChanged }: {
+function StaffCard({ orgId, orgName, members, onChanged }: {
   orgId: string;
+  orgName: string;
   members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
   onChanged: () => void;
 }) {
@@ -521,6 +526,16 @@ function StaffCard({ orgId, members, onChanged }: {
   const [resendingId, setResendingId] = useState<string | null>(null);
 
   const invite = async () => {
+    if (role === 'therapist' || role === 'medical_professional') {
+      const address=email.trim();
+      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(address)) { toast.error('Enter a valid professional email address.'); return; }
+      const roleName=role==='therapist'?'Therapist':'Medical Professional';
+      const subject=encodeURIComponent('Haneen Care Network — '+roleName+' application invitation');
+      const body=encodeURIComponent('You are invited to apply as a '+roleName+' with '+orgName+'.\\n\\nApply at: https://www.haneencarenetwork.com/Professional/Register\\n\\nChoose '+roleName+' and look up the organization by its exact name: '+orgName+'. Your credentials must be independently verified before access can be granted. An application is not an activated office.\\n');
+      window.location.href='mailto:'+encodeURIComponent(address)+'?subject='+subject+'&body='+body;
+      toast('Email invitation draft opened. Send it using your email app; no in-app invite has been created.');
+      return;
+    }
     if (!email.trim()) { toast.error('An email address is required.'); return; }
     if (role === 'caregiver' && (!firstName.trim() || !lastName.trim())) {
       toast.error('Enter the employee\'s first and last name before creating their account.');
@@ -618,12 +633,13 @@ function StaffCard({ orgId, members, onChanged }: {
           <option value="billing_admin">Billing Administrator</option>
         </select>
         <button type="button" onClick={() => { void invite(); }} disabled={inviting} className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-ent-bronze hover:opacity-90 text-white text-sm font-semibold disabled:opacity-60 whitespace-nowrap">
-          <UserPlus className="w-4 h-4" /> {inviting ? 'Processing…' : role === 'caregiver' ? 'Create Caregiver Account' : 'Invite'}
+          <UserPlus className="w-4 h-4" /> {inviting ? 'Processing…' : role === 'caregiver' ? 'Create Caregiver Account' : role==='therapist'||role==='medical_professional' ? 'Prepare Application Invite' : 'Invite'}
         </button>
       </div>
       <p className="text-xs text-ent-muted -mt-2">
         {role === 'caregiver'
           ? 'Only the Organization Owner or an authorized Director can create caregiver accounts. The employee receives a password-setup email and cannot enter the workspace until activation. Do not create or share an employee password.'
+          : role==='therapist'||role==='medical_professional' ? 'Therapist and Medical Professional offices require an application and independent credential review. Prepare Application Invite opens a prefilled message in your email app; it does not send an email or provision access automatically.'
           : 'Other professional invitations use existing identities and may require separate credential verification. A direct invitation does not create an account.'}
       </p>
 
@@ -1117,9 +1133,9 @@ const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ADMINISTRATION', items: ['reports', 'licensing', 'ownership', 'settings'] },
 ];
 
-function DashboardHome({ orgName, members, license, visits, incidents, handoffs, patients, onOpenPatient, onNavigate }: {
-  orgName: string; members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
-  license: OrgLicense | null; visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
+function DashboardHome({ orgId, orgName, members, visits, incidents, handoffs, patients, onOpenPatient, onNavigate }: {
+  orgId: string; orgName: string; members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
+  visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
   patients: OrgCoveredPatient[]; onOpenPatient: (patientId: string) => void;
   onNavigate: (key: DirectorNavKey) => void;
 }) {
@@ -1139,32 +1155,6 @@ function DashboardHome({ orgName, members, license, visits, incidents, handoffs,
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-ent-ink">Director Dashboard</h1>
         <p className="text-sm text-ent-muted mt-0.5">Organization-wide oversight for {orgName || 'your organization'}.</p>
-      </div>
-
-      <section aria-label="Search organization patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
-        <label htmlFor="director-dashboard-search" className="block text-sm font-bold text-ent-ink">Search organization patients</label>
-        <input id="director-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
-          autoComplete="off" placeholder="Search patient name or reference…"
-          className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
-        {dashboardSearch.trim() && (
-          <div role="region" aria-label="Matching covered patients" className="space-y-2">
-            {matchingPatients.length ? matchingPatients.map(patient => (
-              <button type="button" key={patient.patientId} onClick={() => onOpenPatient(patient.patientId)}
-                className="flex w-full items-center justify-between rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
-                <span>{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-xs text-ent-bronze">Open Patient Information →</span>
-              </button>
-            )) : <p className="text-sm text-ent-muted">No covered patient matches this search.</p>}
-          </div>
-        )}
-        <p className="text-xs text-ent-muted">Open a patient to search conditions, allergies, doctors and emergency contacts.</p>
-      </section>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard label="Care Team Inventory" value={String(activeStaff+invitedStaff)}
-          sub={`${activeStaff} active · ${invitedStaff} pending activation`} onClick={() => onNavigate('staff')} />
-        <MetricCard label="Open Incidents" value={String(openIncidents)} sub="need review" onClick={() => onNavigate('incidents')} />
-        <MetricCard label="Scheduled Visits" value={String(scheduledVisits)} sub="upcoming or in progress" onClick={() => onNavigate('scheduling')} />
-        <MetricCard label="License" value={license?.status ?? 'proposed'} sub="current status" onClick={() => onNavigate('licensing')} />
       </div>
 
       <section aria-label="Director quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
@@ -1190,6 +1180,33 @@ function DashboardHome({ orgName, members, license, visits, incidents, handoffs,
           ))}
         </div>
       </section>
+
+      <HaneenAssistantPanel role="director" organizationId={orgId}/>
+
+      <section aria-label="Search organization patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
+        <label htmlFor="director-dashboard-search" className="block text-sm font-bold text-ent-ink">Search organization patients</label>
+        <input id="director-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
+          autoComplete="off" placeholder="Search patient name or reference…"
+          className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
+        {dashboardSearch.trim() && (
+          <div role="region" aria-label="Matching covered patients" className="space-y-2">
+            {matchingPatients.length ? matchingPatients.map(patient => (
+              <button type="button" key={patient.patientId} onClick={() => onOpenPatient(patient.patientId)}
+                className="flex w-full items-center justify-between rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
+                <span>{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-xs text-ent-bronze">Open Patient Information →</span>
+              </button>
+            )) : <p className="text-sm text-ent-muted">No covered patient matches this search.</p>}
+          </div>
+        )}
+        <p className="text-xs text-ent-muted">Open a patient to search conditions, allergies, doctors and emergency contacts.</p>
+      </section>
+
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <MetricCard label="Care Team Inventory" value={String(activeStaff+invitedStaff)}
+          sub={`${activeStaff} active · ${invitedStaff} pending activation`} onClick={() => onNavigate('staff')} />
+        <MetricCard label="Open Incidents" value={String(openIncidents)} sub="need review" onClick={() => onNavigate('incidents')} />
+        <MetricCard label="Scheduled Visits" value={String(scheduledVisits)} sub="upcoming or in progress" onClick={() => onNavigate('scheduling')} />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <OfficeCard>
@@ -1479,32 +1496,6 @@ function ApplicationsReviewView({ organizationId }: { organizationId: string }) 
   );
 }
 
-function SchedulingOversightView({ visits, loadError }: { visits: OrgVisit[]; loadError?: string | null }) {
-  return (
-    <OfficeCard>
-      <div className="flex items-center gap-2"><CalendarClock className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Scheduling Oversight</h2></div>
-      {visits.length === 0 ? (
-        loadError ? (
-          <p className="text-sm text-gentle-coral font-semibold">Visits could not be confirmed right now — this is not a statement that none are scheduled.</p>
-        ) : (
-          <p className="text-sm text-ent-text">No visits have been scheduled yet across your organization.</p>
-        )
-      ) : (
-        <ul className="space-y-2">
-          {visits.map((v) => (
-            <li key={v.id} className="p-3 bg-ent-bg rounded-xl border border-ent-line flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-ent-ink truncate">{v.caregiverName} → {v.patientName}</p>
-                <p className="text-xs text-ent-muted">{v.scheduledStart ? new Date(v.scheduledStart).toLocaleString() : 'No time set'}</p>
-              </div>
-              <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-ent-pale text-ent-ink capitalize flex-shrink-0">{v.status.replace('_', ' ')}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </OfficeCard>
-  );
-}
 
 function CareOperationsView({ handoffs, loadError }: { handoffs: OrgShiftHandoff[]; loadError?: string | null }) {
   return (
@@ -1589,29 +1580,6 @@ function IncidentsView({ incidents, onResolved, loadError }: { incidents: OrgInc
   );
 }
 
-function ReportsInsightsView({ members, visits, incidents, license }: {
-  members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
-  visits: OrgVisit[]; incidents: OrgIncidentReport[]; license: OrgLicense | null;
-}) {
-  const completedVisits = visits.filter((v) => v.status === 'completed').length;
-  const unresolvedIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').length;
-  return (
-    <OfficeCard>
-      <div className="flex items-center gap-2"><BarChart3 className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Reports and Insights</h2></div>
-      <p className="text-sm text-ent-text">A current-state operational summary drawn from live authorized records.</p>
-      <ul className="text-sm text-ent-ink space-y-1.5">
-        <li>• {members.filter((m) => m.status === 'active').length} active organization member{members.length === 1 ? '' : 's'}</li>
-        <li>• {completedVisits} completed visit{completedVisits === 1 ? '' : 's'} on file</li>
-        <li>• {unresolvedIncidents} unresolved incident{unresolvedIncidents === 1 ? '' : 's'}</li>
-        <li>• License status: {license?.status ?? 'proposed'}{license?.coveredPatientCapacity != null ? ` · capacity ${license.coveredPatientCapacity}` : ''}</li>
-      </ul>
-      <p className="text-xs text-ent-muted pt-2 border-t border-ent-line">
-        Trend analysis and staffing forecasts are not yet built on the backend — this view will not display estimated or
-        invented figures for those until that data exists.
-      </p>
-    </OfficeCard>
-  );
-}
 
 // MMA-P1-FINAL-CLOSURE Priority 2 — Organization Owner controls.
 // Backend (migration 144) has existed since the prior session; this is
@@ -1819,27 +1787,27 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : nav === 'dashboard' ? (
-        <DashboardHome orgName={orgName} members={members} license={license} visits={visits} incidents={incidents} handoffs={handoffs} patients={coveredPatients} onOpenPatient={openPatientInformation} onNavigate={navigate} />
+        <DashboardHome orgId={organizationId} orgName={orgName} members={members} visits={visits} incidents={incidents} handoffs={handoffs} patients={coveredPatients} onOpenPatient={openPatientInformation} onNavigate={navigate} />
       ) : nav === 'overview' ? (
         <OrganizationOverviewView orgName={orgName} packageType={packageType} members={members} coveredCount={coveredCount} />
       ) : nav === 'applications' ? (
         <ApplicationsReviewView organizationId={organizationId} />
       ) : nav === 'staff' ? (
-        <StaffCard orgId={organizationId} members={members} onChanged={() => { void refresh(); }} />
+        <StaffCard orgId={organizationId} orgName={orgName} members={members} onChanged={() => { void refresh(); }} />
       ) : nav === 'patients' ? (
         <CoveredPatientsCard orgId={organizationId} members={members} initialInformationPatientId={selectedInformationPatientId} onChanged={() => { void refresh(); }} />
       ) : nav === 'assignments' ? (
         <AssignmentsCard orgId={organizationId} members={members} />
       ) : nav === 'scheduling' ? (
-        <SchedulingOversightView visits={visits} loadError={loadError} />
+        <DirectorScheduleCalendar orgId={organizationId} patients={coveredPatients} members={members} onChanged={() => { void refresh(); }} />
       ) : nav === 'operations' ? (
         <CareOperationsView handoffs={handoffs} loadError={loadError} />
       ) : nav === 'incidents' ? (
-        <IncidentsView incidents={incidents} onResolved={() => { void refresh(); }} loadError={loadError} />
+        <div className="space-y-4"><CareEscalationPanel orgId={organizationId} role="director" patients={coveredPatients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><IncidentsView incidents={incidents} onResolved={() => { void refresh(); }} loadError={loadError} /></div>
       ) : nav === 'communications' ? (
         <DirectorCommunicationsView orgId={organizationId} />
       ) : nav === 'reports' ? (
-        <ReportsInsightsView members={members} visits={visits} incidents={incidents} license={license} />
+        <DirectorReportBuilder orgId={organizationId} orgName={orgName} members={members} patients={coveredPatients} />
       ) : nav === 'licensing' ? (
         billingOpen ? (
           <div className="space-y-4">

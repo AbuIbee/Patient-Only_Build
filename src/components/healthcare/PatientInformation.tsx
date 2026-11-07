@@ -17,6 +17,7 @@ const EDIT_FIELDS:Record<'identity'|'needs'|'emergency',Array<{key:keyof Patient
   identity:[
     {key:'patient_email',label:'Patient email'}, {key:'home_phone',label:'Home telephone'},
     {key:'mobile_phone',label:'Mobile telephone'}, {key:'street_address',label:'Street address'},
+    {key:'apartment_unit',label:'Apartment / unit / suite'},
     {key:'city',label:'City'}, {key:'state',label:'State'},
     {key:'postal_code',label:'ZIP / postal code'},
   ],
@@ -54,6 +55,12 @@ function PatientInformationBody({patientId,orgId,readOnly=false}:{patientId:stri
   const [editing,setEditing]=useState(false);
   const [draft,setDraft]=useState<Partial<PatientInformationDetails>>({});
   const [saving,setSaving]=useState(false);
+  const [repFormOpen,setRepFormOpen]=useState(false);
+  const [repSaving,setRepSaving]=useState(false);
+  const [repDraft,setRepDraft]=useState({
+    email:'',firstName:'',middleName:'',lastName:'',contactEmail:'',phone:'',address:'',
+    relationship:'',authorizationBasis:'',evidenceReference:'',consentConfirmed:false,
+  });
   const refresh=useCallback(async()=>{
     setLoading(true);
     const response=await loadPatientInformation(orgId,patientId);
@@ -100,11 +107,39 @@ function PatientInformationBody({patientId,orgId,readOnly=false}:{patientId:stri
     if(r.error){toast.error(r.error);await refresh();return;}
     toast.success('Patient information saved.');setEditing(false);setDraft({});await refresh();
   };
+  const enrollRepresentative=async(event:FormEvent)=>{
+    event.preventDefault();
+    if(repSaving)return;
+    if(!repDraft.consentConfirmed || !repDraft.email.trim() || !repDraft.firstName.trim() ||
+       !repDraft.lastName.trim() || !repDraft.contactEmail.trim() ||
+       !repDraft.relationship.trim() || !repDraft.authorizationBasis.trim() ||
+       !repDraft.evidenceReference.trim()) {
+      toast.error('Complete the required representative details, consent confirmation and evidence reference.');
+      return;
+    }
+    setRepSaving(true);
+    try {
+      const {error:enrollmentError}=await supabase.rpc('register_patient_representative',{
+        p_patient_id:patientId,p_org_id:orgId,p_representative_email:repDraft.email.trim().toLowerCase(),
+        p_legal_first_name:repDraft.firstName.trim(),p_legal_middle_name:repDraft.middleName.trim()||null,
+        p_legal_last_name:repDraft.lastName.trim(),p_contact_email:repDraft.contactEmail.trim(),
+        p_contact_phone:repDraft.phone.trim(),p_residential_address:repDraft.address.trim(),
+        p_relationship_to_patient:repDraft.relationship.trim(),p_authorization_basis:repDraft.authorizationBasis.trim(),
+        p_authorization_evidence_reference:repDraft.evidenceReference.trim(),p_consent_acknowledged:true,
+      });
+      if(enrollmentError){toast.error(enrollmentError.message);return;}
+      toast.success('Responsible Person recorded as pending verification; portal access was not granted.');
+      setRepFormOpen(false);
+      setRepDraft({email:'',firstName:'',middleName:'',lastName:'',contactEmail:'',phone:'',address:'',
+        relationship:'',authorizationBasis:'',evidenceReference:'',consentConfirmed:false});
+      await refresh();
+    }finally{setRepSaving(false);}
+  };
   const searchResults=useMemo(()=>{
     if(!data||!query.trim())return [];
     const d=data.details,p=data.patient,i=data.intake;
     const content:Record<Section,string>={
-      identity:JSON.stringify([p.first_name,p.last_name,p.preferred_name,p.date_of_birth,p.address,i.patient_email,i.patient_phone,i.patient_street_address,d.patient_email,d.home_phone,d.mobile_phone,d.city,d.state,d.postal_code]),
+      identity:JSON.stringify([p.first_name,p.last_name,p.preferred_name,p.date_of_birth,p.address,i.patient_email,i.patient_phone,i.patient_street_address,d.patient_email,d.home_phone,d.mobile_phone,d.street_address,d.apartment_unit,d.city,d.state,d.postal_code]),
       needs:JSON.stringify([data.diagnoses,data.allergies,data.care_plans,d.medical_care_needs,d.mental_health_needs,d.physical_care_needs]),
       providers:JSON.stringify([data.providers,p.preferred_hospital,i.preferred_hospital]),
       representatives:JSON.stringify(data.representatives),
@@ -168,6 +203,7 @@ function PatientInformationBody({patientId,orgId,readOnly=false}:{patientId:stri
           <Field label="Home telephone" value={value('home_phone')}/>
           <Field label="Mobile telephone" value={value('mobile_phone')}/>
           <Field label="Street address" value={value('street_address')}/>
+          <Field label="Apartment / unit / suite" value={value('apartment_unit')}/>
           <Field label="City" value={value('city')}/>
           <Field label="State" value={value('state')}/>
           <Field label="ZIP / postal code" value={value('postal_code')}/>
@@ -204,6 +240,35 @@ function PatientInformationBody({patientId,orgId,readOnly=false}:{patientId:stri
           <HealthcareContacts patientId={patientId} onSaved={()=>{void refresh();}} />
         </div>}
         {section==='representatives'&&<div className="space-y-3">
+          {!readOnly&&<div className="rounded-xl border border-ent-line bg-ent-pale p-3 space-y-3">
+            <button type="button" onClick={()=>setRepFormOpen(v=>!v)} className="rounded-lg bg-ent-bronze px-3 py-2 text-sm font-semibold text-white">
+              {repFormOpen?'Cancel enrollment':'Add Responsible Person'}
+            </button>
+            {repFormOpen&&<form onSubmit={e=>{void enrollRepresentative(e);}} className="space-y-3">
+              <p className="text-xs text-ent-muted">An existing authenticated individual account is required. Enrollment remains pending until a Director verifies authorization. Do not certify consent unless you have the representative's actual authorization and supporting evidence.</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {([
+                  ['email','Representative account email *'],['firstName','Legal first name *'],
+                  ['middleName','Legal middle name'],['lastName','Legal last name *'],
+                  ['contactEmail','Contact email *'],['phone','Telephone'],
+                  ['address','Residential address'],['relationship','Relationship to patient *'],
+                  ['authorizationBasis','Healthcare proxy authorization basis *'],
+                  ['evidenceReference','Authorization evidence reference *'],
+                ] as const).map(([key,label])=><label key={key} className="space-y-1 text-xs font-semibold text-ent-muted">
+                  {label}<input required={label.endsWith('*')} maxLength={500} type={key==='email'||key==='contactEmail'?'email':'text'}
+                    value={repDraft[key]} onChange={e=>setRepDraft(p=>({...p,[key]:e.target.value}))}
+                    className="w-full rounded-lg border border-ent-line bg-white p-3 text-sm text-ent-ink"/>
+                </label>)}
+              </div>
+              <label className="flex items-start gap-2 text-sm text-ent-ink"><input type="checkbox" required checked={repDraft.consentConfirmed}
+                onChange={e=>setRepDraft(p=>({...p,consentConfirmed:e.target.checked}))}/>
+                I confirm the representative provided the required consent and authorization acknowledgment, and I have an evidence reference on file.
+              </label>
+              <button type="submit" disabled={repSaving} className="rounded-lg bg-ent-bronze px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                {repSaving?'Recording…':'Record Pending Representative'}
+              </button>
+            </form>}
+          </div>}
           <p className="text-xs text-ent-muted">The Director verifies healthcare proxy authorization. A pending representative does not receive portal access merely by being listed here.</p>
           {data.representatives.length?data.representatives.map(r=><div key={r.id} className="rounded-xl border border-ent-line bg-white p-4">
             <p className="mb-3 font-bold text-ent-ink">{show(r.name)} <span className="text-xs font-normal text-ent-muted">· {show(r.status)} / {show(r.verification_status)}</span></p>

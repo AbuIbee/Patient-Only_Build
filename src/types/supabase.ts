@@ -71,6 +71,36 @@ export type PendingTherapistConnectionRow = Database['public']['Tables']['pendin
 export interface Database {
   public: {
     Tables: {
+      hcn_care_escalations: {
+        Row: {
+          id: string; organization_id: string; patient_id: string; created_by: string
+          reason: string; urgency: string; status: string
+          director_id: string | null; director_note: string | null
+          clinical_reviewer_id: string | null; clinical_note: string | null
+          resolution_note: string | null; created_at: string
+          director_reviewed_at: string | null; clinical_reviewed_at: string | null
+          resolved_at: string | null; updated_at: string
+        }
+        Insert: {
+          id?: string; organization_id: string; patient_id: string; created_by: string
+          reason: string; urgency: string; status?: string
+          director_id?: string | null; director_note?: string | null
+          clinical_reviewer_id?: string | null; clinical_note?: string | null
+          resolution_note?: string | null; created_at?: string
+          director_reviewed_at?: string | null; clinical_reviewed_at?: string | null
+          resolved_at?: string | null; updated_at?: string
+        }
+        Update: {
+          id?: string; organization_id?: string; patient_id?: string; created_by?: string
+          reason?: string; urgency?: string; status?: string
+          director_id?: string | null; director_note?: string | null
+          clinical_reviewer_id?: string | null; clinical_note?: string | null
+          resolution_note?: string | null; created_at?: string
+          director_reviewed_at?: string | null; clinical_reviewed_at?: string | null
+          resolved_at?: string | null; updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           id: string
@@ -4455,6 +4485,40 @@ export interface Database {
       }
     }
     Functions: {
+      hcn_acknowledge_previsit: { Args: { p_visit_id: string; p_sections: string[]; p_attestation: string }; Returns: string }
+      hcn_is_previsit_current: { Args: { p_visit_id: string }; Returns: boolean }
+      hcn_submit_care_escalation: { Args: { p_org_id: string; p_patient_id: string; p_reason: string; p_urgency: string }; Returns: string }
+      hcn_director_triage_escalation: { Args: { p_id: string; p_action: string; p_note: string }; Returns: boolean }
+      hcn_clinician_review_escalation: { Args: { p_id: string; p_note: string }; Returns: boolean }
+      hcn_director_close_escalation: { Args: { p_id: string; p_note: string }; Returns: boolean }
+      register_patient_representative: {
+        Args: {
+          p_patient_id: string
+          p_org_id: string
+          p_representative_email: string
+          p_legal_first_name: string
+          p_legal_last_name: string
+          p_contact_email: string
+          p_contact_phone: string
+          p_residential_address: string
+          p_relationship_to_patient: string
+          p_authorization_basis: string
+          p_consent_acknowledged: boolean
+          p_legal_middle_name?: string | null
+          p_authorization_evidence_reference?: string | null
+        }
+        Returns: Json
+      }
+      hcn_director_schedule_assigned_visit: {
+        Args: {
+          p_org_id: string
+          p_patient_id: string
+          p_caregiver_id: string
+          p_scheduled_start: string
+          p_scheduled_end: string
+        }
+        Returns: Database['public']['Tables']['caregiver_visits']['Row']
+      }
       hcn_get_patient_information: { Args: { p_org_id: string; p_patient_id: string }; Returns: Json }
       hcn_save_patient_information: { Args: { p_org_id: string; p_patient_id: string; p_changes: Json; p_expected_version?: number | null }; Returns: Json }
       // HCN-CARE-MASTER-001/002: version-checked patient healthcare directory.
