@@ -2,6 +2,8 @@
 BEGIN;
 CREATE TEMP TABLE hcn_ops_rls_ids(kind text PRIMARY KEY,id uuid);
 CREATE TEMP TABLE hcn_ops_rls_results(test text, passed boolean);
+GRANT SELECT ON hcn_ops_rls_ids TO authenticated;
+GRANT SELECT, INSERT ON hcn_ops_rls_results TO authenticated;
 DO $fixture$
 DECLARE
  v_org uuid:=gen_random_uuid();v_patient uuid:=gen_random_uuid();
