@@ -530,7 +530,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
                 <PatientHealthRecordsView patients={patients} onOpenRecord={(id) => navigateTo('records', id, 'medical')} />
               )}
               {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'info')} />}
-              {nav === 'visits' && <><ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'medical')} showAll /><VisitsListView /></>}
+              {nav === 'visits' && <><ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'medical')} showAll /><VisitsListView orgId={orgId} /></>}
               {nav === 'tasks' && <TasksView patients={patients} />}
               {nav === 'communications' && <CommunicationsView patients={patients} />}
               {nav === 'notes' && (
@@ -1509,7 +1509,7 @@ function isToday(isoTimestamp: string | null): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
-function ScheduleView({ patients, onOpenPatient, showAll = false }: { orgId: string; patients: StaffPatient[]; onOpenPatient:(id:string)=>void; showAll?: boolean }) {
+function ScheduleView({ orgId, patients, onOpenPatient, showAll = false }: { orgId: string; patients: StaffPatient[]; onOpenPatient:(id:string)=>void; showAll?: boolean }) {
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1533,10 +1533,10 @@ function ScheduleView({ patients, onOpenPatient, showAll = false }: { orgId: str
   const [loadError, setScheduleLoadError] = useState<string | null>(null);
   const load = useCallback(async () => {
     const { data, error } = await getMyVisitsResult();
-    setVisits(data ?? []);
+    setVisits((data ?? []).filter(v => v.organizationId === orgId));
     setScheduleLoadError(error);
     setLoading(false);
-  }, []);
+  }, [orgId]);
   useEffect(() => { void load(); }, [load]);
   const visibleVisits = todayOnly ? visits.filter((v) => isToday(v.scheduledStart)) : visits;
 
@@ -1610,6 +1610,7 @@ function ScheduleView({ patients, onOpenPatient, showAll = false }: { orgId: str
                   {tzLabel && <> ({tzLabel})</>}
                 </p>
                 {facility && <p className="text-xs text-medium-gray">{facility}</p>}
+                {v.actualStart && <p className="text-xs font-semibold text-ent-forest">Clocked in: {new Date(v.actualStart).toLocaleString()}{v.actualEnd ? ' · Clocked out: ' + new Date(v.actualEnd).toLocaleString() : ''}</p>}
                 {v.status === 'scheduled' && reviewVisitId === v.id && (
                   <section className="mt-3 space-y-3 rounded-xl border border-warm-bronze bg-white p-3" aria-label="Pre-visit acknowledgment">
                     <h3 className="text-sm font-bold text-charcoal">Pre-Visit Review Required</h3>
@@ -1663,7 +1664,7 @@ function ScheduleView({ patients, onOpenPatient, showAll = false }: { orgId: str
   );
 }
 
-function VisitsListView() {
+function VisitsListView({ orgId }: { orgId: string }) {
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [loading, setLoading] = useState(true);
   // MMA-ENT-CAREGIVER-MASTER-005 D02-007: same defect as ScheduleView —
@@ -1672,10 +1673,10 @@ function VisitsListView() {
   const [loadError, setVisitsLoadError] = useState<string | null>(null);
   const load = useCallback(async () => {
     const { data, error } = await getMyVisitsResult();
-    setVisits(data ?? []);
+    setVisits((data ?? []).filter(v => v.organizationId === orgId));
     setVisitsLoadError(error);
     setLoading(false);
-  }, []);
+  }, [orgId]);
   useEffect(() => { void load(); }, [load]);
   return (
     <Card>
