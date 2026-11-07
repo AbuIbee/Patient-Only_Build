@@ -73,6 +73,8 @@ BEGIN
   PERFORM public.hcn_acknowledge_previsit(v_visit,v_sections,v_attestation);
   INSERT INTO hcn_ops_results VALUES('reacknowledge after medication record change',
     public.hcn_is_previsit_current(v_visit));
+  INSERT INTO hcn_ops_results VALUES('all three previsit reviews retained immutably',(
+    SELECT count(*) FROM public.hcn_previsit_acknowledgments WHERE visit_id=v_visit)=3);
   INSERT INTO hcn_ops_results VALUES('visit can start after review',
     (public.start_caregiver_visit(v_visit)).status='in_progress');
 
@@ -116,6 +118,13 @@ BEGIN
     public.hcn_director_close_escalation(v_case,'Fictional clinical followup completed and documented'));
   INSERT INTO hcn_ops_results VALUES('final escalation status resolved',
     (SELECT status FROM public.hcn_care_escalations WHERE id=v_case)='resolved');
+  INSERT INTO hcn_ops_results VALUES('four escalation transition events retained',(
+    SELECT count(*) FROM public.hcn_care_escalation_events WHERE escalation_id=v_case)=4);
+  INSERT INTO hcn_ops_results VALUES('clinical review audit attributed to clinician',EXISTS(
+    SELECT 1 FROM public.hcn_care_escalation_events
+    WHERE escalation_id=v_case AND actor_id=v_clinician
+      AND event_type='clinician_reviewed' AND from_status='clinical_review_requested'
+      AND to_status='clinical_reviewed'));
 END;
 $test$;
 SELECT test,passed FROM hcn_ops_results ORDER BY test;
