@@ -20,10 +20,10 @@ CREATE TABLE IF NOT EXISTS public.hcn_previsit_acknowledgments (
 -- uniqueness to retain each re-review as a separate immutable event.
 ALTER TABLE public.hcn_previsit_acknowledgments
   DROP CONSTRAINT IF EXISTS hcn_previsit_acknowledgments_visit_id_caregiver_id_key;
-CREATE INDEX IF NOT EXISTS hcn_previsit_visit_history_idx
-  ON public.hcn_previsit_acknowledgments(visit_id,caregiver_id,review_sequence DESC);
 ALTER TABLE public.hcn_previsit_acknowledgments
   ADD COLUMN IF NOT EXISTS review_sequence bigint GENERATED ALWAYS AS IDENTITY;
+CREATE INDEX IF NOT EXISTS hcn_previsit_visit_history_idx
+  ON public.hcn_previsit_acknowledgments(visit_id,caregiver_id,review_sequence DESC);
 ALTER TABLE public.hcn_previsit_acknowledgments
   ADD COLUMN IF NOT EXISTS latest_medications_at timestamptz,
   ADD COLUMN IF NOT EXISTS latest_contacts_at timestamptz,
