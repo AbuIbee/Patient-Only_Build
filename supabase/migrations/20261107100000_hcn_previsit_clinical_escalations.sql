@@ -16,6 +16,10 @@ CREATE TABLE IF NOT EXISTS public.hcn_previsit_acknowledgments (
   acknowledged_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (visit_id,caregiver_id)
 );
+ALTER TABLE public.hcn_previsit_acknowledgments
+  ADD COLUMN IF NOT EXISTS latest_medications_at timestamptz,
+  ADD COLUMN IF NOT EXISTS latest_contacts_at timestamptz,
+  ADD COLUMN IF NOT EXISTS latest_patient_information_at timestamptz;
 CREATE INDEX IF NOT EXISTS hcn_previsit_patient_idx
   ON public.hcn_previsit_acknowledgments(organization_id,patient_id,acknowledged_at DESC);
 ALTER TABLE public.hcn_previsit_acknowledgments ENABLE ROW LEVEL SECURITY;
