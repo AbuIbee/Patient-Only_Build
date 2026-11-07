@@ -66,6 +66,18 @@ BEGIN
   PERFORM public.hcn_acknowledge_previsit(v_visit,v_sections,v_attestation);
   INSERT INTO hcn_ops_results VALUES('reacknowledge after handoff',
     public.hcn_is_previsit_current(v_visit));
+
+  -- Permission revocation MUST invalidate a previously current acknowledgment.
+  UPDATE public.staff_patient_assignments SET is_active=false
+    WHERE organization_id=v_org AND patient_id=v_patient AND user_id=v_carer;
+  INSERT INTO hcn_ops_results VALUES('revocation invalidates existing receipt',
+    NOT public.hcn_is_previsit_current(v_visit));
+  v_deny:=false;
+  BEGIN PERFORM public.start_caregiver_visit(v_visit);
+  EXCEPTION WHEN invalid_parameter_value THEN v_deny:=true; END;
+  INSERT INTO hcn_ops_results VALUES('revoked caregiver cannot start with old receipt',v_deny);
+  UPDATE public.staff_patient_assignments SET is_active=true
+    WHERE organization_id=v_org AND patient_id=v_patient AND user_id=v_carer;
   INSERT INTO hcn_ops_results VALUES('visit can start after review',
     (public.start_caregiver_visit(v_visit)).status='in_progress');
 
