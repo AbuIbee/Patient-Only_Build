@@ -83,11 +83,14 @@ describe('HCN Patient Information: real authenticated role and record tests',()=
     expect(readStatus).toBeGreaterThanOrEqual(400);
     expect(editStatus).toBeGreaterThanOrEqual(400);
   });
-  it('stale update cannot overwrite newer contact details',async()=>{
-    const [status]=await rpc('hcn_save_patient_information',{
+  it('stale update returns HTTP 409 without retrying or overwriting',async()=>{
+    const started=Date.now();
+    const [status,body]=await rpc('hcn_save_patient_information',{
       p_org_id:org,p_patient_id:ids.patient,p_changes:{home_phone:'555-0138'},p_expected_version:0,
     },tokens.director);
-    expect(status).toBeGreaterThanOrEqual(400);
+    expect(status).toBe(409);
+    expect((body as {code?:string}).code).toBe('PT409');
+    expect(Date.now()-started).toBeLessThan(10000);
   });
   it('audit actor is the real caregiver, and revocation removes read access',async()=>{
     const actor=sql(`SELECT actor_user_id FROM hcn_patient_information_audit WHERE patient_id='${ids.patient}'
