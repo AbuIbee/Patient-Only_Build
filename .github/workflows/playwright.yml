@@ -90,6 +90,7 @@ jobs:
         export MMA_E2E_API_BASE="$MMA_TEST_API_BASE"
         export MMA_E2E_DB_CONTAINER="$MMA_TEST_DB_CONTAINER"
         npx playwright test \
+          tests/e2e_hcn_edge_storage_denied.spec.ts \
           tests/e2e_application_correction_flow.spec.ts \
           tests/e2e_director_application_wizard.spec.ts \
           tests/e2e_enterprise_billing_portal.spec.ts \

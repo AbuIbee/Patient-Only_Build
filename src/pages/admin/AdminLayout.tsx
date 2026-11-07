@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import { safeSessionStorage } from '@/lib/safeSessionStorage';
 import type { UserRole } from '@/types/supabase';
 import { getErrorMessage } from '@/lib/utils';
 import { AdminAudit } from './AdminAudit';
@@ -752,7 +753,7 @@ export default function AdminLayout() {
   const [isAdmin,  setIsAdmin]  = useState(false);
   const [loading,  setLoading]  = useState(true);
   const [view, setView] = useState<AdminView>(() =>
-    (sessionStorage.getItem('adminView') as AdminView) || 'overview'
+    (safeSessionStorage.getItem('adminView') as AdminView) || 'overview'
   );
 
   useEffect(() => {
@@ -767,9 +768,9 @@ export default function AdminLayout() {
     });
   }, [dispatch]);
 
-  const navigate = (v: AdminView) => { setView(v); sessionStorage.setItem('adminView', v); };
+  const navigate = (v: AdminView) => { setView(v); safeSessionStorage.setItem('adminView', v); };
   const handleLogout = async () => {
-    sessionStorage.removeItem('adminView');
+    safeSessionStorage.removeItem('adminView');
     await supabase.auth.signOut();
     dispatch({ type: 'LOGOUT' });
   };
