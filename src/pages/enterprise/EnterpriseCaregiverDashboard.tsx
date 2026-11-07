@@ -41,6 +41,8 @@ import {
   type CaregiverVisit, type IncidentReport, type CaregiverCredential, type IncidentSeverity,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import { acknowledgeHelpActivation } from '@/services/patientClinicalRecordService';
+import { PREVISIT_SECTIONS, acknowledgePrevisit } from '@/services/hcnCareOperationsService';
+import CareEscalationPanel from './CareEscalationPanel';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import { selectCurrentOrNextVisit } from './selectCurrentOrNextVisit';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
@@ -526,7 +528,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
               {nav === 'records' && (
                 <PatientHealthRecordsView patients={patients} onOpenRecord={(id) => navigateTo('records', id, 'medical')} />
               )}
-              {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} />}
+              {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'info')} />}
               {nav === 'visits' && <VisitsListView />}
               {nav === 'tasks' && <TasksView patients={patients} />}
               {nav === 'communications' && <CommunicationsView patients={patients} />}
@@ -537,7 +539,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
                 </>
               )}
               {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id, 'handoffs')} title="Select a patient to record or review Shift Handoffs" />}
-              {nav === 'alerts' && <AlertsView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id, 'safety')} />}
+              {nav === 'alerts' && <><CareEscalationPanel orgId={orgId} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><AlertsView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id, 'safety')} /></>}
               {nav === 'careTeam' && <CareTeamView orgId={orgId} patients={patients} />}
               {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view their Documents" />}
               {nav === 'organization' && <OrganizationView orgId={orgId} orgName={orgName} patients={patients} />}
@@ -1503,13 +1505,15 @@ function isToday(isoTimestamp: string | null): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
-function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatient[] }) {
+function ScheduleView({ orgId, patients, onOpenPatient }: { orgId: string; patients: StaffPatient[]; onOpenPatient:(id:string)=>void }) {
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPatient, setSelectedPatient] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [saving, setSaving] = useState(false);
+  const [reviewVisitId,setReviewVisitId]=useState<string|null>(null);
+  const [reviewSections,setReviewSections]=useState<string[]>([]);
   const [todayOnly, setTodayOnly] = useState(true);
   // APPROVED ENTERPRISE UI DIRECTIVE follow-up — CONFIRMED DEFECT
   // (FUNC01-UI-COMPLETION, codex_master_9023_acceptance/browser_verify.mjs):
@@ -1549,9 +1553,19 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
   };
 
   const startVisit = async (visitId: string) => {
-    const { error } = await startCaregiverVisit(visitId);
-    if (error) { toast.error(error); return; }
-    await load();
+    if (!PREVISIT_SECTIONS.every(s=>reviewSections.includes(s.id))) {
+      toast.error('Review all five sections before acknowledging the visit.'); return;
+    }
+    setSaving(true);
+    try {
+      const attestation=await acknowledgePrevisit(visitId,reviewSections);
+      if(attestation.error){toast.error(attestation.error);return;}
+      const {error}=await startCaregiverVisit(visitId);
+      if(error){toast.error(error);return;}
+      toast.success('Pre-visit review acknowledged and visit started.');
+      setReviewVisitId(null);setReviewSections([]);
+      await load();
+    }finally{setSaving(false);}
   };
 
   const completeVisit = async (visitId: string) => {
@@ -1617,6 +1631,29 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
                   {tzLabel && <> ({tzLabel})</>}
                 </p>
                 {facility && <p className="text-xs text-medium-gray">{facility}</p>}
+                {v.status === 'scheduled' && reviewVisitId === v.id && (
+                  <section className="mt-3 space-y-3 rounded-xl border border-warm-bronze bg-white p-3" aria-label="Pre-visit acknowledgment">
+                    <h3 className="text-sm font-bold text-charcoal">Pre-Visit Review Required</h3>
+                    <p className="text-xs text-medium-gray">Open the assigned patient's record and review these sections before arriving. Updated notes or handoffs after review will require a fresh acknowledgment.</p>
+                    <button type="button" onClick={()=>onOpenPatient(v.patientId)} className="text-xs font-semibold text-warm-bronze underline">Open Patient Information</button>
+                    <div className="space-y-2">
+                      {PREVISIT_SECTIONS.map(section=>(
+                        <label className="flex items-start gap-2 text-sm text-charcoal" key={section.id}>
+                          <input type="checkbox" checked={reviewSections.includes(section.id)} onChange={e=>setReviewSections(prev=>e.target.checked?[...prev,section.id]:prev.filter(x=>x!==section.id))}/>
+                          {section.label}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-medium-gray">Acknowledgment documents review only; it does not authorize medical decisions.</p>
+                    <div className="flex gap-2">
+                      <button type="button" disabled={saving||!PREVISIT_SECTIONS.every(section=>reviewSections.includes(section.id))}
+                        onClick={()=>{void startVisit(v.id);}} className="rounded-xl bg-warm-bronze px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
+                        {saving?'Processing…':'Acknowledge & Start Visit'}
+                      </button>
+                      <button type="button" onClick={()=>{setReviewVisitId(null);setReviewSections([]);}} className="rounded-xl border border-soft-taupe px-3 py-2 text-xs">Cancel</button>
+                    </div>
+                  </section>
+                )}
                 {v.status === 'in_progress' && endingVisitId === v.id && (
                   <div className="mt-2 space-y-1.5 w-full">
                     <textarea
@@ -1634,7 +1671,7 @@ function ScheduleView({ orgId, patients }: { orgId: string; patients: StaffPatie
                   </div>
                 )}
               </div>
-              {v.status === 'scheduled' && <button type="button" onClick={() => { void startVisit(v.id); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-soft-sage text-white text-xs font-semibold flex-shrink-0"><PlayCircle className="w-3.5 h-3.5" /> Start</button>}
+              {v.status === 'scheduled' && <button type="button" onClick={() => { setReviewVisitId(v.id);setReviewSections([]); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-soft-sage text-white text-xs font-semibold flex-shrink-0"><PlayCircle className="w-3.5 h-3.5" /> Review & Start</button>}
               {v.status === 'in_progress' && endingVisitId !== v.id && (
                 <button type="button" onClick={() => { setEndingVisitId(v.id); setEndNotesDraft(''); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gentle-coral text-white text-xs font-semibold flex-shrink-0"><StopCircle className="w-3.5 h-3.5" /> End</button>
               )}
