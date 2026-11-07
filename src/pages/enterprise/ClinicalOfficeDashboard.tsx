@@ -44,6 +44,7 @@ import { getMyConversationsResult } from '@/services/communicationsService';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
+import CareEscalationPanel from './CareEscalationPanel';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
 type ClinicalRole = Extract<StaffRole, 'medical_professional' | 'therapist'>;
@@ -51,7 +52,7 @@ type ClinicalRole = Extract<StaffRole, 'medical_professional' | 'therapist'>;
 type ClinicalNavKey =
   | 'dashboard' | 'patients' | 'schedule' | 'assessments' | 'diagnoses' | 'medications'
   | 'careplan' | 'documentation' | 'goals' | 'documents' | 'communication' | 'reports'
-  | 'credentials' | 'settings';
+  | 'credentials' | 'settings' | 'escalations';
 
 const MEDICAL_NAV_ITEMS: OfficeNavItem<ClinicalNavKey>[] = [
   { key: 'dashboard', label: 'Clinical Dashboard', icon: Stethoscope },
@@ -64,13 +65,14 @@ const MEDICAL_NAV_ITEMS: OfficeNavItem<ClinicalNavKey>[] = [
   { key: 'documentation', label: 'Clinical Documentation', icon: FileText },
   { key: 'communication', label: 'Care Team Communication', icon: MessageSquare },
   { key: 'reports', label: 'Reports & Outcomes', icon: BarChart3 },
+  { key: 'escalations', label: 'Clinical Reviews', icon: ShieldAlert },
   { key: 'credentials', label: 'My Credentials', icon: Award },
   { key: 'settings', label: 'Settings & Account', icon: SettingsIcon },
 ];
 const MEDICAL_NAV_GROUPS: OfficeNavGroup<ClinicalNavKey>[] = [
   { label: 'CLINICAL WORKSPACE', items: ['dashboard', 'patients', 'schedule'] },
   { label: 'PATIENT RECORDS', items: ['assessments', 'diagnoses', 'medications', 'careplan', 'documentation'] },
-  { label: 'PROFESSIONAL TOOLS', items: ['communication', 'reports', 'credentials', 'settings'] },
+  { label: 'PROFESSIONAL TOOLS', items: ['communication', 'escalations', 'reports', 'credentials', 'settings'] },
 ];
 
 const THERAPY_NAV_ITEMS: OfficeNavItem<ClinicalNavKey>[] = [
@@ -81,6 +83,7 @@ const THERAPY_NAV_ITEMS: OfficeNavItem<ClinicalNavKey>[] = [
   { key: 'documentation', label: 'Therapy Notes', icon: FileText },
   { key: 'goals', label: 'Goals & Progress', icon: ClipboardList },
   { key: 'communication', label: 'Care Team Communication', icon: MessageSquare },
+  { key: 'escalations', label: 'Clinical Reviews', icon: ShieldAlert },
   { key: 'reports', label: 'Reports & Outcomes', icon: BarChart3 },
   { key: 'credentials', label: 'My Credentials', icon: Award },
   { key: 'documents', label: 'Documents', icon: FileText },
@@ -89,7 +92,7 @@ const THERAPY_NAV_ITEMS: OfficeNavItem<ClinicalNavKey>[] = [
 const THERAPY_NAV_GROUPS: OfficeNavGroup<ClinicalNavKey>[] = [
   { label: 'THERAPY WORKSPACE', items: ['dashboard', 'patients', 'schedule'] },
   { label: 'PATIENT RECORDS', items: ['careplan', 'documentation', 'goals', 'documents'] },
-  { label: 'PROFESSIONAL TOOLS', items: ['communication', 'reports', 'credentials', 'settings'] },
+  { label: 'PROFESSIONAL TOOLS', items: ['communication', 'escalations', 'reports', 'credentials', 'settings'] },
 ];
 
 // Which tab EnterprisePatientRecordTabs should open on when a
@@ -238,6 +241,8 @@ export default function ClinicalOfficeDashboard({ filterRole, basePath = null }:
           onOpenPatient={(p) => openPatientRecord(p, INITIAL_TAB[nav])}
           loadError={loadError}
         />
+      ) : nav === 'escalations' && myOrg ? (
+        <CareEscalationPanel orgId={myOrg.organizationId} role="clinical" patients={patients.filter(p=>p.organizationId===myOrg.organizationId).map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
       ) : nav === 'credentials' ? (
         <CredentialsView credentials={credentials} />
       ) : nav === 'reports' ? (
