@@ -4491,6 +4491,24 @@ export interface Database {
       hcn_director_triage_escalation: { Args: { p_id: string; p_action: string; p_note: string }; Returns: boolean }
       hcn_clinician_review_escalation: { Args: { p_id: string; p_note: string }; Returns: boolean }
       hcn_director_close_escalation: { Args: { p_id: string; p_note: string }; Returns: boolean }
+      register_patient_representative: {
+        Args: {
+          p_patient_id: string
+          p_org_id: string
+          p_representative_email: string
+          p_legal_first_name: string
+          p_legal_last_name: string
+          p_contact_email: string
+          p_contact_phone: string
+          p_residential_address: string
+          p_relationship_to_patient: string
+          p_authorization_basis: string
+          p_consent_acknowledged: boolean
+          p_legal_middle_name?: string | null
+          p_authorization_evidence_reference?: string | null
+        }
+        Returns: Json
+      }
       hcn_get_patient_information: { Args: { p_org_id: string; p_patient_id: string }; Returns: Json }
       hcn_save_patient_information: { Args: { p_org_id: string; p_patient_id: string; p_changes: Json; p_expected_version?: number | null }; Returns: Json }
       // HCN-CARE-MASTER-001/002: version-checked patient healthcare directory.
