@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createSafeSessionStorage, type SessionStorageLike } from './safeSessionStorage';
+import { createSafeSessionStorage, installVolatileSessionStorageIfDenied, type SessionStorageLike } from './safeSessionStorage';
 
 function memoryStorage(): SessionStorageLike {
   const memory = new Map<string, string>();
@@ -79,5 +79,51 @@ describe('Supabase session storage adapter — restricted Edge/InPrivate', () =>
     expect(adapter.getItem('auth-key')).toBeNull();
     adapter.setItem('auth-key', 'new-token');
     expect(nativeSession.getItem('auth-key')).toBe('new-token');
+  });
+});
+
+
+describe('Phoenix Realtime safe global sessionStorage compatibility', () => {
+  it('replaces a blocked property getter with volatile storage before client construction', () => {
+    const sandbox: { sessionStorage?: Storage } = {};
+    Object.defineProperty(sandbox, 'sessionStorage', {
+      configurable: true,
+      get: () => { throw new DOMException('Access denied', 'SecurityError'); },
+    });
+    expect(installVolatileSessionStorageIfDenied(sandbox)).toBe('volatile');
+    expect(sandbox.sessionStorage?.length).toBe(0);
+    sandbox.sessionStorage?.setItem('realtime-key', 'temporary-token');
+    expect(sandbox.sessionStorage?.getItem('realtime-key')).toBe('temporary-token');
+    expect(sandbox.sessionStorage?.key(0)).toBe('realtime-key');
+    sandbox.sessionStorage?.removeItem('realtime-key');
+    expect(sandbox.sessionStorage?.getItem('realtime-key')).toBeNull();
+  });
+
+  it('leaves working native storage unchanged', () => {
+    const nativeStorage = memoryStorage();
+    const sandbox = { sessionStorage: nativeStorage };
+    expect(installVolatileSessionStorageIfDenied(sandbox)).toBe('native');
+    expect(sandbox.sessionStorage).toBe(nativeStorage);
+  });
+
+  it('does not bypass a browser non-configurable storage denial', () => {
+    const sandbox: { sessionStorage?: Storage } = {};
+    Object.defineProperty(sandbox, 'sessionStorage', {
+      configurable: false,
+      get: () => { throw new DOMException('Access denied', 'SecurityError'); },
+    });
+    expect(installVolatileSessionStorageIfDenied(sandbox)).toBe('unavailable');
+  });
+
+  it('never reads localStorage when supplying the volatile fallback', () => {
+    const sandbox: { sessionStorage?: Storage; localStorage?: Storage } = {};
+    Object.defineProperty(sandbox, 'sessionStorage', {
+      configurable: true,
+      get: () => { throw new DOMException('Access denied', 'SecurityError'); },
+    });
+    Object.defineProperty(sandbox, 'localStorage', {
+      get: () => { throw new Error('Must never access persistent storage'); },
+    });
+    expect(installVolatileSessionStorageIfDenied(sandbox)).toBe('volatile');
   });
 });
