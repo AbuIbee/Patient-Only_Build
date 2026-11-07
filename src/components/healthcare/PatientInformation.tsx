@@ -65,6 +65,7 @@ function PatientInformationBody({patientId,orgId,readOnly=false}:{patientId:stri
   useEffect(()=>{
     const channel=supabase.channel(`hcn-patient-info-${orgId}-${patientId}`)
       .on('postgres_changes',{event:'*',schema:'public',table:'patient_care_providers',filter:`patient_id=eq.${patientId}`},()=>{void refresh();})
+      .on('postgres_changes',{event:'*',schema:'public',table:'hcn_patient_information',filter:`patient_id=eq.${patientId}`},()=>{void refresh();})
       .subscribe();
     const focus=()=>{void refresh();};
     window.addEventListener('focus',focus);
