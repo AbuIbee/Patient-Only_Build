@@ -9,6 +9,7 @@ export type PatientView =
   | 'documents'
   | 'reminders'
   | 'checkin'
+  | 'care_information'
   | 'intake'
   | 'emergency_contacts'
   | 'careteam'
