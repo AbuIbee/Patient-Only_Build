@@ -516,7 +516,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
             </div>
           ) : (
             <div className="max-w-6xl mx-auto space-y-5">
-              {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id)} onNavigate={navigateTo} onPatientRegistered={() => { void load(); }} />}
+              {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id)} onOpenInformation={(id) => navigateTo('patients', id, 'info')} onNavigate={navigateTo} onPatientRegistered={() => { void load(); }} />}
               {nav === 'patients' && (
                 <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)}
                   onOpenContacts={(id) => navigateTo('patients', id, 'contacts')}
@@ -632,8 +632,12 @@ interface AttentionItem {
 // Care communications] two-column layout. Every figure below comes
 // from the real queries this component already runs — nothing here is
 // a design-example placeholder value.
-function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRegistered }: { patients: StaffPatient[]; orgId: string; onOpenPatient: (id: string) => void; onNavigate: (nav: NavItem) => void; onPatientRegistered: () => void }) {
+function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNavigate, onPatientRegistered }: { patients: StaffPatient[]; orgId: string; onOpenPatient: (id: string) => void; onOpenInformation: (id: string) => void; onNavigate: (nav: NavItem) => void; onPatientRegistered: () => void }) {
   const { state } = useApp();
+  const [dashboardSearch, setDashboardSearch] = useState('');
+  const matchingPatients = dashboardSearch.trim()
+    ? patients.filter((p) => [p.firstName, p.lastName, p.preferredName, p.patientId].some(v => (v ?? '').toLowerCase().includes(dashboardSearch.trim().toLowerCase())))
+    : [];
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
@@ -892,6 +896,24 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
         </div>
         <RegistrationAction orgId={orgId} onChanged={onPatientRegistered} compact />
       </div>
+
+      <section aria-label="Search assigned patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
+        <label htmlFor="caregiver-dashboard-search" className="block text-sm font-bold text-ent-ink">Search my assigned patients</label>
+        <input id="caregiver-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
+          placeholder="Search patient name or reference…" autoComplete="off"
+          className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
+        {dashboardSearch.trim() && (
+          <div role="region" aria-label="Matching assigned patients" className="space-y-2">
+            {matchingPatients.length ? matchingPatients.map(patient => (
+              <button type="button" key={patient.patientId} onClick={() => onOpenInformation(patient.patientId)}
+                className="flex w-full items-center justify-between rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
+                <span>{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-xs text-ent-bronze">Open Patient Information →</span>
+              </button>
+            )) : <p className="text-sm text-ent-muted">No assigned patient matches this search.</p>}
+          </div>
+        )}
+        <p className="text-xs text-ent-muted">Select a patient to search their allergies, conditions, providers and care information.</p>
+      </section>
 
       <section aria-label="Caregiver quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
         <div className="mb-3 flex items-center justify-between gap-2">

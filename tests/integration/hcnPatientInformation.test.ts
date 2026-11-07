@@ -75,6 +75,20 @@ describe('HCN Patient Information: real authenticated role and record tests',()=
     expect(readCode).toBe(200);
     expect((row as {details:{mobile_phone:string}}).details.mobile_phone).toBe('555-0134');
   });
+  it('the patient portal can read staff-entered information without submitting an intake form',async()=>{
+    const [code,body]=await rpc('hcn_get_patient_information',{
+      p_org_id:org,p_patient_id:ids.patient,
+    },tokens.patient);
+    expect(code).toBe(200);
+    const record=body as {
+      patient:{id:string};details:{mobile_phone:string;medical_care_needs:string};
+      providers:Array<{name:string}>;
+    };
+    expect(record.patient.id).toBe(ids.patient);
+    expect(record.details.mobile_phone).toBe('555-0134');
+    expect(record.details.medical_care_needs).toBe('Fictional care needs only');
+    expect(record.providers.some(p=>p.name==='Fictional Physician')).toBe(true);
+  });
   it('unknown user cannot read any dossier or change any field',async()=>{
     const [readStatus]=await rpc('hcn_get_patient_information',{p_org_id:org,p_patient_id:ids.patient},tokens.outsider);
     const [editStatus]=await rpc('hcn_save_patient_information',{

@@ -45,7 +45,7 @@ function Field({label,value}:{label:string;value:unknown}) {
     </dd>
   </div>;
 }
-function PatientInformationBody({patientId,orgId}:{patientId:string;orgId:string}) {
+function PatientInformationBody({patientId,orgId,readOnly=false}:{patientId:string;orgId:string;readOnly?:boolean}) {
   const [data,setData]=useState<PatientInformationSnapshot|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState<string|null>(null);
@@ -65,6 +65,7 @@ function PatientInformationBody({patientId,orgId}:{patientId:string;orgId:string
   useEffect(()=>{
     const channel=supabase.channel(`hcn-patient-info-${orgId}-${patientId}`)
       .on('postgres_changes',{event:'*',schema:'public',table:'patient_care_providers',filter:`patient_id=eq.${patientId}`},()=>{void refresh();})
+      .on('postgres_changes',{event:'*',schema:'public',table:'hcn_patient_information',filter:`patient_id=eq.${patientId}`},()=>{void refresh();})
       .subscribe();
     const focus=()=>{void refresh();};
     window.addEventListener('focus',focus);
@@ -141,7 +142,7 @@ function PatientInformationBody({patientId,orgId}:{patientId:string;orgId:string
       data&&<div className="rounded-2xl border border-ent-line bg-ent-panel p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-bold text-ent-ink">{SECTIONS.find(s=>s.key===section)?.label}</h3>
-          {!editing&&(['identity','needs','emergency'] as Section[]).includes(section)&&
+          {!readOnly&&!editing&&(['identity','needs','emergency'] as Section[]).includes(section)&&
             <button type="button" onClick={startEdit} className="inline-flex items-center gap-2 rounded-lg bg-ent-bronze px-3 py-2 text-sm font-semibold text-white">
               <PencilLine className="h-4 w-4"/>Edit information</button>}
         </div>
@@ -229,7 +230,7 @@ function PatientInformationBody({patientId,orgId}:{patientId:string;orgId:string
       </div>}
   </section>;
 }
-export default function PatientInformation({patientId,orgId}:{patientId:string;orgId:string}) {
+export default function PatientInformation({patientId,orgId,readOnly=false}:{patientId:string;orgId:string;readOnly?:boolean}) {
   // Remount on subject/org switch to avoid stale cross-patient edit drafts or results.
-  return <PatientInformationBody key={`${orgId}:${patientId}`} patientId={patientId} orgId={orgId}/>;
+  return <PatientInformationBody key={`${orgId}:${patientId}`} patientId={patientId} orgId={orgId} readOnly={readOnly}/>;
 }

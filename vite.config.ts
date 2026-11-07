@@ -39,7 +39,23 @@ export default defineConfig({
           .replace('href="/images/MymemoriaDayTime.png"', 'href="/haneen-favicon.svg"')
           .replace('content="#C9A87C"', 'content="#071A3A"')
           .replace('content="My Memoria Ally - Designed to support Dementia Care, ADHD, Autism, Anxiety, Traumatic Brain Injury, and other cognitive support needs."', 'content="Haneen Care Network connects organizations, caregivers, patients, and authorized healthcare specialists in one coordinated care platform."')
-          .replace('</head>', '    <meta property="og:title" content="Haneen Care Network" />\n    <meta property="og:description" content="Where Compassion Connects Care." />\n    <meta property="og:type" content="website" />\n  </head>');
+          .replace('</head>', '    <meta property="og:title" content="Haneen Care Network" />\n    <meta property="og:description" content="Where Compassion Connects Care." />\n    <meta property="og:type" content="website" />\n    <meta property="og:url" content="https://www.haneencarenetwork.com/" />\n    <link rel="canonical" href="https://www.haneencarenetwork.com/" />\n  </head>');
+      },
+      generateBundle() {
+        // These crawl-discovery files are emitted ONLY for Haneen,
+        // preserving the unrelated consumer My Memoria site.
+        if (process.env.VITE_ENTERPRISE_SITE !== 'true') return;
+        this.emitFile({
+          type: 'asset', fileName: 'robots.txt',
+          source: 'User-agent: *\nAllow: /\nSitemap: https://www.haneencarenetwork.com/sitemap.xml\n',
+        });
+        this.emitFile({
+          type: 'asset', fileName: 'sitemap.xml',
+          source: '<?xml version="1.0" encoding="UTF-8"?>\n' +
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+            '  <url><loc>https://www.haneencarenetwork.com/</loc></url>\n' +
+            '</urlset>\n',
+        });
       },
     },
   ],

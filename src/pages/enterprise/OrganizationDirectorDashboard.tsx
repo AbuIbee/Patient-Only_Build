@@ -730,17 +730,21 @@ function CloseCoverageDialog({ orgId, patientId, patientName, onClose, onClosed 
   );
 }
 
-function CoveredPatientsCard({ orgId, members, onChanged }: {
+function CoveredPatientsCard({ orgId, members, onChanged, initialInformationPatientId }: {
   orgId: string;
   members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
   onChanged: () => void;
+  initialInformationPatientId?: string | null;
 }) {
   const [patients, setPatients] = useState<OrgCoveredPatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [closingTarget, setClosingTarget] = useState<OrgCoveredPatient | null>(null);
   const [sendingSetupId, setSendingSetupId] = useState<string | null>(null);
   const [openContactsPatientId, setOpenContactsPatientId] = useState<string | null>(null);
-  const [openInformationPatientId, setOpenInformationPatientId] = useState<string | null>(null);
+  const [openInformationPatientId, setOpenInformationPatientId] = useState<string | null>(initialInformationPatientId ?? null);
+  useEffect(() => {
+    if (initialInformationPatientId) { setOpenInformationPatientId(initialInformationPatientId); setOpenContactsPatientId(null); }
+  }, [initialInformationPatientId]);
   const [patientQuery, setPatientQuery] = useState('');
 
   const sendPatientSetupEmail = async (patientId: string) => {
@@ -1113,11 +1117,16 @@ const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ADMINISTRATION', items: ['reports', 'licensing', 'ownership', 'settings'] },
 ];
 
-function DashboardHome({ orgName, members, license, visits, incidents, handoffs, onNavigate }: {
+function DashboardHome({ orgName, members, license, visits, incidents, handoffs, patients, onOpenPatient, onNavigate }: {
   orgName: string; members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
   license: OrgLicense | null; visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
+  patients: OrgCoveredPatient[]; onOpenPatient: (patientId: string) => void;
   onNavigate: (key: DirectorNavKey) => void;
 }) {
+  const [dashboardSearch, setDashboardSearch] = useState('');
+  const matchingPatients = dashboardSearch.trim()
+    ? patients.filter(p => [p.firstName, p.lastName, p.preferredName, p.patientId].some(v => (v ?? '').toLowerCase().includes(dashboardSearch.trim().toLowerCase())))
+    : [];
   const activeStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'active').length;
   const invitedStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'invited').length;
   const openIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').length;
@@ -1131,6 +1140,24 @@ function DashboardHome({ orgName, members, license, visits, incidents, handoffs,
         <h1 className="text-xl sm:text-2xl font-bold text-ent-ink">Director Dashboard</h1>
         <p className="text-sm text-ent-muted mt-0.5">Organization-wide oversight for {orgName || 'your organization'}.</p>
       </div>
+
+      <section aria-label="Search organization patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
+        <label htmlFor="director-dashboard-search" className="block text-sm font-bold text-ent-ink">Search organization patients</label>
+        <input id="director-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
+          autoComplete="off" placeholder="Search patient name or reference…"
+          className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
+        {dashboardSearch.trim() && (
+          <div role="region" aria-label="Matching covered patients" className="space-y-2">
+            {matchingPatients.length ? matchingPatients.map(patient => (
+              <button type="button" key={patient.patientId} onClick={() => onOpenPatient(patient.patientId)}
+                className="flex w-full items-center justify-between rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
+                <span>{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-xs text-ent-bronze">Open Patient Information →</span>
+              </button>
+            )) : <p className="text-sm text-ent-muted">No covered patient matches this search.</p>}
+          </div>
+        )}
+        <p className="text-xs text-ent-muted">Open a patient to search conditions, allergies, doctors and emergency contacts.</p>
+      </section>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <MetricCard label="Care Team Inventory" value={String(activeStaff+invitedStaff)}
@@ -1714,6 +1741,8 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   const [orgName, setOrgName] = useState('');
   const [packageType, setPackageType] = useState<OrgPackageType>('integrated_care');
   const [coveredCount, setCoveredCount] = useState(0);
+  const [coveredPatients, setCoveredPatients] = useState<OrgCoveredPatient[]>([]);
+  const [selectedInformationPatientId, setSelectedInformationPatientId] = useState<string | null>(null);
   const [visits, setVisits] = useState<OrgVisit[]>([]);
   const [incidents, setIncidents] = useState<OrgIncidentReport[]>([]);
   const [handoffs, setHandoffs] = useState<OrgShiftHandoff[]>([]);
@@ -1747,6 +1776,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       setOrgName(org?.organizationName ?? '');
       setPackageType(org?.packageType ?? 'integrated_care');
       setCoveredCount(covered.filter((r) => r.status === 'active').length);
+      setCoveredPatients(covered.filter((r) => r.status === 'active'));
       setVisits(v.data ?? []);
       setIncidents(inc.data ?? []);
       setHandoffs(hoffs.data ?? []);
@@ -1769,6 +1799,10 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   const initials = (state.currentUser?.firstName?.[0] ?? 'D').toUpperCase();
 
   const navigate = (key: DirectorNavKey) => { setBillingOpen(false); setNav(key); };
+  const openPatientInformation = (patientId: string) => {
+    setSelectedInformationPatientId(patientId);
+    navigate('patients');
+  };
 
   return (
     <EnterpriseOfficeShell
@@ -1785,7 +1819,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : nav === 'dashboard' ? (
-        <DashboardHome orgName={orgName} members={members} license={license} visits={visits} incidents={incidents} handoffs={handoffs} onNavigate={navigate} />
+        <DashboardHome orgName={orgName} members={members} license={license} visits={visits} incidents={incidents} handoffs={handoffs} patients={coveredPatients} onOpenPatient={openPatientInformation} onNavigate={navigate} />
       ) : nav === 'overview' ? (
         <OrganizationOverviewView orgName={orgName} packageType={packageType} members={members} coveredCount={coveredCount} />
       ) : nav === 'applications' ? (
@@ -1793,7 +1827,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       ) : nav === 'staff' ? (
         <StaffCard orgId={organizationId} members={members} onChanged={() => { void refresh(); }} />
       ) : nav === 'patients' ? (
-        <CoveredPatientsCard orgId={organizationId} members={members} onChanged={() => { void refresh(); }} />
+        <CoveredPatientsCard orgId={organizationId} members={members} initialInformationPatientId={selectedInformationPatientId} onChanged={() => { void refresh(); }} />
       ) : nav === 'assignments' ? (
         <AssignmentsCard orgId={organizationId} members={members} />
       ) : nav === 'scheduling' ? (
