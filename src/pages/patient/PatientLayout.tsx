@@ -27,6 +27,8 @@ import CarePartnerCheckin from './CarePartnerCheckin';
 import PatientEmergencyContacts from './PatientEmergencyContacts';
 import PatientGames, { type GameId } from './PatientGames';
 import PatientIntakeForm from './PatientIntakeForm';
+import PatientInformation from '@/components/healthcare/PatientInformation';
+import { getMyEnterpriseOrganization } from '@/services/enterprisePatientService';
 import PatientCareTeam from './PatientCareTeam';
 import MediaUploader from '@/components/MediaUploader';
 import PricingPage from '../common/PricingPage';
@@ -70,6 +72,18 @@ function PatientLayoutInner() {
   const { state, dispatch } = useApp();
   const patient = state.patient;
   const accountId = state.currentUser?.id || state.patient?.id || '';
+  const useHaneenCareDirectory = import.meta.env.VITE_ENTERPRISE_SITE === 'true' && isEnterpriseCovered;
+  const [haneenCareOrgId, setHaneenCareOrgId] = useState<string | null>(null);
+  const [haneenCareOrgLoading, setHaneenCareOrgLoading] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (!useHaneenCareDirectory || !accountId) { setHaneenCareOrgId(null); return; }
+    setHaneenCareOrgLoading(true);
+    void getMyEnterpriseOrganization(accountId).then((org) => {
+      if (!cancelled) setHaneenCareOrgId(org?.organizationId ?? null);
+    }).finally(() => { if (!cancelled) setHaneenCareOrgLoading(false); });
+    return () => { cancelled = true; };
+  }, [accountId, useHaneenCareDirectory]);
 
   const hour = new Date().getHours();
   const isSundowningTime = hour >= 16 && hour <= 19;
@@ -404,6 +418,7 @@ function PatientLayoutInner() {
   // Main navigation order approved for the current plan design.
   const navItems: NavigationItem[] = [
     { id: 'dashboard',   label: 'Home',         emoji: '🏠' },
+    ...(useHaneenCareDirectory ? [{ id: 'care_information' as const, label: 'My Care Information', emoji: '📋' }] : []),
     { id: 'mood',        label: 'How I Feel',   emoji: '😊' },
     { id: 'checkin',     label: 'Care Partner', emoji: '📋' },
     { id: 'medications', label: 'Medications',  emoji: '💊' },
@@ -415,7 +430,7 @@ function PatientLayoutInner() {
 
   // More remains exactly: Patient Intake, Emergency Contact, Videos & Media, Patient Arcade.
   const moreNavItems: NavigationItem[] = [
-    { id: 'intake',             label: 'Patient Intake',    emoji: '📝' },
+    ...(import.meta.env.VITE_ENTERPRISE_SITE !== 'true' ? [{ id: 'intake' as const, label: 'Patient Intake', emoji: '📝' }] : []),
     { id: 'emergency_contacts', label: 'Emergency Contact', emoji: '🚨' },
     { id: 'media',              label: 'Videos & Media',   emoji: '🎬' },
     { id: 'games',              label: 'Patient Arcade',   emoji: '🎮' },
@@ -532,8 +547,14 @@ function PatientLayoutInner() {
         return <PatientReminders reminderStatus={reminderStatus} />;
       case 'checkin':
         return <CarePartnerCheckin />;
+      case 'care_information':
+        return !useHaneenCareDirectory ? <p role="alert" className="p-5 text-charcoal">Care information is available to patients with active organization coverage.</p>
+          : haneenCareOrgLoading ? <p role="status" className="p-5 text-charcoal">Loading your care organization…</p>
+          : haneenCareOrgId ? <div className="mx-auto max-w-6xl p-4 sm:p-6"><PatientInformation patientId={accountId} orgId={haneenCareOrgId} readOnly /></div>
+          : <p role="alert" className="p-5 text-charcoal">Your care organization could not be confirmed. Contact your Director or retry after signing in again.</p>;
       case 'intake':
-        return isTempUserDemo ? <TempDemoUnavailable featureLabel="Patient Intake" /> : <PatientIntakeForm onCompleted={() => setIntakeCompleted(true)} />;
+        return import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? <p className="p-5 text-charcoal">Your organization maintains your care information.</p>
+          : isTempUserDemo ? <TempDemoUnavailable featureLabel="Patient Intake" /> : <PatientIntakeForm onCompleted={() => setIntakeCompleted(true)} />;
       case 'emergency_contacts':
         return isTempUserDemo ? <TempDemoUnavailable featureLabel="Emergency Contact" /> : <PatientEmergencyContacts />;
       case 'careteam':
@@ -751,7 +772,7 @@ function PatientLayoutInner() {
           )}
 
           {/* ── Intake reminder popup ──────────────────────────────── */}
-          {intakeCompleted === false && currentView !== 'intake' && (
+          {import.meta.env.VITE_ENTERPRISE_SITE !== 'true' && intakeCompleted === false && currentView !== 'intake' && (
             <div className="fixed inset-0 z-[9998] bg-black/70 flex items-center justify-center p-4">
               <div className="bg-white rounded-3xl shadow-2xl border border-soft-taupe w-full max-w-md p-8 text-center space-y-5">
                 <div className="w-20 h-20 bg-warm-bronze/10 rounded-full flex items-center justify-center mx-auto">
