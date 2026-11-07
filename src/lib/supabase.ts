@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
-import { safeSessionStorage } from './safeSessionStorage';
+import { safeSessionStorage, installVolatileSessionStorageIfDenied } from './safeSessionStorage';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -8,6 +8,11 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 // ─── HIPAA: Use sessionStorage so auth token is never persisted across ────────
 // browser sessions. Closing the tab / browser clears the token entirely.
 // This prevents a new browser window from restoring a previous patient session.
+// @supabase/phoenix accesses window.sessionStorage in its constructor,
+// independently of the GoTrue Auth adapter below. Edge can throw SecurityError
+// on property resolution, before React mounts. Install a volatile compatibility
+// adapter BEFORE createClient initializes Realtime; never persist to localStorage.
+installVolatileSessionStorageIfDenied();
 const sessionStorageAdapter = safeSessionStorage;
 
 // REMEDIATION B (activation-session isolation): this shared, persistent
