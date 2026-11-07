@@ -34,7 +34,7 @@ import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDelet
 import MFASettings from '@/components/MFASettings';
 import ActiveSessionsPanel from '@/components/ActiveSessionsPanel';
 import {
-  startCaregiverVisit, endCaregiverVisit, scheduleCaregiverVisit,
+  startCaregiverVisit, endCaregiverVisit,
   fileIncidentReport, uploadIncidentAttachment,
   reportScopeConcern,
   getMyVisitsResult, getPatientIncidentReportsResult, getPatientShiftHandoffsResult, getIncidentAttachmentsResult, getMyCredentialsResult,
@@ -530,7 +530,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
                 <PatientHealthRecordsView patients={patients} onOpenRecord={(id) => navigateTo('records', id, 'medical')} />
               )}
               {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'info')} />}
-              {nav === 'visits' && <VisitsListView />}
+              {nav === 'visits' && <><ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'medical')} showAll /><VisitsListView /></>}
               {nav === 'tasks' && <TasksView patients={patients} />}
               {nav === 'communications' && <CommunicationsView patients={patients} />}
               {nav === 'notes' && (
@@ -1509,16 +1509,13 @@ function isToday(isoTimestamp: string | null): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
-function ScheduleView({ orgId, patients, onOpenPatient }: { orgId: string; patients: StaffPatient[]; onOpenPatient:(id:string)=>void }) {
+function ScheduleView({ orgId, patients, onOpenPatient, showAll = false }: { orgId: string; patients: StaffPatient[]; onOpenPatient:(id:string)=>void; showAll?: boolean }) {
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedPatient, setSelectedPatient] = useState('');
-  const [start, setStart] = useState('');
-  const [end, setEnd] = useState('');
   const [saving, setSaving] = useState(false);
   const [reviewVisitId,setReviewVisitId]=useState<string|null>(null);
   const [reviewSections,setReviewSections]=useState<string[]>([]);
-  const [todayOnly, setTodayOnly] = useState(true);
+  const [todayOnly, setTodayOnly] = useState(!showAll);
   // APPROVED ENTERPRISE UI DIRECTIVE follow-up — CONFIRMED DEFECT
   // (FUNC01-UI-COMPLETION, codex_master_9023_acceptance/browser_verify.mjs):
   // end_caregiver_visit() has required non-empty visit notes since
@@ -1543,18 +1540,6 @@ function ScheduleView({ orgId, patients, onOpenPatient }: { orgId: string; patie
   useEffect(() => { void load(); }, [load]);
   const visibleVisits = todayOnly ? visits.filter((v) => isToday(v.scheduledStart)) : visits;
 
-  const schedule = async () => {
-    if (!selectedPatient || !start || !end) return;
-    setSaving(true);
-    try {
-      const { error } = await scheduleCaregiverVisit(orgId, selectedPatient, new Date(start).toISOString(), new Date(end).toISOString());
-      if (error) { toast.error(error); return; }
-      setStart(''); setEnd('');
-      await load();
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const startVisit = async (visitId: string) => {
     if (!PREVISIT_SECTIONS.every(s=>reviewSections.includes(s.id))) {
@@ -1566,7 +1551,7 @@ function ScheduleView({ orgId, patients, onOpenPatient }: { orgId: string; patie
       if(attestation.error){toast.error(attestation.error);return;}
       const {error}=await startCaregiverVisit(visitId);
       if(error){toast.error(error);return;}
-      toast.success('Pre-visit review acknowledged and visit started.');
+      toast.success('Arrival time recorded; visit is in progress.');
       setReviewVisitId(null);setReviewSections([]);
       await load();
     }finally{setSaving(false);}
@@ -1587,18 +1572,8 @@ function ScheduleView({ orgId, patients, onOpenPatient }: { orgId: string; patie
 
   return (
     <Card>
-      <div className="flex items-center gap-2"><Calendar className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">My Schedule</h2></div>
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-        <select value={selectedPatient} onChange={(e) => setSelectedPatient(e.target.value)} className="px-3 py-2 rounded-xl border border-soft-taupe text-sm sm:col-span-2">
-          <option value="">Select patient…</option>
-          {patients.map((p) => <option key={p.patientId} value={p.patientId}>{p.preferredName || p.firstName}</option>)}
-        </select>
-        <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} className="px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
-        <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} className="px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
-      </div>
-      <button type="button" onClick={() => { void schedule(); }} disabled={saving || !selectedPatient || !start || !end} className="px-4 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold disabled:opacity-60">
-        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Schedule Visit'}
-      </button>
+      <div className="flex items-center gap-2"><Calendar className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">{showAll ? "Clock In / Out — My Assigned Visits" : "My Schedule"}</h2></div>
+      <p className="text-sm text-medium-gray">Visit times are assigned by your Director. Use this page to review your schedule, acknowledge patient updates before the visit, and record your actual arrival and departure times.</p>
       <label className="flex items-center gap-2 text-xs font-semibold text-medium-gray">
         <input type="checkbox" checked={todayOnly} onChange={(e) => setTodayOnly(e.target.checked)} /> Today only
       </label>
@@ -1652,7 +1627,7 @@ function ScheduleView({ orgId, patients, onOpenPatient }: { orgId: string; patie
                     <div className="flex gap-2">
                       <button type="button" disabled={saving||!PREVISIT_SECTIONS.every(section=>reviewSections.includes(section.id))}
                         onClick={()=>{void startVisit(v.id);}} className="rounded-xl bg-warm-bronze px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
-                        {saving?'Processing…':'Acknowledge & Start Visit'}
+                        {saving?'Processing…':'Acknowledge & Clock In'}
                       </button>
                       <button type="button" onClick={()=>{setReviewVisitId(null);setReviewSections([]);}} className="rounded-xl border border-soft-taupe px-3 py-2 text-xs">Cancel</button>
                     </div>
@@ -1662,7 +1637,7 @@ function ScheduleView({ orgId, patients, onOpenPatient }: { orgId: string; patie
                   <div className="mt-2 space-y-1.5 w-full">
                     <textarea
                       value={endNotesDraft} onChange={(e) => setEndNotesDraft(e.target.value)} autoFocus
-                      placeholder="Visit notes (required to complete this visit)…"
+                      placeholder="What care was provided, tasks completed, patient response, and any follow-up needed? (required to clock out)…"
                       className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm"
                       rows={2}
                     />
@@ -1675,9 +1650,9 @@ function ScheduleView({ orgId, patients, onOpenPatient }: { orgId: string; patie
                   </div>
                 )}
               </div>
-              {v.status === 'scheduled' && <button type="button" onClick={() => { setReviewVisitId(v.id);setReviewSections([]); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-soft-sage text-white text-xs font-semibold flex-shrink-0"><PlayCircle className="w-3.5 h-3.5" /> Review & Start</button>}
+              {v.status === 'scheduled' && <button type="button" onClick={() => { setReviewVisitId(v.id);setReviewSections([]); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-soft-sage text-white text-xs font-semibold flex-shrink-0"><PlayCircle className="w-3.5 h-3.5" /> Review & Clock In</button>}
               {v.status === 'in_progress' && endingVisitId !== v.id && (
-                <button type="button" onClick={() => { setEndingVisitId(v.id); setEndNotesDraft(''); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gentle-coral text-white text-xs font-semibold flex-shrink-0"><StopCircle className="w-3.5 h-3.5" /> End</button>
+                <button type="button" onClick={() => { setEndingVisitId(v.id); setEndNotesDraft(''); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gentle-coral text-white text-xs font-semibold flex-shrink-0"><StopCircle className="w-3.5 h-3.5" /> Clock Out</button>
               )}
             </li>
             );
