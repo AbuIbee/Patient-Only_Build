@@ -1,3 +1,5 @@
+> **Owner-approved release sequence (2026-11-06):** First release the existing non-AI patient information, shared contacts, grouped record navigation, and authorized search to production after migration and acceptance gates pass. Then implement Director's Assistant and Caregiver Helper using Vercel AI Gateway. Do not include a nonfunctional AI button in the non-AI release. Confirm any HIPAA/BAA coverage for both Gateway and upstream provider before processing real PHI. The names in this file supersede earlier draft names.
+
 # HCN-AI-OPS-001 — Haneen Operations Assistant + Care Brief
 Status: APPROVED PRODUCT REQUIREMENTS; IMPLEMENTATION NOT YET ACCEPTED.
 Owner decision: November 6, 2026. Addendum to HCN-CARE-MASTER-001/002 and HCN_CARE_20261106_OWNER_REQUIREMENTS_RECONCILIATION.md.
@@ -8,7 +10,7 @@ Owner decision: November 6, 2026. Addendum to HCN-CARE-MASTER-001/002 and HCN_CA
 
 **Caregiver:** "Caregiver Helper" (patient/visit scoped). Short, source-linked synopsis of updates since the assigned caregiver's previous completed visit, or a clearly labelled fallback period if no prior visit exists. Explicit submitter, observed/reported clinical provenance and acknowledgment status. Not a diagnosis, risk score, or unverified medication order.
 
-**Placement:** Director dashboard, immediately BELOW the welcome/header and ABOVE metrics and Director Quick Actions: one high-visibility Operations Assistant panel showing an "Ask Director's Assistant" input and three explicit entry points: Scheduling, Care Operations and Administration. Persistent accessible entry in the Director shell under an "Director's Assistant" navigation item without hiding existing modules. Caregiver dashboard, immediately BELOW greeting and ABOVE "What do you need to do next?": compact "AI Care Brief" panel with a patient selector restricted to assigned patients, "Generate Care Brief" action and a timestamped read-only result; also from an individual patient's chart "Pre-Visit Care Brief" action. On mobile buttons wrap; no forced horizontal scrolling.
+**Placement:** Director dashboard, immediately BELOW the welcome/header and ABOVE metrics and Director Quick Actions: one high-visibility Operations Assistant panel showing an "Ask Director's Assistant" input and three explicit entry points: Scheduling, Care Operations and Administration. Persistent accessible entry in the Director shell under an "Director's Assistant" navigation item without hiding existing modules. Caregiver dashboard, immediately BELOW greeting and ABOVE "What do you need to do next?": compact "Caregiver Helper" panel with a patient selector restricted to assigned patients, "Generate Care Brief" action and a timestamped read-only result; also from an individual patient's chart "Pre-Visit Care Brief" action. On mobile buttons wrap; no forced horizontal scrolling.
 
 ## Director tasks and data contracts
 
