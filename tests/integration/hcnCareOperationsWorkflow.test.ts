@@ -11,7 +11,7 @@ describe('Haneen pre-visit acknowledgment and care escalation permission contrac
       if(pos<0)throw new Error('Unrecognized check result: '+line);
       return {name:line.slice(0,pos),passed:line.slice(pos+1)==='t'};
     });
-    expect(rows).toHaveLength(18);
+    expect(rows).toHaveLength(22);
     for(const row of rows)expect(row.passed,row.name).toBe(true);
   });
 });
