@@ -2,6 +2,7 @@
 -- Never grants clinical treatment/diagnosis authority to a caregiver or Director.
 CREATE TABLE IF NOT EXISTS public.hcn_previsit_acknowledgments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  review_sequence bigint GENERATED ALWAYS AS IDENTITY,
   visit_id uuid NOT NULL REFERENCES public.caregiver_visits(id),
   organization_id uuid NOT NULL REFERENCES public.organizations(id),
   patient_id uuid NOT NULL REFERENCES public.patients(id),
@@ -13,14 +14,16 @@ CREATE TABLE IF NOT EXISTS public.hcn_previsit_acknowledgments (
   latest_contacts_at timestamptz,
   latest_patient_information_at timestamptz,
   attestation text NOT NULL,
-  acknowledged_at timestamptz NOT NULL DEFAULT now()
+  acknowledged_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 -- Older staging iteration had one mutable receipt per visit. Drop that
 -- uniqueness to retain each re-review as a separate immutable event.
 ALTER TABLE public.hcn_previsit_acknowledgments
   DROP CONSTRAINT IF EXISTS hcn_previsit_acknowledgments_visit_id_caregiver_id_key;
 CREATE INDEX IF NOT EXISTS hcn_previsit_visit_history_idx
-  ON public.hcn_previsit_acknowledgments(visit_id,caregiver_id,acknowledged_at DESC);
+  ON public.hcn_previsit_acknowledgments(visit_id,caregiver_id,review_sequence DESC);
+ALTER TABLE public.hcn_previsit_acknowledgments
+  ADD COLUMN IF NOT EXISTS review_sequence bigint GENERATED ALWAYS AS IDENTITY;
 ALTER TABLE public.hcn_previsit_acknowledgments
   ADD COLUMN IF NOT EXISTS latest_medications_at timestamptz,
   ADD COLUMN IF NOT EXISTS latest_contacts_at timestamptz,
@@ -104,7 +107,7 @@ AS $fn$
       AND ack.patient_id=v.patient_id
       AND ack.id=(SELECT recent.id FROM public.hcn_previsit_acknowledgments recent
         WHERE recent.visit_id=v.id AND recent.caregiver_id=v.caregiver_id
-        ORDER BY recent.acknowledged_at DESC,recent.id DESC LIMIT 1)
+        ORDER BY recent.review_sequence DESC LIMIT 1)
       AND ack.acknowledged_at>now()-interval '24 hours'
       AND ack.latest_handoff_at IS NOT DISTINCT FROM (
         SELECT max(h.created_at) FROM public.shift_handoffs h
