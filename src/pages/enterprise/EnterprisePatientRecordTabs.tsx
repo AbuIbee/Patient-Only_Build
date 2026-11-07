@@ -31,9 +31,8 @@ import {
   getPatientDiagnosesResult, recordPatientDiagnosis, getPatientAllergiesResult, recordPatientAllergy,
   getPatientCarePlansResult, recordPatientCarePlan, getPatientVitalsResult, recordPatientVitals,
   getTherapyGoalsResult, recordTherapyGoal, getCarePreferencesResult, recordCarePreference,
-  getPatientProvidersResult, recordPatientProvider,
   recordCommunicationNeeds, recordPatientSafetyPlan, recordNoteAmendment, acknowledgeHelpActivation,
-  type PatientDiagnosis, type PatientAllergy, type PatientCarePlan, type PatientVitals, type TherapyGoal, type CarePreference, type PatientCareProvider, type ProvenanceSource,
+  type PatientDiagnosis, type PatientAllergy, type PatientCarePlan, type PatientVitals, type TherapyGoal, type CarePreference, type ProvenanceSource,
 } from '@/services/patientClinicalRecordService';
 import {
   getMyVisitsResult, getPatientShiftHandoffsResult, getPatientIncidentReportsResult, reportScopeConcern,
@@ -440,12 +439,9 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
   const [diagnoses, setDiagnoses] = useState<PatientDiagnosis[]>([]);
   const [vitals, setVitals] = useState<PatientVitals[]>([]);
   const [goals, setGoals] = useState<TherapyGoal[]>([]);
-  const [providers, setProviders] = useState<PatientCareProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [newDiagnosis, setNewDiagnosis] = useState('');
   const [newGoal, setNewGoal] = useState('');
-  const [newProviderName, setNewProviderName] = useState('');
-  const [newProviderRole, setNewProviderRole] = useState('');
 
   // FUNC-02 — CONFIRMED DEFECT: mood-history pagination was built
   // (Round 7 Corrective, P11) inside EnterpriseStaffPatientView's own
@@ -466,15 +462,15 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
   const [loadError, setMedicalLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const [d, v, g, p, moodResult] = await Promise.all([
-      getPatientDiagnosesResult(patientId), getPatientVitalsResult(patientId), getTherapyGoalsResult(patientId), getPatientProvidersResult(patientId),
+    const [d, v, g, moodResult] = await Promise.all([
+      getPatientDiagnosesResult(patientId), getPatientVitalsResult(patientId), getTherapyGoalsResult(patientId),
       supabase.from('mood_entries').select('id, mood, intensity, timestamp').eq('patient_id', patientId).order('timestamp', { ascending: false }).limit(moodLimit + 1),
     ]);
-    setDiagnoses(d.data ?? []); setVitals(v.data ?? []); setGoals(g.data ?? []); setProviders(p.data ?? []);
+    setDiagnoses(d.data ?? []); setVitals(v.data ?? []); setGoals(g.data ?? []);
     const allMoods = moodResult.data ?? [];
     setMoodHasMore(allMoods.length > moodLimit);
     setMoods(allMoods.slice(0, moodLimit));
-    const errors = [d.error, v.error, g.error, p.error, moodResult.error?.message].filter((e): e is string => !!e);
+    const errors = [d.error, v.error, g.error, moodResult.error?.message].filter((e): e is string => !!e);
     setMedicalLoadError(errors.length > 0 ? errors[0] : null);
     setLoading(false);
   }, [patientId, moodLimit]);
@@ -492,12 +488,6 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
     if (error) { toast.error(error); return; }
     setNewGoal(''); await load();
   };
-  const addProvider = async () => {
-    if (!newProviderName.trim() || !newProviderRole.trim()) return;
-    const { error } = await recordPatientProvider(patientId, newProviderName.trim(), newProviderRole.trim());
-    if (error) { toast.error(error); return; }
-    setNewProviderName(''); setNewProviderRole(''); await load();
-  };
 
   if (loading) return <Loader2 className="w-6 h-6 animate-spin text-warm-bronze mx-auto" />;
   return (
@@ -507,6 +497,10 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
           <p className="text-sm text-gentle-coral font-medium">Some medical information could not be loaded: {loadError}</p>
         </div>
       )}
+      {staffRole === 'caregiver' && <>
+        <p className="text-sm text-medium-gray">Record the care you provided, observations, and patient response below. Clock in and out for scheduled visits using My Schedule or Visits &amp; Time Records; your clock-out notes become part of that visit's time record.</p>
+        <ProfessionalNotesSectionStandalone patientId={patientId} staffRole={staffRole} />
+      </>}
       <SectionCard title="Medical Conditions & Diagnoses" icon={Stethoscope}>
         <div className="flex gap-2">
           <input value={newDiagnosis} onChange={(e) => setNewDiagnosis(e.target.value)} placeholder="Add a diagnosed condition…" className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
@@ -542,26 +536,6 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
         )}
         {moodHasMore && (
           <button type="button" onClick={() => setMoodLimit((n) => n + 10)} className="text-sm font-semibold text-warm-bronze hover:underline">Load more</button>
-        )}
-      </SectionCard>
-
-      <SectionCard title="Medical Providers" icon={Stethoscope}>
-        <div className="flex gap-2">
-          <input value={newProviderName} onChange={(e) => setNewProviderName(e.target.value)} placeholder="Provider name…" className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
-          <input value={newProviderRole} onChange={(e) => setNewProviderRole(e.target.value)} placeholder="Role e.g. Primary Physician" className="flex-1 px-3 py-2 rounded-xl border border-soft-taupe text-sm" />
-          <button type="button" onClick={() => { void addProvider(); }} className="px-3 py-2 rounded-xl bg-warm-bronze hover:bg-deep-bronze text-white text-sm font-semibold">Add</button>
-        </div>
-        {providers.length === 0 ? (
-          loadError ? <p className="text-sm text-medium-gray">Providers could not be confirmed right now.</p> : <p className="text-sm text-medium-gray">No providers recorded.</p>
-        ) : (
-          <ul className="space-y-1.5">
-            {providers.map((p) => (
-              <li key={p.id} className="p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
-                <span className="font-medium text-charcoal">{p.providerName}</span> — {p.providerRole}
-                {p.phone && <span className="text-xs text-medium-gray block">{p.phone}</span>}
-              </li>
-            ))}
-          </ul>
         )}
       </SectionCard>
 
@@ -619,7 +593,7 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
         </SectionCard>
       )}
 
-      <ProfessionalNotesSectionStandalone patientId={patientId} staffRole={staffRole} />
+      {staffRole !== 'caregiver' && <ProfessionalNotesSectionStandalone patientId={patientId} staffRole={staffRole} />}
     </>
   );
 }
