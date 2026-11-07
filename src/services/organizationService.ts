@@ -331,6 +331,17 @@ export async function getOrgStaffPatientAssignments(orgId: string): Promise<Staf
   }));
 }
 
+export async function getOrgStaffPatientAssignmentsResult(orgId:string):Promise<{data:StaffPatientAssignment[]|null;error:string|null}> {
+  const {data,error}=await supabase.rpc('get_org_staff_patient_assignments',{p_org_id:orgId});
+  if(error)return {data:null,error:error.message};
+  if(!data)return {data:null,error:'Staff assignment query returned no result.'};
+  return {data:data.map(r=>({
+    userId:r.user_id,firstName:r.first_name,lastName:r.last_name,
+    patientId:r.patient_id,patientFirstName:r.patient_first_name,patientLastName:r.patient_last_name,
+    patientPreferredName:r.patient_preferred_name,orgRole:r.org_role as StaffRole,isActive:r.is_active,
+  })),error:null};
+}
+
 export async function getOrgCommunicationsOverview(orgId: string): Promise<OrgCommunicationsOverview | null> {
   const { data, error } = await supabase.rpc('get_org_communications_overview', { p_org_id: orgId });
   if (error || !data || data.length === 0) return null;
