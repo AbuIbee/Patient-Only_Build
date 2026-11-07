@@ -71,7 +71,7 @@ BEGIN
   VALUES (p_org_id,p_patient_id,auth.uid(),to_jsonb(v_prior),to_jsonb(v_saved));
   RETURN to_jsonb(v_saved);
 END;
-$function$
+$function$;
 
 -- Retain the pre-existing RPC access controls and revoke newly broadened PUBLIC execute privileges.
 REVOKE ALL ON FUNCTION public.hcn_save_patient_information(uuid,uuid,jsonb,integer) FROM PUBLIC,anon;
