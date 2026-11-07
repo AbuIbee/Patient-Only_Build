@@ -28,7 +28,7 @@ const DEFINITIONS:Record<ReportKind,{title:string;columns:Column[]}> = {
 };
 const toStamp=(v:string|null|undefined)=>v?new Date(v).toLocaleString():'';
 const cleanCsv=(value:string)=>{
-  const safe=/^[=+\-@\t\r]/.test(value)?'\''+value:value;
+  const safe=/^\s*[=+\-@]/.test(value)?'\''+value:value;
   return '"'+safe.replace(/"/g,'""')+'"';
 };
 const midnight=(day:string)=>new Date(day+'T00:00:00').toISOString();
