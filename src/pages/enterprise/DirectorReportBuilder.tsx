@@ -32,6 +32,7 @@ const cleanCsv=(value:string)=>{
   return '"'+safe.replace(/"/g,'""')+'"';
 };
 const midnight=(day:string)=>new Date(day+'T00:00:00').toISOString();
+const dayKey=(d:Date)=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
 function rowsFor(kind:ReportKind,data:{visits:OrgVisit[];incidents:OrgIncidentReport[];handoffs:OrgShiftHandoff[];
   members:Array<OrgMembershipRow & {firstName:string;lastName:string;email:string}>;patients:OrgCoveredPatient[]}):ReportRow[]{
   if(kind==='visits')return data.visits.map(v=>({
@@ -63,8 +64,8 @@ export default function DirectorReportBuilder({
 }) {
   const now=new Date();
   const [kind,setKind]=useState<ReportKind>('visits');
-  const [from,setFrom]=useState(()=>new Date(now.getFullYear(),now.getMonth(),1).toLocaleDateString('en-CA'));
-  const [to,setTo]=useState(()=>new Date(now.getFullYear(),now.getMonth()+1,1).toLocaleDateString('en-CA'));
+  const [from,setFrom]=useState(()=>dayKey(new Date(now.getFullYear(),now.getMonth(),1)));
+  const [to,setTo]=useState(()=>dayKey(new Date(now.getFullYear(),now.getMonth()+1,1)));
   const [search,setSearch]=useState('');
   const [status,setStatus]=useState('all');
   const [patient,setPatient]=useState('all');
