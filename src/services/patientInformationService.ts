@@ -5,7 +5,7 @@ export type PatientInformationDetails = {
   version?: number | null;
   patient_email?: string | null;
   home_phone?: string | null; mobile_phone?: string | null;
-  street_address?: string | null; city?: string | null; state?: string | null; postal_code?: string | null;
+  street_address?: string | null; apartment_unit?: string | null; city?: string | null; state?: string | null; postal_code?: string | null;
   medical_care_needs?: string | null; mental_health_needs?: string | null; physical_care_needs?: string | null;
   additional_emergency_name?: string | null; additional_emergency_relationship?: string | null;
   additional_emergency_phone?: string | null; additional_emergency_mobile?: string | null;
@@ -36,7 +36,7 @@ export async function loadPatientInformation(orgId:string,patientId:string):
     return {data:{...d,intake:d.intake??{},details:d.details??{}},error:null};
   } catch {return {data:null,error:'Patient information could not be loaded. Retry.'};}
 }
-const allowed=new Set(['patient_email','home_phone','mobile_phone','street_address','city','state','postal_code',
+const allowed=new Set(['patient_email','home_phone','mobile_phone','street_address','apartment_unit','city','state','postal_code',
   'medical_care_needs','mental_health_needs','physical_care_needs','additional_emergency_name',
   'additional_emergency_relationship','additional_emergency_phone','additional_emergency_mobile','additional_emergency_email']);
 export async function savePatientInformation(orgId:string,patientId:string,changes:Partial<PatientInformationDetails>,
