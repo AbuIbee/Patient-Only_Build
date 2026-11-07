@@ -49,6 +49,7 @@ import HealthcareContacts from '@/components/healthcare/HealthcareContacts';
 import PatientInformation from '@/components/healthcare/PatientInformation';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
 import CareEscalationPanel from './CareEscalationPanel';
+import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
 const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
@@ -1118,8 +1119,8 @@ const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ADMINISTRATION', items: ['reports', 'licensing', 'ownership', 'settings'] },
 ];
 
-function DashboardHome({ orgName, members, license, visits, incidents, handoffs, patients, onOpenPatient, onNavigate }: {
-  orgName: string; members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
+function DashboardHome({ orgId, orgName, members, license, visits, incidents, handoffs, patients, onOpenPatient, onNavigate }: {
+  orgId: string; orgName: string; members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
   license: OrgLicense | null; visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
   patients: OrgCoveredPatient[]; onOpenPatient: (patientId: string) => void;
   onNavigate: (key: DirectorNavKey) => void;
@@ -1141,6 +1142,8 @@ function DashboardHome({ orgName, members, license, visits, incidents, handoffs,
         <h1 className="text-xl sm:text-2xl font-bold text-ent-ink">Director Dashboard</h1>
         <p className="text-sm text-ent-muted mt-0.5">Organization-wide oversight for {orgName || 'your organization'}.</p>
       </div>
+
+      <HaneenAssistantPanel role="director" organizationId={orgId}/>
 
       <section aria-label="Search organization patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
         <label htmlFor="director-dashboard-search" className="block text-sm font-bold text-ent-ink">Search organization patients</label>
@@ -1820,7 +1823,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : nav === 'dashboard' ? (
-        <DashboardHome orgName={orgName} members={members} license={license} visits={visits} incidents={incidents} handoffs={handoffs} patients={coveredPatients} onOpenPatient={openPatientInformation} onNavigate={navigate} />
+        <DashboardHome orgId={organizationId} orgName={orgName} members={members} license={license} visits={visits} incidents={incidents} handoffs={handoffs} patients={coveredPatients} onOpenPatient={openPatientInformation} onNavigate={navigate} />
       ) : nav === 'overview' ? (
         <OrganizationOverviewView orgName={orgName} packageType={packageType} members={members} coveredCount={coveredCount} />
       ) : nav === 'applications' ? (
