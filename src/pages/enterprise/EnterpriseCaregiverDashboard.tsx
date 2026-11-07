@@ -43,6 +43,7 @@ import {
 import { acknowledgeHelpActivation } from '@/services/patientClinicalRecordService';
 import { PREVISIT_SECTIONS, acknowledgePrevisit } from '@/services/hcnCareOperationsService';
 import CareEscalationPanel from './CareEscalationPanel';
+import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import { selectCurrentOrNextVisit } from './selectCurrentOrNextVisit';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
@@ -898,6 +899,9 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
         </div>
         <RegistrationAction orgId={orgId} onChanged={onPatientRegistered} compact />
       </div>
+
+      <HaneenAssistantPanel role="caregiver" organizationId={orgId}
+        patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
 
       <section aria-label="Search assigned patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
         <label htmlFor="caregiver-dashboard-search" className="block text-sm font-bold text-ent-ink">Search my assigned patients</label>
