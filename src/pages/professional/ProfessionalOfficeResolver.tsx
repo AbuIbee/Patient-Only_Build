@@ -20,6 +20,8 @@ import { getMyApplication, getMyApplicationDraft, type ProfessionalApplication }
 import { redeemQuoteInvitation, quoteTermsFromDraft, type RedemptionOutcome, type RedeemedQuoteTerms } from '@/services/salesService';
 import DirectorApplicationWizard from './DirectorApplicationWizard';
 import OrganizationDirectorDashboard, { AmendmentRequestSection } from '@/pages/enterprise/OrganizationDirectorDashboard';
+import OrganizationOwnerWorkspace from '@/pages/enterprise/OrganizationOwnerWorkspace';
+import { loadOwnedOrganizations, type OwnedOrganization } from '@/services/hcnOwnerOfficeService';
 import SelfServiceApplicationFlow from './SelfServiceApplicationFlow';
 import { PendingInvitesBanner } from '@/pages/enterprise/EnterpriseDashboardRouter';
 import EnterpriseCaregiverDashboard from '@/pages/enterprise/EnterpriseCaregiverDashboard';
@@ -130,13 +132,13 @@ function RedeemInvitationSection({ onApplicationStarted }: { onApplicationStarte
   );
 }
 
-export type ProfessionalOfficeKey = 'admin' | 'caregiver' | 'medical' | 'therapy' | 'patient';
+export type ProfessionalOfficeKey = 'owner' | 'admin' | 'caregiver' | 'medical' | 'therapy' | 'patient';
 
 const OFFICE_SEGMENT: Record<ProfessionalOfficeKey, string> = {
-  admin: 'Admin', caregiver: 'Caregiver', medical: 'Medical', therapy: 'Therapy', patient: 'Patient',
+  owner: 'Owner', admin: 'Admin', caregiver: 'Caregiver', medical: 'Medical', therapy: 'Therapy', patient: 'Patient',
 };
 const OFFICE_LABEL: Record<ProfessionalOfficeKey, string> = {
-  admin: 'Admin / Director', caregiver: 'Enterprise Caregiver', medical: 'Medical Professional', therapy: 'Therapist Professional', patient: 'Enterprise Patient',
+  owner: 'Organization Owner', admin: 'Admin / Director', caregiver: 'Enterprise Caregiver', medical: 'Medical Professional', therapy: 'Therapist Professional', patient: 'Enterprise Patient',
 };
 // Priority order when no office is explicitly requested in the URL and
 // the signed-in user holds more than one — identical ordering to
@@ -144,7 +146,7 @@ const OFFICE_LABEL: Record<ProfessionalOfficeKey, string> = {
 // therapist > medical > caregiver), with Enterprise patient appended
 // last since it is the newly-added fifth dimension and no existing
 // behavior ever ranked it.
-const PRIORITY_ORDER: ProfessionalOfficeKey[] = ['admin', 'therapy', 'medical', 'caregiver', 'patient'];
+const PRIORITY_ORDER: ProfessionalOfficeKey[] = ['owner', 'admin', 'therapy', 'medical', 'caregiver', 'patient'];
 
 function parseRequestedOffice(): ProfessionalOfficeKey | null {
   const segments = window.location.pathname.split('/').filter(Boolean); // ['Professional', 'Admin', ...]
@@ -337,6 +339,8 @@ export default function ProfessionalOfficeResolver() {
   const { state, dispatch } = useApp();
   const [loading, setLoading] = useState(true);
   const [orgs, setOrgs] = useState<MyOrganization[]>([]);
+  const [ownedOrgs,setOwnedOrgs] = useState<OwnedOrganization[]>([]);
+  const [ownerLoadError,setOwnerLoadError] = useState<string|null>(null);
   // P1 CODEX-002 CORRECTIVE ORDER (P1-01) — this used to be a plain
   // `is_my_enterprise_coverage_active()` boolean, which only ever asks
   // "am I personally a covered patient." An Authorized Patient
@@ -357,10 +361,12 @@ export default function ProfessionalOfficeResolver() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [o, subjectResult, app, invites, blocked] = await Promise.all([
-      getMyOrganizations(), supabase.rpc('get_my_patient_office_subject'), getMyApplication(), getMyPendingOrgInvites(), getMyLicenseBlockedMemberships(),
+    const [o, subjectResult, app, invites, blocked, owners] = await Promise.all([
+      getMyOrganizations(), supabase.rpc('get_my_patient_office_subject'), getMyApplication(), getMyPendingOrgInvites(), getMyLicenseBlockedMemberships(), loadOwnedOrganizations(),
     ]);
     setOrgs(o);
+    setOwnedOrgs(owners.data ?? []);
+    setOwnerLoadError(owners.error);
     setPatientOfficeSubjectId(typeof subjectResult.data === 'string' ? subjectResult.data : null);
     setMyApplication(app);
     setPendingInvites(invites);
@@ -399,6 +405,7 @@ export default function ProfessionalOfficeResolver() {
   const caregiver = orgs.find((o) => o.orgRole === 'caregiver');
 
   const availableOffices: { key: ProfessionalOfficeKey; orgName: string }[] = [
+    ...(ownedOrgs.length ? [{key:'owner' as const,orgName:ownedOrgs[0].organizationName}] : []),
     ...(director ? [{ key: 'admin' as const, orgName: director.organizationName }] : []),
     ...(therapist ? [{ key: 'therapy' as const, orgName: therapist.organizationName }] : []),
     ...(medical ? [{ key: 'medical' as const, orgName: medical.organizationName }] : []),
@@ -406,6 +413,15 @@ export default function ProfessionalOfficeResolver() {
     ...(patientOfficeSubjectId ? [{ key: 'patient' as const, orgName: 'Your Care Organization' }] : []),
   ];
 
+  if (availableOffices.length === 0 && ownerLoadError) {
+    return (
+      <div role="alert" className="mx-auto max-w-xl p-8 space-y-4">
+        <h1 className="text-xl font-bold">Ownership permissions could not be verified</h1>
+        <p className="text-sm">{ownerLoadError}</p>
+        <button className="rounded-xl border border-ent-line px-4 py-2" type="button" onClick={()=>{void refresh();}}>Retry authorization</button>
+      </div>
+    );
+  }
   if (availableOffices.length === 0) {
     // HCN organization license and office authentication
     // remediation, 2026-10-31 (P0-05). Takes priority over every
@@ -530,6 +546,7 @@ export default function ProfessionalOfficeResolver() {
   return (
     <div>
       {switcher}
+      {effective === 'owner' && ownedOrgs.length > 0 && <OrganizationOwnerWorkspace organizations={ownedOrgs} onUpdated={refresh} onOpenDirector={()=>navigateToOffice('admin')}/>}
       {effective === 'admin' && director && <OrganizationDirectorDashboard organizationId={director.organizationId} basePath={officeBasePath} />}
       {effective === 'caregiver' && <EnterpriseCaregiverDashboard basePath={officeBasePath} />}
       {effective === 'medical' && <ClinicalOfficeDashboard filterRole="medical_professional" basePath={officeBasePath} />}
