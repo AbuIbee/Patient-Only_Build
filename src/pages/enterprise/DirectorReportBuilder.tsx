@@ -32,6 +32,7 @@ const cleanCsv=(value:string)=>{
   return '"'+safe.replace(/"/g,'""')+'"';
 };
 const midnight=(day:string)=>new Date(day+'T00:00:00').toISOString();
+const dayAfter=(day:string)=>{const d=new Date(day+'T12:00:00');d.setDate(d.getDate()+1);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');};
 const dayKey=(d:Date)=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
 function rowsFor(kind:ReportKind,data:{visits:OrgVisit[];incidents:OrgIncidentReport[];handoffs:OrgShiftHandoff[];
   members:Array<OrgMembershipRow & {firstName:string;lastName:string;email:string}>;patients:OrgCoveredPatient[]}):ReportRow[]{
@@ -65,7 +66,7 @@ export default function DirectorReportBuilder({
   const now=new Date();
   const [kind,setKind]=useState<ReportKind>('visits');
   const [from,setFrom]=useState(()=>dayKey(new Date(now.getFullYear(),now.getMonth(),1)));
-  const [to,setTo]=useState(()=>dayKey(new Date(now.getFullYear(),now.getMonth()+1,1)));
+  const [to,setTo]=useState(()=>dayKey(new Date(now.getFullYear(),now.getMonth()+1,0)));
   const [search,setSearch]=useState('');
   const [status,setStatus]=useState('all');
   const [patient,setPatient]=useState('all');
@@ -77,13 +78,13 @@ export default function DirectorReportBuilder({
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState<string|null>(null);
   const [loadedKey,setLoadedKey]=useState('');
-  const validRange=!!from&&!!to&&Number.isFinite(new Date(from).getTime())&&Number.isFinite(new Date(to).getTime())&&from<to;
+  const validRange=!!from&&!!to&&Number.isFinite(new Date(from).getTime())&&Number.isFinite(new Date(to).getTime())&&from<=to;
   const activeDefinition=DEFINITIONS[kind];
   const load=async()=>{
-    if(!validRange){setError('End date must be after start date. The end boundary is exclusive.');return;}
+    if(!validRange){setError('Through date must be on or after From date.');return;}
     setLoading(true);setError(null);setLoadedKey('');
     try{
-      const a=midnight(from),b=midnight(to);
+      const a=midnight(from),b=midnight(dayAfter(to));
       const result=kind==='visits'?await getOrgVisitsWindow(orgId,a,b):
         kind==='incidents'?await getOrgIncidentReportsWindow(orgId,a,b):
         kind==='handoffs'?await getOrgShiftHandoffsWindow(orgId,a,b):null;
@@ -140,7 +141,7 @@ export default function DirectorReportBuilder({
           {(Object.keys(DEFINITIONS) as ReportKind[]).map(k=><option key={k} value={k}>{DEFINITIONS[k].title}</option>)}
         </select></label>
         <label className="text-xs font-semibold">From (inclusive)<input type="date" value={from} onChange={e=>{setFrom(e.target.value);setLoadedKey('');}} className={input}/></label>
-        <label className="text-xs font-semibold">To (exclusive)<input type="date" value={to} onChange={e=>{setTo(e.target.value);setLoadedKey('');}} className={input}/></label>
+        <label className="text-xs font-semibold">Through (inclusive)<input type="date" value={to} onChange={e=>{setTo(e.target.value);setLoadedKey('');}} className={input}/></label>
       </div>
       {kind!=='staff'&&kind!=='patients'&&<button type="button" onClick={()=>{void load();}} disabled={loading||!validRange}
         className="flex items-center gap-2 rounded-lg bg-ent-bronze px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 print:hidden">
@@ -167,7 +168,7 @@ export default function DirectorReportBuilder({
       </fieldset>
       <div aria-label="Printable report" className="space-y-2">
         <div><h3 className="font-bold text-ent-ink">{orgName}: {activeDefinition.title}</h3>
-          <p className="text-xs text-ent-muted">{kind==='staff'||kind==='patients'?'Current authorized snapshot':`Period: ${from} through ${to} (exclusive)`} · {loaded?displayed.length+' matching records':'Not generated'}</p></div>
+          <p className="text-xs text-ent-muted">{kind==='staff'||kind==='patients'?'Current authorized snapshot':`Period: ${from} through ${to} (inclusive)`} · {loaded?displayed.length+' matching records':'Not generated'}</p></div>
         {!loaded?<p role="status" className="text-sm text-ent-muted">{loading?'Loading authorized records…':'Generate a report to see its records.'}</p>:
           <div className="overflow-x-auto"><table className="w-full border-collapse text-left text-xs">
             <thead><tr className="bg-ent-pale">{selected.map(c=><th scope="col" key={c.key} className="border border-ent-line p-2">{c.label}</th>)}</tr></thead>
