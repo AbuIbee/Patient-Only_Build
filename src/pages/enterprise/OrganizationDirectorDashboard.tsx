@@ -48,6 +48,7 @@ import CareConversations from '@/components/communications/CareConversations';
 import HealthcareContacts from '@/components/healthcare/HealthcareContacts';
 import PatientInformation from '@/components/healthcare/PatientInformation';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
+import CareEscalationPanel from './CareEscalationPanel';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
 const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
@@ -1835,7 +1836,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       ) : nav === 'operations' ? (
         <CareOperationsView handoffs={handoffs} loadError={loadError} />
       ) : nav === 'incidents' ? (
-        <IncidentsView incidents={incidents} onResolved={() => { void refresh(); }} loadError={loadError} />
+        <div className="space-y-4"><CareEscalationPanel orgId={organizationId} role="director" patients={coveredPatients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><IncidentsView incidents={incidents} onResolved={() => { void refresh(); }} loadError={loadError} /></div>
       ) : nav === 'communications' ? (
         <DirectorCommunicationsView orgId={organizationId} />
       ) : nav === 'reports' ? (
