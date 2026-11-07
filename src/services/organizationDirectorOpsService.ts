@@ -148,6 +148,21 @@ export async function getOrgIncidentReportsResult(orgId: string, limit = 50): Pr
   return { data: data.map(mapOrgIncidentReport), error: null };
 }
 
+export async function getOrgIncidentReportsWindow(orgId:string,from:string,to:string):
+  Promise<{data:OrgIncidentReport[]|null;error:string|null}> {
+  const all:OrgIncidentReport[]=[];
+  for(let offset=0;offset<5000;offset+=500){
+    const {data,error}=await supabase.from('incident_reports').select(ORG_INCIDENT_SELECT)
+      .eq('organization_id',orgId).gte('occurred_at',from).lt('occurred_at',to)
+      .order('occurred_at',{ascending:true}).range(offset,offset+499);
+    if(error)return {data:null,error:error.message};
+    if(!data)return {data:null,error:'Incident report query did not return a result.'};
+    all.push(...data.map(mapOrgIncidentReport));
+    if(data.length<500)return {data:all,error:null};
+  }
+  return {data:null,error:'More than 5,000 incidents in this range. Reduce the report date range.'};
+}
+
 export interface OrgShiftHandoff {
   id: string; patientId: string; patientName: string; authorId: string; authorName: string;
   summary: string; pendingTasks: string | null; concerns: string | null; createdAt: string;
@@ -177,6 +192,21 @@ export async function getOrgShiftHandoffs(orgId: string, limit = 50): Promise<Or
     .limit(limit);
   if (error || !data) return [];
   return data.map(mapOrgShiftHandoff);
+}
+
+export async function getOrgShiftHandoffsWindow(orgId:string,from:string,to:string):
+  Promise<{data:OrgShiftHandoff[]|null;error:string|null}> {
+  const all:OrgShiftHandoff[]=[];
+  for(let offset=0;offset<5000;offset+=500){
+    const {data,error}=await supabase.from('shift_handoffs').select(ORG_HANDOFF_SELECT)
+      .eq('organization_id',orgId).gte('created_at',from).lt('created_at',to)
+      .order('created_at',{ascending:true}).range(offset,offset+499);
+    if(error)return {data:null,error:error.message};
+    if(!data)return {data:null,error:'Handoff query did not return a result.'};
+    all.push(...data.map(mapOrgShiftHandoff));
+    if(data.length<500)return {data:all,error:null};
+  }
+  return {data:null,error:'More than 5,000 handoffs in this range. Reduce the report date range.'};
 }
 
 // See getOrgVisitsResult() above -- same finding 011-03, same fix shape.
