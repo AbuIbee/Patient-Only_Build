@@ -85,6 +85,13 @@ BEGIN
     v_org,v_patient,'Fictional patient reports new dizziness and declined meal.', 'priority');
   INSERT INTO hcn_ops_results VALUES('caregiver escalation queued',
     (SELECT status FROM public.hcn_care_escalations WHERE id=v_case)='director_pending');
+  INSERT INTO hcn_ops_results VALUES('Director notified about new escalation',EXISTS(
+    SELECT 1 FROM public.enterprise_notifications WHERE recipient_user_id=v_director
+      AND related_entity_id=v_case
+      AND notification_type='hcn_care_escalation_director_attention'));
+  INSERT INTO hcn_ops_results VALUES('unrelated user never notified about case',NOT EXISTS(
+    SELECT 1 FROM public.enterprise_notifications WHERE recipient_user_id=v_stranger
+      AND related_entity_id=v_case));
 
   PERFORM set_config('request.jwt.claim.sub',v_stranger::text,true);
   v_deny:=false;
@@ -104,6 +111,10 @@ BEGIN
   INSERT INTO hcn_ops_results VALUES('Director requests clinical review',
     public.hcn_director_triage_escalation(
       v_case,'request_clinical_review','Fictional clinical review requested'));
+  INSERT INTO hcn_ops_results VALUES('assigned clinician notified of review request',EXISTS(
+    SELECT 1 FROM public.enterprise_notifications WHERE recipient_user_id=v_clinician
+      AND related_entity_id=v_case
+      AND notification_type='hcn_care_escalation_clinical_review'));
 
   PERFORM set_config('request.jwt.claim.sub',v_carer::text,true);
   v_deny:=false;
@@ -115,6 +126,10 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub',v_clinician::text,true);
   INSERT INTO hcn_ops_results VALUES('assigned clinician records review',
     public.hcn_clinician_review_escalation(v_case,'Fictional clinician contacted and assessed information'));
+  INSERT INTO hcn_ops_results VALUES('Director notified after clinical review',EXISTS(
+    SELECT 1 FROM public.enterprise_notifications WHERE recipient_user_id=v_director
+      AND related_entity_id=v_case
+      AND notification_type='hcn_care_escalation_director_close'));
 
   PERFORM set_config('request.jwt.claim.sub',v_director::text,true);
   INSERT INTO hcn_ops_results VALUES('Director closes after clinician review',
