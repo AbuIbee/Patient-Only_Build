@@ -66,6 +66,13 @@ BEGIN
   PERFORM public.hcn_acknowledge_previsit(v_visit,v_sections,v_attestation);
   INSERT INTO hcn_ops_results VALUES('reacknowledge after handoff',
     public.hcn_is_previsit_current(v_visit));
+  INSERT INTO public.medications(patient_id,name,dosage,instructions)
+    VALUES(v_patient,'Fictional Test Medication','No actual dosage','TEST DATA ONLY — no administration');
+  INSERT INTO hcn_ops_results VALUES('medication change invalidates previsit acknowledgment',
+    NOT public.hcn_is_previsit_current(v_visit));
+  PERFORM public.hcn_acknowledge_previsit(v_visit,v_sections,v_attestation);
+  INSERT INTO hcn_ops_results VALUES('reacknowledge after medication record change',
+    public.hcn_is_previsit_current(v_visit));
   INSERT INTO hcn_ops_results VALUES('visit can start after review',
     (public.start_caregiver_visit(v_visit)).status='in_progress');
 
