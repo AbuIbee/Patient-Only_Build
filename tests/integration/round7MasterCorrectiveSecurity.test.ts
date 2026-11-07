@@ -137,6 +137,16 @@ describe('SEC-02 — revoked staff cannot amend notes or start/end visits for a 
     expect(startStatus).toBeGreaterThanOrEqual(400);
 
     sql(`UPDATE public.staff_patient_assignments SET is_active=true WHERE user_id='${ids.caregiverA}' AND patient_id='${ids.patientA}';`);
+    // HCN pre-visit safety gate: assignment restoration alone is not enough.
+    // Acknowledgment is independently required for a legitimate visit start.
+    const [beforeReviewStatus] = await rpc('start_caregiver_visit', { p_visit_id: visitId }, tok.caregiverA);
+    expect(beforeReviewStatus).toBeGreaterThanOrEqual(400);
+    const [ackStatus] = await rpc('hcn_acknowledge_previsit', {
+      p_visit_id: visitId,
+      p_sections: ['patient_updates','care_plan','medications','healthcare_contacts','handoffs'],
+      p_attestation: 'I reviewed the available records and understand that this acknowledgment does not authorize clinical decisions.',
+    }, tok.caregiverA);
+    expect(ackStatus).toBe(200);
     const [resumedStartStatus] = await rpc('start_caregiver_visit', { p_visit_id: visitId }, tok.caregiverA);
     expect(resumedStartStatus).toBe(200);
 

@@ -302,6 +302,36 @@ export interface Database {
         // relationship above, never the referencing side.
         Relationships: []
       }
+      hcn_care_escalations: {
+        Row: {
+          id: string; organization_id: string; patient_id: string; created_by: string
+          reason: string; urgency: string; status: string
+          director_id: string | null; director_note: string | null
+          clinical_reviewer_id: string | null; clinical_note: string | null
+          resolution_note: string | null; created_at: string
+          director_reviewed_at: string | null; clinical_reviewed_at: string | null
+          resolved_at: string | null; updated_at: string
+        }
+        Insert: {
+          id?: string; organization_id: string; patient_id: string; created_by: string
+          reason: string; urgency: string; status?: string
+          director_id?: string | null; director_note?: string | null
+          clinical_reviewer_id?: string | null; clinical_note?: string | null
+          resolution_note?: string | null; created_at?: string
+          director_reviewed_at?: string | null; clinical_reviewed_at?: string | null
+          resolved_at?: string | null; updated_at?: string
+        }
+        Update: {
+          id?: string; organization_id?: string; patient_id?: string; created_by?: string
+          reason?: string; urgency?: string; status?: string
+          director_id?: string | null; director_note?: string | null
+          clinical_reviewer_id?: string | null; clinical_note?: string | null
+          resolution_note?: string | null; created_at?: string
+          director_reviewed_at?: string | null; clinical_reviewed_at?: string | null
+          resolved_at?: string | null; updated_at?: string
+        }
+        Relationships: []
+      }
       caregiver_visits: {
         Row: {
           actual_end: string | null
@@ -4455,6 +4485,17 @@ export interface Database {
       }
     }
     Functions: {
+      hcn_acknowledge_previsit: { Args: { p_visit_id: string; p_sections: string[]; p_attestation: string }; Returns: string }
+      hcn_is_previsit_current: { Args: { p_visit_id: string }; Returns: boolean }
+      hcn_submit_care_escalation: { Args: { p_org_id: string; p_patient_id: string; p_reason: string; p_urgency: string }; Returns: string }
+      hcn_director_triage_escalation: { Args: { p_id: string; p_action: string; p_note: string }; Returns: boolean }
+      hcn_clinician_review_escalation: { Args: { p_id: string; p_note: string }; Returns: boolean }
+      hcn_director_close_escalation: { Args: { p_id: string; p_note: string }; Returns: boolean }
+      hcn_my_owned_organizations: {
+        Args: Record<PropertyKey, never>
+        Returns: { organization_id: string; organization_name: string; license_active: boolean; director_enabled: boolean }[]
+      }
+      hcn_owner_enable_director_office: { Args: { p_org_id: string }; Returns: boolean }
       hcn_get_patient_information: { Args: { p_org_id: string; p_patient_id: string }; Returns: Json }
       hcn_save_patient_information: { Args: { p_org_id: string; p_patient_id: string; p_changes: Json; p_expected_version?: number | null }; Returns: Json }
       // HCN-CARE-MASTER-001/002: version-checked patient healthcare directory.
