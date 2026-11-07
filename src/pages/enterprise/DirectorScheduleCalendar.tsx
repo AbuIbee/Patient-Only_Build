@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {CalendarDays,ChevronLeft,ChevronRight,Loader2,Printer} from 'lucide-react';
 import {toast} from 'sonner';
-import {getOrgStaffPatientAssignments,type OrgCoveredPatient,type OrgMembershipRow,type StaffPatientAssignment} from '@/services/organizationService';
+import {getOrgStaffPatientAssignmentsResult,type OrgCoveredPatient,type OrgMembershipRow,type StaffPatientAssignment} from '@/services/organizationService';
 import {getOrgVisitsWindow,scheduleAssignedCaregiverVisit,type OrgVisit} from '@/services/organizationDirectorOpsService';
 
 type CalendarMode='month'|'week'|'day';
@@ -51,8 +51,11 @@ export default function DirectorScheduleCalendar({orgId,patients,members,onChang
   useEffect(()=>{void load();},[load]);
   useEffect(()=>{
     let active=true;setAssignmentsReady(false);
-    getOrgStaffPatientAssignments(orgId).then(rows=>{if(active){setAssignments(rows);setAssignmentError(null);}})
-      .catch(()=>{if(active){setAssignmentError('Cannot confirm caregiver assignments.');setAssignments([]);}})
+    getOrgStaffPatientAssignmentsResult(orgId).then(result=>{
+      if(!active)return;
+      if(result.error){setAssignmentError(result.error);setAssignments([]);}
+      else {setAssignments(result.data??[]);setAssignmentError(null);}
+    }).catch(()=>{if(active){setAssignmentError('Cannot confirm caregiver assignments.');setAssignments([]);}})
       .finally(()=>{if(active)setAssignmentsReady(true);});
     return ()=>{active=false;};
   },[orgId]);
