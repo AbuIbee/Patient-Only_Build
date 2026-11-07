@@ -50,6 +50,7 @@ import PatientInformation from '@/components/healthcare/PatientInformation';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
 import CareEscalationPanel from './CareEscalationPanel';
 import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
+import { scheduleCaregiverVisit } from '@/services/enterpriseCaregiverWorkToolsService';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
 const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
@@ -1483,29 +1484,97 @@ function ApplicationsReviewView({ organizationId }: { organizationId: string }) 
   );
 }
 
-function SchedulingOversightView({ visits, loadError }: { visits: OrgVisit[]; loadError?: string | null }) {
+function SchedulingOversightView({
+  orgId, visits, patients, members, loadError, onChanged,
+}: {
+  orgId: string;
+  visits: OrgVisit[];
+  patients: OrgCoveredPatient[];
+  members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
+  loadError?: string | null;
+  onChanged: () => void;
+}) {
+  const [assignments, setAssignments] = useState<StaffPatientAssignment[]>([]);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(true);
+  const [patientId, setPatientId] = useState('');
+  const [startAt, setStartAt] = useState('');
+  const [endAt, setEndAt] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setAssignmentsLoading(true);
+    getOrgStaffPatientAssignments(orgId)
+      .then(rows => { if (live) { setAssignments(rows); setAssignmentError(null); } })
+      .catch(() => { if (live) { setAssignments([]); setAssignmentError('Caregiver assignments could not be verified.'); } })
+      .finally(() => { if (live) setAssignmentsLoading(false); });
+    return () => { live = false; };
+  }, [orgId]);
+  const activeCaregivers = (pId: string) => assignments.filter(a =>
+    a.patientId === pId && a.orgRole === 'caregiver' && a.isActive &&
+    members.some(m => m.userId === a.userId && m.orgRole === 'caregiver' && m.status === 'active'));
+  const selectedCaregivers = activeCaregivers(patientId);
+  const selectedCaregiver = selectedCaregivers.length === 1 ? members.find(m => m.userId === selectedCaregivers[0].userId) : null;
+  const startDate = startAt ? new Date(startAt) : null;
+  const endDate = endAt ? new Date(endAt) : null;
+  const validWindow = !!startDate && !!endDate && Number.isFinite(startDate.getTime()) &&
+    Number.isFinite(endDate.getTime()) && endDate.getTime() > startDate.getTime();
+  const overlap = validWindow && selectedCaregiver && visits.some(v =>
+    v.caregiverId === selectedCaregiver.userId &&
+    (v.status === 'scheduled' || v.status === 'in_progress') &&
+    !!v.scheduledStart && !!v.scheduledEnd &&
+    new Date(v.scheduledStart) < endDate! && new Date(v.scheduledEnd) > startDate!);
+  const schedule = async () => {
+    if (!patientId || !validWindow || selectedCaregivers.length !== 1 || loadError || assignmentError || overlap || saving) return;
+    setSaving(true);
+    try {
+      const result = await scheduleCaregiverVisit(orgId, patientId, startDate!.toISOString(), endDate!.toISOString());
+      if (result.error) { toast.error(result.error); return; }
+      if (result.visit?.caregiverId !== selectedCaregivers[0].userId) {
+        toast.error('Scheduled caregiver did not match the validated assignment. Review the visit immediately.');
+      } else {
+        toast.success('Visit scheduled for the assigned caregiver.');
+      }
+      setPatientId(''); setStartAt(''); setEndAt('');
+      onChanged();
+    } finally { setSaving(false); }
+  };
   return (
     <OfficeCard>
       <div className="flex items-center gap-2"><CalendarClock className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Scheduling Oversight</h2></div>
+      <p className="text-sm text-ent-text">Directors schedule visits. Caregivers see their assigned visits, acknowledge pre-visit updates, clock in on arrival, and clock out with visit notes.</p>
+      <section aria-label="Director schedule visit" className="space-y-3 rounded-xl border border-ent-line bg-ent-bg p-4">
+        <h3 className="text-sm font-bold text-ent-ink">Schedule a caregiver visit</h3>
+        <label className="block text-sm text-ent-ink">Covered patient
+          <select value={patientId} onChange={e => setPatientId(e.target.value)} className={inputCls + ' mt-1'}>
+            <option value="">Choose patient…</option>
+            {patients.map(p => <option key={p.patientId} value={p.patientId}>{p.preferredName || p.firstName + ' ' + p.lastName}</option>)}
+          </select>
+        </label>
+        {patientId && <p className="text-xs text-ent-text">Assigned caregiver: {assignmentsLoading ? 'Verifying assignments…' :
+          selectedCaregivers.length === 1 ? (selectedCaregiver ? selectedCaregiver.firstName + ' ' + selectedCaregiver.lastName : 'Unverified') :
+          selectedCaregivers.length === 0 ? 'No active caregiver assigned. Assign one in Assignments and Coverage first.' :
+          'Multiple caregivers assigned. This scheduling RPC cannot safely select one; use Assignments and Coverage to resolve the assignment before scheduling.'}</p>}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm text-ent-ink">Start time <input type="datetime-local" value={startAt} onChange={e => setStartAt(e.target.value)} className={inputCls + ' mt-1'} /></label>
+          <label className="block text-sm text-ent-ink">End time <input type="datetime-local" value={endAt} onChange={e => setEndAt(e.target.value)} className={inputCls + ' mt-1'} /></label>
+        </div>
+        {!validWindow && startAt && endAt && <p role="alert" className="text-xs text-ent-rust">End time must be later than start time.</p>}
+        {overlap && <p role="alert" className="text-xs text-ent-rust">This caregiver already has a visit overlapping these times.</p>}
+        {(loadError || assignmentError) && <p role="alert" className="text-xs text-ent-rust">Schedule verification unavailable; scheduling disabled until data loads successfully.</p>}
+        <button type="button" disabled={saving || assignmentsLoading || !!assignmentError || !!loadError || !patientId || selectedCaregivers.length !== 1 || !selectedCaregiver || !validWindow || !!overlap} onClick={() => { void schedule(); }}
+          className="rounded-xl bg-ent-bronze px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Scheduling…' : 'Schedule Visit'}</button>
+      </section>
       {visits.length === 0 ? (
-        loadError ? (
-          <p className="text-sm text-gentle-coral font-semibold">Visits could not be confirmed right now — this is not a statement that none are scheduled.</p>
-        ) : (
+        loadError ? <p className="text-sm text-ent-rust">Visits could not be confirmed right now.</p> :
           <p className="text-sm text-ent-text">No visits have been scheduled yet across your organization.</p>
-        )
-      ) : (
-        <ul className="space-y-2">
-          {visits.map((v) => (
-            <li key={v.id} className="p-3 bg-ent-bg rounded-xl border border-ent-line flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-ent-ink truncate">{v.caregiverName} → {v.patientName}</p>
-                <p className="text-xs text-ent-muted">{v.scheduledStart ? new Date(v.scheduledStart).toLocaleString() : 'No time set'}</p>
-              </div>
-              <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-ent-pale text-ent-ink capitalize flex-shrink-0">{v.status.replace('_', ' ')}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      ) : <ul className="space-y-2">{visits.map(v => <li key={v.id} className="p-3 bg-ent-bg rounded-xl border border-ent-line flex items-center justify-between gap-3">
+        <div className="min-w-0"><p className="text-sm font-semibold text-ent-ink truncate">{v.caregiverName} → {v.patientName}</p>
+          <p className="text-xs text-ent-muted">{v.scheduledStart ? new Date(v.scheduledStart).toLocaleString() : 'No time set'}{v.scheduledEnd ? ' – ' + new Date(v.scheduledEnd).toLocaleString() : ''}</p>
+          {v.actualStart && <p className="text-xs text-ent-text">Clocked in: {new Date(v.actualStart).toLocaleString()}{v.actualEnd ? ' · Out: ' + new Date(v.actualEnd).toLocaleString() : ''}</p>}
+        </div>
+        <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-ent-pale text-ent-ink capitalize flex-shrink-0">{v.status.replace('_', ' ')}</span>
+      </li>)}</ul>}
     </OfficeCard>
   );
 }
@@ -1835,7 +1904,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       ) : nav === 'assignments' ? (
         <AssignmentsCard orgId={organizationId} members={members} />
       ) : nav === 'scheduling' ? (
-        <SchedulingOversightView visits={visits} loadError={loadError} />
+        <SchedulingOversightView orgId={organizationId} visits={visits} patients={coveredPatients} members={members} loadError={loadError} onChanged={() => { void refresh(); }} />
       ) : nav === 'operations' ? (
         <CareOperationsView handoffs={handoffs} loadError={loadError} />
       ) : nav === 'incidents' ? (
