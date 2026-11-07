@@ -45,6 +45,8 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test:unit
+      - name: Build production frontend bundle
+        run: npm run build
 
   integration:
     runs-on: ubuntu-latest
