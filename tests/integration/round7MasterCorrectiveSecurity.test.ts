@@ -74,6 +74,10 @@ afterAll(async () => {
   // (all FK patient_id ... ON DELETE CASCADE) -- without this, a
   // hardcoded fixture title (e.g. 'R7MC task') would collide with a
   // leftover row from a prior run's aborted/failed teardown.
+  // New care-operations records intentionally use restrictive patient FKs for audit
+  // integrity. Delete only this synthetic test patient's dependent records first.
+  sql(`DELETE FROM public.hcn_previsit_acknowledgments WHERE patient_id='${ids.patientA}';
+       DELETE FROM public.hcn_care_escalations WHERE patient_id='${ids.patientA}';`);
   sql(`DELETE FROM public.patients WHERE id='${ids.patientA}';`);
   sql(`DELETE FROM organizations WHERE id='${ORG}';`);
   for (const id of Object.values(ids)) await authDeleteUser(id);
