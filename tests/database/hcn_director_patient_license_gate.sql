@@ -38,7 +38,7 @@ BEGIN
   BEGIN
     PERFORM public.hcn_save_patient_contact(p_patient_id => patient_id,p_provider_id => contact.id,
       p_provider_name => 'Stale edit',p_provider_role => 'Primary physician',p_expected_version => 0);
-  EXCEPTION WHEN serialization_failure THEN denied := true;
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN denied := true;
   END;
   INSERT INTO hcn_gate_evidence VALUES('stale contact edit denied',denied,true);
   contact := public.hcn_save_patient_contact(p_patient_id => patient_id,p_provider_id => contact.id,
