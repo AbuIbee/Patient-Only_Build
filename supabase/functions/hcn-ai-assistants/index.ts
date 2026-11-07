@@ -121,21 +121,40 @@ Deno.serve(async(req:Request)=>{
         x.organization_id===orgId&&x.patient_id===patientId&&x.org_role==='caregiver')){
         return response(origin,403,{error:'Patient is not actively assigned to this caregiver'});
       }
-      const [visits,handoffs,escalations]=await Promise.all([
+      const [visits,handoffs,escalations,notes,moods,medications]=await Promise.all([
         db.from('caregiver_visits').select('id,status,scheduled_start,actual_end')
           .eq('organization_id',orgId).eq('patient_id',patientId)
           .eq('caregiver_id',user.id).order('created_at',{ascending:false}).limit(30),
         db.from('shift_handoffs').select('id,created_at').eq('organization_id',orgId)
           .eq('patient_id',patientId).order('created_at',{ascending:false}).limit(30),
         db.from('hcn_care_escalations').select('id,status,urgency').eq('organization_id',orgId)
-          .eq('patient_id',patientId).limit(50)
+          .eq('patient_id',patientId).limit(50),
+        db.from('patient_notes').select('id,note,note_type,updated_at').eq('patient_id',patientId)
+          .not('note_type','in','("therapist_session","clinical_observation","care_partner_personal")')
+          .order('updated_at',{ascending:false}).limit(25),
+        db.from('mood_entries').select('id,mood,note,created_at').eq('patient_id',patientId)
+          .order('created_at',{ascending:false}).limit(5),
+        db.from('medications').select('id,name,updated_at').eq('patient_id',patientId)
+          .order('updated_at',{ascending:false}).limit(25)
       ]);
-      if(visits.error||handoffs.error||escalations.error)
-        return response(origin,503,{error:'Patient records could not be verified; no care brief was generated'});
+      if(visits.error||handoffs.error||escalations.error||notes.error||moods.error||medications.error)
+        return response(origin,503,{error:'One or more authorized patient record sources could not be verified; no brief was generated'});
       const scheduled=(visits.data??[]).filter(x=>x.status==='scheduled').length;
       const open=(escalations.data??[]).filter(x=>x.status!=='resolved').length;
       const latest=(handoffs.data??[])[0]?.created_at??null;
-      summary=`Caregiver Helper (read-only local mode): ${scheduled} scheduled visits for this assigned patient; ${open} care escalations not yet resolved; latest handoff ${latest?new Date(latest).toISOString():'not recorded'}. Review the actual patient information, care plan, medications and handoffs before acknowledging the next visit.`;
+      const lastCompleted=(visits.data??[]).filter(v=>v.actual_end)
+        .map(v=>new Date(v.actual_end).getTime()).filter(Number.isFinite).sort((a,b)=>b-a)[0];
+      const since=new Date(lastCompleted??Date.now()-7*24*60*60*1000);
+      const changedNotes=(notes.data??[]).filter(n=>new Date(n.updated_at)>=since).slice(0,4);
+      const recentMoods=(moods.data??[]).filter(m=>new Date(m.created_at)>=since).slice(0,3);
+      const recentMedicationChanges=(medications.data??[]).filter(m=>new Date(m.updated_at)>=since).slice(0,5);
+      const noteSummaries=changedNotes.map(n=>new Date(n.updated_at).toLocaleDateString('en-US')+': '+String(n.note).slice(0,240)).join(' | ');
+      const moodSummaries=recentMoods.map(m=>new Date(m.created_at).toLocaleDateString('en-US')+': '+String(m.mood).slice(0,60)).join(' | ');
+      const medSummaries=recentMedicationChanges.map(m=>String(m.name).slice(0,80)+' (record changed '+new Date(m.updated_at).toLocaleDateString('en-US')+')').join(' | ');
+      summary=`Caregiver Helper (read-only local mode): ${scheduled} scheduled visits; ${open} unresolved care escalations; latest handoff ${latest?new Date(latest).toISOString():'not recorded'}. Records reviewed since ${since.toISOString()}${lastCompleted?' (last completed visit)':' (7-day first-visit fallback)'}.
+Patient and caregiver notes: ${noteSummaries||'No authorized updates in this window'}.
+Patient wellness reports: ${moodSummaries||'No recorded mood updates in this window'}.
+Medication-record changes: ${medSummaries||'No medication-record changes in this window'}. Changes to the record are not confirmed medication orders. Review the source records before acting. Continence and meal intake require explicit record entries and are never inferred.`;
       sourceLinks.push({label:'Patient Information',url:orgLink('Caregiver/patients/'+patientId)+'?org='+orgId},
         {label:'My Schedule',url:orgLink('Caregiver/schedule')},
         {label:'Alerts and Escalations',url:orgLink('Caregiver/alerts')});
