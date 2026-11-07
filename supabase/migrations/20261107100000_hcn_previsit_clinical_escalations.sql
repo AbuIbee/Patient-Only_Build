@@ -13,9 +13,14 @@ CREATE TABLE IF NOT EXISTS public.hcn_previsit_acknowledgments (
   latest_contacts_at timestamptz,
   latest_patient_information_at timestamptz,
   attestation text NOT NULL,
-  acknowledged_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (visit_id,caregiver_id)
+  acknowledged_at timestamptz NOT NULL DEFAULT now()
 );
+-- Older staging iteration had one mutable receipt per visit. Drop that
+-- uniqueness to retain each re-review as a separate immutable event.
+ALTER TABLE public.hcn_previsit_acknowledgments
+  DROP CONSTRAINT IF EXISTS hcn_previsit_acknowledgments_visit_id_caregiver_id_key;
+CREATE INDEX IF NOT EXISTS hcn_previsit_visit_history_idx
+  ON public.hcn_previsit_acknowledgments(visit_id,caregiver_id,acknowledged_at DESC);
 ALTER TABLE public.hcn_previsit_acknowledgments
   ADD COLUMN IF NOT EXISTS latest_medications_at timestamptz,
   ADD COLUMN IF NOT EXISTS latest_contacts_at timestamptz,
@@ -80,14 +85,6 @@ BEGIN
     (visit_id,organization_id,patient_id,caregiver_id,reviewed_sections,latest_handoff_at,latest_patient_note_at,latest_medications_at,latest_contacts_at,latest_patient_information_at,attestation)
   VALUES(p_visit_id,v_visit.organization_id,v_visit.patient_id,auth.uid(),
          p_sections,v_handoff,v_note,v_meds,v_contacts,v_info,p_attestation)
-  ON CONFLICT (visit_id,caregiver_id) DO UPDATE SET
-    reviewed_sections=EXCLUDED.reviewed_sections,
-    latest_handoff_at=EXCLUDED.latest_handoff_at,
-    latest_patient_note_at=EXCLUDED.latest_patient_note_at,
-    latest_medications_at=EXCLUDED.latest_medications_at,
-    latest_contacts_at=EXCLUDED.latest_contacts_at,
-    latest_patient_information_at=EXCLUDED.latest_patient_information_at,
-    attestation=EXCLUDED.attestation, acknowledged_at=now()
   RETURNING id INTO v_id;
   RETURN v_id;
 END;
@@ -105,6 +102,9 @@ AS $fn$
       AND ack.caregiver_id=v.caregiver_id AND ack.organization_id=v.organization_id
       AND (v.caregiver_id=(SELECT auth.uid()) OR public.is_active_org_director(v.organization_id))
       AND ack.patient_id=v.patient_id
+      AND ack.id=(SELECT recent.id FROM public.hcn_previsit_acknowledgments recent
+        WHERE recent.visit_id=v.id AND recent.caregiver_id=v.caregiver_id
+        ORDER BY recent.acknowledged_at DESC,recent.id DESC LIMIT 1)
       AND ack.acknowledged_at>now()-interval '24 hours'
       AND ack.latest_handoff_at IS NOT DISTINCT FROM (
         SELECT max(h.created_at) FROM public.shift_handoffs h
@@ -192,6 +192,27 @@ USING (
   )
 );
 
+CREATE TABLE IF NOT EXISTS public.hcn_care_escalation_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  escalation_id uuid NOT NULL REFERENCES public.hcn_care_escalations(id),
+  actor_id uuid NOT NULL REFERENCES public.profiles(id),
+  event_type text NOT NULL CHECK (event_type IN ('submitted','director_triaged','clinician_reviewed','director_closed')),
+  from_status text,
+  to_status text NOT NULL,
+  detail text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS hcn_escalation_events_case_idx
+  ON public.hcn_care_escalation_events(escalation_id,created_at DESC);
+ALTER TABLE public.hcn_care_escalation_events ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.hcn_care_escalation_events FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.hcn_care_escalation_events TO authenticated;
+GRANT ALL ON public.hcn_care_escalation_events TO service_role;
+DROP POLICY IF EXISTS "HCN scoped escalation event history" ON public.hcn_care_escalation_events;
+CREATE POLICY "HCN scoped escalation event history"
+  ON public.hcn_care_escalation_events FOR SELECT TO authenticated
+  USING(EXISTS(SELECT 1 FROM public.hcn_care_escalations e WHERE e.id=escalation_id));
+
 CREATE OR REPLACE FUNCTION public.hcn_submit_care_escalation(
   p_org_id uuid,p_patient_id uuid,p_reason text,p_urgency text
 ) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''
@@ -217,6 +238,9 @@ BEGIN
     (organization_id,patient_id,created_by,reason,urgency)
   VALUES(p_org_id,p_patient_id,auth.uid(),btrim(p_reason),p_urgency)
   RETURNING id INTO v_id;
+  INSERT INTO public.hcn_care_escalation_events
+    (escalation_id,actor_id,event_type,from_status,to_status,detail)
+  VALUES(v_id,auth.uid(),'submitted',NULL,'director_pending',btrim(p_reason));
   RETURN v_id;
 END;
 $fn$;
@@ -245,6 +269,11 @@ BEGIN
     resolved_at=CASE WHEN p_action='resolve_nonclinical' THEN now() ELSE NULL END,
     resolution_note=CASE WHEN p_action='resolve_nonclinical' THEN btrim(p_note) ELSE NULL END,
     updated_at=now() WHERE id=p_id;
+  INSERT INTO public.hcn_care_escalation_events
+    (escalation_id,actor_id,event_type,from_status,to_status,detail)
+  VALUES(p_id,auth.uid(),'director_triaged','director_pending',
+    CASE WHEN p_action='request_clinical_review' THEN 'clinical_review_requested' ELSE 'resolved' END,
+    btrim(p_note));
   RETURN true;
 END;
 $fn$;
@@ -274,6 +303,9 @@ BEGIN
   UPDATE public.hcn_care_escalations SET status='clinical_reviewed',
     clinical_reviewer_id=auth.uid(),clinical_note=btrim(p_note),
     clinical_reviewed_at=now(),updated_at=now() WHERE id=p_id;
+  INSERT INTO public.hcn_care_escalation_events
+    (escalation_id,actor_id,event_type,from_status,to_status,detail)
+  VALUES(p_id,auth.uid(),'clinician_reviewed','clinical_review_requested','clinical_reviewed',btrim(p_note));
   RETURN true;
 END;
 $fn$;
@@ -296,6 +328,9 @@ BEGIN
   UPDATE public.hcn_care_escalations
     SET status='resolved',resolution_note=btrim(p_note),resolved_at=now(),updated_at=now()
     WHERE id=p_id;
+  INSERT INTO public.hcn_care_escalation_events
+    (escalation_id,actor_id,event_type,from_status,to_status,detail)
+  VALUES(p_id,auth.uid(),'director_closed','clinical_reviewed','resolved',btrim(p_note));
   RETURN true;
 END;
 $fn$;
