@@ -900,27 +900,6 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
         <RegistrationAction orgId={orgId} onChanged={onPatientRegistered} compact />
       </div>
 
-      <HaneenAssistantPanel role="caregiver" organizationId={orgId}
-        patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
-
-      <section aria-label="Search assigned patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
-        <label htmlFor="caregiver-dashboard-search" className="block text-sm font-bold text-ent-ink">Search my assigned patients</label>
-        <input id="caregiver-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
-          placeholder="Search patient name or reference…" autoComplete="off"
-          className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
-        {dashboardSearch.trim() && (
-          <div role="region" aria-label="Matching assigned patients" className="space-y-2">
-            {matchingPatients.length ? matchingPatients.map(patient => (
-              <button type="button" key={patient.patientId} onClick={() => onOpenInformation(patient.patientId)}
-                className="flex w-full items-center justify-between rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
-                <span>{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-xs text-ent-bronze">Open Patient Information →</span>
-              </button>
-            )) : <p className="text-sm text-ent-muted">No assigned patient matches this search.</p>}
-          </div>
-        )}
-        <p className="text-xs text-ent-muted">Select a patient to search their allergies, conditions, providers and care information.</p>
-      </section>
-
       <section aria-label="Caregiver quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="font-bold text-ent-ink">What do you need to do next?</h2>
@@ -947,6 +926,27 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
           Visit verification, offline storage, and clinical authorization follow the workflows you open.
           An offline indicator alone does not mean a note has been saved or synchronized.
         </p>
+      </section>
+
+      <HaneenAssistantPanel role="caregiver" organizationId={orgId}
+        patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
+
+      <section aria-label="Search assigned patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
+        <label htmlFor="caregiver-dashboard-search" className="block text-sm font-bold text-ent-ink">Search my assigned patients</label>
+        <input id="caregiver-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
+          placeholder="Search patient name or reference…" autoComplete="off"
+          className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
+        {dashboardSearch.trim() && (
+          <div role="region" aria-label="Matching assigned patients" className="space-y-2">
+            {matchingPatients.length ? matchingPatients.map(patient => (
+              <button type="button" key={patient.patientId} onClick={() => onOpenInformation(patient.patientId)}
+                className="flex w-full items-center justify-between rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
+                <span>{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-xs text-ent-bronze">Open Patient Information →</span>
+              </button>
+            )) : <p className="text-sm text-ent-muted">No assigned patient matches this search.</p>}
+          </div>
+        )}
+        <p className="text-xs text-ent-muted">Select a patient to search their allergies, conditions, providers and care information.</p>
       </section>
 
       {/* H02 — the FIVE approved summary counts ("assigned patients,
