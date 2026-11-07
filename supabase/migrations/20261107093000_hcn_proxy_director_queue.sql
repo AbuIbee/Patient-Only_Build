@@ -52,14 +52,14 @@ ON public.hcn_representative_change_requests FOR SELECT TO authenticated
 USING (
   EXISTS(SELECT 1 FROM public.covered_patient_memberships c
     JOIN public.organization_licenses l ON l.organization_id=c.organization_id AND l.status='active'
-    WHERE c.organization_id=organization_id AND c.patient_id=patient_id AND c.status='active')
+    WHERE c.organization_id=hcn_representative_change_requests.organization_id AND c.patient_id=hcn_representative_change_requests.patient_id AND c.status='active')
   AND (
-    patient_id=(SELECT auth.uid())
-    OR public.is_active_org_director(organization_id)
+    hcn_representative_change_requests.patient_id=(SELECT auth.uid())
+    OR public.is_active_org_director(hcn_representative_change_requests.organization_id)
     OR EXISTS(SELECT 1 FROM public.staff_patient_assignments a
       JOIN public.organization_memberships m ON m.organization_id=a.organization_id
         AND m.user_id=a.user_id AND m.status='active' AND m.org_role='caregiver'
-      WHERE a.organization_id=organization_id AND a.patient_id=patient_id
+      WHERE a.organization_id=hcn_representative_change_requests.organization_id AND a.patient_id=hcn_representative_change_requests.patient_id
         AND a.user_id=(SELECT auth.uid()) AND a.is_active)
   )
 );
