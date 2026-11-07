@@ -43,9 +43,8 @@ export default function HaneenAssistantPanel({
       <h2 className="flex gap-2 items-center text-lg font-bold text-ent-ink">
         <Sparkles className="w-5 h-5 text-ent-bronze"/>{title}
       </h2>
-      <span className="rounded-lg bg-ent-pale px-2 py-1 text-xs font-semibold">Local Read-Only Preview · $0 AI</span>
     </div>
-    <p className="text-sm text-ent-muted">Get verified, role-scoped scheduling and care-operation summaries. AI model responses are not enabled; no patient records are sent to Vercel AI Gateway.</p>
+    <p className="text-sm text-ent-muted">Review role-scoped scheduling and care-operation summaries. Confirm details in the linked records before taking action.</p>
     {role==='caregiver'&&
       <label className="block text-sm font-semibold text-ent-ink">Assigned patient
         <select value={patientId} onChange={e=>{setPatientId(e.target.value);setResult(null);}}
