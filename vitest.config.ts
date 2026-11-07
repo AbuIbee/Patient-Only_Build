@@ -12,7 +12,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/unit/**/*.test.ts'],
+    include: ['tests/unit/**/*.test.ts', 'src/**/*.test.ts'],
     // FUNCTIONAL-REPAIR-004 / REPAIR 3: `*.test-d.ts` files are type-level
     // regression checks (run via `npx vitest typecheck`, not the normal
     // `npm run test:unit` — the `include` above does not match this

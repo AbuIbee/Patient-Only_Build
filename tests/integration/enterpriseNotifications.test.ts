@@ -186,17 +186,17 @@ describe('MMA-ENT-SALES-006 Phase I2 — enterprise notification center (migrati
     `);
     createdOrgIds.push(orgId);
 
-    const [inviteStatus] = await rpc('invite_org_member', { p_org_id: orgId, p_email: staff, p_org_role: 'caregiver' }, dirTok);
+    const [inviteStatus] = await rpc('invite_org_member', { p_org_id: orgId, p_email: staff, p_org_role: 'billing_admin' }, dirTok);
     expect(inviteStatus).toBe(200);
 
     const invitedNotif = sql(`SELECT notification_type, body FROM enterprise_notifications WHERE recipient_user_id='${staffId}' AND related_entity_type='organization_membership' AND notification_type='membership_invited';`);
-    expect(invitedNotif).toBe('membership_invited|Role: caregiver');
+    expect(invitedNotif).toBe('membership_invited|Role: billing_admin');
 
     // Re-inviting the SAME still-invited membership (e.g. the director
     // double-clicking Invite) must not create a second notification --
     // the trigger's own WHEN condition only fires on a genuine
     // transition INTO 'invited', and OLD.status is already 'invited'.
-    await rpc('invite_org_member', { p_org_id: orgId, p_email: staff, p_org_role: 'caregiver' }, dirTok);
+    await rpc('invite_org_member', { p_org_id: orgId, p_email: staff, p_org_role: 'billing_admin' }, dirTok);
     const notifCountStillInvited = sql(`SELECT count(*) FROM enterprise_notifications WHERE recipient_user_id='${staffId}' AND notification_type='membership_invited';`);
     expect(notifCountStillInvited).toBe('1');
 
@@ -205,7 +205,7 @@ describe('MMA-ENT-SALES-006 Phase I2 — enterprise notification center (migrati
     // (not deduped, because it is a real new event, not a duplicate
     // fire of the same one).
     sql(`UPDATE organization_memberships SET status='revoked' WHERE organization_id='${orgId}' AND user_id='${staffId}';`);
-    await rpc('invite_org_member', { p_org_id: orgId, p_email: staff, p_org_role: 'caregiver' }, dirTok);
+    await rpc('invite_org_member', { p_org_id: orgId, p_email: staff, p_org_role: 'billing_admin' }, dirTok);
     const notifCountAfterReinvite = sql(`SELECT count(*) FROM enterprise_notifications WHERE recipient_user_id='${staffId}' AND notification_type='membership_invited';`);
     expect(notifCountAfterReinvite).toBe('2');
 

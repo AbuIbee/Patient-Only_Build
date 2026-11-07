@@ -39,11 +39,13 @@ beforeAll(async () => {
   `);
   for (const [name, email] of Object.entries(emails)) tok[name] = await login(email, PW);
 
-  const [, app] = (await rpc('submit_professional_application', {
-    p_requested_office: 'caregiver', p_target_organization_id: ORG, p_proposed_organization_name: null, p_proposed_package_type: null,
+  const [submissionStatus, app] = (await rpc('submit_professional_application', {
+    p_requested_office: 'therapist', p_target_organization_id: ORG, p_proposed_organization_name: null, p_proposed_package_type: null,
     p_legal_name: 'CVG Applicant', p_preferred_name: null, p_contact_email: emails.applicant, p_contact_phone: null,
-    p_professional_title: 'Caregiver', p_profession_category: 'caregiver', p_application_details: {},
+    p_professional_title: 'Physical Therapist', p_profession_category: 'therapy', p_application_details: {},
   }, tok.applicant)) as [number, { id: string }];
+  expect(submissionStatus, JSON.stringify(app)).toBe(200);
+  expect(app.id).toBeTruthy();
   applicationId = app.id;
 }, 30000);
 
@@ -86,7 +88,7 @@ describe('Credential verification gate (migration 089)', () => {
 
   it('the reviewing director CAN record an independently_verified decision, with reviewer identity, timestamp, and evidence preserved', async () => {
     const [status, body] = (await rpc('record_credential_verification', {
-      p_application_id: applicationId, p_decision: 'independently_verified', p_evidence_reference: 'Confirmed caregiver certification number against state registry lookup, ref #CVG-TEST-001',
+      p_application_id: applicationId, p_decision: 'independently_verified', p_evidence_reference: 'Confirmed therapist license number against state registry lookup, ref #CVG-TEST-001',
     }, tok.director)) as [number, { credential_verification_status: string; credential_verified_by: string; credential_verified_at: string | null; credential_verification_evidence: string }];
     expect(status).toBe(200);
     expect(body.credential_verification_status).toBe('independently_verified');
@@ -103,7 +105,7 @@ describe('Credential verification gate (migration 089)', () => {
     expect(status).toBe(200);
     expect(body.status).toBe('approved');
     const membership = sql(`SELECT org_role, status FROM organization_memberships WHERE organization_id='${ORG}' AND user_id='${ids.applicant}';`);
-    expect(membership).toBe('caregiver|active');
+    expect(membership).toBe('therapist|active');
   });
 
   // Codex MMA-CODEX-02 — "invalidate affected authority when evidence

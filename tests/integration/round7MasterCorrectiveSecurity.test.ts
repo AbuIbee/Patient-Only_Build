@@ -45,7 +45,7 @@ beforeAll(async () => {
   sql(`
     BEGIN;
     INSERT INTO organizations(id,name,package_type,created_by) VALUES('${ORG}','R7MC Integration Org','integrated_care','${ids.directorA}');
-    INSERT INTO organization_licenses(organization_id,licensed_seats,covered_patient_capacity,annual_license_fee,status) VALUES('${ORG}',20,20,9999.00,'active');
+    INSERT INTO organization_licenses(organization_id,licensed_seats,covered_patient_capacity,annual_license_fee,status,license_number) VALUES('${ORG}',20,20,9999.00,'active','HCN-R7-${stamp}');
     INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES
       ('${ORG}','${ids.directorA}','director','active'),
       ('${ORG}','${ids.caregiverA}','caregiver','active'),
@@ -666,19 +666,24 @@ describe('CLOSURE REGISTER — a therapist who accepted a direct patient-connect
   // structurally distinct relationships now appear.
   it('an org-assigned therapist (staff_patient_assignments) AND a direct therapist_relationships connection for the SAME patient are BOTH preserved, not collapsed to one (migration 094)', async () => {
     sql(`
+      INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${ORG}','${ids.therapistT}','therapist','active');
       INSERT INTO staff_patient_assignments(organization_id,user_id,patient_id,org_role,is_active,assigned_by) VALUES('${ORG}','${ids.therapistT}','${ids.patientA}','therapist',true,'${ids.directorA}');
       INSERT INTO therapist_relationships(therapist_id,patient_id,caregiver_id,relationship_type,is_active) VALUES('${ids.therapistT}','${ids.patientA}','${ids.caregiverA}','primary',true);
     `);
+    try {
     const [status, body] = (await rpc('get_my_staff_patients', {}, tok.therapistT)) as [number, Array<{ patient_id: string; organization_id: string | null }>];
     expect(status).toBe(200);
     const rows = body.filter((r) => r.patient_id === ids.patientA);
     expect(rows).toHaveLength(2);
     expect(rows.some((r) => r.organization_id === ORG)).toBe(true);
     expect(rows.some((r) => r.organization_id === null)).toBe(true);
+    } finally {
     sql(`
       DELETE FROM staff_patient_assignments WHERE organization_id='${ORG}' AND user_id='${ids.therapistT}' AND patient_id='${ids.patientA}';
+      DELETE FROM organization_memberships WHERE organization_id='${ORG}' AND user_id='${ids.therapistT}';
       DELETE FROM therapist_relationships WHERE therapist_id='${ids.therapistT}' AND patient_id='${ids.patientA}';
     `);
+    }
   });
 });
 

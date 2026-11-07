@@ -44,7 +44,7 @@ beforeAll(async () => {
     DELETE FROM organizations WHERE id='${ORG}';
     BEGIN;
     INSERT INTO organizations(id,name,package_type,created_by) VALUES('${ORG}','Codex011 Role Cap Org','integrated_care','${ids.director}');
-    INSERT INTO organization_licenses(organization_id,licensed_seats,covered_patient_capacity,annual_license_fee,status,max_caregiver_seats) VALUES('${ORG}',10,20,9999,'proposed',1);
+    INSERT INTO organization_licenses(organization_id,licensed_seats,covered_patient_capacity,annual_license_fee,status,license_number,max_caregiver_seats) VALUES('${ORG}',10,20,9999,'active','HCN-CAPS-${stamp}',1);
     INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${ORG}','${ids.director}','director','active');
     COMMIT;
   `);
@@ -57,13 +57,13 @@ afterAll(async () => {
 });
 
 describe('MMA-CODEX-011 011-05 (F-09/ENT-013, P1) — per-role license seat caps (migration 140)', () => {
-  it('a per-role cap of 1 caregiver allows the first caregiver invite and rejects the second, while billing_admin (uncapped role) is still invitable', async () => {
-    const [statusA] = await rpc('invite_org_member', { p_org_id: ORG, p_email: emails.caregiverA, p_org_role: 'caregiver' }, tok.director);
+  it('a per-role cap of 1 caregiver allows the first manager-provisioned caregiver and rejects the second, while billing_admin (uncapped role) is still invitable', async () => {
+    const [statusA] = await rpc('hcn_manager_add_caregiver', { p_org_id: ORG, p_employee_id: ids.caregiverA }, tok.director);
     expect(statusA).toBe(200);
 
-    const [statusB, bodyB] = (await rpc('invite_org_member', { p_org_id: ORG, p_email: emails.caregiverB, p_org_role: 'caregiver' }, tok.director)) as [number, { message?: string }];
+    const [statusB, bodyB] = (await rpc('hcn_manager_add_caregiver', { p_org_id: ORG, p_employee_id: ids.caregiverB }, tok.director)) as [number, { message?: string }];
     expect(statusB).toBeGreaterThanOrEqual(400);
-    expect(bodyB.message).toContain('No licensed caregiver seats are available');
+    expect(bodyB.message).toContain('caregiver-specific licensed seat cap');
 
     // Cross-role independence: the aggregate pool (10 seats, 2 used so
     // far) still has room, and billing_admin has no per-role cap
@@ -92,7 +92,7 @@ describe('MMA-CODEX-011 011-05 (F-09/ENT-013, P1) — per-role license seat caps
     expect(status).toBe(403);
   });
 
-  it('a concurrent invite racing for the SAME last per-role seat blocks on the real license-row lock, then correctly fails once the seat is gone', async () => {
+  it('concurrent manager provisioning racing for the SAME last per-role seat blocks on the real license-row lock, then correctly fails once the seat is gone', async () => {
     // Fresh org, licensed_seats generously high (so only the per-role cap
     // is the binding constraint being raced), max_caregiver_seats=1.
     const raceOrg = 'f0776666-6666-4666-8666-666666666666';
@@ -108,7 +108,7 @@ describe('MMA-CODEX-011 011-05 (F-09/ENT-013, P1) — per-role license seat caps
       DELETE FROM organizations WHERE id='${raceOrg}';
       BEGIN;
       INSERT INTO organizations(id,name,package_type,created_by) VALUES('${raceOrg}','Codex011 Role Cap Race Org','integrated_care','${raceIds.director}');
-      INSERT INTO organization_licenses(organization_id,licensed_seats,covered_patient_capacity,annual_license_fee,status,max_caregiver_seats) VALUES('${raceOrg}',10,20,9999,'proposed',1);
+      INSERT INTO organization_licenses(organization_id,licensed_seats,covered_patient_capacity,annual_license_fee,status,license_number,max_caregiver_seats) VALUES('${raceOrg}',10,20,9999,'active','HCN-CAPS-RACE-${stamp}',1);
       INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${raceOrg}','${raceIds.director}','director','active');
       COMMIT;
     `);
@@ -119,7 +119,7 @@ SELECT id FROM public.organization_licenses WHERE organization_id='${raceOrg}' F
 SELECT pg_sleep(2);
 SET ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','${raceIds.director}',true);
-SELECT (public.invite_org_member('${raceOrg}','${raceEmails.caregiverA}','caregiver')).status;
+SELECT (public.hcn_manager_add_caregiver('${raceOrg}','${raceIds.caregiverA}')).status;
 COMMIT;`;
     const proc = spawn('docker', ['exec', '-i', '-e', `PGPASSWORD=${process.env.MMA_TEST_DB_ADMIN_PASSWORD || 'postgres'}`, DB_CONTAINER, 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-At', '-v', 'ON_ERROR_STOP=1'], { stdio: ['pipe', 'pipe', 'pipe'] });
     proc.stdin.write(statement);
@@ -133,14 +133,14 @@ COMMIT;`;
       await new Promise((r) => setTimeout(r, 50));
     }
 
-    const inviteBPromise = rpc('invite_org_member', { p_org_id: raceOrg, p_email: raceEmails.caregiverB, p_org_role: 'caregiver' }, raceTok);
+    const inviteBPromise = rpc('hcn_manager_add_caregiver', { p_org_id: raceOrg, p_employee_id: raceIds.caregiverB }, raceTok);
 
     await new Promise<void>((resolve) => proc.on('close', () => resolve()));
     expect(stderrBuf).toBe('');
 
     const [statusB, bodyB] = (await inviteBPromise) as [number, { message?: string }];
     expect(statusB).toBeGreaterThanOrEqual(400);
-    expect(bodyB.message).toContain('No licensed caregiver seats are available');
+    expect(bodyB.message).toContain('caregiver-specific licensed seat cap');
 
     const caregiverCount = sql(`SELECT count(*) FROM organization_memberships WHERE organization_id='${raceOrg}' AND org_role='caregiver';`);
     expect(caregiverCount).toBe('1'); // caregiverA (background session) only

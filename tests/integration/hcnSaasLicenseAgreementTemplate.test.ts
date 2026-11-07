@@ -68,6 +68,7 @@ afterEach(() => setEntityConfirmed(false)); // never leave a test in the "entity
 afterAll(async () => {
   const orgNameList = createdOrgNames.map((n) => `'${n.replace(/'/g, "''")}'`).join(',') || "''";
   sql(`
+    DELETE FROM hcn_deferred_billing_activations WHERE application_id IN (SELECT id FROM professional_applications WHERE applicant_user_id IN ('${createdApplicantIds.join("','")}'));
     DELETE FROM enterprise_contracts WHERE quote_id IN (SELECT (application_details->>'originatingQuoteId')::uuid FROM professional_applications WHERE applicant_user_id IN ('${createdApplicantIds.join("','")}'));
     DELETE FROM professional_application_events WHERE application_id IN (SELECT id FROM professional_applications WHERE applicant_user_id IN ('${createdApplicantIds.join("','")}'));
     DELETE FROM professional_applications WHERE applicant_user_id IN ('${createdApplicantIds.join("','")}');
@@ -138,7 +139,7 @@ describe('HCN-SAAS-1.0 -- signing stays BLOCKED until the contracting entity is 
 });
 
 describe('HCN-SAAS-1.0 -- once the contracting entity is confirmed (test-only state, proves the future path)', () => {
-  it('signing succeeds, records the correct version and content hash, and advances billing once BOTH agreements are executed', async () => {
+  it('signing succeeds, records the correct version and content hash, and performs the owner-authorized deferred activation once BOTH agreements are executed', async () => {
     const { applicant, appId, quoteId } = await freshApprovedApplication();
     await rpc('self_service_execute_agreement', {
       p_application_id: appId, p_contract_type: 'baa', p_signatory_name: 'Saas Tpl Applicant',
@@ -159,12 +160,15 @@ describe('HCN-SAAS-1.0 -- once the contracting entity is confirmed (test-only st
     expect(contract.quote_id).toBe(quoteId);
 
     const appStatus = sql(`SELECT status FROM professional_applications WHERE id='${appId}';`);
-    expect(appStatus).toBe('agreements_executed'); // both now executed -- billing authorization unblocked
-
-    const [billingStatus] = await rpc('create_enterprise_billing_account', {
-      p_quote_id: quoteId, p_billing_contact_email: applicant.email,
-    }, applicant.token);
-    expect(billingStatus).toBe(200);
+    expect(appStatus).toBe('active');
+    // The owner-approved processor bypass activates the license but never
+    // invents payment confirmation or creates a Stripe subscription.
+    const deferred = sql(`SELECT provider_payment_confirmed FROM hcn_deferred_billing_activations WHERE application_id='${appId}';`);
+    expect(deferred).toBe('f');
+    expect(sql(`SELECT l.status FROM organization_licenses l JOIN professional_applications p ON p.target_organization_id=l.organization_id WHERE p.id='${appId}';`)).toBe('active');
+    expect(sql(`SELECT m.status FROM organization_memberships m JOIN professional_applications p ON p.target_organization_id=m.organization_id AND p.applicant_user_id=m.user_id WHERE p.id='${appId}' AND m.org_role='director';`)).toBe('active');
+    const billingCount = sql(`SELECT count(*) FROM enterprise_billing_accounts WHERE quote_id='${quoteId}';`);
+    expect(billingCount).toBe('0');
   });
 
   it('duplicate-signature prevention: a second signing attempt returns the original executed contract unchanged', async () => {

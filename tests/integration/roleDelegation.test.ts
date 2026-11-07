@@ -56,9 +56,9 @@ afterAll(async () => {
 });
 
 describe('MMA-ENT-SALES-007-FINAL Phase H — role delegation (migration 119)', () => {
-  it('a co-director has full director-equivalent invite authority (is_active_org_director widened)', async () => {
-    const [status, row] = (await rpc('invite_org_member', {
-      p_org_id: ORG, p_email: emails.caregiver, p_org_role: 'caregiver',
+  it('a co-director may provision caregiver employment through the manager workflow', async () => {
+    const [status, row] = (await rpc('hcn_manager_add_caregiver', {
+      p_org_id: ORG, p_employee_id: ids.caregiver,
     }, tok.codirector)) as [number, { org_role: string; status: string }];
     expect(status).toBe(200);
     expect(row.org_role).toBe('caregiver');
@@ -75,7 +75,9 @@ describe('MMA-ENT-SALES-007-FINAL Phase H — role delegation (migration 119)', 
   });
 
   it('an office administrator may invite only the restricted staff roles, never a role at or above their own level', async () => {
-    const [okStatus] = await rpc('invite_org_member', { p_org_id: ORG, p_email: emails.caregiver, p_org_role: 'caregiver' }, tok.officeAdmin);
+    const [caregiverStatus] = await rpc('hcn_manager_add_caregiver', { p_org_id: ORG, p_employee_id: ids.caregiver }, tok.officeAdmin);
+    expect(caregiverStatus).toBeGreaterThanOrEqual(400);
+    const [okStatus] = await rpc('invite_org_member', { p_org_id: ORG, p_email: emails.caregiver, p_org_role: 'billing_admin' }, tok.officeAdmin);
     expect(okStatus).toBe(200);
     sql(`DELETE FROM organization_memberships WHERE organization_id='${ORG}' AND user_id='${ids.caregiver}';`);
 

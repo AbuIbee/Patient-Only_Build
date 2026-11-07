@@ -58,11 +58,13 @@ afterAll(async () => {
 });
 
 async function submitApplicationWithDocument(applicantToken: string, email: string): Promise<{ appId: string; storagePath: string }> {
-  const [, app] = (await rpc('submit_professional_application', {
-    p_requested_office: 'caregiver', p_target_organization_id: ORG, p_proposed_organization_name: null, p_proposed_package_type: null,
+  const [submissionStatus, app] = (await rpc('submit_professional_application', {
+    p_requested_office: 'therapist', p_target_organization_id: ORG, p_proposed_organization_name: null, p_proposed_package_type: null,
     p_legal_name: 'DPG Applicant', p_preferred_name: null, p_contact_email: email, p_contact_phone: null,
-    p_professional_title: 'Caregiver', p_profession_category: 'caregiver', p_application_details: {},
+    p_professional_title: 'Physical Therapist', p_profession_category: 'therapy', p_application_details: {},
   }, applicantToken)) as [number, { id: string }];
+  expect(submissionStatus, JSON.stringify(app)).toBe(200);
+  expect(app.id).toBeTruthy();
   const storagePath = `${app.id}/credential_document/${Date.now()}_test.pdf`;
   sql(`
     INSERT INTO professional_application_documents (application_id, document_type, file_name, storage_path)

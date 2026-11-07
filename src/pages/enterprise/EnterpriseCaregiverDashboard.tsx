@@ -517,8 +517,14 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
           ) : (
             <div className="max-w-6xl mx-auto space-y-5">
               {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id)} onNavigate={navigateTo} onPatientRegistered={() => { void load(); }} />}
-              {(nav === 'patients' || nav === 'records') && (
-                <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} orgId={orgId} onChanged={() => { void load(); }} />
+              {nav === 'patients' && (
+                <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)}
+                  onOpenContacts={(id) => navigateTo('patients', id, 'contacts')}
+                  onOpenInformation={(id) => navigateTo('patients', id, 'info')} orgId={orgId}
+                  onChanged={() => { void load(); }} />
+              )}
+              {nav === 'records' && (
+                <PatientHealthRecordsView patients={patients} onOpenRecord={(id) => navigateTo('records', id, 'medical')} />
               )}
               {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} />}
               {nav === 'visits' && <VisitsListView />}
@@ -897,7 +903,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRe
             { label: "Today's Visits", nav: 'schedule' as NavItem, Icon: Calendar },
             { label: 'Clock In / Out', nav: 'visits' as NavItem, Icon: Clock },
             { label: 'Care Tasks', nav: 'tasks' as NavItem, Icon: ClipboardCheck },
-            { label: 'Patient Records', nav: 'patients' as NavItem, Icon: Users },
+            { label: 'Patient Records', nav: 'records' as NavItem, Icon: Users },
             { label: 'Report an Incident', nav: 'alerts' as NavItem, Icon: ShieldAlert },
             { label: 'Secure Messages', nav: 'communications' as NavItem, Icon: MessageSquare },
           ]).map(({ label, nav, Icon }) => (
@@ -1278,7 +1284,7 @@ function staffPatientShortReference(patientId: string): string {
   return patientId.replace(/-/g, '').slice(-8).toUpperCase();
 }
 
-function PatientsListView({ patients, onOpenPatient, title, orgId, onChanged }: { patients: StaffPatient[]; onOpenPatient: (id: string) => void; title?: string; orgId?: string; onChanged?: () => void }) {
+function PatientsListView({ patients, onOpenPatient, onOpenContacts, onOpenInformation, title, orgId, onChanged }: { patients: StaffPatient[]; onOpenPatient: (id: string) => void; onOpenContacts?: (id: string) => void; onOpenInformation?: (id: string) => void; title?: string; orgId?: string; onChanged?: () => void }) {
   // MMA-ENT-CAREGIVER-MASTER-004 D03 (P2) — independent runtime audit
   // finding: "authenticated patient list has no search/filter/label
   // controls." Search is client-side (the full assigned-patient list is
@@ -1387,6 +1393,20 @@ function PatientsListView({ patients, onOpenPatient, title, orgId, onChanged }: 
                     {label ? 'Edit label' : '+ Add a label'}
                   </button>
                 )}
+                {onOpenInformation && (
+                  <button type="button" onClick={() => onOpenInformation(p.patientId)}
+                    aria-label={`Patient Information for ${displayName}`}
+                    className="self-start rounded-lg border border-ent-line px-3 py-2 text-xs font-semibold text-ent-bronze">
+                    Patient Information
+                  </button>
+                )}
+                {onOpenContacts && (
+                  <button type="button" onClick={() => onOpenContacts(p.patientId)}
+                    aria-label={`Healthcare Contacts for ${displayName}`}
+                    className="self-start rounded-lg border border-ent-line px-3 py-2 text-xs font-semibold text-ent-bronze">
+                    Healthcare Contacts
+                  </button>
+                )}
                 {p.assignmentId && (
                   <button type="button"
                     disabled={sendingPatientId !== null}
@@ -1401,6 +1421,49 @@ function PatientsListView({ patients, onOpenPatient, title, orgId, onChanged }: 
         </div>
       )}
       {orgId && onChanged && <RegistrationAction orgId={orgId} onChanged={onChanged} />}
+    </Card>
+  );
+}
+
+// The records destination must open the clinical chart, not duplicate My Patients'
+// administrative directory (labels, setup emails, and contact shortcuts).
+// Access remains guarded by EnterpriseStaffPatientView and patient-assignment RLS.
+function PatientHealthRecordsView({ patients, onOpenRecord }: {
+  patients: StaffPatient[];
+  onOpenRecord: (patientId: string) => void;
+}) {
+  return (
+    <Card>
+      <div className="flex items-center gap-2">
+        <FileText className="h-5 w-5 text-ent-bronze" />
+        <h2 className="font-bold text-ent-ink">Patient Health Records</h2>
+      </div>
+      <p className="text-sm text-ent-muted">
+        Choose an assigned patient to open their Medical chart. From the chart,
+        review medications, healthcare contacts, care plans, safety information, and documented history.
+      </p>
+      {patients.length === 0 ? (
+        <p className="text-sm text-ent-muted">No patients are currently assigned to you.</p>
+      ) : (
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {patients.map((patient) => {
+            const displayName = patient.preferredName || `${patient.firstName} ${patient.lastName}`;
+            return (
+              <li key={`${patient.assignmentId ?? 'direct'}-${patient.patientId}`}>
+                <button type="button" onClick={() => onOpenRecord(patient.patientId)}
+                  aria-label={`Open health record for ${displayName}`}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-ent-line bg-ent-pale p-4 text-left hover:shadow-md">
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-ent-ink">{displayName}</span>
+                    <span className="block text-xs text-ent-muted">Open medical chart and clinical records</span>
+                  </span>
+                  <ChevronRight aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-ent-bronze" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </Card>
   );
 }

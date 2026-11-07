@@ -51,17 +51,21 @@ beforeAll(async () => {
   `);
   for (const [name, email] of Object.entries(emails)) tok[name] = await login(email, PW);
 
-  const [, appAbody] = (await rpc('submit_professional_application', {
-    p_requested_office: 'caregiver', p_target_organization_id: ORG, p_proposed_organization_name: null, p_proposed_package_type: null,
+  const [statusA, appAbody] = (await rpc('submit_professional_application', {
+    p_requested_office: 'therapist', p_target_organization_id: ORG, p_proposed_organization_name: null, p_proposed_package_type: null,
     p_legal_name: 'LSC Applicant A', p_preferred_name: null, p_contact_email: emails.applicantA, p_contact_phone: null,
-    p_professional_title: 'Caregiver', p_profession_category: 'caregiver', p_application_details: {},
+    p_professional_title: 'Physical Therapist', p_profession_category: 'therapy', p_application_details: {},
   }, tok.applicantA)) as [number, { id: string }];
+  expect(statusA, JSON.stringify(appAbody)).toBe(200);
+  expect(appAbody.id).toBeTruthy();
   appA = appAbody.id;
-  const [, appBbody] = (await rpc('submit_professional_application', {
-    p_requested_office: 'caregiver', p_target_organization_id: ORG, p_proposed_organization_name: null, p_proposed_package_type: null,
+  const [statusB, appBbody] = (await rpc('submit_professional_application', {
+    p_requested_office: 'therapist', p_target_organization_id: ORG, p_proposed_organization_name: null, p_proposed_package_type: null,
     p_legal_name: 'LSC Applicant B', p_preferred_name: null, p_contact_email: emails.applicantB, p_contact_phone: null,
-    p_professional_title: 'Caregiver', p_profession_category: 'caregiver', p_application_details: {},
+    p_professional_title: 'Physical Therapist', p_profession_category: 'therapy', p_application_details: {},
   }, tok.applicantB)) as [number, { id: string }];
+  expect(statusB, JSON.stringify(appBbody)).toBe(200);
+  expect(appBbody.id).toBeTruthy();
   appB = appBbody.id;
 
   await rpc('record_credential_verification', { p_application_id: appA, p_decision: 'independently_verified', p_evidence_reference: 'test' }, tok.director);

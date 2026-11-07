@@ -27,6 +27,12 @@ on:
 permissions:
   contents: read
 
+# Obsolete commits should not saturate the disposable-stack CI runner pool.
+# Keep distinct push and PR groups so current checks still execute independently.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   static-checks:
     runs-on: ubuntu-latest

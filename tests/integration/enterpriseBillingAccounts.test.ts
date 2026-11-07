@@ -35,6 +35,7 @@ afterAll(async () => {
   sql(`
     DELETE FROM enterprise_billing_events WHERE billing_account_id IN (SELECT id FROM enterprise_billing_accounts WHERE created_by IN ('${ids.applicant}','${ids.outsider}'));
     DELETE FROM enterprise_billing_accounts WHERE created_by IN ('${ids.applicant}','${ids.outsider}');
+    DELETE FROM enterprise_contracts WHERE quote_id IN (SELECT id FROM sales_quotes WHERE created_by='${ids.owner}');
     DELETE FROM professional_applications WHERE applicant_user_id IN ('${ids.applicant}','${ids.outsider}');
     DELETE FROM sales_quote_invitations WHERE created_by='${ids.owner}';
     DELETE FROM sales_quotes WHERE created_by='${ids.owner}';
@@ -61,14 +62,30 @@ async function makeQuote(cadence: string | null, fee: number | null): Promise<st
   await rpc('platform_owner_send_quote', { p_quote_id: quote.id }, tok.owner);
   return quote.id;
 }
-async function linkApplicantToQuote(userId: string, quoteId: string): Promise<void> {
+async function linkApplicantToQuote(userId: string, quoteId: string, executedAgreements = true): Promise<void> {
   sql(`
     INSERT INTO professional_applications (applicant_user_id, requested_office, proposed_organization_name, proposed_package_type, legal_name, contact_email, status, platform_owner_approval_required, application_details)
     VALUES ('${userId}', 'director', 'Billing Link Org', 'integrated_care', 'Billing Applicant', 'billing-applicant@local.test', 'pending_review', true, '{"originatingQuoteId":"${quoteId}"}'::jsonb);
+    -- This fixture tests pricing/ownership AFTER the mandatory agreement gate.
+    -- These are disposable database fixtures, not real executed agreements.
+    INSERT INTO enterprise_contracts(quote_id,contract_type,template_version,signatory_name,status,executed_by,executed_at,execution_method,execution_evidence_reference,created_by)
+    SELECT '${quoteId}',kind,'fixture-v1','Fictional billing signatory','executed','${userId}',now(),'test','disposable billing fixture','${userId}'
+    FROM unnest(ARRAY['saas_license','baa']) AS kind WHERE ${executedAgreements ? 'true' : 'false'};
   `);
 }
 
 describe('MMA-ENT-SALES-005 Phase F — enterprise billing accounts (migration 110)', () => {
+  it('rejects billing authorization until both required agreements are executed', async () => {
+    const quoteId = await makeQuote('annual', 1000);
+    await linkApplicantToQuote(ids.applicant, quoteId, false);
+    const [status, body] = await rpc('create_enterprise_billing_account', {
+      p_quote_id: quoteId, p_billing_contact_email: emails.applicant,
+    }, tok.applicant);
+    expect(status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(body)).toContain('must be executed before billing authorization');
+    expect(sql(`SELECT count(*) FROM enterprise_billing_accounts WHERE quote_id='${quoteId}';`)).toBe('0');
+  });
+
   it('derives amount/currency/interval from the quote server-side -- a client-supplied amount is not even accepted as a parameter', async () => {
     const quoteId = await makeQuote('annual', 12000);
     await linkApplicantToQuote(ids.applicant, quoteId);

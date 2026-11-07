@@ -681,6 +681,16 @@ export interface Database {
       patient_care_providers: {
         Row: {
           author_id: string
+          address: string | null
+          alternate_phone: string | null
+          is_active: boolean
+          is_preferred_hospital: boolean
+          practice_name: string | null
+          preferred_contact_method: string | null
+          updated_at: string
+          updated_by: string | null
+          verification_status: string
+          version: number
           created_at: string
           email: string | null
           id: string
@@ -693,6 +703,16 @@ export interface Database {
         }
         Insert: {
           author_id: string
+          address?: string | null
+          alternate_phone?: string | null
+          is_active?: boolean
+          is_preferred_hospital?: boolean
+          practice_name?: string | null
+          preferred_contact_method?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          verification_status?: string
+          version?: number
           created_at?: string
           email?: string | null
           id?: string
@@ -705,6 +725,16 @@ export interface Database {
         }
         Update: {
           author_id?: string
+          address?: string | null
+          alternate_phone?: string | null
+          is_active?: boolean
+          is_preferred_hospital?: boolean
+          practice_name?: string | null
+          preferred_contact_method?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          verification_status?: string
+          version?: number
           created_at?: string
           email?: string | null
           id?: string
@@ -4425,6 +4455,27 @@ export interface Database {
       }
     }
     Functions: {
+      hcn_get_patient_information: { Args: { p_org_id: string; p_patient_id: string }; Returns: Json }
+      hcn_save_patient_information: { Args: { p_org_id: string; p_patient_id: string; p_changes: Json; p_expected_version?: number | null }; Returns: Json }
+      // HCN-CARE-MASTER-001/002: version-checked patient healthcare directory.
+      hcn_save_patient_contact: {
+        Args: {
+          p_patient_id: string
+          p_provider_id?: string | null
+          p_provider_name?: string | null
+          p_provider_role?: string | null
+          p_phone?: string | null
+          p_email?: string | null
+          p_alternate_phone?: string | null
+          p_practice_name?: string | null
+          p_address?: string | null
+          p_preferred_contact_method?: string | null
+          p_notes?: string | null
+          p_is_preferred_hospital?: boolean
+          p_expected_version?: number | null
+        }
+        Returns: Database['public']['Tables']['patient_care_providers']['Row']
+      }
       // HCN signed onboarding: invited staff are visible to their own
       // Owner/Director without exposing profiles to unrelated tenants.
       hcn_get_org_staff_roster: {

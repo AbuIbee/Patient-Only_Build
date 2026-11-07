@@ -54,21 +54,15 @@ afterAll(async () => {
 });
 
 describe('MMA-ENT-SALES-009 F-09 FIX (migration 131) — a Therapist Enterprise package organization cannot acquire caregiver/medical offices', () => {
-  it('FIX: director_approve_application() rejects approving a credential-verified caregiver application against a therapist-package org', async () => {
-    const [, app] = (await rpc('submit_professional_application', {
+  it('caregiver self-registration is rejected before application approval under every package', async () => {
+    const [status, body] = await rpc('submit_professional_application', {
       p_requested_office: 'caregiver', p_target_organization_id: THERAPIST_ORG, p_proposed_organization_name: null, p_proposed_package_type: null,
       p_legal_name: 'F09 Caregiver Applicant', p_preferred_name: null, p_contact_email: emails.caregiverApplicant, p_contact_phone: null,
       p_professional_title: 'Caregiver', p_profession_category: 'caregiver', p_application_details: {},
-    }, tok.caregiverApplicant)) as [number, { id: string }];
-    appIds.push(app.id);
-    await rpc('record_credential_verification', { p_application_id: app.id, p_decision: 'independently_verified', p_evidence_reference: 'test' }, tok.director);
-
-    const [status, body] = await rpc('director_approve_application', { p_application_id: app.id }, tok.director);
+    }, tok.caregiverApplicant);
     expect(status).toBeGreaterThanOrEqual(400);
-    expect(JSON.stringify(body)).toContain('does not include caregiver or medical professional offices');
-
-    const membershipCount = sql(`SELECT count(*) FROM organization_memberships WHERE organization_id='${THERAPIST_ORG}' AND user_id='${ids.caregiverApplicant}';`);
-    expect(membershipCount).toBe('0');
+    expect(JSON.stringify(body)).toContain('Caregiver accounts are created by the organization Owner or Director');
+    expect(sql(`SELECT count(*) FROM organization_memberships WHERE organization_id='${THERAPIST_ORG}' AND user_id='${ids.caregiverApplicant}';`)).toBe('0');
   });
 
   it('FIX: director_approve_application() rejects approving a credential-verified medical_professional application against a therapist-package org', async () => {
@@ -85,36 +79,24 @@ describe('MMA-ENT-SALES-009 F-09 FIX (migration 131) — a Therapist Enterprise 
     expect(JSON.stringify(body)).toContain('does not include caregiver or medical professional offices');
   });
 
-  it('FIX: invite_org_member() rejects a direct caregiver invite against a therapist-package org', async () => {
-    const [status, body] = await rpc('invite_org_member', { p_org_id: THERAPIST_ORG, p_email: emails.existingStaff, p_org_role: 'caregiver' }, tok.director);
+  it('manager caregiver provisioning rejects a therapist-package organization', async () => {
+    const [status, body] = await rpc('hcn_manager_add_caregiver', { p_org_id: THERAPIST_ORG, p_employee_id: ids.existingStaff }, tok.director);
     expect(status).toBeGreaterThanOrEqual(400);
-    expect(JSON.stringify(body)).toContain('does not include the caregiver office');
+    expect(JSON.stringify(body)).toContain('Caregivers require an existing Integrated Care organization');
 
     const membershipCount = sql(`SELECT count(*) FROM organization_memberships WHERE organization_id='${THERAPIST_ORG}' AND user_id='${ids.existingStaff}';`);
     expect(membershipCount).toBe('0');
   });
 
-  it('regression guard: a Full Enterprise (integrated_care) package org is unaffected -- caregiver approval and direct invite both still succeed', async () => {
-    const fullCaregiverEmail = `f09-fullcaregiver-${stamp}@local.test`;
-    const fullCaregiverId = await authSignUp(fullCaregiverEmail, PW);
-    sql(`UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${fullCaregiverId}';`);
-    const fullCaregiverToken = await login(fullCaregiverEmail, PW);
-
-    const [, app] = (await rpc('submit_professional_application', {
-      p_requested_office: 'caregiver', p_target_organization_id: FULL_ORG, p_proposed_organization_name: null, p_proposed_package_type: null,
-      p_legal_name: 'F09 Full Caregiver Applicant', p_preferred_name: null, p_contact_email: fullCaregiverEmail, p_contact_phone: null,
-      p_professional_title: 'Caregiver', p_profession_category: 'caregiver', p_application_details: {},
-    }, fullCaregiverToken)) as [number, { id: string }];
-    appIds.push(app.id);
-    await rpc('record_credential_verification', { p_application_id: app.id, p_decision: 'independently_verified', p_evidence_reference: 'test' }, tok.fullDirector);
-
-    const [status] = await rpc('director_approve_application', { p_application_id: app.id }, tok.fullDirector);
+  it('an Integrated Care Director can provision a caregiver while direct invitations remain blocked', async () => {
+    sql(`UPDATE organization_licenses SET license_number='HCN-F09-${stamp}' WHERE organization_id='${FULL_ORG}';`);
+    const [status, member] = await rpc('hcn_manager_add_caregiver', {
+      p_org_id: FULL_ORG, p_employee_id: ids.fullExistingStaff,
+    }, tok.fullDirector) as [number, { status: string; org_role: string }];
     expect(status).toBe(200);
-
+    expect(member.status).toBe('invited');
+    expect(member.org_role).toBe('caregiver');
     const [inviteStatus] = await rpc('invite_org_member', { p_org_id: FULL_ORG, p_email: emails.fullExistingStaff, p_org_role: 'caregiver' }, tok.fullDirector);
-    expect(inviteStatus).toBe(200);
-
-    sql(`DELETE FROM organization_memberships WHERE organization_id='${FULL_ORG}' AND user_id='${fullCaregiverId}';`);
-    await authDeleteUser(fullCaregiverId);
+    expect(inviteStatus).toBeGreaterThanOrEqual(400);
   });
 });
