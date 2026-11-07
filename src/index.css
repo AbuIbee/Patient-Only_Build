@@ -399,3 +399,24 @@ html.haneen-site :where(a, button, input, select, textarea):focus-visible {
   outline: 2px solid #0b6689;
   outline-offset: 3px;
 }
+
+/* Print only the Director's authorized report. Navigation, toolbars and assistant panels stay off paper. */
+@media print {
+  body:has(.hcn-director-report-print) * { visibility: hidden !important; }
+  body:has(.hcn-director-report-print) .hcn-director-report-print,
+  body:has(.hcn-director-report-print) .hcn-director-report-print * {
+    visibility: visible !important;
+  }
+  body:has(.hcn-director-report-print) .hcn-director-report-print {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    background: white !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    padding: 0 !important;
+  }
+  .hcn-director-report-print .print\\:hidden { display: none !important; }
+  .hcn-director-report-print table { width: 100%; border-collapse: collapse; }
+  .hcn-director-report-print tr { break-inside: avoid; }
+}
