@@ -201,7 +201,7 @@ BEGIN
   IF auth.uid() IS NULL OR p_urgency NOT IN ('routine','priority','urgent')
     OR length(btrim(coalesce(p_reason,''))) NOT BETWEEN 10 AND 4000 THEN
     RAISE EXCEPTION 'Authenticated author, valid reason and urgency required' USING ERRCODE='22023'; END IF;
-  IF NOT EXISTS(SELECT 1 FROM public.organization_licenses l WHERE l.organization_id=v_case.organization_id AND l.status='active') THEN
+  IF NOT EXISTS(SELECT 1 FROM public.organization_licenses l WHERE l.organization_id=p_org_id AND l.status='active') THEN
     RAISE EXCEPTION 'Active organization license required' USING ERRCODE='42501'; END IF;
   IF NOT EXISTS(
     SELECT 1 FROM public.staff_patient_assignments a
@@ -261,6 +261,8 @@ BEGIN
   IF NOT FOUND OR v_case.status<>'clinical_review_requested'
     OR length(btrim(coalesce(p_note,'')))<10 THEN
     RAISE EXCEPTION 'Clinical review must be requested and documented' USING ERRCODE='22023'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM public.organization_licenses l WHERE l.organization_id=v_case.organization_id AND l.status='active') THEN
+    RAISE EXCEPTION 'Active organization license required' USING ERRCODE='42501'; END IF;
   IF NOT EXISTS(
     SELECT 1 FROM public.staff_patient_assignments a
     JOIN public.organization_memberships m ON m.organization_id=a.organization_id
