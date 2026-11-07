@@ -4455,6 +4455,11 @@ export interface Database {
       }
     }
     Functions: {
+      hcn_my_owned_organizations: {
+        Args: Record<PropertyKey, never>
+        Returns: { organization_id: string; organization_name: string; license_active: boolean; director_enabled: boolean }[]
+      }
+      hcn_owner_enable_director_office: { Args: { p_org_id: string }; Returns: boolean }
       hcn_get_patient_information: { Args: { p_org_id: string; p_patient_id: string }; Returns: Json }
       hcn_save_patient_information: { Args: { p_org_id: string; p_patient_id: string; p_changes: Json; p_expected_version?: number | null }; Returns: Json }
       // HCN-CARE-MASTER-001/002: version-checked patient healthcare directory.
