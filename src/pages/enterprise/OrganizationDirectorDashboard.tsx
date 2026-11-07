@@ -50,7 +50,8 @@ import PatientInformation from '@/components/healthcare/PatientInformation';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
 import CareEscalationPanel from './CareEscalationPanel';
 import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
-import { scheduleCaregiverVisit } from '@/services/enterpriseCaregiverWorkToolsService';
+import DirectorScheduleCalendar from './DirectorScheduleCalendar';
+import DirectorReportBuilder from './DirectorReportBuilder';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
 const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
@@ -1132,9 +1133,9 @@ const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ADMINISTRATION', items: ['reports', 'licensing', 'ownership', 'settings'] },
 ];
 
-function DashboardHome({ orgId, orgName, members, license, visits, incidents, handoffs, patients, onOpenPatient, onNavigate }: {
+function DashboardHome({ orgId, orgName, members, visits, incidents, handoffs, patients, onOpenPatient, onNavigate }: {
   orgId: string; orgName: string; members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
-  license: OrgLicense | null; visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
+  visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
   patients: OrgCoveredPatient[]; onOpenPatient: (patientId: string) => void;
   onNavigate: (key: DirectorNavKey) => void;
 }) {
@@ -1176,12 +1177,11 @@ function DashboardHome({ orgId, orgName, members, license, visits, incidents, ha
         <p className="text-xs text-ent-muted">Open a patient to search conditions, allergies, doctors and emergency contacts.</p>
       </section>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <MetricCard label="Care Team Inventory" value={String(activeStaff+invitedStaff)}
           sub={`${activeStaff} active · ${invitedStaff} pending activation`} onClick={() => onNavigate('staff')} />
         <MetricCard label="Open Incidents" value={String(openIncidents)} sub="need review" onClick={() => onNavigate('incidents')} />
         <MetricCard label="Scheduled Visits" value={String(scheduledVisits)} sub="upcoming or in progress" onClick={() => onNavigate('scheduling')} />
-        <MetricCard label="License" value={license?.status ?? 'proposed'} sub="current status" onClick={() => onNavigate('licensing')} />
       </div>
 
       <section aria-label="Director quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
@@ -1496,100 +1496,6 @@ function ApplicationsReviewView({ organizationId }: { organizationId: string }) 
   );
 }
 
-function SchedulingOversightView({
-  orgId, visits, patients, members, loadError, onChanged,
-}: {
-  orgId: string;
-  visits: OrgVisit[];
-  patients: OrgCoveredPatient[];
-  members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
-  loadError?: string | null;
-  onChanged: () => void;
-}) {
-  const [assignments, setAssignments] = useState<StaffPatientAssignment[]>([]);
-  const [assignmentError, setAssignmentError] = useState<string | null>(null);
-  const [assignmentsLoading, setAssignmentsLoading] = useState(true);
-  const [patientId, setPatientId] = useState('');
-  const [startAt, setStartAt] = useState('');
-  const [endAt, setEndAt] = useState('');
-  const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    let live = true;
-    setAssignmentsLoading(true);
-    getOrgStaffPatientAssignments(orgId)
-      .then(rows => { if (live) { setAssignments(rows); setAssignmentError(null); } })
-      .catch(() => { if (live) { setAssignments([]); setAssignmentError('Caregiver assignments could not be verified.'); } })
-      .finally(() => { if (live) setAssignmentsLoading(false); });
-    return () => { live = false; };
-  }, [orgId]);
-  const activeCaregivers = (pId: string) => assignments.filter(a =>
-    a.patientId === pId && a.orgRole === 'caregiver' && a.isActive &&
-    members.some(m => m.userId === a.userId && m.orgRole === 'caregiver' && m.status === 'active'));
-  const selectedCaregivers = activeCaregivers(patientId);
-  const selectedCaregiver = selectedCaregivers.length === 1 ? members.find(m => m.userId === selectedCaregivers[0].userId) : null;
-  const startDate = startAt ? new Date(startAt) : null;
-  const endDate = endAt ? new Date(endAt) : null;
-  const validWindow = !!startDate && !!endDate && Number.isFinite(startDate.getTime()) &&
-    Number.isFinite(endDate.getTime()) && endDate.getTime() > startDate.getTime();
-  const overlap = validWindow && selectedCaregiver && visits.some(v =>
-    v.caregiverId === selectedCaregiver.userId &&
-    (v.status === 'scheduled' || v.status === 'in_progress') &&
-    !!v.scheduledStart && !!v.scheduledEnd &&
-    new Date(v.scheduledStart) < endDate! && new Date(v.scheduledEnd) > startDate!);
-  const schedule = async () => {
-    if (!patientId || !validWindow || selectedCaregivers.length !== 1 || loadError || assignmentError || overlap || saving) return;
-    setSaving(true);
-    try {
-      const result = await scheduleCaregiverVisit(orgId, patientId, startDate!.toISOString(), endDate!.toISOString());
-      if (result.error) { toast.error(result.error); return; }
-      if (result.visit?.caregiverId !== selectedCaregivers[0].userId) {
-        toast.error('Scheduled caregiver did not match the validated assignment. Review the visit immediately.');
-      } else {
-        toast.success('Visit scheduled for the assigned caregiver.');
-      }
-      setPatientId(''); setStartAt(''); setEndAt('');
-      onChanged();
-    } finally { setSaving(false); }
-  };
-  return (
-    <OfficeCard>
-      <div className="flex items-center gap-2"><CalendarClock className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Scheduling Oversight</h2></div>
-      <p className="text-sm text-ent-text">Directors schedule visits. Caregivers see their assigned visits, acknowledge pre-visit updates, clock in on arrival, and clock out with visit notes.</p>
-      <section aria-label="Director schedule visit" className="space-y-3 rounded-xl border border-ent-line bg-ent-bg p-4">
-        <h3 className="text-sm font-bold text-ent-ink">Schedule a caregiver visit</h3>
-        <label className="block text-sm text-ent-ink">Covered patient
-          <select value={patientId} onChange={e => setPatientId(e.target.value)} className={inputCls + ' mt-1'}>
-            <option value="">Choose patient…</option>
-            {patients.map(p => <option key={p.patientId} value={p.patientId}>{p.preferredName || p.firstName + ' ' + p.lastName}</option>)}
-          </select>
-        </label>
-        {patientId && <p className="text-xs text-ent-text">Assigned caregiver: {assignmentsLoading ? 'Verifying assignments…' :
-          selectedCaregivers.length === 1 ? (selectedCaregiver ? selectedCaregiver.firstName + ' ' + selectedCaregiver.lastName : 'Unverified') :
-          selectedCaregivers.length === 0 ? 'No active caregiver assigned. Assign one in Assignments and Coverage first.' :
-          'Multiple caregivers assigned. This scheduling RPC cannot safely select one; use Assignments and Coverage to resolve the assignment before scheduling.'}</p>}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm text-ent-ink">Start time <input type="datetime-local" value={startAt} onChange={e => setStartAt(e.target.value)} className={inputCls + ' mt-1'} /></label>
-          <label className="block text-sm text-ent-ink">End time <input type="datetime-local" value={endAt} onChange={e => setEndAt(e.target.value)} className={inputCls + ' mt-1'} /></label>
-        </div>
-        {!validWindow && startAt && endAt && <p role="alert" className="text-xs text-ent-rust">End time must be later than start time.</p>}
-        {overlap && <p role="alert" className="text-xs text-ent-rust">This caregiver already has a visit overlapping these times.</p>}
-        {(loadError || assignmentError) && <p role="alert" className="text-xs text-ent-rust">Schedule verification unavailable; scheduling disabled until data loads successfully.</p>}
-        <button type="button" disabled={saving || assignmentsLoading || !!assignmentError || !!loadError || !patientId || selectedCaregivers.length !== 1 || !selectedCaregiver || !validWindow || !!overlap} onClick={() => { void schedule(); }}
-          className="rounded-xl bg-ent-bronze px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? 'Scheduling…' : 'Schedule Visit'}</button>
-      </section>
-      {visits.length === 0 ? (
-        loadError ? <p className="text-sm text-ent-rust">Visits could not be confirmed right now.</p> :
-          <p className="text-sm text-ent-text">No visits have been scheduled yet across your organization.</p>
-      ) : <ul className="space-y-2">{visits.map(v => <li key={v.id} className="p-3 bg-ent-bg rounded-xl border border-ent-line flex items-center justify-between gap-3">
-        <div className="min-w-0"><p className="text-sm font-semibold text-ent-ink truncate">{v.caregiverName} → {v.patientName}</p>
-          <p className="text-xs text-ent-muted">{v.scheduledStart ? new Date(v.scheduledStart).toLocaleString() : 'No time set'}{v.scheduledEnd ? ' – ' + new Date(v.scheduledEnd).toLocaleString() : ''}</p>
-          {v.actualStart && <p className="text-xs text-ent-text">Clocked in: {new Date(v.actualStart).toLocaleString()}{v.actualEnd ? ' · Out: ' + new Date(v.actualEnd).toLocaleString() : ''}</p>}
-        </div>
-        <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-ent-pale text-ent-ink capitalize flex-shrink-0">{v.status.replace('_', ' ')}</span>
-      </li>)}</ul>}
-    </OfficeCard>
-  );
-}
 
 function CareOperationsView({ handoffs, loadError }: { handoffs: OrgShiftHandoff[]; loadError?: string | null }) {
   return (
@@ -1674,29 +1580,6 @@ function IncidentsView({ incidents, onResolved, loadError }: { incidents: OrgInc
   );
 }
 
-function ReportsInsightsView({ members, visits, incidents, license }: {
-  members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
-  visits: OrgVisit[]; incidents: OrgIncidentReport[]; license: OrgLicense | null;
-}) {
-  const completedVisits = visits.filter((v) => v.status === 'completed').length;
-  const unresolvedIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').length;
-  return (
-    <OfficeCard>
-      <div className="flex items-center gap-2"><BarChart3 className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Reports and Insights</h2></div>
-      <p className="text-sm text-ent-text">A current-state operational summary drawn from live authorized records.</p>
-      <ul className="text-sm text-ent-ink space-y-1.5">
-        <li>• {members.filter((m) => m.status === 'active').length} active organization member{members.length === 1 ? '' : 's'}</li>
-        <li>• {completedVisits} completed visit{completedVisits === 1 ? '' : 's'} on file</li>
-        <li>• {unresolvedIncidents} unresolved incident{unresolvedIncidents === 1 ? '' : 's'}</li>
-        <li>• License status: {license?.status ?? 'proposed'}{license?.coveredPatientCapacity != null ? ` · capacity ${license.coveredPatientCapacity}` : ''}</li>
-      </ul>
-      <p className="text-xs text-ent-muted pt-2 border-t border-ent-line">
-        Trend analysis and staffing forecasts are not yet built on the backend — this view will not display estimated or
-        invented figures for those until that data exists.
-      </p>
-    </OfficeCard>
-  );
-}
 
 // MMA-P1-FINAL-CLOSURE Priority 2 — Organization Owner controls.
 // Backend (migration 144) has existed since the prior session; this is
@@ -1904,7 +1787,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : nav === 'dashboard' ? (
-        <DashboardHome orgId={organizationId} orgName={orgName} members={members} license={license} visits={visits} incidents={incidents} handoffs={handoffs} patients={coveredPatients} onOpenPatient={openPatientInformation} onNavigate={navigate} />
+        <DashboardHome orgId={organizationId} orgName={orgName} members={members} visits={visits} incidents={incidents} handoffs={handoffs} patients={coveredPatients} onOpenPatient={openPatientInformation} onNavigate={navigate} />
       ) : nav === 'overview' ? (
         <OrganizationOverviewView orgName={orgName} packageType={packageType} members={members} coveredCount={coveredCount} />
       ) : nav === 'applications' ? (
@@ -1916,7 +1799,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       ) : nav === 'assignments' ? (
         <AssignmentsCard orgId={organizationId} members={members} />
       ) : nav === 'scheduling' ? (
-        <SchedulingOversightView orgId={organizationId} visits={visits} patients={coveredPatients} members={members} loadError={loadError} onChanged={() => { void refresh(); }} />
+        <DirectorScheduleCalendar orgId={organizationId} patients={coveredPatients} members={members} onChanged={() => { void refresh(); }} />
       ) : nav === 'operations' ? (
         <CareOperationsView handoffs={handoffs} loadError={loadError} />
       ) : nav === 'incidents' ? (
@@ -1924,7 +1807,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       ) : nav === 'communications' ? (
         <DirectorCommunicationsView orgId={organizationId} />
       ) : nav === 'reports' ? (
-        <ReportsInsightsView members={members} visits={visits} incidents={incidents} license={license} />
+        <DirectorReportBuilder orgId={organizationId} orgName={orgName} members={members} patients={coveredPatients} />
       ) : nav === 'licensing' ? (
         billingOpen ? (
           <div className="space-y-4">
