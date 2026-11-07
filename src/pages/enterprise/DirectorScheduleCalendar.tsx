@@ -10,7 +10,6 @@ const dateKey=(d:Date)=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),
 const localDate=(key:string)=>new Date(key+'T12:00:00');
 const addDays=(d:Date,n:number)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x;};
 const startOfWeek=(d:Date)=>addDays(d,-d.getDay());
-const dateTime=(d:Date)=>dateKey(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 const formatDate=(d:Date)=>d.toLocaleDateString(undefined,{month:'long',year:'numeric'});
 const formatShort=(d:Date)=>d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
 const cls='w-full rounded-xl border border-ent-line bg-white px-3 py-2 text-sm text-ent-ink';
