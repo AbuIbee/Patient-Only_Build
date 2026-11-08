@@ -453,6 +453,8 @@ async function loadPatientData(patient: Patient): Promise<PatientData> {
       id: m.id, patientId: m.patient_id, mood: m.mood, intensity: m.intensity,
       note: m.note ?? undefined, triggers: m.triggers || [], timeOfDay: m.time_of_day ?? undefined,
       timestamp: m.timestamp, recordedBy: m.recorded_by,
+      authorUserId: m.author_user_id, authorRole: m.author_role,
+      entrySource: m.entry_source, organizationId: m.organization_id,
     })),
     behaviorLogs: [],
     memories: (memories || []).map((m) => ({

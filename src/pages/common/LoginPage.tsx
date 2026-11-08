@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import Field from '@/components/AccessibleAuthField';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@/types';
-import { ArrowLeft, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import PricingPage from './PricingPage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -11,34 +12,6 @@ import { signUpCaregiver } from '@/services/caregiverRegistrationService';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type Mode = 'landing' | 'signin' | 'plans' | 'caregiverSignUp';
-
-function Field({
-  label,
-  error,
-  required,
-  children,
-}: {
-  label: string;
-  error?: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium text-charcoal">
-        {label}
-        {required && <span className="text-gentle-coral ml-0.5">*</span>}
-      </label>
-      {children}
-      {error && (
-        <p className="flex items-center gap-1 text-xs text-gentle-coral">
-          <AlertCircle className="w-3 h-3 flex-shrink-0" />
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
 
 const inp = (err?: string) =>
   `w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 transition-colors ${
@@ -365,7 +338,9 @@ export function SignInForm({
             <button
               type="button"
               onClick={() => setShowPw((p) => !p)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-medium-gray hover:text-charcoal"
+              aria-label={showPw ? 'Hide password' : 'Show password'}
+              aria-pressed={showPw}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-medium-gray hover:text-charcoal focus-visible:ring-2 focus-visible:ring-warm-bronze rounded"
             >
               {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>

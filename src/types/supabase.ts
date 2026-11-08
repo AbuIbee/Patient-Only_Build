@@ -2073,6 +2073,11 @@ export interface Database {
       }
       mood_entries: {
         Row: {
+          author_user_id: string | null
+          author_role: string | null
+          entry_source: string
+          organization_id: string | null
+          supersedes_entry_id: string | null
           id: string
           patient_id: string
           mood: MoodType
@@ -2085,6 +2090,11 @@ export interface Database {
           created_at: string
         }
         Insert: {
+          author_user_id?: string | null
+          author_role?: string | null
+          entry_source?: string
+          organization_id?: string | null
+          supersedes_entry_id?: string | null
           id?: string
           patient_id: string
           mood: MoodType
@@ -2097,6 +2107,11 @@ export interface Database {
           created_at?: string
         }
         Update: {
+          author_user_id?: string | null
+          author_role?: string | null
+          entry_source?: string
+          organization_id?: string | null
+          supersedes_entry_id?: string | null
           id?: string
           patient_id?: string
           mood?: MoodType

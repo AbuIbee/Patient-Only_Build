@@ -13,6 +13,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { supabase, logDocumentAccess } from '@/lib/supabase';
+import { recordWellness, wellnessSourceLabel } from '@/services/wellnessService';
 import EnterpriseAGCheckinForm from './EnterpriseAGCheckinForm';
 import {
   ArrowLeft, Loader2, ClipboardList, ClipboardCheck, Calendar, MapPin, Stethoscope, Send,
@@ -152,8 +153,8 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
 
       <div className="space-y-4">
         {tab === 'info' && <PatientInformation patientId={patientId} orgId={orgId} />}
-        {tab === 'overview' && <OverviewTab patientId={patientId} patientHeader={patientHeader} />}
-        {tab === 'medical' && <MedicalTab patientId={patientId} staffRole={staffRole} />}
+        {tab === 'overview' && <OverviewTab patientId={patientId} patientHeader={patientHeader} orgId={orgId} staffRole={staffRole} />}
+        {tab === 'medical' && <MedicalTab patientId={patientId} staffRole={staffRole} orgId={orgId} />}
         {tab === 'contacts' && <HealthcareContacts patientId={patientId} />}
         {tab === 'medications' && <MedicationsTab patientId={patientId} />}
         {tab === 'tasks' && <TasksTab patientId={patientId} />}
@@ -181,7 +182,7 @@ const QUICK_OBS_KINDS: { key: QuickObsKind; label: string }[] = [
   { key: 'mood', label: 'Mood' }, { key: 'pain', label: 'Pain' }, { key: 'hydration', label: 'Hydration' },
   { key: 'appetite', label: 'Appetite' }, { key: 'mobility', label: 'Mobility' }, { key: 'sleep', label: 'Sleep' },
 ];
-function QuickObservationForm({ patientId }: { patientId: string }) {
+function QuickObservationForm({ patientId, orgId, staffRole }: { patientId: string; orgId:string; staffRole:StaffRole }) {
   const [kind, setKind] = useState<QuickObsKind>('mood');
   const [value, setValue] = useState('');
   const [saving, setSaving] = useState(false);
@@ -191,10 +192,9 @@ function QuickObservationForm({ patientId }: { patientId: string }) {
     setSaving(true);
     try {
       if (kind === 'mood') {
-        const { error } = await supabase.from('mood_entries').insert({
-          patient_id: patientId, mood: value as MoodType, intensity: 5, recorded_by: 'enterprise_staff',
-        });
-        if (error) { toast.error(error.message); return; }
+        const { error } = await recordWellness({patientId,organizationId:orgId,
+          source:staffRole==='caregiver'?'caregiver_observed':'professional_observed',mood:value as MoodType,intensity:5});
+        if (error) { toast.error(error); return; }
       } else if (kind === 'pain') {
         const { error } = await recordPatientVitals(patientId, { painLevel: Number(value) });
         if (error) { toast.error(error); return; }
@@ -301,7 +301,7 @@ function IntakeSummaryCard({ patientId }: { patientId: string }) {
 }
 
 // P01/P21 — identity + preferences summary.
-function OverviewTab({ patientId, patientHeader }: { patientId: string; patientHeader: PatientHeader }) {
+function OverviewTab({ patientId, patientHeader, orgId, staffRole }: { patientId: string; patientHeader: PatientHeader; orgId:string; staffRole:StaffRole }) {
   const [preferences, setPreferences] = useState<CarePreference[]>([]);
   const [carePlans, setCarePlans] = useState<PatientCarePlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -376,7 +376,7 @@ function OverviewTab({ patientId, patientHeader }: { patientId: string; patientH
       )}
 
       <IntakeSummaryCard patientId={patientId} />
-      <QuickObservationForm patientId={patientId} />
+      <QuickObservationForm patientId={patientId} orgId={orgId} staffRole={staffRole} />
 
       <SectionCard title="Patient Preferences" icon={Heart}>
         <div className="flex gap-2">
@@ -435,7 +435,7 @@ function VitalsForm({ patientId, staffRole, onRecorded }: { patientId: string; s
   );
 }
 
-function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: StaffRole }) {
+function MedicalTab({ patientId, staffRole, orgId }: { patientId: string; staffRole: StaffRole; orgId:string }) {
   const [diagnoses, setDiagnoses] = useState<PatientDiagnosis[]>([]);
   const [vitals, setVitals] = useState<PatientVitals[]>([]);
   const [goals, setGoals] = useState<TherapyGoal[]>([]);
@@ -451,7 +451,7 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
   // instead. A real caregiver could never reach the feature at all.
   // Moved here, into the actual reachable "Medical" tab, with its own
   // query and pagination.
-  const [moods, setMoods] = useState<{ id: string; mood: string; intensity: number; timestamp: string }[]>([]);
+  const [moods, setMoods] = useState<{ id: string; mood: string; intensity: number; timestamp: string; entry_source:string }[]>([]);
   const [moodLimit, setMoodLimit] = useState(10);
   const [moodHasMore, setMoodHasMore] = useState(false);
   // MMA-ENT-CAREGIVER-MASTER-005 D02-011: diagnoses/vitals/therapy
@@ -464,7 +464,7 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
   const load = useCallback(async () => {
     const [d, v, g, moodResult] = await Promise.all([
       getPatientDiagnosesResult(patientId), getPatientVitalsResult(patientId), getTherapyGoalsResult(patientId),
-      supabase.from('mood_entries').select('id, mood, intensity, timestamp').eq('patient_id', patientId).order('timestamp', { ascending: false }).limit(moodLimit + 1),
+      supabase.from('mood_entries').select('id, mood, intensity, timestamp, entry_source').eq('patient_id', patientId).or(`organization_id.eq.${orgId},organization_id.is.null`).order('timestamp', { ascending: false }).limit(moodLimit + 1),
     ]);
     setDiagnoses(d.data ?? []); setVitals(v.data ?? []); setGoals(g.data ?? []);
     const allMoods = moodResult.data ?? [];
@@ -473,7 +473,7 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
     const errors = [d.error, v.error, g.error, moodResult.error?.message].filter((e): e is string => !!e);
     setMedicalLoadError(errors.length > 0 ? errors[0] : null);
     setLoading(false);
-  }, [patientId, moodLimit]);
+  }, [patientId, orgId, moodLimit]);
   useEffect(() => { void load(); }, [load]);
 
   const addDiagnosis = async () => {
@@ -528,7 +528,7 @@ function MedicalTab({ patientId, staffRole }: { patientId: string; staffRole: St
           <ul className="space-y-1.5">
             {moods.map((m) => (
               <li key={m.id} className="flex items-center justify-between p-2.5 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
-                <span className="text-charcoal font-medium capitalize">{m.mood} ({m.intensity}/10)</span>
+                <span className="text-charcoal font-medium capitalize">{m.mood} ({m.intensity}/10)<small className="block normal-case">{wellnessSourceLabel(m.entry_source)}</small></span>
                 <span className="text-xs text-medium-gray">{new Date(m.timestamp).toLocaleString()}</span>
               </li>
             ))}

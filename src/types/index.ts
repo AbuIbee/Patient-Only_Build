@@ -166,6 +166,10 @@ export interface MoodEntry {
   triggers?: string[];
   timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'night';
   recordedBy?: string;
+  authorUserId?: string | null;
+  authorRole?: string | null;
+  entrySource?: string;
+  organizationId?: string | null;
   timestamp: string;
 }
 

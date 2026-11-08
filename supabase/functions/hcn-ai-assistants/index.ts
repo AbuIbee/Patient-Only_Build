@@ -132,6 +132,7 @@ Deno.serve(async(req:Request)=>{
           .not('note_type','in','("therapist_session","clinical_observation","care_partner_personal")')
           .order('updated_at',{ascending:false}).limit(25),
         db.from('mood_entries').select('id,mood,note,created_at').eq('patient_id',patientId)
+          .or(`organization_id.eq.${orgId},organization_id.is.null`)
           .order('created_at',{ascending:false}).limit(5),
         db.from('medications').select('id,name,updated_at').eq('patient_id',patientId)
           .order('updated_at',{ascending:false}).limit(25)

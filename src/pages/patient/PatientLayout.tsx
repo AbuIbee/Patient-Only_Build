@@ -266,7 +266,7 @@ function PatientLayoutInner() {
           supabase.from('memories').select('id, patient_id, title, description, photo_url, audio_url, date, location, people, category, tags, is_favorite, created_at, created_by').eq('patient_id', patientId).order('created_at', { ascending: false }).limit(50),
           supabase
             .from('mood_entries')
-            .select('id, patient_id, mood, intensity, note, triggers, time_of_day, timestamp, recorded_by')
+            .select('id, patient_id, mood, intensity, note, triggers, time_of_day, timestamp, recorded_by, author_user_id, author_role, entry_source, organization_id')
             .eq('patient_id', patientId)
             .order('timestamp', { ascending: false })
             .limit(50),
@@ -370,6 +370,8 @@ function PatientLayoutInner() {
             timeOfDay: m.time_of_day ?? undefined,
             timestamp: m.timestamp,
             recordedBy: m.recorded_by ?? undefined,
+            authorUserId: m.author_user_id, authorRole: m.author_role,
+            entrySource: m.entry_source, organizationId: m.organization_id,
           })),
         });
       }
@@ -540,7 +542,7 @@ function PatientLayoutInner() {
       case 'mood':
         // PHASE 2.1: explicitly restricted for Temporary, not left to show
         // a broken/empty real view — see TempDemoUnavailable.tsx.
-        return isTempUserDemo ? <TempDemoUnavailable featureLabel="Mood Tracking" /> : <PatientMoodTracker onOpenMemories={() => requestView('memories')} />;
+        return isTempUserDemo ? <TempDemoUnavailable featureLabel="Mood Tracking" /> : <PatientMoodTracker organizationId={haneenCareOrgId} onOpenMemories={() => requestView('memories')} />;
       case 'documents':
         return isTempUserDemo ? <TempDemoDocuments /> : <PatientDocuments />;
       case 'reminders':
