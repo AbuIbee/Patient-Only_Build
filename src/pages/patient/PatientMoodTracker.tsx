@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import { recordWellness, wellnessSourceLabel } from '@/services/wellnessService';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -601,7 +602,7 @@ function MoodTimeline({ entries }: { entries: { timestamp: string; mood: MoodTyp
 }
 
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
-export default function PatientMoodTracker({ onOpenMemories }: { onOpenMemories?: () => void } = {}) {
+export default function PatientMoodTracker({ onOpenMemories, organizationId }: { onOpenMemories?: () => void; organizationId?:string|null } = {}) {
   const { state, dispatch } = useApp();
 
   const [selectedMood, setSelectedMood] = useState<MoodType | null>(null);
@@ -753,26 +754,14 @@ useEffect(() => {
     if (!selectedMood) return;
     if (!patientId) { toast.error('Sign in to save your mood.'); return; }
 
-    const timestamp = new Date().toISOString();
     const timeOfDay = (
       format(new Date(), 'a').toLowerCase().includes('am') ? 'morning' : 'afternoon'
     ) as 'morning' | 'afternoon' | 'evening' | 'night';
 
-    const { data, error } = await supabase
-      .from('mood_entries')
-      .insert({
-        patient_id: patientId,
-        mood: selectedMood,
-        intensity: 7,
-        note: moodNote || null,
-        time_of_day: timeOfDay,
-        timestamp,
-        recorded_by: state.patient?.preferredName || 'Patient',
-      })
-      .select('id, patient_id, mood, intensity, note, triggers, time_of_day, timestamp, recorded_by')
-      .single();
+    const { data, error } = await recordWellness({patientId,organizationId,
+      source:'patient_reported',mood:selectedMood,intensity:7,note:moodNote||null,timeOfDay});
 
-    if (error) {
+    if (error || !data) {
       toast.error('Could not save your mood. Please try again.');
       return;
     }
@@ -789,6 +778,8 @@ useEffect(() => {
         timeOfDay:   data.time_of_day ?? undefined,
         timestamp:   data.timestamp,
         recordedBy:  data.recorded_by,
+        authorUserId: data.author_user_id, authorRole: data.author_role,
+        entrySource: data.entry_source, organizationId: data.organization_id,
       },
     });
 
@@ -799,7 +790,7 @@ useEffect(() => {
   };
 
   const timelineEntries = useMemo(
-    () => moodEntries.map(e => ({ timestamp: e.timestamp, mood: e.mood as MoodType, note: e.note })),
+    () => moodEntries.filter(e=>e.entrySource==='patient_reported').map(e => ({ timestamp: e.timestamp, mood: e.mood as MoodType, note: e.note })),
     [moodEntries]
   );
 
@@ -1004,6 +995,11 @@ useEffect(() => {
         ) : (
           <MoodTimeline entries={timelineEntries} />
         )}
+        <div className="mt-4 space-y-2" aria-label="Attributed wellness history">
+          {moodEntries.filter(e=>e.entrySource!=='patient_reported').map(e=><p key={e.id} className="text-sm text-medium-gray">
+            <strong>{wellnessSourceLabel(e.entrySource)}</strong>: {e.mood} — {new Date(e.timestamp).toLocaleString()}
+          </p>)}
+        </div>
       </div>
 
       {/* ── SECTION 3: Care Partner Progress Graphs ─────────────────────── */}
