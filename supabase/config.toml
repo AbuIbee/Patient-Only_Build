@@ -398,6 +398,14 @@ deno_version = 2
 [functions.stripe-webhook]
 verify_jwt = false
 
+# HCN-STRIPE-CONNECT-001 -- same rationale as stripe-webhook above:
+# this is Haneen Care Network's dedicated enterprise-only webhook, and
+# a real Stripe delivery never carries a Supabase JWT/apikey. Its own
+# HMAC check against HCN_STRIPE_WEBHOOK_SECRET is the actual auth
+# boundary.
+[functions.hcn-stripe-webhook]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 55327
