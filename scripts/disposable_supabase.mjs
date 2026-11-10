@@ -94,7 +94,7 @@ function rewriteConfig(configText) {
 // deliberately narrow. Anything else (a bad migration, a port
 // conflict, a config error) is a real defect and must fail loud on the
 // very first attempt, never silently retried.
-const TRANSIENT_REGISTRY_ERROR_PATTERNS = [/toomanyrequests/i, /Data limit exceeded/i, /TLS handshake timeout/i, /i\/o timeout/i, /connection reset by peer/i];
+const TRANSIENT_REGISTRY_ERROR_PATTERNS = [/toomanyrequests/i, /Data limit exceeded/i, /error from registry: Rate exceeded/i, /TLS handshake timeout/i, /i\/o timeout/i, /connection reset by peer/i];
 
 function isTransientRegistryError(output) {
   return TRANSIENT_REGISTRY_ERROR_PATTERNS.some((p) => p.test(output));
