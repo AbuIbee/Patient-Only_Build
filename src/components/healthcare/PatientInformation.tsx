@@ -3,6 +3,7 @@ import { AlertCircle, Loader2, PencilLine, Phone, RefreshCcw, Search } from 'luc
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import HealthcareContacts from '@/components/healthcare/HealthcareContacts';
+import { getLinkedPatientProviders, type LinkedPatientProvider } from '@/services/hcnClinicalCoordinationService';
 import { loadPatientInformation, savePatientInformation, type PatientInformationDetails, type PatientInformationSnapshot } from '@/services/patientInformationService';
 
 type Section = 'identity' | 'needs' | 'providers' | 'representatives' | 'emergency';
@@ -48,6 +49,8 @@ function Field({label,value}:{label:string;value:unknown}) {
 }
 function PatientInformationBody({patientId,orgId,readOnly=false}:{patientId:string;orgId:string;readOnly?:boolean}) {
   const [data,setData]=useState<PatientInformationSnapshot|null>(null);
+  const [linkedProviders,setLinkedProviders]=useState<LinkedPatientProvider[]>([]);
+  const [linkedProviderError,setLinkedProviderError]=useState<string|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState<string|null>(null);
   const [section,setSection]=useState<Section>('identity');
@@ -63,15 +66,20 @@ function PatientInformationBody({patientId,orgId,readOnly=false}:{patientId:stri
   });
   const refresh=useCallback(async()=>{
     setLoading(true);
-    const response=await loadPatientInformation(orgId,patientId);
+    const [response, linked] = await Promise.all([
+      loadPatientInformation(orgId,patientId), getLinkedPatientProviders(orgId,patientId),
+    ]);
     if(response.error){setError(response.error);setData(null);}
     else {setData(response.data);setError(null);}
+    if(linked.error){setLinkedProviderError(linked.error);setLinkedProviders([]);}
+    else {setLinkedProviderError(null);setLinkedProviders(linked.data ?? []);}
     setLoading(false);
   },[orgId,patientId]);
   useEffect(()=>{void refresh();},[refresh]);
   useEffect(()=>{
     const channel=supabase.channel(`hcn-patient-info-${orgId}-${patientId}`)
       .on('postgres_changes',{event:'*',schema:'public',table:'patient_care_providers',filter:`patient_id=eq.${patientId}`},()=>{void refresh();})
+      .on('postgres_changes',{event:'*',schema:'public',table:'hcn_patient_provider_associations',filter:`patient_id=eq.${patientId}`},()=>{void refresh();})
       .on('postgres_changes',{event:'*',schema:'public',table:'hcn_patient_information',filter:`patient_id=eq.${patientId}`},()=>{void refresh();})
       .subscribe();
     const focus=()=>{void refresh();};
@@ -230,7 +238,23 @@ function PatientInformationBody({patientId,orgId,readOnly=false}:{patientId:stri
             <p className="text-sm text-ent-muted">No active care plan documented.</p>}
         </div>}
         {section==='providers'&&<div className="space-y-4">
-          <p className="text-sm text-ent-muted">This section uses the same provider records as Healthcare Contacts. Changes appear in both views.</p>
+          <p className="text-sm text-ent-muted">Patient-specific Healthcare Contacts appear below. Providers associated by your Director from the organization-wide Healthcare Directory are populated automatically here, without duplicating contact records.</p>
+          <section aria-label="Linked organization healthcare providers" className="rounded-xl border border-ent-line p-3 space-y-2">
+            <h3 className="text-sm font-semibold text-ent-ink">Linked organization healthcare providers</h3>
+            {linkedProviderError && <p role="alert" className="text-xs text-ent-rust">Linked provider directory unavailable: {linkedProviderError}</p>}
+            {!linkedProviderError && linkedProviders.length === 0 && <p className="text-xs text-ent-muted">No organization providers linked to this patient yet.</p>}
+            {linkedProviders.map((p) => (
+              <article key={p.providerId} className="rounded-lg border border-ent-line p-2 text-sm">
+                <div className="font-semibold">{p.displayName} <span className="text-xs text-ent-muted">({p.specialty.replace(/_/g,' ')})</span></div>
+                {p.practiceName && <p className="text-xs">{p.practiceName}</p>}
+                {p.officePhone && <p className="text-xs">Phone: <a href={`tel:${p.officePhone.replace(/[^+\d]/g,'')}`}>{p.officePhone}</a></p>}
+                {p.secureContactEmail && <p className="text-xs">Email: {p.secureContactEmail}</p>}
+                {p.officeAddress && <p className="text-xs">Office: {p.officeAddress}</p>}
+                {p.relationshipNote && <p className="text-xs">Role for patient: {p.relationshipNote}</p>}
+                <p className="text-xs text-ent-muted">{p.verificationStatus.replace(/_/g,' ')}</p>
+              </article>
+            ))}
+          </section>
           {data.providers.length>0?<dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">{data.providers.map(p=><div key={String(p.id)} className="rounded-xl border border-ent-line bg-white p-4">
             <dt className="font-semibold text-ent-ink">{show(p.name)}</dt><dd className="text-xs text-ent-muted">{show(p.role)}{p.is_preferred_hospital?' · Preferred hospital':''}</dd>
             <dd className="text-sm">{show(p.practice_name)} · {show(p.phone)}</dd><dd className="text-xs text-ent-muted">{show(p.verification_status)}</dd>

@@ -558,3 +558,24 @@ export async function attachInternalDocumentToRequest(requestId: string, documen
   });
   return { error: error ? err(error, 'Unable to attach this document') : null };
 }
+
+
+export type LinkedPatientProvider = {
+  providerId: string; displayName: string; specialty: string;
+  practiceName: string | null; officePhone: string | null;
+  secureContactEmail: string | null; officeAddress: string | null;
+  relationshipNote: string | null; verificationStatus: string;
+};
+export async function getLinkedPatientProviders(organizationId: string, patientId: string) {
+  const { data, error } = await supabase.rpc('hcn_get_patient_linked_healthcare_providers', {
+    p_organization_id: organizationId, p_patient_id: patientId,
+  });
+  if (error) return { data: null as LinkedPatientProvider[] | null, error: err(error, 'Unable to load linked providers') };
+  return { data: (data ?? []).map((r: Record<string, unknown>) => ({
+    providerId: r.provider_id as string, displayName: r.display_name as string,
+    specialty: r.specialty as string, practiceName: r.practice_name as string | null,
+    officePhone: r.office_phone as string | null, secureContactEmail: r.secure_contact_email as string | null,
+    officeAddress: r.office_address as string | null, relationshipNote: r.relationship_note as string | null,
+    verificationStatus: r.verification_status as string,
+  })), error: null as string | null };
+}
