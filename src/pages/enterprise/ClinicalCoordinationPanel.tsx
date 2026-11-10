@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Stethoscope, RefreshCw, Send, Download, Upload, UserPlus, ShieldCheck } from 'lucide-react';
+import { Stethoscope, RefreshCw, Send, Download, Upload, UserPlus, ShieldCheck, Users } from 'lucide-react';
 import {
   type HealthcareProvider, type ClinicalRequest, type ClinicalDocument, type RequestEvent,
+  type CoordinationPlan, type CoordinationPlanParticipant, type CoordinationPlanUpdate,
   getProviders, upsertProvider, associateProviderWithPatient, getClinicalRequests, createClinicalRequest,
   sendClinicalRequest, resendClinicalRequestInvitation, cancelClinicalRequest, revokeClinicalRequestAccess,
   getDocumentsForRequest, getRequestEvents, reviewClinicalDocument, clinicalApproveDocument,
   uploadInternalDocument, getSignedDownloadUrl, sendClinicalRequestNotification,
+  getCoordinationPlans, createCoordinationPlan, addCoordinationPlanParticipant, getCoordinationPlanParticipants,
+  postCoordinationPlanUpdate, getCoordinationPlanUpdates, closeCoordinationPlan,
   REQUEST_TYPES, DOCUMENT_CATEGORIES, DOCUMENT_CLASSIFICATIONS, PROVIDER_SPECIALTIES,
 } from '@/services/hcnClinicalCoordinationService';
 
@@ -63,6 +66,18 @@ export default function ClinicalCoordinationPanel({
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
 
+  const [planPatientId, setPlanPatientId] = useState(patients[0]?.id ?? '');
+  const [plans, setPlans] = useState<CoordinationPlan[]>([]);
+  const [showNewPlan, setShowNewPlan] = useState(false);
+  const [planForm, setPlanForm] = useState({ title: '', description: '' });
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [planParticipants, setPlanParticipants] = useState<CoordinationPlanParticipant[]>([]);
+  const [planUpdates, setPlanUpdates] = useState<CoordinationPlanUpdate[]>([]);
+  const [newParticipantUserId, setNewParticipantUserId] = useState('');
+  const [newParticipantRole, setNewParticipantRole] = useState('');
+  const [newExternalProviderId, setNewExternalProviderId] = useState('');
+  const [planUpdateText, setPlanUpdateText] = useState('');
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
@@ -83,6 +98,81 @@ export default function ClinicalCoordinationPanel({
   }, []);
 
   const selectedRequest = requests.find((r) => r.id === selectedRequestId) ?? null;
+
+  const refreshPlans = useCallback(async (patientId: string) => {
+    if (!patientId) { setPlans([]); return; }
+    const r = await getCoordinationPlans(patientId);
+    if (r.error) toast.error(r.error); else setPlans(r.data ?? []);
+  }, []);
+  useEffect(() => { void refreshPlans(planPatientId); }, [planPatientId, refreshPlans]);
+
+  const openPlan = useCallback(async (id: string) => {
+    setSelectedPlanId(id);
+    const [p, u] = await Promise.all([getCoordinationPlanParticipants(id), getCoordinationPlanUpdates(id)]);
+    setPlanParticipants(p.data ?? []);
+    setPlanUpdates(u.data ?? []);
+  }, []);
+  const selectedPlan = plans.find((p) => p.id === selectedPlanId) ?? null;
+
+  const submitNewPlan = async () => {
+    if (!planPatientId || !planForm.title.trim()) { toast.error('A patient and a title are required.'); return; }
+    setBusy(true);
+    try {
+      const r = await createCoordinationPlan(orgId, planPatientId, planForm.title.trim(), planForm.description.trim() || null);
+      if (r.error) { toast.error(r.error); return; }
+      toast.success('Coordination plan created.');
+      setShowNewPlan(false);
+      setPlanForm({ title: '', description: '' });
+      await refreshPlans(planPatientId);
+    } finally { setBusy(false); }
+  };
+
+  const doAddParticipant = async (type: 'internal_user' | 'external_provider') => {
+    if (!selectedPlanId) return;
+    if (type === 'internal_user' && (!newParticipantUserId.trim() || !newParticipantRole.trim())) {
+      toast.error('A user ID and a role label are required.'); return;
+    }
+    if (type === 'external_provider' && (!newExternalProviderId || !newParticipantRole.trim())) {
+      toast.error('A provider and a role label are required.'); return;
+    }
+    setBusy(true);
+    try {
+      const r = await addCoordinationPlanParticipant({
+        planId: selectedPlanId, participantType: type,
+        participantUserId: type === 'internal_user' ? newParticipantUserId.trim() : null,
+        externalProviderId: type === 'external_provider' ? newExternalProviderId : null,
+        roleLabel: newParticipantRole.trim(),
+      });
+      if (r.error) { toast.error(r.error); return; }
+      toast.success('Participant added.');
+      setNewParticipantUserId(''); setNewParticipantRole(''); setNewExternalProviderId('');
+      await openPlan(selectedPlanId);
+    } finally { setBusy(false); }
+  };
+
+  const doPostPlanUpdate = async () => {
+    if (!selectedPlanId || !planUpdateText.trim()) return;
+    setBusy(true);
+    try {
+      const r = await postCoordinationPlanUpdate(selectedPlanId, planUpdateText.trim());
+      if (r.error) { toast.error(r.error); return; }
+      setPlanUpdateText('');
+      await openPlan(selectedPlanId);
+    } finally { setBusy(false); }
+  };
+
+  const doClosePlan = async () => {
+    if (!selectedPlanId) return;
+    const summary = window.prompt('Closing summary for this coordination plan?') ?? '';
+    if (!summary.trim()) return;
+    setBusy(true);
+    try {
+      const r = await closeCoordinationPlan(selectedPlanId, summary.trim());
+      if (r.error) { toast.error(r.error); return; }
+      toast.success('Coordination plan closed.');
+      await refreshPlans(planPatientId);
+    } finally { setBusy(false); }
+  };
 
   const saveProvider = async () => {
     if (!providerForm.displayName.trim()) { toast.error('Enter a provider name.'); return; }
@@ -371,6 +461,99 @@ export default function ClinicalCoordinationPanel({
           </div>
         </div>
       )}
+
+      {/* Coordination Plans (Feature 5 -- Advanced Multi-Provider Coordination) */}
+      <div className="rounded-xl border border-ent-line p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-sm flex items-center gap-1"><Users className="h-4 w-4" /> Coordination Plans</h3>
+          {role === 'director' && (
+            <button type="button" className="rounded-lg border border-ent-line px-3 py-1 text-xs font-semibold" onClick={() => setShowNewPlan((v) => !v)}>New plan</button>
+          )}
+        </div>
+        <select className="rounded-lg border border-ent-line p-2 text-sm" value={planPatientId} onChange={(e) => { setPlanPatientId(e.target.value); setSelectedPlanId(null); }}>
+          <option value="">Select patient…</option>
+          {patients.map((pt) => <option key={pt.id} value={pt.id}>{pt.name}</option>)}
+        </select>
+
+        {showNewPlan && role === 'director' && (
+          <div className="rounded-lg bg-ent-pale p-3 space-y-2">
+            <input className="block w-full rounded-lg border border-ent-line p-2 text-sm" placeholder="Plan title (e.g. Post-Surgery Recovery Coordination)"
+              value={planForm.title} onChange={(e) => setPlanForm((f) => ({ ...f, title: e.target.value }))} />
+            <textarea className="block w-full rounded-lg border border-ent-line p-2 text-sm" rows={2} placeholder="Description (optional)"
+              value={planForm.description} onChange={(e) => setPlanForm((f) => ({ ...f, description: e.target.value }))} />
+            <button type="button" disabled={busy} onClick={() => { void submitNewPlan(); }} className="rounded-lg bg-ent-bronze px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">Create plan</button>
+          </div>
+        )}
+
+        {plans.length === 0 ? <p className="text-sm text-ent-muted">No coordination plans for this patient yet.</p> : (
+          <ul className="space-y-2">
+            {plans.map((p) => (
+              <li key={p.id} className={`rounded-xl border p-2 cursor-pointer ${selectedPlanId === p.id ? 'border-ent-bronze bg-ent-pale' : 'border-ent-line'}`} onClick={() => { void openPlan(p.id); }}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium">{p.title}</span>
+                  <span className="text-xs text-ent-muted">{p.status}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {selectedPlan && (
+          <div className="rounded-xl border border-ent-line p-3 space-y-3">
+            <h4 className="text-sm font-semibold">{selectedPlan.title} — care team & timeline</h4>
+
+            <div>
+              <h5 className="text-xs font-semibold text-ent-muted mb-1">Named participants</h5>
+              <ul className="text-sm space-y-0.5">
+                {planParticipants.map((pp) => (
+                  <li key={pp.id}>{pp.roleLabel} <span className="text-ent-muted text-xs">({pp.participantType === 'external_provider' ? 'external provider' : 'internal'})</span></li>
+                ))}
+                {planParticipants.length === 0 && <li className="text-ent-muted">No participants named yet.</li>}
+              </ul>
+            </div>
+
+            {role === 'director' && selectedPlan.status === 'active' && (
+              <div className="rounded-lg bg-ent-pale p-2 space-y-2">
+                <div className="flex gap-2">
+                  <input className="flex-1 rounded-lg border border-ent-line p-2 text-xs" placeholder="Staff member's user ID"
+                    value={newParticipantUserId} onChange={(e) => setNewParticipantUserId(e.target.value)} />
+                  <input className="flex-1 rounded-lg border border-ent-line p-2 text-xs" placeholder="Role on this plan (e.g. Mobility Rehabilitation)"
+                    value={newParticipantRole} onChange={(e) => setNewParticipantRole(e.target.value)} />
+                  <button type="button" disabled={busy} onClick={() => { void doAddParticipant('internal_user'); }} className="rounded-lg border border-ent-line px-3 py-1 text-xs font-semibold whitespace-nowrap">Add staff</button>
+                </div>
+                <div className="flex gap-2">
+                  <select className="flex-1 rounded-lg border border-ent-line p-2 text-xs" value={newExternalProviderId} onChange={(e) => setNewExternalProviderId(e.target.value)}>
+                    <option value="">Select external provider…</option>
+                    {providers.filter((p) => p.isActive).map((p) => <option key={p.id} value={p.id}>{p.displayName}</option>)}
+                  </select>
+                  <button type="button" disabled={busy} onClick={() => { void doAddParticipant('external_provider'); }} className="rounded-lg border border-ent-line px-3 py-1 text-xs font-semibold whitespace-nowrap">Add provider</button>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <h5 className="text-xs font-semibold text-ent-muted mb-1">Shared timeline</h5>
+              <ul className="text-sm space-y-1 max-h-48 overflow-y-auto">
+                {planUpdates.map((u) => (
+                  <li key={u.id} className="border-b border-ent-line/40 pb-1"><span className="text-xs text-ent-muted">{new Date(u.createdAt).toLocaleString()}</span> — {u.updateText}</li>
+                ))}
+                {planUpdates.length === 0 && <li className="text-ent-muted">No updates posted yet.</li>}
+              </ul>
+            </div>
+
+            {selectedPlan.status === 'active' && (
+              <div className="flex gap-2">
+                <input className="flex-1 rounded-lg border border-ent-line p-2 text-sm" placeholder="Post an update to the shared timeline…"
+                  value={planUpdateText} onChange={(e) => setPlanUpdateText(e.target.value)} />
+                <button type="button" disabled={busy || !planUpdateText.trim()} onClick={() => { void doPostPlanUpdate(); }} className="rounded-lg bg-ent-bronze px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Post</button>
+              </div>
+            )}
+            {role === 'director' && selectedPlan.status === 'active' && (
+              <button type="button" disabled={busy} onClick={() => { void doClosePlan(); }} className="text-xs rounded border border-ent-line px-2 py-1">Close plan</button>
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

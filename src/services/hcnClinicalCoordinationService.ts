@@ -301,6 +301,97 @@ export const DOCUMENT_CLASSIFICATIONS = [
   { value: 'specially_protected_documentation', label: 'Specially protected documentation' },
 ];
 
+// ---------------------------------------------------------------------------
+// Phase 3 -- Coordination Plans (Feature 5, Advanced Multi-Provider
+// Coordination). Same thin-wrapper convention as above; every
+// authorization decision is already enforced server-side (see
+// 20261110100000_hcn_clinical_coordination_plans.sql).
+export type CoordinationPlan = {
+  id: string; organizationId: string; patientId: string; title: string; description: string | null;
+  status: string; createdBy: string; createdAt: string; closingSummary: string | null; version: number;
+};
+export type CoordinationPlanParticipant = {
+  id: string; planId: string; participantType: string; participantUserId: string | null;
+  externalProviderId: string | null; roleLabel: string; removedAt: string | null;
+};
+export type CoordinationPlanUpdate = { id: string; planId: string; authorId: string; updateText: string; createdAt: string };
+
+function mapPlan(r: Record<string, unknown>): CoordinationPlan {
+  return {
+    id: r.id as string, organizationId: r.organization_id as string, patientId: r.patient_id as string,
+    title: r.title as string, description: r.description as string | null, status: r.status as string,
+    createdBy: r.created_by as string, createdAt: r.created_at as string,
+    closingSummary: r.closing_summary as string | null, version: r.version as number,
+  };
+}
+
+export async function getCoordinationPlans(patientId: string) {
+  const { data, error } = await supabase.from('hcn_coordination_plans').select('*').eq('patient_id', patientId).order('created_at', { ascending: false });
+  if (error) return { data: null, error: err(error, 'Unable to load coordination plans') };
+  return { data: (data ?? []).map((r) => mapPlan(r as unknown as Record<string, unknown>)), error: null as string | null };
+}
+
+export async function createCoordinationPlan(organizationId: string, patientId: string, title: string, description: string | null) {
+  const { data, error } = await supabase.rpc('hcn_create_coordination_plan', {
+    p_organization_id: organizationId, p_patient_id: patientId, p_title: title, p_description: description,
+  });
+  if (error) return { data: null, error: err(error, 'Unable to create this coordination plan') };
+  return { data: mapPlan(data as unknown as Record<string, unknown>), error: null as string | null };
+}
+
+export async function addCoordinationPlanParticipant(input: {
+  planId: string; participantType: 'internal_user' | 'external_provider'; participantUserId?: string | null;
+  externalProviderId?: string | null; roleLabel: string;
+}) {
+  const { error } = await supabase.rpc('hcn_add_coordination_plan_participant', {
+    p_plan_id: input.planId, p_participant_type: input.participantType,
+    p_participant_user_id: input.participantUserId ?? null, p_external_provider_id: input.externalProviderId ?? null,
+    p_role_label: input.roleLabel,
+  });
+  return { error: error ? err(error, 'Unable to add this participant') : null };
+}
+
+export async function removeCoordinationPlanParticipant(participantId: string) {
+  const { error } = await supabase.rpc('hcn_remove_coordination_plan_participant', { p_participant_id: participantId });
+  return { error: error ? err(error, 'Unable to remove this participant') : null };
+}
+
+export async function getCoordinationPlanParticipants(planId: string) {
+  const { data, error } = await supabase.from('hcn_coordination_plan_participants').select('*').eq('plan_id', planId).is('removed_at', null);
+  if (error) return { data: null, error: err(error, 'Unable to load plan participants') };
+  return {
+    data: (data ?? []).map((r) => ({
+      id: r.id as string, planId: r.plan_id as string, participantType: r.participant_type as string,
+      participantUserId: r.participant_user_id as string | null, externalProviderId: r.external_provider_id as string | null,
+      roleLabel: r.role_label as string, removedAt: r.removed_at as string | null,
+    }) as CoordinationPlanParticipant),
+    error: null as string | null,
+  };
+}
+
+export async function postCoordinationPlanUpdate(planId: string, updateText: string) {
+  const { error } = await supabase.rpc('hcn_post_coordination_plan_update', { p_plan_id: planId, p_update_text: updateText });
+  return { error: error ? err(error, 'Unable to post this update') : null };
+}
+
+export async function getCoordinationPlanUpdates(planId: string) {
+  const { data, error } = await supabase.from('hcn_coordination_plan_updates').select('*').eq('plan_id', planId).order('created_at');
+  if (error) return { data: null, error: err(error, 'Unable to load the plan timeline') };
+  return {
+    data: (data ?? []).map((r) => ({
+      id: r.id as string, planId: r.plan_id as string, authorId: r.author_id as string,
+      updateText: r.update_text as string, createdAt: r.created_at as string,
+    }) as CoordinationPlanUpdate),
+    error: null as string | null,
+  };
+}
+
+export async function closeCoordinationPlan(planId: string, closingSummary: string) {
+  const { data, error } = await supabase.rpc('hcn_close_coordination_plan', { p_plan_id: planId, p_closing_summary: closingSummary });
+  if (error) return { data: null, error: err(error, 'Unable to close this coordination plan') };
+  return { data: mapPlan(data as unknown as Record<string, unknown>), error: null as string | null };
+}
+
 export const PROVIDER_SPECIALTIES = [
   { value: 'primary_care_physician', label: 'Primary care physician' },
   { value: 'medical_specialist', label: 'Medical specialist' },

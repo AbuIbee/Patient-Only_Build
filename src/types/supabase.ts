@@ -486,6 +486,50 @@ export interface Database {
         }
         Relationships: []
       }
+      // HCN-CLINICAL-MASTER-002-CONTINUATION Phase 3 -- same hand-merge
+      // precedent as the other hcn_ entries in this file.
+      hcn_coordination_plans: {
+        Row: {
+          closed_at: string | null; closed_by: string | null; closing_summary: string | null; created_at: string
+          created_by: string; description: string | null; id: string; organization_id: string; patient_id: string
+          status: string; title: string; updated_at: string; version: number
+        }
+        Insert: {
+          closed_at?: string | null; closed_by?: string | null; closing_summary?: string | null; created_at?: string
+          created_by: string; description?: string | null; id?: string; organization_id: string; patient_id: string
+          status?: string; title: string; updated_at?: string; version?: number
+        }
+        Update: {
+          closed_at?: string | null; closed_by?: string | null; closing_summary?: string | null; created_at?: string
+          created_by?: string; description?: string | null; id?: string; organization_id?: string; patient_id?: string
+          status?: string; title?: string; updated_at?: string; version?: number
+        }
+        Relationships: []
+      }
+      hcn_coordination_plan_participants: {
+        Row: {
+          added_at: string; added_by: string; external_provider_id: string | null; id: string; organization_id: string
+          participant_type: string; participant_user_id: string | null; plan_id: string; removed_at: string | null
+          removed_by: string | null; role_label: string
+        }
+        Insert: {
+          added_at?: string; added_by: string; external_provider_id?: string | null; id?: string; organization_id: string
+          participant_type: string; participant_user_id?: string | null; plan_id: string; removed_at?: string | null
+          removed_by?: string | null; role_label: string
+        }
+        Update: {
+          added_at?: string; added_by?: string; external_provider_id?: string | null; id?: string; organization_id?: string
+          participant_type?: string; participant_user_id?: string | null; plan_id?: string; removed_at?: string | null
+          removed_by?: string | null; role_label?: string
+        }
+        Relationships: []
+      }
+      hcn_coordination_plan_updates: {
+        Row: { author_id: string; created_at: string; id: string; plan_id: string; update_text: string }
+        Insert: { author_id: string; created_at?: string; id?: string; plan_id: string; update_text: string }
+        Update: { author_id?: string; created_at?: string; id?: string; plan_id?: string; update_text?: string }
+        Relationships: []
+      }
       profiles: {
         Row: {
           id: string
@@ -5010,6 +5054,42 @@ export interface Database {
       }
       hcn_can_view_clinical_document: { Args: { p_document_id: string }; Returns: boolean }
       hcn_is_qualified_clinician_for_patient: { Args: { p_organization_id: string; p_patient_id: string }; Returns: boolean }
+      hcn_create_coordination_plan: {
+        Args: { p_description: string | null; p_organization_id: string; p_patient_id: string; p_title: string }
+        Returns: {
+          closed_at: string | null; closed_by: string | null; closing_summary: string | null; created_at: string
+          created_by: string; description: string | null; id: string; organization_id: string; patient_id: string
+          status: string; title: string; updated_at: string; version: number
+        }
+      }
+      hcn_add_coordination_plan_participant: {
+        Args: {
+          p_external_provider_id: string | null; p_participant_type: string; p_participant_user_id: string | null
+          p_plan_id: string; p_role_label: string
+        }
+        Returns: {
+          added_at: string; added_by: string; external_provider_id: string | null; id: string; organization_id: string
+          participant_type: string; participant_user_id: string | null; plan_id: string; removed_at: string | null
+          removed_by: string | null; role_label: string
+        }
+      }
+      hcn_remove_coordination_plan_participant: { Args: { p_participant_id: string }; Returns: undefined }
+      hcn_post_coordination_plan_update: {
+        Args: { p_plan_id: string; p_update_text: string }
+        Returns: { author_id: string; created_at: string; id: string; plan_id: string; update_text: string }
+      }
+      hcn_list_coordination_plan_updates: {
+        Args: { p_plan_id: string }
+        Returns: { author_id: string; created_at: string; id: string; plan_id: string; update_text: string }[]
+      }
+      hcn_close_coordination_plan: {
+        Args: { p_closing_summary: string; p_plan_id: string }
+        Returns: {
+          closed_at: string | null; closed_by: string | null; closing_summary: string | null; created_at: string
+          created_by: string; description: string | null; id: string; organization_id: string; patient_id: string
+          status: string; title: string; updated_at: string; version: number
+        }
+      }
       register_patient_representative: {
         Args: {
           p_patient_id: string
