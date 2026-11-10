@@ -8,6 +8,7 @@ import {
   getProviders, upsertProvider, setProviderActive, associateProviderWithPatient, getClinicalRequests, createClinicalRequest,
   sendClinicalRequest, resendClinicalRequestInvitation, cancelClinicalRequest, revokeClinicalRequestAccess,
   getDocumentsForRequest, getRequestEvents, reviewClinicalDocument, clinicalApproveDocument,
+  publishProviderDocumentToPatient,
   attachInternalDocumentToRequest,
   uploadInternalDocument, getSignedDownloadUrl, sendClinicalRequestNotification,
   getCoordinationPlans, createCoordinationPlan, addCoordinationPlanParticipant, getCoordinationPlanParticipants,
@@ -363,6 +364,17 @@ export default function ClinicalCoordinationPanel({
     } finally { setBusy(false); }
   };
 
+  const doPublishToPatient = async (doc: ClinicalDocument) => {
+    if (!window.confirm('Share this reviewed provider document with the patient portal?')) return;
+    setBusy(true);
+    try {
+      const result = await publishProviderDocumentToPatient(doc.id);
+      if (result.error) { toast.error(result.error); return; }
+      toast.success('Reviewed provider document shared with the patient portal.');
+      if (selectedRequestId) await openRequest(selectedRequestId);
+    } finally { setBusy(false); }
+  };
+
   const doClinicalApprove = async (documentId: string) => {
     const notes = reviewNotes.trim() || 'Reviewed and approved.';
     setBusy(true);
@@ -594,6 +606,14 @@ export default function ClinicalCoordinationPanel({
                       <button type="button" disabled={busy} onClick={() => { void doAdministrativeReview(doc.id, 'forwarded_for_clinical_review'); }} className="text-xs rounded border border-ent-line px-2 py-1">Forward for clinical review</button>
                     </>
                   )}
+                  {role === 'director' && doc.uploaderExternalLabel &&
+                    ['accepted','clinical_approved'].includes(doc.reviewStatus) &&
+                    doc.classification === 'general_care_coordination' && (
+                      <button type="button" disabled={busy} onClick={() => { void doPublishToPatient(doc); }}
+                        className="text-xs rounded border border-ent-line px-2 py-1">
+                        Share with patient
+                      </button>
+                    )}
                   {role === 'clinical' && doc.reviewStatus === 'forwarded_for_clinical_review' && (
                     <button type="button" disabled={busy} onClick={() => { void doClinicalApprove(doc.id); }} className="text-xs rounded border border-ent-green px-2 py-1 text-ent-green"><ShieldCheck className="h-3 w-3 inline mr-1" />Clinically approve</button>
                   )}

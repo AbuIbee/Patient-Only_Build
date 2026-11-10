@@ -620,3 +620,14 @@ export async function getClinicalProviderPerformance(organizationId: string) {
     averageResponseHours: r.average_response_hours === null ? null : Number(r.average_response_hours),
   })), error: null as string | null };
 }
+
+/** Director-authorized publication of an accepted provider response. */
+export async function publishProviderDocumentToPatient(documentId: string) {
+  const { data, error } = await clinicalApi.rpc('hcn_publish_provider_document_to_patient', {
+    p_document_id: documentId,
+  });
+  return {
+    data: data ? mapDocument(data as Record<string, unknown>) : null,
+    error: error ? err(error, 'Unable to share this reviewed provider document') : null as string | null,
+  };
+}

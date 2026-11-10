@@ -794,3 +794,48 @@ describe('HCN-CLINICAL-MASTER-002 SEC-006 -- document write authority and revoca
     expect(after).toHaveLength(0);
   });
 });
+
+
+describe('HCN SEC-008 explicit reviewed provider document publication', () => {
+  it('prevents premature patient/Caregiver disclosure; Director publication is audited and idempotent', async () => {
+    const ctx=await orgWithDirectorAndPatient('sec008-publish');
+    const caregiver=await addCaregiver(ctx,'sec008-cg');
+    const {request}=await createSentRequest(ctx,'external-'+stamp+'-sec008@example-clinic.test');
+    const id=sql("INSERT INTO hcn_clinical_documents(organization_id,patient_id,category,classification,storage_path,original_filename,mime_type,file_size_bytes,uploader_external_label) VALUES('" +
+      ctx.orgId + "','" + ctx.patientId + "','medical_records','general_care_coordination','" +
+      ctx.patientId + "/external-publish-" + stamp + ".pdf','external.pdf','application/pdf',64,'Dr. External (synthetic)') RETURNING id;");
+    sql("INSERT INTO hcn_clinical_request_documents(request_id,document_id,direction) VALUES('" +
+      request.id + "','" + id + "','received_from_recipient');");
+    const url='/rest/v1/hcn_clinical_documents?id=eq.' + id + '&select=id';
+    const [preStatus,preRows]=await http('GET',url,undefined,caregiver.tok);
+    expect(preStatus).toBe(200);
+    expect(preRows).toEqual([]);
+    const [noEarlyPublish]=await rpc('hcn_publish_provider_document_to_patient',
+      {p_document_id:id},ctx.directorTok);
+    expect(noEarlyPublish).toBeGreaterThanOrEqual(400);
+    sql("UPDATE hcn_clinical_documents SET review_status='accepted',reviewed_by='" + ctx.directorId +
+      "',reviewed_at=now() WHERE id='" + id + "';");
+    const [stillHiddenStatus,stillHidden]=await http('GET',url,undefined,caregiver.tok);
+    expect(stillHiddenStatus).toBe(200);
+    expect(stillHidden).toEqual([]);
+    const [foreignStatus]=await rpc('hcn_publish_provider_document_to_patient',
+      {p_document_id:id},ctx.medicalTok);
+    expect(foreignStatus).toBeGreaterThanOrEqual(400);
+    const [publishedStatus,published]=await rpc('hcn_publish_provider_document_to_patient',
+      {p_document_id:id},ctx.directorTok) as [number,{classification:string}];
+    expect(publishedStatus).toBe(200);
+    expect(published.classification).toBe('patient_shared_document');
+    const [afterStatus,afterRows]=await http('GET',url,undefined,caregiver.tok);
+    expect(afterStatus).toBe(200);
+    expect(afterRows).toHaveLength(1);
+    const [repeatStatus]=await rpc('hcn_publish_provider_document_to_patient',
+      {p_document_id:id},ctx.directorTok);
+    expect(repeatStatus).toBe(200);
+    const auditCount=sql("SELECT count(*) FROM hcn_clinical_request_events WHERE request_id='" +
+      request.id + "' AND event_type='document_published_to_patient';");
+    expect(auditCount).toBe('1');
+    sql("UPDATE hcn_clinical_documents SET is_archived=true WHERE id='" + id + "';");
+    const [,archivedRows]=await http('GET',url,undefined,caregiver.tok);
+    expect(archivedRows).toEqual([]);
+  });
+});
