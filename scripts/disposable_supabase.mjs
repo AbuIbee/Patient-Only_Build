@@ -40,7 +40,7 @@
 //   MMA_TEST_API_BASE=http://127.0.0.1:57321 MMA_TEST_DB_CONTAINER=supabase_db_mma-ent-caregiver-master-003 \
 //     npx vitest run --config vitest.integration.config.ts <files...>
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, openSync, closeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -111,17 +111,30 @@ function startSupabaseWithRetry() {
   const BACKOFF_MS = [30_000, 60_000, 120_000];
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     console.log(`[disposable_supabase] supabase start attempt ${attempt}/${MAX_ATTEMPTS}`);
-    const result = spawnSync('npx', ['supabase', 'start', '--workdir', WORKDIR], {
-      encoding: 'utf8', shell: true,
-      // Supabase's Docker image pull progress frequently exceeds Node's 1 MiB
-      // default maxBuffer on clean CI runners; do not kill a healthy pull.
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    const combined = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-    // Still echo the real output to the CI log even though we captured
-    // it instead of inheriting stdio -- never hide what actually happened.
-    process.stdout.write(result.stdout ?? '');
-    process.stderr.write(result.stderr ?? '');
+    // Docker image-pull progress can overwhelm process buffers and
+    // CI log limits. Capture to a bounded ephemeral file and emit the
+    // final diagnostic tail, preserving the ACTUAL failing error.
+    const capture = join(WORKDIR, 'supabase_start_attempt.log');
+    const fd = openSync(capture, 'w');
+    let result;
+    try {
+      result = spawnSync('npx', ['supabase', 'start', '--workdir', WORKDIR], {
+        shell: true, stdio: ['ignore', fd, fd],
+      });
+    } finally {
+      closeSync(fd);
+    }
+    const combined = readFileSync(capture, 'utf8');
+    // Do not emit megabytes of carriage-return progress to GitHub logs.
+    console.log('[disposable_supabase] startup exit:', result.status,
+      'captured bytes:', combined.length);
+    if (result.status !== 0) {
+      console.error('[disposable_supabase] LAST STARTUP OUTPUT:\n' +
+        combined.slice(-25000).replace(/\r/g, '\n'));
+    } else {
+      console.log(combined.slice(-2500).replace(/\r/g, '\n'));
+    }
+    rmSync(capture, { force: true });
     if (result.status === 0) {
       if (attempt > 1) console.log(`[disposable_supabase] supabase start succeeded on attempt ${attempt}/${MAX_ATTEMPTS}`);
       return;
