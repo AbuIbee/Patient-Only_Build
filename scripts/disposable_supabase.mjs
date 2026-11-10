@@ -105,7 +105,12 @@ function startSupabaseWithRetry() {
   const BACKOFF_MS = [30_000, 60_000, 120_000];
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     console.log(`[disposable_supabase] supabase start attempt ${attempt}/${MAX_ATTEMPTS}`);
-    const result = spawnSync('npx', ['supabase', 'start', '--workdir', WORKDIR], { encoding: 'utf8', shell: true });
+    const result = spawnSync('npx', ['supabase', 'start', '--workdir', WORKDIR], {
+      encoding: 'utf8', shell: true,
+      // Supabase's Docker image pull progress frequently exceeds Node's 1 MiB
+      // default maxBuffer on clean CI runners; do not kill a healthy pull.
+      maxBuffer: 64 * 1024 * 1024,
+    });
     const combined = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
     // Still echo the real output to the CI log even though we captured
     // it instead of inheriting stdio -- never hide what actually happened.
@@ -121,7 +126,7 @@ function startSupabaseWithRetry() {
         `[disposable_supabase] supabase start failed on attempt ${attempt}/${MAX_ATTEMPTS} ` +
           `(${transient ? 'transient registry error, retries exhausted' : 'non-transient failure, not retrying'}).`,
       );
-      throw new Error(`supabase start failed (exit ${result.status}): see captured output above.`);
+      throw new Error(`supabase start failed (exit ${result.status}${result.error ? ', spawn error ' + result.error.message : ''}): see captured output above.`);
     }
     const delay = BACKOFF_MS[attempt - 1] ?? BACKOFF_MS[BACKOFF_MS.length - 1];
     console.warn(
