@@ -398,6 +398,14 @@ deno_version = 2
 [functions.stripe-webhook]
 verify_jwt = false
 
+# HCN-CLINICAL-MASTER-002 -- an external healthcare provider has no
+# Haneen account and therefore no Supabase JWT to present at all; this
+# function's own token+confirmed-email check (re-verified on every
+# single call, against hcn_external_access_tokens) is the actual
+# authorization boundary, same rationale as stripe-webhook above.
+[functions.hcn-external-request-access]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 55327
