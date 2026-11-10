@@ -637,3 +637,50 @@ describe('HCN-CLINICAL-MASTER-002-CONTINUATION SEC-005 -- notification recipient
     expect(status).toBeGreaterThanOrEqual(400);
   });
 });
+
+
+describe('HCN-CLINICAL-MASTER-002 SEC-006 -- document write authority and revocation', () => {
+  it('rejects an authenticated Director forging clinical approval via direct INSERT', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec006-forged-insert');
+    const [status] = await http('POST', '/rest/v1/hcn_clinical_documents', {
+      organization_id: ctx.orgId, patient_id: ctx.patientId,
+      category: 'care_instructions', classification: 'caregiver_approved_instructions',
+      storage_path: ctx.patientId + '/forged-' + stamp + '.pdf',
+      original_filename: 'forged.pdf', mime_type: 'application/pdf',
+      file_size_bytes: 32, uploaded_by: ctx.directorId,
+      review_status: 'clinical_approved', reviewed_by: ctx.directorId,
+    }, ctx.directorTok);
+    expect(status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('blocks direct PATCH of review_status, while allowing a legitimate unreviewed upload', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec006-update');
+    const storagePath = ctx.patientId + '/unreviewed-' + stamp + '.pdf';
+    const [createdStatus, createdBody] = await http('POST', '/rest/v1/hcn_clinical_documents', {
+      organization_id: ctx.orgId, patient_id: ctx.patientId,
+      category: 'patient_provided_documents', classification: 'patient_shared_document',
+      storage_path: storagePath, original_filename: 'unreviewed.pdf',
+      mime_type: 'application/pdf', file_size_bytes: 64, uploaded_by: ctx.directorId,
+    }, ctx.directorTok);
+    expect(createdStatus).toBe(201);
+    const row = (createdBody as Array<{ id: string; review_status: string }>)[0];
+    expect(row.review_status).toBe('received_unreviewed');
+    const [patchStatus] = await http('PATCH', '/rest/v1/hcn_clinical_documents?id=eq.' + row.id, {
+      review_status: 'clinical_approved',
+    }, ctx.directorTok);
+    expect(patchStatus).toBeGreaterThanOrEqual(400);
+  });
+
+  it('an uploader cannot continue reading a clinical document after assignment revocation', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec006-revoked');
+    const caregiver = await addCaregiver(ctx, 'sec006-revoked-cg');
+    const id = sql("INSERT INTO hcn_clinical_documents(organization_id,patient_id,category,classification,storage_path,original_filename,mime_type,file_size_bytes,uploaded_by) VALUES ('" +
+      ctx.orgId + "','" + ctx.patientId + "','patient_provided_documents','patient_shared_document','" +
+      ctx.patientId + "/revoked-" + stamp + ".pdf','test.pdf','application/pdf',64,'" + caregiver.id + "') RETURNING id;");
+    const [, before] = await http('GET', '/rest/v1/hcn_clinical_documents?id=eq.' + id + '&select=id', undefined, caregiver.tok);
+    expect(before).toHaveLength(1);
+    sql("UPDATE staff_patient_assignments SET is_active=false WHERE organization_id='" + ctx.orgId + "' AND patient_id='" + ctx.patientId + "' AND user_id='" + caregiver.id + "';");
+    const [, after] = await http('GET', '/rest/v1/hcn_clinical_documents?id=eq.' + id + '&select=id', undefined, caregiver.tok);
+    expect(after).toHaveLength(0);
+  });
+});
