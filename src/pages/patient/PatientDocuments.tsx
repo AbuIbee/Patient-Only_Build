@@ -7,6 +7,7 @@ import { FileText, CalendarDays, CalendarRange, Calendar, Upload, Trash2, FileIc
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, addDays, subDays } from 'date-fns';
 import { parseLocalDate } from '@/lib/localDate';
+import PatientClinicalDocumentsPanel from '@/components/healthcare/PatientClinicalDocumentsPanel';
 
 // ─── Care Partner Log types ───────────────────────────────────────────────────
 type LogRow = {
@@ -487,6 +488,9 @@ export default function PatientDocuments({ patientId: subjectPatientId }: { pati
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-8">
+      {import.meta.env.VITE_ENTERPRISE_SITE === 'true' && patientId ? (
+        <PatientClinicalDocumentsPanel patientId={patientId} />
+      ) : null}
 
       {/* ══ SECTION 2: Patient Medical Documents ════════════════════════════════ */}
       <div className="rounded-3xl bg-white shadow-card overflow-hidden">
