@@ -90,6 +90,64 @@ Per the directive's own instruction ("do not assume the foundation commit reache
 
 **This report does not push, merge, or deploy anything.** Pushing the 6 local commits to the remote branch, opening a PR, merging to the production branch, and applying migrations to the production Supabase project are all separate, explicit actions requiring the Platform Owner's/Director's own authorization — each one is a release-authorization decision this session is not taking unilaterally, consistent with the directive's own stop-condition for "release-authorization blockers."
 
-## F. Final completion statement
+## F. Final completion statement (original, as written at the time)
 
 Per the directive's own completion standard: every capability claimed complete above has an actual, currently-passing, real test behind it (listed per phase) — nothing here is claimed based on code generation, a successful build, or a screenshot alone. Where something is incomplete, it is named in Section D rather than silently omitted or falsely claimed.
+
+---
+
+## UPDATE — HCN-CLINICAL-MASTER-002 RELEASE RESOLUTION (same day, following commits)
+
+Per this codebase's own established convention (see e.g. `docs/acceptance/final/14_FINAL_CONSOLIDATED_REPORT.md`): historical content above is preserved verbatim; this section records what changed and corrects what was wrong, rather than silently rewriting Sections A–F in place.
+
+### Correction to a claim in Section D/Phase 4 above
+
+**The original Section D item 1 ("Reminder scheduling is not wired to a live scheduler... `pg_cron` is not installed on this project") was WRONG about `pg_cron`'s availability**, not merely incomplete. That claim was inherited uncritically from a comment in migration 146 without independently re-verifying it against the current stack. Direct verification (`SELECT name, installed_version FROM pg_available_extensions WHERE name IN ('pg_cron','pg_net')`) showed **both are already Supabase-shipped extensions, immediately available to `CREATE EXTENSION`** — not a missing dependency at all. This is now fixed; see below.
+
+### Step 2 — scheduler wiring, now resolved and proven live (commit `44ed1aef`)
+
+- Migration `20261110120000_hcn_clinical_reminder_scheduler_infrastructure.sql` enables `pg_cron`/`pg_net` (inert additions — no job runs until one is explicitly scheduled) and fixes a real exclusion-logic gap found while addressing this directive: `hcn_revoke_clinical_request_access()` never touched `hcn_clinical_requests.status`, so a request whose external access had been explicitly revoked could still be picked up as "due" if it was still sitting at `status='sent'` past its deadline. Now excluded via the request's own `'revoked'` event history. New regression test (`hcnClinicalRemindersAndReporting.test.ts`) proves it directly — 7/7 passing in that file.
+- **Live, unattended proof** (full transcript in `SCHEDULER_RUNBOOK.md`, same directory): against the local disposable stack only, a `cron.schedule(...)` job (issued directly via `psql` — deliberately never added to a tracked migration, so it cannot silently activate wherever these migrations are next applied) called the real `hcn-process-clinical-reminders` Edge Function via `net.http_post` every minute. Two independent ticks fired on their own, 80 real seconds apart, with zero manual invocation in between: tick 1 (`14:24:00 UTC`) reminded exactly one synthetic overdue request and never touched a synthetic cancelled one (`{"checked":1,"remindersSent":1,"skipped":[]}`); tick 2 (`14:25:00 UTC`) confirmed the cooldown correctly skipped the same request on its own (`{"checked":1,"remindersSent":0,"skipped":[{"reason":"cooldown active..."}]}`). Confirmed at the DB level: exactly one `reminder_sent` event, for the correct request only. Job unscheduled and all fixture data removed immediately after.
+- **Production activation remains explicitly NOT done and NOT included in any migration** — see `SCHEDULER_RUNBOOK.md` for the exact one-statement activation command, which still requires a human with deployment authorization to run it.
+
+### Step 3 — test evidence reconciliation
+
+The originally reported "73 passed | 1 failed | 1 skipped (75 files); 486 passed | 1 failed | 10 skipped (497 tests)" **first run** was genuine (not a teardown artifact — the stack was kept alive for the full 685s) and led to the Phase-6 fix above. After that fix, and again after this Step-2 scheduler migration, the suite was rerun clean both times:
+- Post-Phase-6-fix: 74 passed | 1 skipped (75 files); 487 passed | 10 skipped (497 tests), 0 failures.
+- **Post-Step-2-scheduler-fix (current, final): 74 passed | 1 skipped (75 files); 488 passed | 10 skipped (498 tests), 0 failures** (one test added net).
+
+**All 10 skipped tests, enumerated** (all in one file, `tests/integration/hcnStripeSandboxLiveWiring.test.ts`, self-skipping via `describe.skip` unless `HCN_SANDBOX_STRIPE_TEST=1` and an owner-supplied real Stripe Test Mode secret — a separate, earlier (2026-10-30/31) Enterprise-billing authorization, unrelated to Clinical Coordination):
+1. `annual checkout session for essential tier via the REAL deployed Edge Function hits Stripe Test Mode with the correct amount` (39900¢)
+2. same, `plus` tier (59900¢)
+3. same, `complete` tier (79900¢)
+4. `duplicate-request protection: retrying the SAME checkout request does not create a second Stripe customer or session`
+5. `monthly active-patient checkout at 0 patients ... computes 25000 cents`
+6. same, 160 patients → 108000¢
+7. same, 1000 patients → 378000¢
+8. `monthly checkout idempotency key varies with the effective anchor...`
+9. `webhook signature verification: a request to the REAL deployed stripe-webhook function with no/garbage signature is rejected, never processed`
+10. `full reconciliation + license issuance + Director provisioning chain for one Essential-tier organization...`
+
+**None of the 10 cover a mandatory Clinical Coordination production-acceptance requirement.** They are Enterprise-billing/Stripe tests from a different feature and a different authorization; this directive's own instruction ("no Stripe changes") means they were correctly left untouched and unrun, exactly as before. Unit tests (498/498), `npm run typecheck`, `npm run lint` (clean), and all 7 HCN Playwright tests were rerun and remain green after the scheduler fix.
+
+### Step 4 — independent acceptance: NOT obtained in this session
+
+**No independent Codex (or equivalent) review has actually occurred as part of this work.** A `CODEX_REVIEW_BRIEF.md` (this directory) was prepared, listing exactly what an independent reviewer should verify and how (reproduce each claim directly, not trust this report). This session has no mechanism to invoke that review itself — `/code-review ultra` is user-triggered and billed, not available to be launched autonomously.
+
+**The `CODEX_FINAL_GO_NO_GO(1).md` referenced as "attached," dated 2026-11-04, was never actually received by this session** — not in the conversation, not on disk (searched directly). Its older production-wide NO-GO items are therefore **not reconciled here and not claimed as resolved.** If that document exists, it should be supplied directly so its specific items can be addressed individually; until then, treat whatever it contains as a still-open, separate register, unrelated to anything resolved in this branch.
+
+### Step 5 — final delivery
+
+- **Final local SHA:** `44ed1aef` — **matches final remote SHA exactly** (`origin/feature/hcn-clinical-coordination-master-002-20261109` = `44ed1aef`, verified via `git fetch` + `git rev-parse` immediately before and after each push).
+- **Exact commits pushed, in order** (`7ba5c263..44ed1aef`, 9 commits — the originally estimated "six" undercounted; verified by direct `git log` count, not assumed):
+  `c6df15c7`, `ab279060`, `a7a42a16`, `e37bff81`, `d0caa737`, `d9e04a18`, `88b332b7`, `44ed1aef` (8 commits pushed this engagement, atop the pre-existing `7ba5c263` foundation commit already on the remote before this release-resolution round began).
+- **Scheduler implementation and execution proof:** see Step 2 above and `SCHEDULER_RUNBOOK.md`.
+- **Test results and skips:** see Step 3 above.
+- **Remaining defects:** none known and unfixed in the shipped scope. Remaining OPEN LIMITATIONS (updated from Section D): patient-side UI for shared documents (unbuilt), HEIC/TIFF support (deliberately excluded), Coordination Plan participant-picker UX (functional but plain), `RESEND_API_KEY` absent in production (both affected paths degrade gracefully, confirmed), **and now also:** production scheduler activation itself (logic proven locally; the one-line activation command is deployment-authorization-gated, per `SCHEDULER_RUNBOOK.md`).
+- **Independent acceptance result:** not actually obtained — see Step 4. Not fabricated, not assumed.
+- **Precise production deployment requirements** (nothing here has been done; all require explicit authorization):
+  1. Merge/deploy this branch to whatever the then-current production branch is (re-verify via `vercel inspect` at that time — it has moved before, repeatedly, across this entire engagement).
+  2. Apply all migrations `20261109100000` through `20261110120000` to the production Supabase project, in order, after a review of each (all are additive/reversible as characterized above).
+  3. Confirm `RESEND_API_KEY` is set in production if live email delivery for verification codes / request notifications / future reminder emails is desired — currently absent, and both existing paths already degrade gracefully without it.
+  4. Decide a reminder cadence and run the one `cron.schedule(...)` statement in `SCHEDULER_RUNBOOK.md` against the production project — not before 1–3.
+  5. Obtain an actual independent review (Step 4) before considering this GO for production, since none has occurred yet.
