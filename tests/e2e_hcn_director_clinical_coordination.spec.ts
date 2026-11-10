@@ -92,7 +92,7 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
       buffer:Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF'),
     });
     await page.getByRole('button',{name:/^upload$/i}).click();
-    await expect(page.getByText('synthetic-discharge.pdf')).toBeVisible({timeout:20000});
+    await expect(page.getByText('synthetic-discharge.pdf', { exact: true })).toBeVisible({timeout:20000});
     const linked=sql("SELECT count(*) FROM hcn_clinical_request_documents rd JOIN hcn_clinical_documents d ON d.id=rd.document_id WHERE rd.request_id='" + 
       sql("SELECT id FROM hcn_clinical_requests WHERE organization_id='" + ctx.orgId + "' LIMIT 1;") + "' AND rd.direction='uploaded_by_care_team';");
     expect(linked).toBe('1');
