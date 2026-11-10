@@ -161,6 +161,20 @@ export async function getDocumentsForPatient(patientId: string) {
   return { data: (data ?? []).map((r) => mapDocument(r as unknown as Record<string, unknown>)), error: null as string | null };
 }
 
+/**
+ * Fetch metadata for one source document under the logged-in user's
+ * patient+organization scoped RLS policies. Never use a service-role key
+ * or trust an arbitrary URL supplied by the task client.
+ */
+export async function getAuthorizedClinicalDocument(documentId: string, patientId: string, organizationId: string) {
+  const { data, error } = await clinicalApi.from('hcn_clinical_documents')
+    .select('*').eq('id', documentId).eq('patient_id', patientId)
+    .eq('organization_id', organizationId).maybeSingle();
+  if (error) return { data: null as ClinicalDocument | null, error: err(error, 'Unable to access the approved instructions') };
+  if (!data) return { data: null as ClinicalDocument | null, error: 'The source document is not available to your account.' };
+  return { data: mapDocument(data as Record<string, unknown>), error: null as string | null };
+}
+
 export async function getDocumentsForRequest(requestId: string) {
   const { data, error } = await supabase
     .from('hcn_clinical_request_documents')

@@ -82,3 +82,60 @@ jobs:
       - name: Stop disposable Supabase stack
         if: always()
         run: node scripts/disposable_supabase.mjs stop
+
+  clinical-playwright:
+    needs: [static-checks, integration]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Start local mock Resend (no real messages or keys)
+        run: |
+          node tests/e2e_support/mockResendServer.mjs > /tmp/hcn_mock_resend.log 2>&1 &
+          echo $! > /tmp/hcn_mock_resend.pid
+          npx wait-on http-get://127.0.0.1:8999/last-email?to=healthcheck
+      - name: Start disposable Supabase stack for browser tests
+        env:
+          MMA_TEST_MOCK_RESEND: '1'
+        run: node scripts/disposable_supabase.mjs start
+      - name: Install Chromium browser for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Build and serve isolated frontend
+        run: |
+          eval "$(node scripts/disposable_supabase.mjs env | sed 's/^/export /')"
+          export VITE_SUPABASE_URL="$MMA_TEST_API_BASE"
+          export VITE_SUPABASE_ANON_KEY='sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH'
+          export VITE_STRIPE_PRICE_FULL_SUPPORT_MONTHLY='price_test'
+          npm run build
+          npx vite preview --host 127.0.0.1 --port 5280 --strictPort > /tmp/hcn_vite.log 2>&1 &
+          echo $! > /tmp/hcn_vite.pid
+          npx wait-on http://127.0.0.1:5280
+      - name: Run Clinical Coordination browser acceptance (fictional data)
+        run: |
+          eval "$(node scripts/disposable_supabase.mjs env | sed 's/^/export /')"
+          export MMA_E2E_FRONTEND_BASE=http://127.0.0.1:5280
+          export MMA_E2E_API_BASE="$MMA_TEST_API_BASE"
+          export MMA_E2E_DB_CONTAINER="$MMA_TEST_DB_CONTAINER"
+          npx playwright test --project=chromium \
+            tests/e2e_hcn_coordination_plan_ui.spec.ts \
+            tests/e2e_hcn_director_clinical_coordination.spec.ts \
+            tests/e2e_hcn_caregiver_clinical_role_views.spec.ts \
+            tests/e2e_hcn_external_provider_access.spec.ts
+      - name: Tear down isolated browser test systems
+        if: always()
+        run: |
+          kill "$(cat /tmp/hcn_vite.pid)" 2>/dev/null || true
+          node scripts/disposable_supabase.mjs stop
+          kill "$(cat /tmp/hcn_mock_resend.pid)" 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: clinical-playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14

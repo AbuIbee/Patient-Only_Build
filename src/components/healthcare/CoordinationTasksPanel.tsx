@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { CheckCircle2, ClipboardCheck, ListChecks, RefreshCw } from 'lucide-react';
+import { CheckCircle2, ClipboardCheck, Download, ListChecks, RefreshCw } from 'lucide-react';
 import {
   type CoordinationTask, type CoordinationTaskKind, type EligiblePlanStaff, type ClinicalDocument,
   getCoordinationTasks, getCoordinationTaskDependencies, getInstructionAcknowledgements,
-  getEligiblePlanStaff, getDocumentsForPatient, createCoordinationTask,
+  getEligiblePlanStaff, getDocumentsForPatient, getCoordinationPlanParticipants,
+  getAuthorizedClinicalDocument, getSignedDownloadUrl, createCoordinationTask,
   setCoordinationTaskStatus, reviewCoordinationTask, acknowledgeCoordinationInstruction,
 } from '@/services/hcnClinicalCoordinationService';
 
@@ -34,6 +35,8 @@ export default function CoordinationTasksPanel({ planId, patientId, userId, role
   const [tasks, setTasks] = useState<CoordinationTask[]>([]);
   const [dependencies, setDependencies] = useState<Record<string, string[]>>({});
   const [staff, setStaff] = useState<EligiblePlanStaff[]>([]);
+  const [currentPlanMemberIds, setCurrentPlanMemberIds] = useState<string[]>([]);
+  const [openedInstructions, setOpenedInstructions] = useState<string[]>([]);
   const [documents, setDocuments] = useState<ClinicalDocument[]>([]);
   const [acknowledged, setAcknowledged] = useState<string[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -47,19 +50,25 @@ export default function CoordinationTasksPanel({ planId, patientId, userId, role
     setLoading(true);
     setLoadError('');
     try {
-      const [taskResponse, dependencyResponse, ackResponse, staffResponse, docsResponse] = await Promise.all([
+      const [taskResponse, dependencyResponse, ackResponse, staffResponse, docsResponse, participantResponse] = await Promise.all([
         getCoordinationTasks(planId),
         getCoordinationTaskDependencies(planId),
         getInstructionAcknowledgements(planId),
         role === 'director' ? getEligiblePlanStaff(planId) : Promise.resolve({ data: [] as EligiblePlanStaff[], error: null }),
         role === 'director' ? getDocumentsForPatient(patientId) : Promise.resolve({ data: [] as ClinicalDocument[], error: null }),
+        role === 'director' ? getCoordinationPlanParticipants(planId) : Promise.resolve({ data: [], error: null }),
       ]);
-      const failure = taskResponse.error || dependencyResponse.error || ackResponse.error || staffResponse.error || docsResponse.error;
+      const failure = taskResponse.error || dependencyResponse.error || ackResponse.error || staffResponse.error ||
+        docsResponse.error || participantResponse.error;
       if (failure) throw new Error(failure);
       setTasks(taskResponse.data ?? []);
       setDependencies(dependencyResponse.data ?? {});
       setAcknowledged(ackResponse.data ?? []);
       setStaff(staffResponse.data ?? []);
+      setCurrentPlanMemberIds((participantResponse.data ?? [])
+        .filter((member) => member.participantType === 'internal_user' && !member.removedAt)
+        .map((member) => member.participantUserId)
+        .filter((id): id is string => Boolean(id)));
       setDocuments(docsResponse.data ?? []);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Unable to load coordination tasks.');
@@ -70,6 +79,7 @@ export default function CoordinationTasksPanel({ planId, patientId, userId, role
 
   useEffect(() => {
     setTasks([]); setDependencies({}); setAcknowledged([]);
+    setCurrentPlanMemberIds([]); setOpenedInstructions([]);
     setForm(EMPTY_FORM); setResultNotes({});
     void refresh();
   }, [refresh]);
@@ -105,6 +115,41 @@ export default function CoordinationTasksPanel({ planId, patientId, userId, role
     }), 'Coordination task created.');
     setForm(EMPTY_FORM);
     setShowForm(false);
+  };
+
+  const downloadApprovedInstructions = async (task: CoordinationTask) => {
+    if (working || task.kind !== 'care_instruction' || task.status !== 'approved' ||
+        !task.sourceDocumentId || task.assignedUserId !== userId) return;
+    setWorking(true);
+    try {
+      const metadata = await getAuthorizedClinicalDocument(task.sourceDocumentId, patientId, task.organizationId);
+      if (metadata.error || !metadata.data) {
+        toast.error(metadata.error ?? 'The instruction document is unavailable.'); return;
+      }
+      if (metadata.data.classification !== 'caregiver_approved_instructions' ||
+          metadata.data.reviewStatus !== 'clinical_approved') {
+        toast.error('Only clinically approved instructions can be downloaded.'); return;
+      }
+      const signed = await getSignedDownloadUrl(metadata.data.storagePath, metadata.data.originalFilename);
+      if (signed.error || !signed.url) {
+        toast.error(signed.error ?? 'Download was not authorized.'); return;
+      }
+      // Trigger download without navigating away from the care workflow.
+      // The signed URL is short-lived; the Storage bucket remains private.
+      const link = document.createElement('a');
+      link.href = signed.url;
+      link.download = metadata.data.originalFilename;
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setOpenedInstructions((ids) => ids.includes(task.id) ? ids : [...ids, task.id]);
+      toast.success('Instruction download requested. Review the file before acknowledging.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not download instructions.');
+    } finally {
+      setWorking(false);
+    }
   };
 
   const nameOf = (id: string) => staff.find((s) => s.userId === id)?.displayName ?? (id === userId ? 'You' : 'Assigned staff');
@@ -159,7 +204,7 @@ export default function CoordinationTasksPanel({ planId, patientId, userId, role
                 setForm((f) => ({ ...f, assigneeId: e.target.value }))}
                 className="block w-full rounded-lg border border-ent-line p-2 text-sm">
                 <option value="">Select assigned care-team member…</option>
-                {staff.filter((s) =>
+                {staff.filter((s) => currentPlanMemberIds.includes(s.userId)).filter((s) =>
                   form.kind === 'medical_review' ? ['medical_professional', 'clinical_supervisor'].includes(s.orgRole)
                   : form.kind === 'therapy_review' ? ['therapist', 'clinical_supervisor'].includes(s.orgRole)
                   : form.kind === 'care_instruction' ? s.orgRole === 'caregiver' : true
@@ -231,6 +276,15 @@ export default function CoordinationTasksPanel({ planId, patientId, userId, role
                     Clinically approved instructions released {ack ? 'and acknowledged' : '— acknowledgement required'}
                   </p>
                 )}
+                {role === 'caregiver' && mine && task.kind === 'care_instruction' &&
+                  task.status === 'approved' && (
+                    <button type="button" disabled={working || !task.sourceDocumentId}
+                      aria-label={'Download approved instructions for ' + task.title}
+                      onClick={() => { void downloadApprovedInstructions(task); }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-ent-line px-3 py-1 text-xs disabled:opacity-50">
+                      <Download className="h-3.5 w-3.5" /> Download approved instructions
+                    </button>
+                  )}
                 {!blocked && mine && active && task.kind !== 'care_instruction' && task.status === 'pending' && (
                   <button type="button" disabled={working} onClick={() =>
                     { void execute(() => setCoordinationTaskStatus(task.id, 'start', null), 'Work started.'); }}
@@ -276,7 +330,9 @@ export default function CoordinationTasksPanel({ planId, patientId, userId, role
                   )}
                 {role === 'caregiver' && mine && active && task.kind === 'care_instruction' &&
                   task.status === 'approved' && !ack && (
-                    <button type="button" disabled={working} onClick={() => {
+                    <button type="button" disabled={working || !openedInstructions.includes(task.id)}
+                      title={openedInstructions.includes(task.id) ? 'Confirm that you reviewed the downloaded file' : 'Download and review the clinically approved document first'}
+                      onClick={() => {
                       void execute(() => acknowledgeCoordinationInstruction(task.id),
                         'Instruction acknowledgement recorded.');
                     }} className="inline-flex items-center gap-1 rounded-lg border border-ent-green px-3 py-1 text-xs disabled:opacity-50">
