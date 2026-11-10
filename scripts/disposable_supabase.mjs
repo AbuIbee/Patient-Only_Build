@@ -170,7 +170,7 @@ function start() {
         'RESEND_API_URL=http://host.docker.internal:8999/emails',
         'RESEND_FROM_ADDRESS=Haneen Test <notifications@haneencarenetwork.com>',
       ] : []),
-    ].join('\\n') + '\\n';
+    ].join('\n') + '\n';
     writeFileSync(join(WORKDIR, 'supabase', 'functions', '.env'), edgeEnv);
   }
   const seedPath = join(REPO_ROOT, 'supabase', 'seed.sql');
