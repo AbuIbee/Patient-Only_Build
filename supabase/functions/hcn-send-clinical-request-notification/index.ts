@@ -19,8 +19,21 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  * plus a link. The link's token is the external request's own
  * one-time, single-purpose, expiring access token (directive Section
  * 4) -- not a Haneen login credential of any kind; recipient identity
- * is verified separately, server-side, when that link is opened
- * (hcn_verify_external_access), never by the link or the email alone.
+ * is verified separately, server-side, with its own code-challenge,
+ * when that link is opened (SEC-001), never by the link alone.
+ *
+ * SEC-005 remediation: requestId/rawToken/recipientEmail are NEVER
+ * trusted as an already-valid combination just because the caller
+ * supplied all three. hcn_resolve_notification_target independently
+ * re-verifies the caller's own authorization over the request, that
+ * the token's hash resolves to a real row belonging to EXACTLY this
+ * request, that it is unexpired/unrevoked and still at the
+ * not-yet-verified stage a fresh notification applies to, and
+ * returns the recipient address from that stored row -- the
+ * caller-supplied recipientEmail is no longer accepted or used at
+ * all. The same call also reports whether a delivery was already
+ * completed for this exact token, so a retried call can never send
+ * the same notification twice.
  */
 
 const corsHeaders = {
@@ -51,20 +64,30 @@ serve(async (request) => {
     const { data: { user }, error: userError } = await supabase.auth.getUser(accessToken);
     if (userError || !user) return jsonResponse({ error: 'Your sign-in session could not be verified.' }, 401);
 
-    let body: { requestId?: string; rawToken?: string; recipientEmail?: string };
+    let body: { requestId?: string; rawToken?: string };
     try { body = await request.json(); } catch { return jsonResponse({ error: 'Request body must be JSON.' }, 400); }
     const requestId = (body.requestId ?? '').trim();
     const rawToken = (body.rawToken ?? '').trim();
-    const recipientEmail = (body.recipientEmail ?? '').trim();
-    if (!requestId || !rawToken || !recipientEmail) {
-      return jsonResponse({ error: 'requestId, rawToken, and recipientEmail are required.' }, 400);
+    if (!requestId || !rawToken) {
+      return jsonResponse({ error: 'requestId and rawToken are required.' }, 400);
     }
 
-    // Caller-scoped read: confirms this signed-in user can actually see
-    // this request at all (RLS) before this function does anything on
-    // their behalf -- never trusts requestId alone.
-    const { data: requestRow, error: requestError } = await supabase.from('hcn_clinical_requests').select('id').eq('id', requestId).maybeSingle();
-    if (requestError || !requestRow) return jsonResponse({ error: 'This request could not be found or you are not authorized to notify about it.' }, 403);
+    // Server-side binding check (SEC-005): re-derives the recipient
+    // from the token's own stored row and confirms the caller is
+    // authorized, the token belongs to this exact request, and is
+    // still eligible for a fresh notification -- never trusts a
+    // client-supplied recipient address.
+    const { data: targetRows, error: targetError } = await supabase.rpc('hcn_resolve_notification_target', {
+      p_request_id: requestId, p_raw_token: rawToken,
+    });
+    if (targetError || !targetRows?.[0]) {
+      return jsonResponse({ error: targetError?.message ?? 'This request or access link could not be verified.' }, 403);
+    }
+    const target = targetRows[0] as { token_id: string; recipient_email: string; recipient_label: string | null; already_delivered: boolean };
+    if (target.already_delivered) {
+      return jsonResponse({ delivered: true, alreadyDelivered: true });
+    }
+    const recipientEmail = target.recipient_email;
 
     const resendApiKey = Deno.env.get('RESEND_API_KEY') ?? '';
     const appUrl = (Deno.env.get('APP_URL') ?? 'https://www.haneencarenetwork.com').replace(/\/$/, '');
@@ -73,7 +96,7 @@ serve(async (request) => {
     if (!resendApiKey) {
       await admin.rpc('hcn_record_request_event', {
         p_request_id: requestId, p_event_type: 'send_failed', p_actor_user_id: user.id, p_actor_external_label: null,
-        p_details: { reason: 'RESEND_API_KEY is not configured' },
+        p_details: { reason: 'RESEND_API_KEY is not configured', token_id: target.token_id },
       });
       return jsonResponse({ error: 'Email delivery is not configured yet (RESEND_API_KEY missing). The request itself was recorded as sent and its access link is active -- deliver it out of band until this is configured.', deliveryFailed: true }, 200);
     }
@@ -97,13 +120,17 @@ serve(async (request) => {
       console.error('Resend delivery failed:', resendResponse.status, errText);
       await admin.rpc('hcn_record_request_event', {
         p_request_id: requestId, p_event_type: 'send_failed', p_actor_user_id: user.id, p_actor_external_label: null,
-        p_details: { reason: `Resend API error ${resendResponse.status}` },
+        p_details: { reason: `Resend API error ${resendResponse.status}`, token_id: target.token_id },
       });
       return jsonResponse({ error: 'The notification email could not be delivered. The request and its access link remain valid.', deliveryFailed: true }, 200);
     }
 
+    // "Delivered" here means the provider (Resend) accepted it for
+    // delivery -- not that the recipient has opened or viewed it;
+    // those are deliberately kept distinct (directive 6.1).
     await admin.rpc('hcn_record_request_event', {
-      p_request_id: requestId, p_event_type: 'send_delivered', p_actor_user_id: user.id, p_actor_external_label: null, p_details: {},
+      p_request_id: requestId, p_event_type: 'send_delivered', p_actor_user_id: user.id, p_actor_external_label: null,
+      p_details: { token_id: target.token_id },
     });
     return jsonResponse({ delivered: true });
   } catch (error) {

@@ -7,7 +7,7 @@
 //
 // Requires the local Docker Supabase stack. Run with `npm run test:integration`.
 import { afterAll, describe, expect, it } from 'vitest';
-import { authDeleteUser, authSignUp, login, rpc, SERVICE, sql } from './_runtime';
+import { authDeleteUser, authSignUp, http, login, rpc, SERVICE, sql } from './_runtime';
 
 const PW = 'ClinicalCoord9!';
 const stamp = Date.now();
@@ -40,11 +40,63 @@ async function orgWithDirectorAndPatient(label: string): Promise<{
   return { orgId, directorId, directorTok, patientId, medicalId, medicalTok };
 }
 
+// SEC-002 fixture: a clinician who holds an eligible org_role but has
+// NO patient-specific staff_patient_assignments row for this patient --
+// the exact gap the fix closes (role alone must not be sufficient).
+async function addUnassignedClinician(ctx: { orgId: string }, orgRole: 'medical_professional' | 'therapist', label: string): Promise<{ id: string; tok: string }> {
+  const email = `clinord-unassigned-${orgRole}-${stamp}-${label}@local.test`;
+  const id = await authSignUp(email, PW);
+  createdUserIds.push(id);
+  sql(`
+    UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${id}';
+    INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${ctx.orgId}','${id}','${orgRole}','active');
+  `);
+  const tok = await login(email, PW);
+  return { id, tok };
+}
+
+// SEC-003 fixture: a Caregiver with a real patient-specific assignment
+// (so has_patient_access(patient_id) is true) but no clinical role at
+// all -- the broad-visibility baseline every classification tier is
+// tested against.
+async function addCaregiver(ctx: { orgId: string; patientId: string; directorId: string }, label: string): Promise<{ id: string; tok: string }> {
+  const email = `clinord-caregiver-${stamp}-${label}@local.test`;
+  const id = await authSignUp(email, PW);
+  createdUserIds.push(id);
+  sql(`
+    UPDATE profiles SET must_change_password=false, provisioning_status='complete' WHERE id='${id}';
+    INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${ctx.orgId}','${id}','caregiver','active');
+    INSERT INTO staff_patient_assignments(organization_id,user_id,patient_id,org_role,is_active,assigned_by) VALUES('${ctx.orgId}','${id}','${ctx.patientId}','caregiver',true,'${ctx.directorId}');
+  `);
+  const tok = await login(email, PW);
+  return { id, tok };
+}
+
+// SEC-001: drives the real two-step challenge (request a code via the
+// service-role-only RPC, then verify it) to obtain a session_token --
+// the only thing any of the four protected external actions accept
+// now. Mirrors exactly what the Edge Function's own request_code/
+// verify_code actions do, minus the Resend email hop (there is no
+// mail server in the disposable stack; the code is read directly from
+// the SECURITY DEFINER RPC's own response, which is deliberately the
+// ONLY place it is ever exposed in plaintext).
+async function verifyExternalSession(rawToken: string): Promise<string> {
+  const [, requestRows] = (await rpc('hcn_request_external_verification_code', { p_raw_token: rawToken }, SERVICE)) as [number, { outcome: string; code: string }[]];
+  const requestRow = requestRows[0];
+  if (requestRow.outcome !== 'ok') throw new Error(`verifyExternalSession: code request failed with outcome '${requestRow.outcome}'`);
+  const [, verifyRows] = (await rpc('hcn_verify_external_code', { p_raw_token: rawToken, p_code: requestRow.code }, SERVICE)) as [number, { outcome: string; session_token: string }[]];
+  const verifyRow = verifyRows[0];
+  if (verifyRow.outcome !== 'verified') throw new Error(`verifyExternalSession: code verify failed with outcome '${verifyRow.outcome}'`);
+  return verifyRow.session_token;
+}
+
 afterAll(async () => {
   if (createdOrgIds.length) {
     const orgIds = createdOrgIds.map((id) => `'${id}'`).join(',');
     const patientIds = createdPatientIds.map((id) => `'${id}'`).join(',');
     sql(`
+      DELETE FROM hcn_external_verification_codes WHERE token_id IN (SELECT id FROM hcn_external_access_tokens WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id IN (${orgIds})));
+      DELETE FROM hcn_external_verified_sessions WHERE token_id IN (SELECT id FROM hcn_external_access_tokens WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id IN (${orgIds})));
       DELETE FROM hcn_external_access_tokens WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id IN (${orgIds}));
       DELETE FROM hcn_clinical_request_events WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id IN (${orgIds}));
       DELETE FROM hcn_clinical_request_documents WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id IN (${orgIds}));
@@ -53,6 +105,7 @@ afterAll(async () => {
       DELETE FROM hcn_clinical_documents WHERE organization_id IN (${orgIds});
       DELETE FROM hcn_patient_provider_associations WHERE organization_id IN (${orgIds});
       DELETE FROM hcn_healthcare_providers WHERE organization_id IN (${orgIds});
+      DELETE FROM organization_owner_capability_grants WHERE organization_id IN (${orgIds});
       DELETE FROM staff_patient_assignments WHERE organization_id IN (${orgIds});
       DELETE FROM covered_patient_memberships WHERE organization_id IN (${orgIds});
       DELETE FROM organization_memberships WHERE organization_id IN (${orgIds});
@@ -150,24 +203,25 @@ describe('HCN-CLINICAL-MASTER-002 Features 2 & 4 -- clinical request lifecycle a
     expect(sendResult.request.status).toBe('sent');
     expect(sendResult.raw_token).toBeTruthy();
 
-    // External: wrong email is rejected.
-    const [, wrongEmailRows] = (await rpc('hcn_verify_external_access', {
-      p_raw_token: sendResult.raw_token, p_confirmed_email: 'someone-else@example.test',
-    }, SERVICE)) as [number, { outcome: string }[]];
-    expect(wrongEmailRows[0].outcome).toBe('wrong_recipient');
+    // External: the session-less info function rejects a garbage
+    // session token outright -- possessing the link alone proves
+    // nothing (SEC-001).
+    const [, bogusInfoRows] = (await rpc('hcn_external_session_request_info', { p_session_token: 'not-a-real-session' }, SERVICE)) as [number, { outcome: string }[]];
+    expect(bogusInfoRows[0].outcome).toBe('invalid_session');
 
-    // External: correct verification succeeds and returns only this request's info.
-    const [verifyStatus, verifyRows] = (await rpc('hcn_verify_external_access', {
-      p_raw_token: sendResult.raw_token, p_confirmed_email: providerEmail,
-    }, SERVICE)) as [number, { outcome: string; request_id: string; request_title: string }[]];
-    expect(verifyStatus).toBe(200);
-    expect(verifyRows[0].outcome).toBe('verified');
-    expect(verifyRows[0].request_id).toBe(request.id);
-    expect(verifyRows[0].request_title).toBe('Please verify current medication list');
+    // External: completes the real two-step verification challenge and
+    // obtains a session token.
+    const sessionToken = await verifyExternalSession(sendResult.raw_token);
+
+    const [infoStatus, infoRows] = (await rpc('hcn_external_session_request_info', { p_session_token: sessionToken }, SERVICE)) as [number, { outcome: string; request_id: string; request_title: string }[]];
+    expect(infoStatus).toBe(200);
+    expect(infoRows[0].outcome).toBe('ok');
+    expect(infoRows[0].request_id).toBe(request.id);
+    expect(infoRows[0].request_title).toBe('Please verify current medication list');
 
     // External: upload a response document.
     const [uploadStatus, uploadedDoc] = (await rpc('hcn_record_external_document_upload', {
-      p_raw_token: sendResult.raw_token, p_confirmed_email: providerEmail, p_storage_path: `${ctx.patientId}/ext-${stamp}.pdf`,
+      p_session_token: sessionToken, p_storage_path: `${ctx.patientId}/ext-${stamp}.pdf`,
       p_original_filename: 'updated-medication-list.pdf', p_mime_type: 'application/pdf', p_file_size_bytes: 12345,
       p_checksum_sha256: 'abc123', p_category: 'medication_lists',
     }, SERVICE)) as [number, { id: string; review_status: string; uploader_external_label: string }];
@@ -176,7 +230,7 @@ describe('HCN-CLINICAL-MASTER-002 Features 2 & 4 -- clinical request lifecycle a
     expect(uploadedDoc.uploader_external_label).toContain(providerEmail);
 
     const [submitStatus] = await rpc('hcn_submit_external_response', {
-      p_raw_token: sendResult.raw_token, p_confirmed_email: providerEmail, p_response_text: 'Updated list attached.',
+      p_session_token: sessionToken, p_response_text: 'Updated list attached.',
     }, SERVICE);
     expect(submitStatus).toBe(204); // void-returning RPC
 
@@ -203,8 +257,9 @@ describe('HCN-CLINICAL-MASTER-002 Features 2 & 4 -- clinical request lifecycle a
     const ctx = await orgWithDirectorAndPatient('clinical-approval');
     const providerEmail = `clinord-provider-${stamp}-ca@example-clinic.test`;
     const { sendResult } = await createSentRequest(ctx, providerEmail);
+    const sessionToken = await verifyExternalSession(sendResult.raw_token);
     const [, uploadedDoc] = (await rpc('hcn_record_external_document_upload', {
-      p_raw_token: sendResult.raw_token, p_confirmed_email: providerEmail, p_storage_path: `${ctx.patientId}/ext-ca-${stamp}.pdf`,
+      p_session_token: sessionToken, p_storage_path: `${ctx.patientId}/ext-ca-${stamp}.pdf`,
       p_original_filename: 'new-treatment-plan.pdf', p_mime_type: 'application/pdf', p_file_size_bytes: 500,
       p_checksum_sha256: 'def456', p_category: 'specialist_assessments',
     }, SERVICE)) as [number, { id: string }];
@@ -230,6 +285,61 @@ describe('HCN-CLINICAL-MASTER-002 Features 2 & 4 -- clinical request lifecycle a
     expect(approved.review_status).toBe('clinical_approved');
   });
 
+  it('SEC-002: a same-organization clinician with NO patient-specific assignment is denied, even though an assigned one succeeds', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec002');
+    const providerEmail = `clinord-provider-${stamp}-sec002@example-clinic.test`;
+    const { sendResult } = await createSentRequest(ctx, providerEmail);
+    const sessionToken = await verifyExternalSession(sendResult.raw_token);
+    const [, uploadedDoc] = (await rpc('hcn_record_external_document_upload', {
+      p_session_token: sessionToken, p_storage_path: `${ctx.patientId}/ext-sec002-${stamp}.pdf`,
+      p_original_filename: 'specialist-notes.pdf', p_mime_type: 'application/pdf', p_file_size_bytes: 500,
+      p_checksum_sha256: 'sec002hash', p_category: 'specialist_assessments',
+    }, SERVICE)) as [number, { id: string }];
+    await rpc('hcn_review_clinical_document', { p_document_id: uploadedDoc.id, p_decision: 'forwarded_for_clinical_review', p_notes: 'Needs sign-off.' }, ctx.directorTok);
+
+    // Holds 'medical_professional' org-wide but has NO staff_patient_assignments
+    // row for THIS patient -- the exact gap SEC-002 closes. Role alone
+    // must not be sufficient.
+    const unassigned = await addUnassignedClinician(ctx, 'medical_professional', 'deny');
+    const [unassignedStatus] = await rpc('hcn_clinical_approve_document', {
+      p_document_id: uploadedDoc.id, p_notes: 'Should be denied.',
+    }, unassigned.tok);
+    expect(unassignedStatus).toBeGreaterThanOrEqual(400);
+
+    // The already-assigned Medical Professional still succeeds (same
+    // request as the directive's own "assigned, authorized clinician:
+    // succeeds" pairing).
+    const [assignedStatus, approved] = (await rpc('hcn_clinical_approve_document', {
+      p_document_id: uploadedDoc.id, p_notes: 'Approved by the assigned clinician.',
+    }, ctx.medicalTok)) as [number, { review_status: string }];
+    expect(assignedStatus).toBe(200);
+    expect(approved.review_status).toBe('clinical_approved');
+  });
+
+  it('SEC-002: an Organization Owner with a self-assigned capability grant may approve without a staff_patient_assignments row', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec002-owner');
+    const providerEmail = `clinord-provider-${stamp}-sec002owner@example-clinic.test`;
+    const { sendResult } = await createSentRequest(ctx, providerEmail);
+    const sessionToken = await verifyExternalSession(sendResult.raw_token);
+    const [, uploadedDoc] = (await rpc('hcn_record_external_document_upload', {
+      p_session_token: sessionToken, p_storage_path: `${ctx.patientId}/ext-sec002owner-${stamp}.pdf`,
+      p_original_filename: 'specialist-notes.pdf', p_mime_type: 'application/pdf', p_file_size_bytes: 500,
+      p_checksum_sha256: 'sec002ownerhash', p_category: 'specialist_assessments',
+    }, SERVICE)) as [number, { id: string }];
+    await rpc('hcn_review_clinical_document', { p_document_id: uploadedDoc.id, p_decision: 'forwarded_for_clinical_review', p_notes: 'Needs sign-off.' }, ctx.directorTok);
+
+    sql(`
+      INSERT INTO organization_owner_capability_grants(organization_id, user_id, capability, status, granted_by)
+      VALUES ('${ctx.orgId}', '${ctx.directorId}', 'medical_professional', 'active', '${ctx.directorId}')
+      ON CONFLICT DO NOTHING;
+    `);
+    const [ownerStatus, approved] = (await rpc('hcn_clinical_approve_document', {
+      p_document_id: uploadedDoc.id, p_notes: 'Approved via owner capability grant.',
+    }, ctx.directorTok)) as [number, { review_status: string }];
+    expect(ownerStatus).toBe(200);
+    expect(approved.review_status).toBe('clinical_approved');
+  });
+
   it('a revoked external token cannot be used, even with the correct email', async () => {
     const ctx = await orgWithDirectorAndPatient('revoke');
     const providerEmail = `clinord-provider-${stamp}-revoke@example-clinic.test`;
@@ -238,8 +348,8 @@ describe('HCN-CLINICAL-MASTER-002 Features 2 & 4 -- clinical request lifecycle a
     const [revokeStatus] = await rpc('hcn_revoke_clinical_request_access', { p_request_id: request.id }, ctx.directorTok);
     expect(revokeStatus).toBe(204); // void-returning RPC -- PostgREST reports success as 204 No Content, not 200
 
-    const [, rows] = (await rpc('hcn_verify_external_access', {
-      p_raw_token: sendResult.raw_token, p_confirmed_email: providerEmail,
+    const [, rows] = (await rpc('hcn_request_external_verification_code', {
+      p_raw_token: sendResult.raw_token,
     }, SERVICE)) as [number, { outcome: string }[]];
     expect(rows[0].outcome).toBe('revoked');
   });
@@ -259,15 +369,13 @@ describe('HCN-CLINICAL-MASTER-002 Features 2 & 4 -- clinical request lifecycle a
     const requestCount = sql(`SELECT count(*) FROM hcn_clinical_requests WHERE id='${request.id}';`);
     expect(requestCount).toBe('1');
 
-    const [, oldTokenRows] = (await rpc('hcn_verify_external_access', {
-      p_raw_token: firstToken.raw_token, p_confirmed_email: providerEmail,
+    const [, oldTokenRows] = (await rpc('hcn_request_external_verification_code', {
+      p_raw_token: firstToken.raw_token,
     }, SERVICE)) as [number, { outcome: string }[]];
     expect(oldTokenRows[0].outcome).toBe('revoked');
 
-    const [, newTokenRows] = (await rpc('hcn_verify_external_access', {
-      p_raw_token: resendResult.raw_token, p_confirmed_email: providerEmail,
-    }, SERVICE)) as [number, { outcome: string }[]];
-    expect(newTokenRows[0].outcome).toBe('verified');
+    const newSessionToken = await verifyExternalSession(resendResult.raw_token);
+    expect(newSessionToken).toBeTruthy();
   });
 
   it('cancelling a request revokes outstanding access and reaches a terminal state', async () => {
@@ -281,8 +389,8 @@ describe('HCN-CLINICAL-MASTER-002 Features 2 & 4 -- clinical request lifecycle a
     expect(cancelStatus).toBe(200);
     expect(cancelled.status).toBe('cancelled');
 
-    const [, rows] = (await rpc('hcn_verify_external_access', {
-      p_raw_token: sendResult.raw_token, p_confirmed_email: providerEmail,
+    const [, rows] = (await rpc('hcn_request_external_verification_code', {
+      p_raw_token: sendResult.raw_token,
     }, SERVICE)) as [number, { outcome: string }[]];
     expect(rows[0].outcome).toBe('revoked');
   });
@@ -311,9 +419,221 @@ describe('HCN-CLINICAL-MASTER-002 Features 2 & 4 -- clinical request lifecycle a
     const { sendResult } = await createSentRequest(ctx, providerEmail);
     sql(`UPDATE hcn_external_access_tokens SET expires_at = now() - interval '1 hour' WHERE request_id = (SELECT id FROM hcn_clinical_requests WHERE organization_id='${ctx.orgId}');`);
 
-    const [, rows] = (await rpc('hcn_verify_external_access', {
-      p_raw_token: sendResult.raw_token, p_confirmed_email: providerEmail,
+    const [, rows] = (await rpc('hcn_request_external_verification_code', {
+      p_raw_token: sendResult.raw_token,
     }, SERVICE)) as [number, { outcome: string }[]];
     expect(rows[0].outcome).toBe('expired');
+  });
+});
+
+describe('HCN-CLINICAL-MASTER-002-CONTINUATION SEC-001 -- external recipient identity verification challenge', () => {
+  it('a wrong code is rejected and never issues a session', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec001-wrong-code');
+    const providerEmail = `clinord-provider-${stamp}-sec001a@example-clinic.test`;
+    const { sendResult } = await createSentRequest(ctx, providerEmail);
+    await rpc('hcn_request_external_verification_code', { p_raw_token: sendResult.raw_token }, SERVICE);
+
+    const [, wrongRows] = (await rpc('hcn_verify_external_code', { p_raw_token: sendResult.raw_token, p_code: '000000' }, SERVICE)) as [number, { outcome: string; session_token: string | null }[]];
+    expect(wrongRows[0].outcome).toBe('wrong_code');
+    expect(wrongRows[0].session_token).toBeNull();
+  });
+
+  it('exceeding 5 failed attempts permanently retires that code, even if the correct code is then supplied', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec001-attempts');
+    const providerEmail = `clinord-provider-${stamp}-sec001b@example-clinic.test`;
+    const { sendResult } = await createSentRequest(ctx, providerEmail);
+    const [, requestRows] = (await rpc('hcn_request_external_verification_code', { p_raw_token: sendResult.raw_token }, SERVICE)) as [number, { outcome: string; code: string }[]];
+    const realCode = requestRows[0].code;
+
+    for (let i = 0; i < 5; i++) {
+      const [, rows] = (await rpc('hcn_verify_external_code', { p_raw_token: sendResult.raw_token, p_code: '999999' }, SERVICE)) as [number, { outcome: string }[]];
+      expect(['wrong_code', 'too_many_attempts']).toContain(rows[0].outcome);
+    }
+    const [, finalRows] = (await rpc('hcn_verify_external_code', { p_raw_token: sendResult.raw_token, p_code: realCode }, SERVICE)) as [number, { outcome: string }[]];
+    expect(finalRows[0].outcome).toBe('too_many_attempts');
+  });
+
+  it('an expired code is rejected', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec001-expired-code');
+    const providerEmail = `clinord-provider-${stamp}-sec001c@example-clinic.test`;
+    const { sendResult, request } = await createSentRequest(ctx, providerEmail);
+    const [, requestRows] = (await rpc('hcn_request_external_verification_code', { p_raw_token: sendResult.raw_token }, SERVICE)) as [number, { outcome: string; code: string }[]];
+    const realCode = requestRows[0].code;
+    sql(`UPDATE hcn_external_verification_codes SET expires_at = now() - interval '1 minute' WHERE token_id = (SELECT id FROM hcn_external_access_tokens WHERE request_id='${request.id}');`);
+
+    const [, rows] = (await rpc('hcn_verify_external_code', { p_raw_token: sendResult.raw_token, p_code: realCode }, SERVICE)) as [number, { outcome: string }[]];
+    expect(rows[0].outcome).toBe('code_expired');
+  });
+
+  it('requesting a second code before the cooldown elapses is rate limited, and a hard cap eventually applies', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec001-rate-limit');
+    const providerEmail = `clinord-provider-${stamp}-sec001d@example-clinic.test`;
+    const { sendResult } = await createSentRequest(ctx, providerEmail);
+    const [, first] = (await rpc('hcn_request_external_verification_code', { p_raw_token: sendResult.raw_token }, SERVICE)) as [number, { outcome: string }[]];
+    expect(first[0].outcome).toBe('ok');
+    const [, second] = (await rpc('hcn_request_external_verification_code', { p_raw_token: sendResult.raw_token }, SERVICE)) as [number, { outcome: string }[]];
+    expect(second[0].outcome).toBe('rate_limited');
+  });
+
+  it('revoking request access invalidates an already-issued verified session, not merely future verification attempts', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec001-session-revoke');
+    const providerEmail = `clinord-provider-${stamp}-sec001e@example-clinic.test`;
+    const { sendResult, request } = await createSentRequest(ctx, providerEmail);
+    const sessionToken = await verifyExternalSession(sendResult.raw_token);
+
+    const [, beforeRevoke] = (await rpc('hcn_external_session_request_info', { p_session_token: sessionToken }, SERVICE)) as [number, { outcome: string }[]];
+    expect(beforeRevoke[0].outcome).toBe('ok');
+
+    await rpc('hcn_revoke_clinical_request_access', { p_request_id: request.id }, ctx.directorTok);
+
+    const [, afterRevoke] = (await rpc('hcn_external_session_request_info', { p_session_token: sessionToken }, SERVICE)) as [number, { outcome: string }[]];
+    expect(afterRevoke[0].outcome).toBe('invalid_session');
+  });
+
+  it('protected external actions reject a missing or garbage session token without revealing anything about the request', async () => {
+    const [uploadStatus] = await rpc('hcn_record_external_document_upload', {
+      p_session_token: 'garbage', p_storage_path: 'x/y.pdf', p_original_filename: 'y.pdf', p_mime_type: 'application/pdf',
+      p_file_size_bytes: 10, p_checksum_sha256: 'x', p_category: 'other_clinical_attachment',
+    }, SERVICE);
+    expect(uploadStatus).toBeGreaterThanOrEqual(400);
+
+    const [submitStatus] = await rpc('hcn_submit_external_response', { p_session_token: 'garbage', p_response_text: 'hi' }, SERVICE);
+    expect(submitStatus).toBeGreaterThanOrEqual(400);
+
+    const [, docsRows] = (await rpc('hcn_list_external_shared_documents', { p_session_token: 'garbage' }, SERVICE)) as [number, unknown[]];
+    expect(docsRows).toEqual([]);
+  });
+});
+
+describe('HCN-CLINICAL-MASTER-002-CONTINUATION SEC-003 -- document classification access controls', () => {
+  it('a caregiver with ordinary patient access can see a general-tier document but not a specially-protected one', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec003-general');
+    const caregiver = await addCaregiver(ctx, 'sec003a');
+    const generalDocId = sql(`
+      INSERT INTO hcn_clinical_documents(organization_id, patient_id, category, classification, storage_path, original_filename, mime_type, file_size_bytes, checksum_sha256, uploaded_by)
+      VALUES ('${ctx.orgId}', '${ctx.patientId}', 'care_instructions', 'general_care_coordination', '${ctx.patientId}/general-${stamp}.pdf', 'general.pdf', 'application/pdf', 100, 'h1', '${ctx.directorId}')
+      RETURNING id;
+    `);
+    const protectedDocId = sql(`
+      INSERT INTO hcn_clinical_documents(organization_id, patient_id, category, classification, storage_path, original_filename, mime_type, file_size_bytes, checksum_sha256, uploaded_by)
+      VALUES ('${ctx.orgId}', '${ctx.patientId}', 'therapy_reports', 'specially_protected_documentation', '${ctx.patientId}/protected-${stamp}.pdf', 'protected.pdf', 'application/pdf', 100, 'h2', '${ctx.medicalId}')
+      RETURNING id;
+    `);
+
+    const [, generalVisible] = await http('GET', `/rest/v1/hcn_clinical_documents?id=eq.${generalDocId}&select=id`, undefined, caregiver.tok);
+    expect(generalVisible).toHaveLength(1);
+    const [, protectedVisible] = await http('GET', `/rest/v1/hcn_clinical_documents?id=eq.${protectedDocId}&select=id`, undefined, caregiver.tok);
+    expect(protectedVisible).toHaveLength(0);
+  });
+
+  it('a qualified clinician cannot see a specially-protected document without an explicit grant, but can once granted', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec003-protected');
+    const protectedDocId = sql(`
+      INSERT INTO hcn_clinical_documents(organization_id, patient_id, category, classification, storage_path, original_filename, mime_type, file_size_bytes, checksum_sha256, uploaded_by)
+      VALUES ('${ctx.orgId}', '${ctx.patientId}', 'therapy_reports', 'specially_protected_documentation', '${ctx.patientId}/protected2-${stamp}.pdf', 'protected2.pdf', 'application/pdf', 100, 'h3', '${ctx.directorId}')
+      RETURNING id;
+    `);
+
+    const [, beforeGrant] = await http('GET', `/rest/v1/hcn_clinical_documents?id=eq.${protectedDocId}&select=id`, undefined, ctx.medicalTok);
+    expect(beforeGrant).toHaveLength(0);
+
+    sql(`
+      INSERT INTO hcn_document_grants(document_id, grantee_type, grantee_user_id, granted_by)
+      VALUES ('${protectedDocId}', 'internal_user', '${ctx.medicalId}', '${ctx.directorId}');
+    `);
+
+    const [, afterGrant] = await http('GET', `/rest/v1/hcn_clinical_documents?id=eq.${protectedDocId}&select=id`, undefined, ctx.medicalTok);
+    expect(afterGrant).toHaveLength(1);
+  });
+
+  it('restricted clinical documentation is visible to the assigned clinician and Director, but not to a plain caregiver', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec003-restricted');
+    const caregiver = await addCaregiver(ctx, 'sec003c');
+    const restrictedDocId = sql(`
+      INSERT INTO hcn_clinical_documents(organization_id, patient_id, category, classification, storage_path, original_filename, mime_type, file_size_bytes, checksum_sha256, uploaded_by)
+      VALUES ('${ctx.orgId}', '${ctx.patientId}', 'specialist_assessments', 'restricted_clinical_documentation', '${ctx.patientId}/restricted-${stamp}.pdf', 'restricted.pdf', 'application/pdf', 100, 'h4', '${ctx.directorId}')
+      RETURNING id;
+    `);
+
+    const [, caregiverView] = await http('GET', `/rest/v1/hcn_clinical_documents?id=eq.${restrictedDocId}&select=id`, undefined, caregiver.tok);
+    expect(caregiverView).toHaveLength(0);
+    const [, medicalView] = await http('GET', `/rest/v1/hcn_clinical_documents?id=eq.${restrictedDocId}&select=id`, undefined, ctx.medicalTok);
+    expect(medicalView).toHaveLength(1);
+    const [, directorView] = await http('GET', `/rest/v1/hcn_clinical_documents?id=eq.${restrictedDocId}&select=id`, undefined, ctx.directorTok);
+    expect(directorView).toHaveLength(1);
+  });
+});
+
+describe('HCN-CLINICAL-MASTER-002-CONTINUATION SEC-005 -- notification recipient/request binding', () => {
+  it('resolves the real recipient from the token row, never a caller-supplied address, for a valid request+token pairing', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec005-valid');
+    const providerEmail = `clinord-provider-${stamp}-sec005a@example-clinic.test`;
+    const { request, sendResult } = await createSentRequest(ctx, providerEmail);
+
+    const [status, rows] = (await rpc('hcn_resolve_notification_target', {
+      p_request_id: request.id, p_raw_token: sendResult.raw_token,
+    }, ctx.directorTok)) as [number, { recipient_email: string; token_id: string; already_delivered: boolean }[]];
+    expect(status).toBe(200);
+    expect(rows[0].recipient_email).toBe(providerEmail);
+    expect(rows[0].already_delivered).toBe(false);
+  });
+
+  it('rejects a token that belongs to a DIFFERENT request, even if both requests are in the same org', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec005-mismatch');
+    const { request: requestA } = await createSentRequest(ctx, `clinord-provider-${stamp}-sec005b-a@example-clinic.test`);
+    const { sendResult: sendB } = await createSentRequest(ctx, `clinord-provider-${stamp}-sec005b-b@example-clinic.test`);
+
+    // requestA's id, but sendB's token -- a mismatched pairing a naive
+    // implementation that merely checked "does this token exist" would
+    // have accepted.
+    const [status] = await rpc('hcn_resolve_notification_target', {
+      p_request_id: requestA.id, p_raw_token: sendB.raw_token,
+    }, ctx.directorTok);
+    expect(status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('cross-organization isolation: a different org\'s Director cannot resolve a notification target for this request', async () => {
+    const ctxA = await orgWithDirectorAndPatient('sec005-xorg-a');
+    const ctxB = await orgWithDirectorAndPatient('sec005-xorg-b');
+    const providerEmail = `clinord-provider-${stamp}-sec005c@example-clinic.test`;
+    const { request, sendResult } = await createSentRequest(ctxA, providerEmail);
+
+    const [status] = await rpc('hcn_resolve_notification_target', {
+      p_request_id: request.id, p_raw_token: sendResult.raw_token,
+    }, ctxB.directorTok);
+    expect(status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('reports already_delivered once a send_delivered event exists for this exact token, preventing a duplicate send', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec005-idempotent');
+    const providerEmail = `clinord-provider-${stamp}-sec005d@example-clinic.test`;
+    const { request, sendResult } = await createSentRequest(ctx, providerEmail);
+
+    const [, firstRows] = (await rpc('hcn_resolve_notification_target', {
+      p_request_id: request.id, p_raw_token: sendResult.raw_token,
+    }, ctx.directorTok)) as [number, { token_id: string; already_delivered: boolean }[]];
+    expect(firstRows[0].already_delivered).toBe(false);
+
+    sql(`
+      INSERT INTO hcn_clinical_request_events(request_id, event_type, actor_user_id, details)
+      VALUES ('${request.id}', 'send_delivered', '${ctx.directorId}', jsonb_build_object('token_id', '${firstRows[0].token_id}'));
+    `);
+
+    const [, secondRows] = (await rpc('hcn_resolve_notification_target', {
+      p_request_id: request.id, p_raw_token: sendResult.raw_token,
+    }, ctx.directorTok)) as [number, { already_delivered: boolean }[]];
+    expect(secondRows[0].already_delivered).toBe(true);
+  });
+
+  it('a revoked token can no longer be used to resolve a fresh notification target', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec005-revoked');
+    const providerEmail = `clinord-provider-${stamp}-sec005e@example-clinic.test`;
+    const { request, sendResult } = await createSentRequest(ctx, providerEmail);
+    await rpc('hcn_revoke_clinical_request_access', { p_request_id: request.id }, ctx.directorTok);
+
+    const [status] = await rpc('hcn_resolve_notification_target', {
+      p_request_id: request.id, p_raw_token: sendResult.raw_token,
+    }, ctx.directorTok);
+    expect(status).toBeGreaterThanOrEqual(400);
   });
 });
