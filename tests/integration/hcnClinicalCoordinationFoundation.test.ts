@@ -685,6 +685,36 @@ describe('HCN-CLINICAL-MASTER-002 SEC-006 -- document write authority and revoca
     expect(status).toBeGreaterThanOrEqual(400);
   });
 
+  it('same-patient access in organization A never grants access to organization B clinical documents', async () => {
+    const a = await orgWithDirectorAndPatient('tenant-boundary-a');
+    const b = await orgWithDirectorAndPatient('tenant-boundary-b');
+    // A real patient is simultaneously covered by both organizations,
+    // but the clinician in A has NO assignment or membership in B.
+    sql("INSERT INTO covered_patient_memberships(organization_id,patient_id,status,created_by) VALUES('" +
+      b.orgId + "','" + a.patientId + "','active','" + b.directorId + "');");
+    const id = sql("INSERT INTO hcn_clinical_documents(organization_id,patient_id,category,classification,storage_path,original_filename,mime_type,file_size_bytes,uploaded_by) VALUES ('" +
+      b.orgId + "','" + a.patientId + "','patient_provided_documents','patient_shared_document','" +
+      a.patientId + "/tenant-boundary-" + stamp + ".pdf','tenant.pdf','application/pdf',64,'" + b.directorId + "') RETURNING id;");
+    const [directorStatus, visible] = await http('GET',
+      '/rest/v1/hcn_clinical_documents?id=eq.' + id + '&select=id', undefined, b.directorTok);
+    expect(directorStatus).toBe(200);
+    expect(visible).toHaveLength(1);
+
+    const [outsiderStatus, hidden] = await http('GET',
+      '/rest/v1/hcn_clinical_documents?id=eq.' + id + '&select=id', undefined, a.medicalTok);
+    expect(outsiderStatus).toBe(200);
+    expect(hidden).toEqual([]);
+
+    const [insertStatus] = await http('POST','/rest/v1/hcn_clinical_documents',{
+      organization_id:b.orgId,patient_id:a.patientId,
+      category:'patient_provided_documents',classification:'patient_shared_document',
+      storage_path:a.patientId+'/cross-tenant-'+stamp+'.pdf',
+      original_filename:'cross-tenant.pdf',mime_type:'application/pdf',
+      file_size_bytes:64,uploaded_by:a.medicalId,
+    },a.medicalTok);
+    expect(insertStatus).toBeGreaterThanOrEqual(400);
+  });
+
   it('an uploader cannot continue reading a clinical document after assignment revocation', async () => {
     const ctx = await orgWithDirectorAndPatient('sec006-revoked');
     const caregiver = await addCaregiver(ctx, 'sec006-revoked-cg');
