@@ -5078,10 +5078,6 @@ export interface Database {
         Args: { p_plan_id: string; p_update_text: string }
         Returns: { author_id: string; created_at: string; id: string; plan_id: string; update_text: string }
       }
-      hcn_list_coordination_plan_updates: {
-        Args: { p_plan_id: string }
-        Returns: { author_id: string; created_at: string; id: string; plan_id: string; update_text: string }[]
-      }
       hcn_get_clinical_coordination_report: {
         Args: { p_organization_id: string }
         Returns: {

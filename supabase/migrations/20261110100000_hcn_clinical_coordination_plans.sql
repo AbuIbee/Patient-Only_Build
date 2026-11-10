@@ -289,17 +289,3 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.hcn_close_coordination_plan(UUID, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.hcn_close_coordination_plan(UUID, TEXT) TO authenticated;
-
--- Read helper: a participant's own list of updates, service-role-free
--- (RLS on hcn_coordination_plan_updates already gates this correctly
--- for a direct table SELECT, but SECURITY DEFINER table access is not
--- actually needed here -- the view policy above is sufficient. This
--- function exists only to provide a stable, join-free read path for
--- the frontend equivalent to what hcn_clinical_request_events already
--- offers for requests.)
-CREATE OR REPLACE FUNCTION public.hcn_list_coordination_plan_updates(p_plan_id UUID)
-RETURNS SETOF public.hcn_coordination_plan_updates
-LANGUAGE sql SECURITY INVOKER STABLE AS $$
-  SELECT * FROM hcn_coordination_plan_updates WHERE plan_id = p_plan_id ORDER BY created_at;
-$$;
-GRANT EXECUTE ON FUNCTION public.hcn_list_coordination_plan_updates(UUID) TO authenticated;
