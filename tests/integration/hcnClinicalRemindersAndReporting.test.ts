@@ -82,7 +82,7 @@ describe('HCN-CLINICAL-MASTER-002-CONTINUATION Phase 4 -- automated reminders', 
     const firstMatch = firstRows.find((r) => r.out_request_id === requestId);
     expect(firstMatch?.processed).toBe(true);
 
-    const eventCount = sql(`SELECT count(*) FROM hcn_clinical_request_events WHERE request_id='${requestId}' AND event_type='reminder_sent';`);
+    const eventCount = sql(`SELECT count(*) FROM hcn_clinical_request_events WHERE request_id='${requestId}' AND event_type='reminder_queued';`);
     expect(eventCount).toBe('1');
 
     // Running it again immediately must NOT record a second reminder --
@@ -94,7 +94,7 @@ describe('HCN-CLINICAL-MASTER-002-CONTINUATION Phase 4 -- automated reminders', 
     expect(secondMatch?.processed).toBe(false);
     expect(secondMatch?.detail).toMatch(/cooldown/i);
 
-    const eventCountAfter = sql(`SELECT count(*) FROM hcn_clinical_request_events WHERE request_id='${requestId}' AND event_type='reminder_sent';`);
+    const eventCountAfter = sql(`SELECT count(*) FROM hcn_clinical_request_events WHERE request_id='${requestId}' AND event_type='reminder_queued';`);
     expect(eventCountAfter).toBe('1'); // still exactly one -- no duplicate
   });
 
@@ -115,7 +115,7 @@ describe('HCN-CLINICAL-MASTER-002-CONTINUATION Phase 4 -- automated reminders', 
     expect(match?.processed).toBe(false);
     expect(match?.detail).toMatch(/revoked/i);
 
-    const eventCount = sql(`SELECT count(*) FROM hcn_clinical_request_events WHERE request_id='${requestId}' AND event_type='reminder_sent';`);
+    const eventCount = sql(`SELECT count(*) FROM hcn_clinical_request_events WHERE request_id='${requestId}' AND event_type='reminder_queued';`);
     expect(eventCount).toBe('0');
   });
 
