@@ -10,6 +10,7 @@ import {
   uploadInternalDocument, getSignedDownloadUrl, sendClinicalRequestNotification,
   getCoordinationPlans, createCoordinationPlan, addCoordinationPlanParticipant, getCoordinationPlanParticipants,
   postCoordinationPlanUpdate, getCoordinationPlanUpdates, closeCoordinationPlan,
+  type ClinicalCoordinationReport, getClinicalCoordinationReport,
   REQUEST_TYPES, DOCUMENT_CATEGORIES, DOCUMENT_CLASSIFICATIONS, PROVIDER_SPECIALTIES,
 } from '@/services/hcnClinicalCoordinationService';
 
@@ -77,6 +78,7 @@ export default function ClinicalCoordinationPanel({
   const [newParticipantRole, setNewParticipantRole] = useState('');
   const [newExternalProviderId, setNewExternalProviderId] = useState('');
   const [planUpdateText, setPlanUpdateText] = useState('');
+  const [report, setReport] = useState<ClinicalCoordinationReport | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -84,10 +86,14 @@ export default function ClinicalCoordinationPanel({
       const [p, r] = await Promise.all([getProviders(orgId), getClinicalRequests(orgId)]);
       if (p.error) setError(p.error); else setProviders(p.data ?? []);
       if (r.error) setError(r.error); else setRequests(r.data ?? []);
+      if (role === 'director') {
+        const rep = await getClinicalCoordinationReport(orgId);
+        if (!rep.error) setReport(rep.data);
+      }
     } finally {
       setLoading(false);
     }
-  }, [orgId]);
+  }, [orgId, role]);
   useEffect(() => { void refresh(); }, [refresh]);
 
   const openRequest = useCallback(async (id: string) => {
@@ -313,6 +319,27 @@ export default function ClinicalCoordinationPanel({
         and coordinated care — with secure, verified, time-limited external access for providers who do not use Haneen directly.
       </p>
       {error && <p role="alert" className="text-sm text-ent-rust">Could not load clinical coordination data: {error}</p>}
+
+      {role === 'director' && report && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="rounded-lg border border-ent-line p-2 text-center">
+            <div className="text-lg font-bold text-ent-ink">{report.requestsOverdue}</div>
+            <div className="text-[11px] text-ent-muted">Overdue requests</div>
+          </div>
+          <div className="rounded-lg border border-ent-line p-2 text-center">
+            <div className="text-lg font-bold text-ent-ink">{report.documentsPendingAdministrativeReview}</div>
+            <div className="text-[11px] text-ent-muted">Docs awaiting review</div>
+          </div>
+          <div className="rounded-lg border border-ent-line p-2 text-center">
+            <div className="text-lg font-bold text-ent-ink">{report.documentsPendingClinicalApproval}</div>
+            <div className="text-[11px] text-ent-muted">Awaiting clinical approval</div>
+          </div>
+          <div className="rounded-lg border border-ent-line p-2 text-center">
+            <div className="text-lg font-bold text-ent-ink">{report.activeCoordinationPlans}</div>
+            <div className="text-[11px] text-ent-muted">Active coordination plans</div>
+          </div>
+        </div>
+      )}
 
       {/* Provider directory */}
       <div className="rounded-xl border border-ent-line p-3 space-y-3">

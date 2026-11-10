@@ -5082,6 +5082,15 @@ export interface Database {
         Args: { p_plan_id: string }
         Returns: { author_id: string; created_at: string; id: string; plan_id: string; update_text: string }[]
       }
+      hcn_get_clinical_coordination_report: {
+        Args: { p_organization_id: string }
+        Returns: {
+          active_coordination_plans: number; documents_pending_administrative_review: number
+          documents_pending_clinical_approval: number; reminders_sent_last_30_days: number
+          requests_closed_or_accepted: number; requests_overdue: number; requests_pending_clinical_approval: number
+          requests_pending_review: number; requests_sent: number; total_requests: number
+        }[]
+      }
       hcn_close_coordination_plan: {
         Args: { p_closing_summary: string; p_plan_id: string }
         Returns: {

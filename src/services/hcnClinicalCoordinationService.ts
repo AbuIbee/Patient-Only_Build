@@ -386,6 +386,30 @@ export async function getCoordinationPlanUpdates(planId: string) {
   };
 }
 
+export type ClinicalCoordinationReport = {
+  totalRequests: number; requestsSent: number; requestsOverdue: number; requestsPendingReview: number;
+  requestsPendingClinicalApproval: number; requestsClosedOrAccepted: number;
+  documentsPendingAdministrativeReview: number; documentsPendingClinicalApproval: number;
+  activeCoordinationPlans: number; remindersSentLast30Days: number;
+};
+
+export async function getClinicalCoordinationReport(organizationId: string) {
+  const { data, error } = await supabase.rpc('hcn_get_clinical_coordination_report', { p_organization_id: organizationId });
+  if (error) return { data: null, error: err(error, 'Unable to load the coordination report') };
+  const r = (data ?? [])[0] as Record<string, number> | undefined;
+  if (!r) return { data: null, error: 'No report data returned' };
+  return {
+    data: {
+      totalRequests: r.total_requests, requestsSent: r.requests_sent, requestsOverdue: r.requests_overdue,
+      requestsPendingReview: r.requests_pending_review, requestsPendingClinicalApproval: r.requests_pending_clinical_approval,
+      requestsClosedOrAccepted: r.requests_closed_or_accepted, documentsPendingAdministrativeReview: r.documents_pending_administrative_review,
+      documentsPendingClinicalApproval: r.documents_pending_clinical_approval, activeCoordinationPlans: r.active_coordination_plans,
+      remindersSentLast30Days: r.reminders_sent_last_30_days,
+    } as ClinicalCoordinationReport,
+    error: null as string | null,
+  };
+}
+
 export async function closeCoordinationPlan(planId: string, closingSummary: string) {
   const { data, error } = await supabase.rpc('hcn_close_coordination_plan', { p_plan_id: planId, p_closing_summary: closingSummary });
   if (error) return { data: null, error: err(error, 'Unable to close this coordination plan') };
