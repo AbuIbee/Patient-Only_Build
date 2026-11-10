@@ -14,6 +14,7 @@ import {
   postCoordinationPlanUpdate, getCoordinationPlanUpdates, closeCoordinationPlan,
   type ClinicalCoordinationReport, getClinicalCoordinationReport,
   type CoordinationTaskMetrics, getCoordinationTaskMetrics,
+  type ClinicalProviderPerformance, getClinicalProviderPerformance,
   REQUEST_TYPES, DOCUMENT_CATEGORIES, DOCUMENT_CLASSIFICATIONS, PROVIDER_SPECIALTIES,
 } from '@/services/hcnClinicalCoordinationService';
 
@@ -89,6 +90,7 @@ export default function ClinicalCoordinationPanel({
   const [planUpdateText, setPlanUpdateText] = useState('');
   const [report, setReport] = useState<ClinicalCoordinationReport | null>(null);
   const [taskMetrics, setTaskMetrics] = useState<CoordinationTaskMetrics | null>(null);
+  const [providerMetrics, setProviderMetrics] = useState<ClinicalProviderPerformance[]>([]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -101,6 +103,8 @@ export default function ClinicalCoordinationPanel({
         if (!rep.error) setReport(rep.data);
         const metrics = await getCoordinationTaskMetrics(orgId);
         if (!metrics.error) setTaskMetrics(metrics.data);
+        const performance = await getClinicalProviderPerformance(orgId);
+        if (!performance.error) setProviderMetrics(performance.data ?? []);
       }
     } finally {
       setLoading(false);
@@ -411,6 +415,29 @@ export default function ClinicalCoordinationPanel({
             <div className="text-[11px] text-ent-muted">Active coordination plans</div>
           </div>
         </div>
+      )}
+
+      {role === 'director' && providerMetrics.length > 0 && (
+        <section aria-label="Provider response performance" className="rounded-xl border border-ent-line p-3 space-y-2">
+          <h3 className="text-sm font-semibold">Provider response performance</h3>
+          <p className="text-xs text-ent-muted">Operational metrics only; hours measure first response since sending.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead><tr className="border-b border-ent-line">
+                <th className="p-2">Provider</th><th className="p-2">Total</th><th className="p-2">Pending</th>
+                <th className="p-2">Overdue</th><th className="p-2">Responded</th><th className="p-2">Avg. response</th>
+              </tr></thead>
+              <tbody>{providerMetrics.map((p) => (
+                <tr key={p.providerId} className="border-b border-ent-line/40">
+                  <td className="p-2 font-medium">{p.providerName}</td>
+                  <td className="p-2">{p.totalRequests}</td><td className="p-2">{p.awaitingResponse}</td>
+                  <td className="p-2">{p.overdueRequests}</td><td className="p-2">{p.responsesReceived}</td>
+                  <td className="p-2">{p.averageResponseHours === null ? '—' : p.averageResponseHours + ' hours'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {/* Provider directory */}

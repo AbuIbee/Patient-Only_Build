@@ -587,3 +587,22 @@ export async function getLinkedPatientProviders(organizationId: string, patientI
     verificationStatus: r.verification_status as string,
   })), error: null as string | null };
 }
+
+
+export type ClinicalProviderPerformance = {
+  providerId: string; providerName: string; totalRequests: number;
+  awaitingResponse: number; overdueRequests: number; responsesReceived: number;
+  averageResponseHours: number | null;
+};
+export async function getClinicalProviderPerformance(organizationId: string) {
+  const { data, error } = await clinicalApi.rpc('hcn_get_clinical_provider_performance', {
+    p_organization_id: organizationId,
+  });
+  if (error) return { data: null as ClinicalProviderPerformance[] | null, error: err(error, 'Unable to load provider performance') };
+  return { data: (data ?? []).map((r: Record<string, unknown>) => ({
+    providerId: r.provider_id as string, providerName: r.provider_name as string,
+    totalRequests: r.total_requests as number, awaitingResponse: r.awaiting_response as number,
+    overdueRequests: r.overdue_requests as number, responsesReceived: r.responses_received as number,
+    averageResponseHours: r.average_response_hours === null ? null : Number(r.average_response_hours),
+  })), error: null as string | null };
+}

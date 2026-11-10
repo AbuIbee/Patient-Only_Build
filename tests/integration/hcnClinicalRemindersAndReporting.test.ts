@@ -313,3 +313,24 @@ describe('HCN-CLINICAL-MASTER-002 Workstream B: provider-accepted reminder ledge
     expect(claimed.some((r) => r.request_id === id)).toBe(false);
   });
 });
+
+
+describe('HCN provider performance reporting', () => {
+  it('returns scoped provider counts and rejects foreign organization Directors', async () => {
+    const ctx = await orgWithDirectorAndPatient('performance');
+    await createOverdueSentRequest(ctx,'performance');
+    const [status,rows] = await rpc('hcn_get_clinical_provider_performance',
+      {p_organization_id:ctx.orgId},ctx.directorTok) as
+      [number,{total_requests:number;overdue_requests:number;responses_received:number;average_response_hours:number|null}[]];
+    expect(status).toBe(200);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].total_requests).toBe(1);
+    expect(rows[0].overdue_requests).toBe(1);
+    expect(rows[0].responses_received).toBe(0);
+    expect(rows[0].average_response_hours).toBeNull();
+    const foreign=await orgWithDirectorAndPatient('performance-denied');
+    const [denied]=await rpc('hcn_get_clinical_provider_performance',
+      {p_organization_id:ctx.orgId},foreign.directorTok);
+    expect(denied).toBeGreaterThanOrEqual(400);
+  });
+});
