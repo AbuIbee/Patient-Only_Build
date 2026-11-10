@@ -715,6 +715,42 @@ describe('HCN-CLINICAL-MASTER-002 SEC-006 -- document write authority and revoca
     expect(insertStatus).toBeGreaterThanOrEqual(400);
   });
 
+  it('a clinician from organization A cannot read B patient request metadata or associations', async () => {
+    const a = await orgWithDirectorAndPatient('read-boundary-a');
+    const b = await orgWithDirectorAndPatient('read-boundary-b');
+    sql("INSERT INTO covered_patient_memberships(organization_id,patient_id,status,created_by) VALUES('" +
+      b.orgId + "','" + a.patientId + "','active','" + b.directorId + "');");
+    const [prStatus, provider] = await rpc('hcn_upsert_healthcare_provider', {
+      p_organization_id: b.orgId, p_provider_id:null,p_display_name:'Outside Org',
+      p_professional_title:null,p_specialty:'medical_specialist',p_specialty_other_label:null,
+      p_practice_name:null,p_office_phone:null,p_fax_number:null,
+      p_secure_contact_email:'outside-b@example-clinic.test',
+      p_office_address:null,p_professional_identifier:null,p_credentials:null,
+    },b.directorTok);
+    expect(prStatus).toBe(200);
+    const pId=(provider as {id:string}).id;
+    const [assocStatus] = await rpc('hcn_associate_provider_with_patient', {
+      p_patient_id:a.patientId,p_provider_id:pId,p_relationship_note:'Outside organization',
+    },b.directorTok);
+    expect(assocStatus).toBe(200);
+    const [requestStatus,request] = await rpc('hcn_create_clinical_request',{
+      p_organization_id:b.orgId,p_patient_id:a.patientId,p_provider_id:pId,
+      p_request_type:'medical_documentation',p_title:'B-only clinical request',
+      p_description:null,p_requested_items:[],p_deadline_at:null,p_follow_up_owner_id:null,
+    },b.directorTok);
+    expect(requestStatus).toBe(200);
+    const requestId=(request as {id:string}).id;
+    for(const [endpoint,filter] of [
+      ['/rest/v1/hcn_clinical_requests','id=eq.'+requestId],
+      ['/rest/v1/hcn_patient_provider_associations','organization_id=eq.'+b.orgId],
+      ['/rest/v1/hcn_clinical_request_events','request_id=eq.'+requestId],
+    ]){
+      const [status,rows] = await http('GET',endpoint+'?'+filter+'&select=id',undefined,a.medicalTok);
+      expect(status).toBe(200);
+      expect(rows).toEqual([]);
+    }
+  });
+
   it('an uploader cannot continue reading a clinical document after assignment revocation', async () => {
     const ctx = await orgWithDirectorAndPatient('sec006-revoked');
     const caregiver = await addCaregiver(ctx, 'sec006-revoked-cg');
