@@ -60,6 +60,26 @@ async function signDocUrl(storagePath: string): Promise<string> {
   return data.signedUrl;
 }
 
+/** Download ANY supported patient document or medical bill, not just images. */
+async function downloadPatientFile(doc: UserDocument): Promise<void> {
+  const { data, error } = await supabase.storage.from(DOC_BUCKET).download(doc.storagePath);
+  if (error || !data) {
+    toast.error(error?.message || 'You do not have permission to download this document.');
+    return;
+  }
+  const url = URL.createObjectURL(data);
+  try {
+    const link = window.document.createElement('a');
+    link.href = url;
+    link.download = doc.name;
+    window.document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 // B6: these report_date/note-date values are calendar DAYS, not instants —
 // parse/format using local date components only, never round-trip through
@@ -612,16 +632,11 @@ export default function PatientDocuments({ patientId: subjectPatientId }: { pati
 
                         {/* Actions */}
                         <div className="flex flex-col gap-1 flex-shrink-0">
-                          {isImage && (
-                            <a
-                              href={doc.signedUrl || doc.storagePath}
-                              download={doc.name}
-                              className="w-8 h-8 rounded-full bg-calm-blue/10 hover:bg-calm-blue/20 flex items-center justify-center transition-colors"
-                              title="Download"
-                            >
-                              <Upload className="w-3.5 h-3.5 text-calm-blue rotate-180" />
-                            </a>
-                          )}
+                          <button type="button" onClick={() => { void downloadPatientFile(doc); }}
+                            className="w-8 h-8 rounded-full bg-calm-blue/10 hover:bg-calm-blue/20 flex items-center justify-center transition-colors"
+                            title="Download" aria-label={'Download ' + doc.name}>
+                            <Upload className="w-3.5 h-3.5 text-calm-blue rotate-180" />
+                          </button>
                           <button
                             onClick={() => removeDoc(doc.id, doc.storagePath)}
                             className="w-8 h-8 rounded-full hover:bg-gentle-coral/10 flex items-center justify-center transition-colors"
@@ -716,12 +731,11 @@ export default function PatientDocuments({ patientId: subjectPatientId }: { pati
                           <p className="text-xs text-medium-gray mt-0.5">Uploaded {new Date(doc.uploadedAt).toLocaleDateString()}</p>
                         </div>
                         <div className="flex flex-col gap-1 flex-shrink-0">
-                          {isImage && (
-                            <a href={doc.signedUrl || doc.storagePath} download={doc.name}
-                              className="w-8 h-8 rounded-full bg-warm-amber/10 hover:bg-warm-amber/20 flex items-center justify-center transition-colors" title="Download">
-                              <Upload className="w-3.5 h-3.5 text-warm-amber rotate-180" />
-                            </a>
-                          )}
+                          <button type="button" onClick={() => { void downloadPatientFile(doc); }}
+                            className="w-8 h-8 rounded-full bg-calm-blue/10 hover:bg-calm-blue/20 flex items-center justify-center transition-colors"
+                            title="Download" aria-label={'Download ' + doc.name}>
+                            <Upload className="w-3.5 h-3.5 text-calm-blue rotate-180" />
+                          </button>
                           <button onClick={() => removeBill(doc.id, doc.storagePath)}
                             className="w-8 h-8 rounded-full hover:bg-gentle-coral/10 flex items-center justify-center transition-colors" title="Remove">
                             <Trash2 className="w-3.5 h-3.5 text-gentle-coral" />

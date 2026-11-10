@@ -55,7 +55,7 @@ async function sendVerificationCodeEmail(email: string, label: string, code: str
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Haneen Care Network <notifications@haneencarenetwork.com>',
+        from: Deno.env.get('RESEND_FROM_ADDRESS') || 'Haneen Care Network <notifications@haneencarenetwork.com>',
         to: [email],
         subject: 'Your Haneen Care Network verification code',
         // No patient name, diagnosis, document content, or any other
