@@ -22,13 +22,26 @@ ALTER TABLE public.hcn_clinical_request_events
 CREATE OR REPLACE FUNCTION public.hcn_process_due_clinical_reminders(p_cooldown_hours INTEGER DEFAULT 24)
 RETURNS TABLE(out_request_id UUID, processed BOOLEAN, detail TEXT)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $$
-DECLARE r RECORD; v_already_reminded BOOLEAN;
+DECLARE r RECORD; v_already_reminded BOOLEAN; v_access_revoked BOOLEAN;
 BEGIN
   FOR r IN
     SELECT * FROM hcn_clinical_requests
     WHERE status IN ('sent', 'response_received') AND deadline_at IS NOT NULL AND deadline_at <= now()
   LOOP
     BEGIN
+      -- Do not requeue an invitation with revoked external access.
+      -- The request can legitimately remain status='sent' after revocation.
+      SELECT EXISTS (
+        SELECT 1 FROM hcn_clinical_request_events e
+        WHERE e.request_id = r.id AND e.event_type = 'revoked'
+      ) INTO v_access_revoked;
+      IF v_access_revoked THEN
+        out_request_id := r.id;
+        processed := false;
+        detail := 'access revoked -- no reminder queued';
+        RETURN NEXT;
+        CONTINUE;
+      END IF;
       SELECT EXISTS (
         SELECT 1 FROM hcn_clinical_request_events e
         WHERE e.request_id = r.id AND e.event_type = 'reminder_queued' AND e.created_at > now() - (p_cooldown_hours || ' hours')::interval
