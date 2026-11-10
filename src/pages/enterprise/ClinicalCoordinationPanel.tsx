@@ -14,6 +14,7 @@ import {
   postCoordinationPlanUpdate, getCoordinationPlanUpdates, closeCoordinationPlan,
   type ClinicalCoordinationReport, getClinicalCoordinationReport,
   type CoordinationTaskMetrics, getCoordinationTaskMetrics,
+  type EligiblePlanStaff, getEligiblePlanStaff,
   type ClinicalProviderPerformance, getClinicalProviderPerformance,
   REQUEST_TYPES, DOCUMENT_CATEGORIES, DOCUMENT_CLASSIFICATIONS, PROVIDER_SPECIALTIES,
 } from '@/services/hcnClinicalCoordinationService';
@@ -83,6 +84,7 @@ export default function ClinicalCoordinationPanel({
   const [planForm, setPlanForm] = useState({ title: '', description: '' });
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [planParticipants, setPlanParticipants] = useState<CoordinationPlanParticipant[]>([]);
+  const [eligiblePlanStaff, setEligiblePlanStaff] = useState<EligiblePlanStaff[]>([]);
   const [planUpdates, setPlanUpdates] = useState<CoordinationPlanUpdate[]>([]);
   const [newParticipantUserId, setNewParticipantUserId] = useState('');
   const [newParticipantRole, setNewParticipantRole] = useState('');
@@ -130,10 +132,15 @@ export default function ClinicalCoordinationPanel({
 
   const openPlan = useCallback(async (id: string) => {
     setSelectedPlanId(id);
-    const [p, u] = await Promise.all([getCoordinationPlanParticipants(id), getCoordinationPlanUpdates(id)]);
+    const [p, u, staff] = await Promise.all([
+      getCoordinationPlanParticipants(id),
+      getCoordinationPlanUpdates(id),
+      role === 'director' ? getEligiblePlanStaff(id) : Promise.resolve({ data: [], error: null }),
+    ]);
     setPlanParticipants(p.data ?? []);
     setPlanUpdates(u.data ?? []);
-  }, []);
+    setEligiblePlanStaff(staff.data ?? []);
+  }, [role]);
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) ?? null;
 
   const submitNewPlan = async () => {
@@ -271,7 +278,7 @@ export default function ClinicalCoordinationPanel({
         organizationId: orgId, patientId: requestForm.patientId, providerId: requestForm.providerId,
         requestType: requestForm.requestType, title: requestForm.title.trim(), description: requestForm.description.trim() || null,
         requestedItems: requestForm.requestedItemsText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
-        deadlineAt: requestForm.deadlineAt || null, followUpOwnerId: null,
+        deadlineAt: requestForm.deadlineAt || null, followUpOwnerId: userId,
       });
       if (r.error) { toast.error(r.error); return; }
       toast.success('Request created as a draft.');
@@ -674,8 +681,16 @@ export default function ClinicalCoordinationPanel({
             {role === 'director' && selectedPlan.status === 'active' && (
               <div className="rounded-lg bg-ent-pale p-2 space-y-2">
                 <div className="flex gap-2">
-                  <input className="flex-1 rounded-lg border border-ent-line p-2 text-xs" placeholder="Staff member's user ID"
-                    value={newParticipantUserId} onChange={(e) => setNewParticipantUserId(e.target.value)} />
+                  <select aria-label="Care-team staff member" className="flex-1 rounded-lg border border-ent-line p-2 text-xs"
+                    value={newParticipantUserId} onChange={(e) => setNewParticipantUserId(e.target.value)}>
+                    <option value="">Select assigned staff…</option>
+                    {eligiblePlanStaff.filter((person) => !planParticipants.some((pp) => pp.participantUserId === person.userId))
+                      .map((person) => (
+                        <option key={person.userId} value={person.userId}>
+                          {person.displayName} ({person.orgRole.replace(/_/g, ' ')})
+                        </option>
+                      ))}
+                  </select>
                   <input className="flex-1 rounded-lg border border-ent-line p-2 text-xs" placeholder="Role on this plan (e.g. Mobility Rehabilitation)"
                     value={newParticipantRole} onChange={(e) => setNewParticipantRole(e.target.value)} />
                   <button type="button" disabled={busy} onClick={() => { void doAddParticipant('internal_user'); }} className="rounded-lg border border-ent-line px-3 py-1 text-xs font-semibold whitespace-nowrap">Add staff</button>

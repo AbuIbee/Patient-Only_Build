@@ -70,7 +70,7 @@ test('a real signed-in Director creates a coordination plan, adds a participant,
     await page.getByText('E2E Post-Surgery Recovery Coordination').click();
 
     await expect(page.getByText('care team & timeline')).toBeVisible({ timeout: 15000 });
-    await page.getByPlaceholder("Staff member's user ID").fill(ctx.caregiverId);
+    await page.getByRole('combobox', { name: 'Care-team staff member' }).selectOption(ctx.caregiverId);
     await page.getByPlaceholder(/Role on this plan/).fill('Primary Caregiver');
     await page.getByRole('button', { name: /^add staff$/i }).click();
     await expect(page.getByText('Primary Caregiver')).toBeVisible({ timeout: 15000 });
