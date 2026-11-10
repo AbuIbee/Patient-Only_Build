@@ -237,7 +237,13 @@ export async function uploadInternalDocument(input: {
 
   const { error: uploadError } = await supabase.storage.from('hcn-clinical-documents').upload(storagePath, bytes, { contentType: input.file.type || 'application/octet-stream', upsert: false });
   if (uploadError) {
-    await supabase.from('hcn_clinical_documents').delete().eq('id', documentId);
+    // Direct DELETE was intentionally revoked in SEC-006. A narrowly
+    // scoped SECURITY DEFINER RPC can discard metadata only if Storage
+    // has no object, review has not started, and no shares exist.
+    const { error: cleanupError } = await supabase.rpc('hcn_discard_unstored_clinical_document', {
+      p_document_id: documentId,
+    });
+    if (cleanupError) return { data: null, error: 'Upload failed; metadata cleanup also failed. Please contact your Director. ' + cleanupError.message };
     return { data: null, error: err(uploadError, 'Unable to upload this file') };
   }
   return { data: { id: documentId, storagePath }, error: null as string | null };
@@ -432,3 +438,115 @@ export const PROVIDER_SPECIALTIES = [
   { value: 'wound_care_specialist', label: 'Wound care specialist' },
   { value: 'other', label: 'Other' },
 ];
+
+
+// ---------------------------------------------------------------------------
+// HCN-CLINICAL-MASTER-002 / Workstream B: task dependencies, Director
+// review, and Caregiver instruction acknowledgement.
+// Every write is a server-side RPC with current membership/assignment
+// checks; client role and input values are never authorization oracles.
+// ---------------------------------------------------------------------------
+export type CoordinationTaskKind = 'medical_review' | 'therapy_review' | 'care_instruction' | 'general';
+export type CoordinationTaskStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'cancelled';
+export type CoordinationTask = {
+  id: string; planId: string; organizationId: string; patientId: string;
+  kind: CoordinationTaskKind; title: string; details: string; assignedUserId: string;
+  sourceDocumentId: string | null; dueAt: string | null; status: CoordinationTaskStatus;
+  resultNote: string | null; createdBy: string; createdAt: string;
+  submittedAt: string | null; reviewedAt: string | null;
+};
+export type EligiblePlanStaff = { userId: string; displayName: string; orgRole: string };
+export type CoordinationTaskMetrics = {
+  activeTasks: number; blockedTasks: number; overdueTasks: number;
+  reviewPending: number; unacknowledgedInstructions: number;
+};
+function mapCoordinationTask(r: Record<string, unknown>): CoordinationTask {
+  return {
+    id: r.id as string, planId: r.plan_id as string, organizationId: r.organization_id as string,
+    patientId: r.patient_id as string, kind: r.kind as CoordinationTaskKind,
+    title: r.title as string, details: r.details as string, assignedUserId: r.assigned_user_id as string,
+    sourceDocumentId: r.source_document_id as string | null, dueAt: r.due_at as string | null,
+    status: r.status as CoordinationTaskStatus, resultNote: r.result_note as string | null,
+    createdBy: r.created_by as string, createdAt: r.created_at as string,
+    submittedAt: r.submitted_at as string | null, reviewedAt: r.reviewed_at as string | null,
+  };
+}
+export async function getCoordinationTasks(planId: string) {
+  const { data, error } = await supabase.from('hcn_coordination_tasks').select('*')
+    .eq('plan_id', planId).order('created_at');
+  if (error) return { data: null as CoordinationTask[] | null, error: err(error, 'Unable to load coordination tasks') };
+  return { data: (data ?? []).map((r) => mapCoordinationTask(r as Record<string, unknown>)), error: null as string | null };
+}
+export async function getEligiblePlanStaff(planId: string) {
+  const { data, error } = await supabase.rpc('hcn_list_eligible_plan_staff', { p_plan_id: planId });
+  if (error) return { data: null as EligiblePlanStaff[] | null, error: err(error, 'Unable to load available staff') };
+  return { data: (data ?? []).map((r: Record<string, unknown>) => ({
+    userId: r.user_id as string, displayName: r.display_name as string, orgRole: r.org_role as string,
+  })), error: null as string | null };
+}
+export async function getCoordinationTaskDependencies(planId: string) {
+  const { data: tasks, error: listError } = await getCoordinationTasks(planId);
+  if (listError) return { data: null as Record<string, string[]> | null, error: listError };
+  if (!tasks?.length) return { data: {} as Record<string, string[]>, error: null as string | null };
+  const { data, error } = await supabase.from('hcn_coordination_task_dependencies').select('task_id,prerequisite_task_id')
+    .in('task_id', tasks.map((task) => task.id));
+  if (error) return { data: null as Record<string, string[]> | null, error: err(error, 'Unable to load task prerequisites') };
+  const result: Record<string, string[]> = {};
+  for (const row of data ?? []) {
+    const id = row.task_id as string;
+    result[id] ??= [];
+    result[id].push(row.prerequisite_task_id as string);
+  }
+  return { data: result, error: null as string | null };
+}
+export async function getInstructionAcknowledgements(planId: string) {
+  const { data: tasks, error: listError } = await getCoordinationTasks(planId);
+  if (listError) return { data: null as string[] | null, error: listError };
+  if (!tasks?.length) return { data: [] as string[], error: null as string | null };
+  const { data, error } = await supabase.from('hcn_coordination_instruction_acks')
+    .select('task_id').in('task_id', tasks.map((t) => t.id));
+  if (error) return { data: null as string[] | null, error: err(error, 'Unable to load caregiver acknowledgements') };
+  return { data: (data ?? []).map((row) => row.task_id as string), error: null as string | null };
+}
+export async function createCoordinationTask(input: {
+  planId: string; title: string; details: string; kind: CoordinationTaskKind;
+  assigneeId: string; dueAt: string | null; sourceDocumentId: string | null; dependencyIds: string[];
+}) {
+  const { data, error } = await supabase.rpc('hcn_create_coordination_task', {
+    p_plan_id: input.planId, p_title: input.title, p_details: input.details, p_kind: input.kind,
+    p_assignee_id: input.assigneeId, p_due_at: input.dueAt,
+    p_source_document_id: input.sourceDocumentId, p_dependency_ids: input.dependencyIds,
+  });
+  return { data: data ? mapCoordinationTask(data as Record<string, unknown>) : null,
+    error: error ? err(error, 'Unable to create task') : null as string | null };
+}
+export async function setCoordinationTaskStatus(taskId: string, action: 'start' | 'submit', resultNote: string | null) {
+  const { data, error } = await supabase.rpc('hcn_set_coordination_task_status', {
+    p_task_id: taskId, p_action: action, p_result_note: resultNote,
+  });
+  return { data: data ? mapCoordinationTask(data as Record<string, unknown>) : null,
+    error: error ? err(error, 'Unable to update task') : null as string | null };
+}
+export async function reviewCoordinationTask(taskId: string, action: 'accept' | 'revision' | 'release', note: string | null) {
+  const { data, error } = await supabase.rpc('hcn_review_coordination_task', {
+    p_task_id: taskId, p_decision: action, p_note: note,
+  });
+  return { data: data ? mapCoordinationTask(data as Record<string, unknown>) : null,
+    error: error ? err(error, 'Unable to review task') : null as string | null };
+}
+export async function acknowledgeCoordinationInstruction(taskId: string) {
+  const { error } = await supabase.rpc('hcn_ack_coordination_instruction', { p_task_id: taskId });
+  return { error: error ? err(error, 'Unable to acknowledge instruction') : null };
+}
+export async function getCoordinationTaskMetrics(orgId: string) {
+  const { data, error } = await supabase.rpc('hcn_get_coordination_task_metrics', {
+    p_organization_id: orgId,
+  });
+  if (error) return { data: null as CoordinationTaskMetrics | null, error: err(error, 'Unable to load task metrics') };
+  const r = (data ?? [])[0] as Record<string, number> | undefined;
+  if (!r) return { data: null as CoordinationTaskMetrics | null, error: 'No task metrics returned' };
+  return { data: {
+    activeTasks: r.active_tasks, blockedTasks: r.blocked_tasks, overdueTasks: r.overdue_tasks,
+    reviewPending: r.review_pending, unacknowledgedInstructions: r.unacknowledged_instructions,
+  }, error: null as string | null };
+}
