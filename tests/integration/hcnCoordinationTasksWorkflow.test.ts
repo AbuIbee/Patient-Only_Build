@@ -138,6 +138,18 @@ describe('HCN Clinical Coordination task dependency and clinical instruction cha
     medicalTaskId = await create('Medical assessment', 'medical_review', f.med.id, [], null);
     therapyTaskId = await create('Therapy assessment', 'therapy_review', f.therapy.id, [medicalTaskId], null);
     careTaskId = await create('Caregiver instructions', 'care_instruction', f.caregiver.id, [therapyTaskId], f.sourceDocId);
+    // Caregivers must not receive preliminary care instructions before
+    // the Director approves the prerequisites and releases the source.
+    const [beforeStatus, beforeRows] = await http('GET',
+      '/rest/v1/hcn_coordination_tasks?id=eq.' + careTaskId + '&select=id,details',
+      undefined, f.caregiver.token);
+    expect(beforeStatus).toBe(200);
+    expect(beforeRows).toEqual([]);
+    const [directorStatus, directorRows] = await http('GET',
+      '/rest/v1/hcn_coordination_tasks?id=eq.' + careTaskId + '&select=id',
+      undefined, f.director.token);
+    expect(directorStatus).toBe(200);
+    expect(directorRows).toHaveLength(1);
     const [invalidStatus] = await rpc('hcn_create_coordination_task', {
       p_plan_id: f.planId, p_title: 'Cross-assignee', p_details: '', p_kind: 'general',
       p_assignee_id: f.med.id, p_due_at: null, p_source_document_id: null,
@@ -179,6 +191,13 @@ describe('HCN Clinical Coordination task dependency and clinical instruction cha
     }, f.director.token);
     expect(releaseStatus, JSON.stringify(released)).toBe(200);
     expect((released as { status: string }).status).toBe('approved');
+
+    const [releasedReadStatus, releasedRows] = await http('GET',
+      '/rest/v1/hcn_coordination_tasks?id=eq.' + careTaskId + '&select=id,details',
+      undefined, f.caregiver.token);
+    expect(releasedReadStatus).toBe(200);
+    expect(releasedRows).toHaveLength(1);
+
 
     const [outsiderAck] = await rpc('hcn_ack_coordination_instruction',
       { p_task_id: careTaskId }, f.med.token);
