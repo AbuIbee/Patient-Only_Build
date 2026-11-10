@@ -8,6 +8,7 @@ import {
   getProviders, upsertProvider, setProviderActive, associateProviderWithPatient, getClinicalRequests, createClinicalRequest,
   sendClinicalRequest, resendClinicalRequestInvitation, cancelClinicalRequest, revokeClinicalRequestAccess,
   getDocumentsForRequest, getRequestEvents, reviewClinicalDocument, clinicalApproveDocument,
+  attachInternalDocumentToRequest,
   uploadInternalDocument, getSignedDownloadUrl, sendClinicalRequestNotification,
   getCoordinationPlans, createCoordinationPlan, addCoordinationPlanParticipant, getCoordinationPlanParticipants,
   postCoordinationPlanUpdate, getCoordinationPlanUpdates, closeCoordinationPlan,
@@ -321,7 +322,13 @@ export default function ClinicalCoordinationPanel({
         classification: uploadClassification, file: uploadFile, uploadedBy: userId,
       });
       if (r.error) { toast.error(r.error); return; }
-      toast.success(`${uploadFile.name} uploaded.`);
+      if (!r.data) { toast.error('Document metadata missing after upload.'); return; }
+      const attached = await attachInternalDocumentToRequest(selectedRequest.id, r.data.id);
+      if (attached.error) {
+        toast.error('File uploaded but could not be attached to this request: ' + attached.error);
+        return;
+      }
+      toast.success(`${uploadFile.name} uploaded and attached to this request (not shared externally).`);
       setUploadFile(null);
       await openRequest(selectedRequest.id);
     } finally { setBusy(false); }
@@ -540,7 +547,8 @@ export default function ClinicalCoordinationPanel({
             {requestDocs.length === 0 ? <p className="text-sm text-ent-muted">No documents yet.</p> : requestDocs.map(({ direction, document: doc }) => (
               <div key={doc.id} className="flex items-center justify-between gap-2 border border-ent-line rounded-lg p-2">
                 <div className="text-sm">
-                  <div>{doc.originalFilename} <span className="text-ent-muted text-xs">({direction === 'shared_with_recipient' ? 'shared with provider' : 'received from provider'})</span></div>
+                  <div>{doc.originalFilename} <span className="text-ent-muted text-xs">({direction === 'shared_with_recipient' ? 'shared with provider' :
+                    direction === 'uploaded_by_care_team' ? 'uploaded internally — not shared externally' : 'received from provider'})</span></div>
                   <div className="text-xs text-ent-muted">{doc.reviewStatus.replace(/_/g, ' ')} · {DOCUMENT_CATEGORIES.find((c) => c.value === doc.category)?.label ?? doc.category}</div>
                 </div>
                 <div className="flex gap-1 items-center">

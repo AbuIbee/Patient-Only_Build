@@ -550,3 +550,11 @@ export async function getCoordinationTaskMetrics(orgId: string) {
     reviewPending: r.review_pending, unacknowledgedInstructions: r.unacknowledged_instructions,
   }, error: null as string | null };
 }
+
+
+export async function attachInternalDocumentToRequest(requestId: string, documentId: string) {
+  const { error } = await supabase.rpc('hcn_attach_internal_document_to_request', {
+    p_request_id: requestId, p_document_id: documentId,
+  });
+  return { error: error ? err(error, 'Unable to attach this document') : null };
+}
