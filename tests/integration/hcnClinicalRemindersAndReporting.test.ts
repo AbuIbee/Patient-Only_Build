@@ -98,6 +98,27 @@ describe('HCN-CLINICAL-MASTER-002-CONTINUATION Phase 4 -- automated reminders', 
     expect(eventCountAfter).toBe('1'); // still exactly one -- no duplicate
   });
 
+  it('RELEASE RESOLUTION fix: a request whose external access was explicitly revoked is excluded, even though it is still overdue and still status=sent', async () => {
+    const ctx = await orgWithDirectorAndPatient('revoked-excluded');
+    const requestId = await createOverdueSentRequest(ctx, 'revoked-excluded');
+    await rpc('hcn_revoke_clinical_request_access', { p_request_id: requestId }, ctx.directorTok);
+
+    // hcn_revoke_clinical_request_access only ever touches the
+    // request's TOKENS, never its own status -- confirm it is still
+    // sitting at 'sent' (the exact bug condition) before asserting the
+    // reminder processor correctly excludes it anyway.
+    const statusAfterRevoke = sql(`SELECT status FROM hcn_clinical_requests WHERE id='${requestId}';`);
+    expect(statusAfterRevoke).toBe('sent');
+
+    const [, rows] = (await rpc('hcn_process_due_clinical_reminders', { p_cooldown_hours: 24 }, SERVICE)) as [number, { out_request_id: string; processed: boolean; detail: string | null }[]];
+    const match = rows.find((r) => r.out_request_id === requestId);
+    expect(match?.processed).toBe(false);
+    expect(match?.detail).toMatch(/revoked/i);
+
+    const eventCount = sql(`SELECT count(*) FROM hcn_clinical_request_events WHERE request_id='${requestId}' AND event_type='reminder_sent';`);
+    expect(eventCount).toBe('0');
+  });
+
   it('a request that is not overdue, cancelled, or already closed is never reminded', async () => {
     const ctx = await orgWithDirectorAndPatient('not-due');
     const providerEmail = `remind-provider-${stamp}-notdue@example-clinic.test`;
