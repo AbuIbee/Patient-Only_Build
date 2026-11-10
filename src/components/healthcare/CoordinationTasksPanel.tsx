@@ -16,7 +16,7 @@ import {
  * Server RPCs and task RLS enforce every authorization and transition.
  */
 type Props = {
-  planId: string; patientId: string; orgId: string; userId: string;
+  planId: string; patientId: string; userId: string;
   role: 'director' | 'caregiver' | 'clinical'; active: boolean;
 };
 const TYPES: { value: CoordinationTaskKind; label: string }[] = [
@@ -30,7 +30,7 @@ const EMPTY_FORM = {
   assigneeId: '', dueAt: '', sourceDocumentId: '', dependencyIds: [] as string[],
 };
 
-export default function CoordinationTasksPanel({ planId, patientId, orgId, userId, role, active }: Props) {
+export default function CoordinationTasksPanel({ planId, patientId, userId, role, active }: Props) {
   const [tasks, setTasks] = useState<CoordinationTask[]>([]);
   const [dependencies, setDependencies] = useState<Record<string, string[]>>({});
   const [staff, setStaff] = useState<EligiblePlanStaff[]>([]);

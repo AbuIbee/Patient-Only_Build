@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import CoordinationTasksPanel from '@/components/healthcare/CoordinationTasksPanel';
 import { Stethoscope, RefreshCw, Send, Download, Upload, UserPlus, ShieldCheck, Users } from 'lucide-react';
 import {
   type HealthcareProvider, type ClinicalRequest, type ClinicalDocument, type RequestEvent,
   type CoordinationPlan, type CoordinationPlanParticipant, type CoordinationPlanUpdate,
-  getProviders, upsertProvider, associateProviderWithPatient, getClinicalRequests, createClinicalRequest,
+  getProviders, upsertProvider, setProviderActive, associateProviderWithPatient, getClinicalRequests, createClinicalRequest,
   sendClinicalRequest, resendClinicalRequestInvitation, cancelClinicalRequest, revokeClinicalRequestAccess,
   getDocumentsForRequest, getRequestEvents, reviewClinicalDocument, clinicalApproveDocument,
   uploadInternalDocument, getSignedDownloadUrl, sendClinicalRequestNotification,
   getCoordinationPlans, createCoordinationPlan, addCoordinationPlanParticipant, getCoordinationPlanParticipants,
   postCoordinationPlanUpdate, getCoordinationPlanUpdates, closeCoordinationPlan,
   type ClinicalCoordinationReport, getClinicalCoordinationReport,
+  type CoordinationTaskMetrics, getCoordinationTaskMetrics,
   REQUEST_TYPES, DOCUMENT_CATEGORIES, DOCUMENT_CLASSIFICATIONS, PROVIDER_SPECIALTIES,
 } from '@/services/hcnClinicalCoordinationService';
 
@@ -54,12 +56,18 @@ export default function ClinicalCoordinationPanel({
   const [events, setEvents] = useState<RequestEvent[]>([]);
 
   const [showNewProvider, setShowNewProvider] = useState(false);
-  const [providerForm, setProviderForm] = useState({ displayName: '', specialty: 'medical_specialist', practiceName: '', officePhone: '', secureContactEmail: '' });
+  const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
+  const [providerSearch, setProviderSearch] = useState('');
+  const [providerForm, setProviderForm] = useState({
+    displayName: '', specialty: 'medical_specialist', specialtyOtherLabel: '',
+    professionalTitle: '', practiceName: '', officePhone: '', faxNumber: '',
+    secureContactEmail: '', officeAddress: '', professionalIdentifier: '', credentials: '',
+  });
 
   const [showNewRequest, setShowNewRequest] = useState(false);
   const [requestForm, setRequestForm] = useState({
     patientId: patients[0]?.id ?? '', providerId: '', requestType: 'general_provider_coordination',
-    title: '', description: '', deadlineAt: '',
+    title: '', description: '', deadlineAt: '', requestedItemsText: '',
   });
 
   const [uploadCategory, setUploadCategory] = useState('other_clinical_attachment');
@@ -79,6 +87,7 @@ export default function ClinicalCoordinationPanel({
   const [newExternalProviderId, setNewExternalProviderId] = useState('');
   const [planUpdateText, setPlanUpdateText] = useState('');
   const [report, setReport] = useState<ClinicalCoordinationReport | null>(null);
+  const [taskMetrics, setTaskMetrics] = useState<CoordinationTaskMetrics | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -89,6 +98,8 @@ export default function ClinicalCoordinationPanel({
       if (role === 'director') {
         const rep = await getClinicalCoordinationReport(orgId);
         if (!rep.error) setReport(rep.data);
+        const metrics = await getCoordinationTaskMetrics(orgId);
+        if (!metrics.error) setTaskMetrics(metrics.data);
       }
     } finally {
       setLoading(false);
@@ -185,16 +196,53 @@ export default function ClinicalCoordinationPanel({
     setBusy(true);
     try {
       const r = await upsertProvider(orgId, {
-        displayName: providerForm.displayName.trim(), professionalTitle: null, specialty: providerForm.specialty,
-        specialtyOtherLabel: null, practiceName: providerForm.practiceName.trim() || null,
-        officePhone: providerForm.officePhone.trim() || null, faxNumber: null,
-        secureContactEmail: providerForm.secureContactEmail.trim() || null, officeAddress: null,
-        professionalIdentifier: null, credentials: null,
+        providerId: editingProviderId,
+        expectedVersion: editingProviderId ? providers.find((p) => p.id === editingProviderId)?.version : undefined,
+        displayName: providerForm.displayName.trim(),
+        professionalTitle: providerForm.professionalTitle.trim() || null,
+        specialty: providerForm.specialty, specialtyOtherLabel: providerForm.specialty === 'other' ?
+          providerForm.specialtyOtherLabel.trim() || null : null,
+        practiceName: providerForm.practiceName.trim() || null,
+        officePhone: providerForm.officePhone.trim() || null,
+        faxNumber: providerForm.faxNumber.trim() || null,
+        secureContactEmail: providerForm.secureContactEmail.trim() || null,
+        officeAddress: providerForm.officeAddress.trim() || null,
+        professionalIdentifier: providerForm.professionalIdentifier.trim() || null,
+        credentials: providerForm.credentials.trim() || null,
       });
       if (r.error) { toast.error(r.error); return; }
       toast.success('Provider saved.');
       setShowNewProvider(false);
-      setProviderForm({ displayName: '', specialty: 'medical_specialist', practiceName: '', officePhone: '', secureContactEmail: '' });
+      setEditingProviderId(null);
+      setProviderForm({
+        displayName: '', specialty: 'medical_specialist', specialtyOtherLabel: '',
+        professionalTitle: '', practiceName: '', officePhone: '', faxNumber: '',
+        secureContactEmail: '', officeAddress: '', professionalIdentifier: '', credentials: '',
+      });
+      await refresh();
+    } finally { setBusy(false); }
+  };
+
+  const editProvider = (provider: HealthcareProvider) => {
+    setEditingProviderId(provider.id);
+    setShowNewProvider(true);
+    setProviderForm({
+      displayName: provider.displayName, specialty: provider.specialty,
+      specialtyOtherLabel: provider.specialtyOtherLabel ?? '',
+      professionalTitle: provider.professionalTitle ?? '', practiceName: provider.practiceName ?? '',
+      officePhone: provider.officePhone ?? '', faxNumber: provider.faxNumber ?? '',
+      secureContactEmail: provider.secureContactEmail ?? '', officeAddress: provider.officeAddress ?? '',
+      professionalIdentifier: provider.professionalIdentifier ?? '', credentials: provider.credentials ?? '',
+    });
+  };
+
+  const toggleProvider = async (provider: HealthcareProvider) => {
+    if (provider.isActive && !window.confirm('Deactivate this provider for future requests? Existing requests remain unchanged.')) return;
+    setBusy(true);
+    try {
+      const result = await setProviderActive(provider.id, !provider.isActive);
+      if (result.error) { toast.error(result.error); return; }
+      toast.success(provider.isActive ? 'Provider deactivated.' : 'Provider reactivated.');
       await refresh();
     } finally { setBusy(false); }
   };
@@ -217,12 +265,13 @@ export default function ClinicalCoordinationPanel({
       const r = await createClinicalRequest({
         organizationId: orgId, patientId: requestForm.patientId, providerId: requestForm.providerId,
         requestType: requestForm.requestType, title: requestForm.title.trim(), description: requestForm.description.trim() || null,
-        requestedItems: [], deadlineAt: requestForm.deadlineAt || null, followUpOwnerId: null,
+        requestedItems: requestForm.requestedItemsText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+        deadlineAt: requestForm.deadlineAt || null, followUpOwnerId: null,
       });
       if (r.error) { toast.error(r.error); return; }
       toast.success('Request created as a draft.');
       setShowNewRequest(false);
-      setRequestForm({ patientId: patients[0]?.id ?? '', providerId: '', requestType: 'general_provider_coordination', title: '', description: '', deadlineAt: '' });
+      setRequestForm({ patientId: patients[0]?.id ?? '', providerId: '', requestType: 'general_provider_coordination', title: '', description: '', deadlineAt: '', requestedItemsText: '' });
       await refresh();
     } finally { setBusy(false); }
   };
@@ -320,6 +369,22 @@ export default function ClinicalCoordinationPanel({
       </p>
       {error && <p role="alert" className="text-sm text-ent-rust">Could not load clinical coordination data: {error}</p>}
 
+      {role === 'director' && taskMetrics && (
+        <div aria-label="Coordination task metrics" className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {[
+            ['Open tasks', taskMetrics.activeTasks],
+            ['Blocked', taskMetrics.blockedTasks],
+            ['Overdue tasks', taskMetrics.overdueTasks],
+            ['Awaiting task review', taskMetrics.reviewPending],
+            ['Caregiver acknowledgements due', taskMetrics.unacknowledgedInstructions],
+          ].map(([label, value]) => (
+            <div key={String(label)} className="rounded-lg border border-ent-line p-2 text-center">
+              <div className="text-lg font-bold text-ent-ink">{value}</div>
+              <div className="text-[11px] text-ent-muted">{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
       {role === 'director' && report && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="rounded-lg border border-ent-line p-2 text-center">
@@ -347,7 +412,7 @@ export default function ClinicalCoordinationPanel({
           <h3 className="font-semibold text-sm">Healthcare Provider Directory</h3>
           {role === 'director' && (
             <button type="button" className="rounded-lg border border-ent-line px-3 py-1 text-xs font-semibold" onClick={() => setShowNewProvider((v) => !v)}>
-              <UserPlus className="h-3 w-3 inline mr-1" /> Add provider
+              <UserPlus className="h-3 w-3 inline mr-1" /> {showNewProvider ? 'Close form' : 'Add provider'}
             </button>
           )}
         </div>
@@ -365,19 +430,47 @@ export default function ClinicalCoordinationPanel({
               value={providerForm.officePhone} onChange={(e) => setProviderForm((f) => ({ ...f, officePhone: e.target.value }))} />
             <input className="block w-full rounded-lg border border-ent-line p-2 text-sm" placeholder="Secure contact email (used for external access, optional)"
               value={providerForm.secureContactEmail} onChange={(e) => setProviderForm((f) => ({ ...f, secureContactEmail: e.target.value }))} />
-            <button type="button" disabled={busy} onClick={() => { void saveProvider(); }} className="rounded-lg bg-ent-bronze px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">Save provider</button>
+            <input className="block w-full rounded-lg border border-ent-line p-2 text-sm" placeholder="Professional title"
+              value={providerForm.professionalTitle} onChange={(e) => setProviderForm((f) => ({ ...f, professionalTitle: e.target.value }))} />
+            {providerForm.specialty === 'other' && (
+              <input className="block w-full rounded-lg border border-ent-line p-2 text-sm" placeholder="Specify specialty"
+                value={providerForm.specialtyOtherLabel} onChange={(e) => setProviderForm((f) => ({ ...f, specialtyOtherLabel: e.target.value }))} />
+            )}
+            <input className="block w-full rounded-lg border border-ent-line p-2 text-sm" placeholder="Fax number"
+              value={providerForm.faxNumber} onChange={(e) => setProviderForm((f) => ({ ...f, faxNumber: e.target.value }))} />
+            <input className="block w-full rounded-lg border border-ent-line p-2 text-sm" placeholder="Office address"
+              value={providerForm.officeAddress} onChange={(e) => setProviderForm((f) => ({ ...f, officeAddress: e.target.value }))} />
+            <input className="block w-full rounded-lg border border-ent-line p-2 text-sm" placeholder="NPI or other professional identifier"
+              value={providerForm.professionalIdentifier} onChange={(e) => setProviderForm((f) => ({ ...f, professionalIdentifier: e.target.value }))} />
+            <input className="block w-full rounded-lg border border-ent-line p-2 text-sm" placeholder="Credentials"
+              value={providerForm.credentials} onChange={(e) => setProviderForm((f) => ({ ...f, credentials: e.target.value }))} />
+            <button type="button" disabled={busy} onClick={() => { void saveProvider(); }} className="rounded-lg bg-ent-bronze px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{editingProviderId ? 'Save changes' : 'Save provider'}</button>
           </div>
         )}
+        <input aria-label="Search healthcare directory" className="w-full rounded-lg border border-ent-line p-2 text-sm"
+          placeholder="Search by provider, specialty or practice"
+          value={providerSearch} onChange={(e) => setProviderSearch(e.target.value)} />
         {loading ? <p role="status" className="text-sm">Loading…</p> : providers.length === 0 ? <p className="text-sm text-ent-muted">No providers in the directory yet.</p> : (
           <ul className="space-y-1">
-            {providers.map((p) => (
+            {providers.filter((p) => [p.displayName, p.practiceName, p.specialty].some((value) =>
+              (value ?? '').toLowerCase().includes(providerSearch.toLowerCase().trim())
+            )).map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-2 text-sm border-b border-ent-line/50 pb-1">
                 <span>{p.displayName} <span className="text-ent-muted">({PROVIDER_SPECIALTIES.find((s) => s.value === p.specialty)?.label ?? p.specialty})</span></span>
-                {role === 'director' && patients.length > 0 && (
-                  <select className="rounded-lg border border-ent-line p-1 text-xs" defaultValue="" onChange={(e) => { if (e.target.value) { void associate(p.id, e.target.value); e.target.value = ''; } }}>
-                    <option value="">Associate with patient…</option>
-                    {patients.map((pt) => <option key={pt.id} value={pt.id}>{pt.name}</option>)}
-                  </select>
+                {role === 'director' && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" disabled={busy} className="rounded border border-ent-line px-2 py-1 text-xs"
+                      onClick={() => editProvider(p)}>Edit</button>
+                    <button type="button" disabled={busy} className="rounded border border-ent-line px-2 py-1 text-xs"
+                      onClick={() => { void toggleProvider(p); }}>{p.isActive ? 'Deactivate' : 'Reactivate'}</button>
+                    {patients.length > 0 && p.isActive && (
+                      <select className="rounded-lg border border-ent-line p-1 text-xs" defaultValue=""
+                        onChange={(e) => { if (e.target.value) { void associate(p.id, e.target.value); e.target.value = ''; } }}>
+                        <option value="">Associate with patient…</option>
+                        {patients.map((pt) => <option key={pt.id} value={pt.id}>{pt.name}</option>)}
+                      </select>
+                    )}
+                  </div>
                 )}
               </li>
             ))}
@@ -408,6 +501,10 @@ export default function ClinicalCoordinationPanel({
             </select>
             <input className="block w-full rounded-lg border border-ent-line p-2 text-sm" placeholder="Title" value={requestForm.title} onChange={(e) => setRequestForm((f) => ({ ...f, title: e.target.value }))} />
             <textarea className="block w-full rounded-lg border border-ent-line p-2 text-sm" rows={2} placeholder="Description (optional)" value={requestForm.description} onChange={(e) => setRequestForm((f) => ({ ...f, description: e.target.value }))} />
+            <label className="block text-xs">Requested items (one per line)
+              <textarea rows={3} className="block w-full rounded-lg border border-ent-line p-2 text-sm" placeholder="e.g. Updated discharge instructions"
+                value={requestForm.requestedItemsText} onChange={(e) => setRequestForm((f) => ({ ...f, requestedItemsText: e.target.value }))} />
+            </label>
             <input type="date" className="block w-full rounded-lg border border-ent-line p-2 text-sm" value={requestForm.deadlineAt} onChange={(e) => setRequestForm((f) => ({ ...f, deadlineAt: e.target.value }))} />
             <button type="button" disabled={busy} onClick={() => { void submitNewRequest(); }} className="rounded-lg bg-ent-bronze px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">Create as draft</button>
           </div>
@@ -557,6 +654,9 @@ export default function ClinicalCoordinationPanel({
                 </div>
               </div>
             )}
+
+            <CoordinationTasksPanel planId={selectedPlan.id} patientId={selectedPlan.patientId}
+              userId={userId} role={role} active={selectedPlan.status === 'active'} />
 
             <div>
               <h5 className="text-xs font-semibold text-ent-muted mb-1">Shared timeline</h5>
