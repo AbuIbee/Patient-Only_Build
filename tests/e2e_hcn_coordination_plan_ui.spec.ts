@@ -30,6 +30,10 @@ async function seedDirectorWithAssignedCaregiver(label: string) {
 
 async function cleanup(orgId: string, patientId: string, userIds: string[]) {
   sql(`
+    DELETE FROM hcn_coordination_instruction_acks WHERE task_id IN (SELECT id FROM hcn_coordination_tasks WHERE organization_id = '${orgId}');
+    DELETE FROM hcn_coordination_task_events WHERE task_id IN (SELECT id FROM hcn_coordination_tasks WHERE organization_id = '${orgId}');
+    DELETE FROM hcn_coordination_task_dependencies WHERE task_id IN (SELECT id FROM hcn_coordination_tasks WHERE organization_id = '${orgId}');
+    DELETE FROM hcn_coordination_tasks WHERE organization_id = '${orgId}';
     DELETE FROM hcn_coordination_plan_updates WHERE plan_id IN (SELECT id FROM hcn_coordination_plans WHERE organization_id = '${orgId}');
     DELETE FROM hcn_coordination_plan_participants WHERE plan_id IN (SELECT id FROM hcn_coordination_plans WHERE organization_id = '${orgId}');
     DELETE FROM hcn_coordination_plans WHERE organization_id = '${orgId}';
@@ -70,6 +74,18 @@ test('a real signed-in Director creates a coordination plan, adds a participant,
     await page.getByPlaceholder(/Role on this plan/).fill('Primary Caregiver');
     await page.getByRole('button', { name: /^add staff$/i }).click();
     await expect(page.getByText('Primary Caregiver')).toBeVisible({ timeout: 15000 });
+
+    // Real Director browser uses the server-validated staff picker and
+    // writes the task through hcn_create_coordination_task RPC.
+    await page.getByRole('button', { name: /^new task$/i }).click();
+    await page.getByRole('textbox', { name: 'Coordination task title' }).fill('Synthetic Mobility Follow-up');
+    await page.getByRole('combobox', { name: 'Task type' }).selectOption('general');
+    await page.getByRole('combobox', { name: 'Assigned staff' }).selectOption(ctx.caregiverId);
+    await page.getByRole('button', { name: /^create coordination task$/i }).click();
+    await expect(page.getByText('Synthetic Mobility Follow-up')).toBeVisible({ timeout: 15000 });
+    const taskCount = sql("SELECT count(*) FROM hcn_coordination_tasks WHERE organization_id='" + ctx.orgId + "';");
+    expect(taskCount).toBe('1');
+
 
     await page.getByPlaceholder('Post an update to the shared timeline…').fill('Patient recovering well, mobility improving daily.');
     await page.getByRole('button', { name: /^post$/i }).click();
