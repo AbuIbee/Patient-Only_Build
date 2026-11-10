@@ -214,6 +214,20 @@ describe('HCN Clinical Coordination task dependency and clinical instruction cha
     const f = await setup();
     sql("UPDATE staff_patient_assignments SET is_active=false WHERE organization_id='" + f.orgId +
       "' AND patient_id='" + f.patientId + "' AND user_id='" + f.caregiver.id + "';");
+    const [planReadStatus, planRows] = await http('GET',
+      '/rest/v1/hcn_coordination_plans?id=eq.' + f.planId + '&select=id',
+      undefined, f.caregiver.token);
+    expect(planReadStatus).toBe(200);
+    expect(planRows).toEqual([]);
+    const [participantReadStatus, participantRows] = await http('GET',
+      '/rest/v1/hcn_coordination_plan_participants?plan_id=eq.' + f.planId + '&select=id',
+      undefined, f.caregiver.token);
+    expect(participantReadStatus).toBe(200);
+    expect(participantRows).toEqual([]);
+    const [postRevokedStatus] = await rpc('hcn_post_coordination_plan_update', {
+      p_plan_id: f.planId, p_update_text: 'Former assignee must not post',
+    }, f.caregiver.token);
+    expect(postRevokedStatus).toBeGreaterThanOrEqual(400);
     const [status, rows] = await http('GET', '/rest/v1/hcn_coordination_tasks?id=eq.' +
       careTaskId + '&select=id', undefined, f.caregiver.token);
     expect(status).toBe(200);
