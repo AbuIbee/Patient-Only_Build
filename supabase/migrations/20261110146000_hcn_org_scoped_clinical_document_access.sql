@@ -61,7 +61,7 @@ WITH CHECK (
 -- accidentally recognize a different organization's authorization.
 CREATE OR REPLACE FUNCTION public.hcn_can_view_clinical_document(p_document_id UUID)
 RETURNS BOOLEAN
-LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' VOLATILE AS $
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' VOLATILE AS $$
 DECLARE v_doc public.hcn_clinical_documents;
 BEGIN
   SELECT * INTO v_doc FROM public.hcn_clinical_documents WHERE id = p_document_id;
