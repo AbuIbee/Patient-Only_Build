@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 // HCN-CLINICAL-MASTER-002 / CONTINUATION Phase 2 -- thin wrappers
 // around the Clinical Coordination Center's existing, already-tested
@@ -240,7 +241,7 @@ export async function uploadInternalDocument(input: {
     // Direct DELETE was intentionally revoked in SEC-006. A narrowly
     // scoped SECURITY DEFINER RPC can discard metadata only if Storage
     // has no object, review has not started, and no shares exist.
-    const { error: cleanupError } = await supabase.rpc('hcn_discard_unstored_clinical_document', {
+    const { error: cleanupError } = await clinicalApi.rpc('hcn_discard_unstored_clinical_document', {
       p_document_id: documentId,
     });
     if (cleanupError) return { data: null, error: 'Upload failed; metadata cleanup also failed. Please contact your Director. ' + cleanupError.message };
@@ -441,6 +442,13 @@ export const PROVIDER_SPECIALTIES = [
 
 
 // ---------------------------------------------------------------------------
+// New migrations are not yet deployed to production and therefore
+// cannot appear in the project's generated Supabase Database type.
+// Narrowly scope the untyped PostgREST boundary to THIS service only;
+// public data is immediately mapped to explicit domain types below.
+// Regenerate src/types/supabase.ts from the released schema after deploy.
+const clinicalApi = supabase as unknown as SupabaseClient;
+
 // HCN-CLINICAL-MASTER-002 / Workstream B: task dependencies, Director
 // review, and Caregiver instruction acknowledgement.
 // Every write is a server-side RPC with current membership/assignment
@@ -472,13 +480,13 @@ function mapCoordinationTask(r: Record<string, unknown>): CoordinationTask {
   };
 }
 export async function getCoordinationTasks(planId: string) {
-  const { data, error } = await supabase.from('hcn_coordination_tasks').select('*')
+  const { data, error } = await clinicalApi.from('hcn_coordination_tasks').select('*')
     .eq('plan_id', planId).order('created_at');
   if (error) return { data: null as CoordinationTask[] | null, error: err(error, 'Unable to load coordination tasks') };
   return { data: (data ?? []).map((r) => mapCoordinationTask(r as Record<string, unknown>)), error: null as string | null };
 }
 export async function getEligiblePlanStaff(planId: string) {
-  const { data, error } = await supabase.rpc('hcn_list_eligible_plan_staff', { p_plan_id: planId });
+  const { data, error } = await clinicalApi.rpc('hcn_list_eligible_plan_staff', { p_plan_id: planId });
   if (error) return { data: null as EligiblePlanStaff[] | null, error: err(error, 'Unable to load available staff') };
   return { data: (data ?? []).map((r: Record<string, unknown>) => ({
     userId: r.user_id as string, displayName: r.display_name as string, orgRole: r.org_role as string,
@@ -488,7 +496,7 @@ export async function getCoordinationTaskDependencies(planId: string) {
   const { data: tasks, error: listError } = await getCoordinationTasks(planId);
   if (listError) return { data: null as Record<string, string[]> | null, error: listError };
   if (!tasks?.length) return { data: {} as Record<string, string[]>, error: null as string | null };
-  const { data, error } = await supabase.from('hcn_coordination_task_dependencies').select('task_id,prerequisite_task_id')
+  const { data, error } = await clinicalApi.from('hcn_coordination_task_dependencies').select('task_id,prerequisite_task_id')
     .in('task_id', tasks.map((task) => task.id));
   if (error) return { data: null as Record<string, string[]> | null, error: err(error, 'Unable to load task prerequisites') };
   const result: Record<string, string[]> = {};
@@ -503,7 +511,7 @@ export async function getInstructionAcknowledgements(planId: string) {
   const { data: tasks, error: listError } = await getCoordinationTasks(planId);
   if (listError) return { data: null as string[] | null, error: listError };
   if (!tasks?.length) return { data: [] as string[], error: null as string | null };
-  const { data, error } = await supabase.from('hcn_coordination_instruction_acks')
+  const { data, error } = await clinicalApi.from('hcn_coordination_instruction_acks')
     .select('task_id').in('task_id', tasks.map((t) => t.id));
   if (error) return { data: null as string[] | null, error: err(error, 'Unable to load caregiver acknowledgements') };
   return { data: (data ?? []).map((row) => row.task_id as string), error: null as string | null };
@@ -512,7 +520,7 @@ export async function createCoordinationTask(input: {
   planId: string; title: string; details: string; kind: CoordinationTaskKind;
   assigneeId: string; dueAt: string | null; sourceDocumentId: string | null; dependencyIds: string[];
 }) {
-  const { data, error } = await supabase.rpc('hcn_create_coordination_task', {
+  const { data, error } = await clinicalApi.rpc('hcn_create_coordination_task', {
     p_plan_id: input.planId, p_title: input.title, p_details: input.details, p_kind: input.kind,
     p_assignee_id: input.assigneeId, p_due_at: input.dueAt,
     p_source_document_id: input.sourceDocumentId, p_dependency_ids: input.dependencyIds,
@@ -521,25 +529,25 @@ export async function createCoordinationTask(input: {
     error: error ? err(error, 'Unable to create task') : null as string | null };
 }
 export async function setCoordinationTaskStatus(taskId: string, action: 'start' | 'submit', resultNote: string | null) {
-  const { data, error } = await supabase.rpc('hcn_set_coordination_task_status', {
+  const { data, error } = await clinicalApi.rpc('hcn_set_coordination_task_status', {
     p_task_id: taskId, p_action: action, p_result_note: resultNote,
   });
   return { data: data ? mapCoordinationTask(data as Record<string, unknown>) : null,
     error: error ? err(error, 'Unable to update task') : null as string | null };
 }
 export async function reviewCoordinationTask(taskId: string, action: 'accept' | 'revision' | 'release', note: string | null) {
-  const { data, error } = await supabase.rpc('hcn_review_coordination_task', {
+  const { data, error } = await clinicalApi.rpc('hcn_review_coordination_task', {
     p_task_id: taskId, p_decision: action, p_note: note,
   });
   return { data: data ? mapCoordinationTask(data as Record<string, unknown>) : null,
     error: error ? err(error, 'Unable to review task') : null as string | null };
 }
 export async function acknowledgeCoordinationInstruction(taskId: string) {
-  const { error } = await supabase.rpc('hcn_ack_coordination_instruction', { p_task_id: taskId });
+  const { error } = await clinicalApi.rpc('hcn_ack_coordination_instruction', { p_task_id: taskId });
   return { error: error ? err(error, 'Unable to acknowledge instruction') : null };
 }
 export async function getCoordinationTaskMetrics(orgId: string) {
-  const { data, error } = await supabase.rpc('hcn_get_coordination_task_metrics', {
+  const { data, error } = await clinicalApi.rpc('hcn_get_coordination_task_metrics', {
     p_organization_id: orgId,
   });
   if (error) return { data: null as CoordinationTaskMetrics | null, error: err(error, 'Unable to load task metrics') };
@@ -553,7 +561,7 @@ export async function getCoordinationTaskMetrics(orgId: string) {
 
 
 export async function attachInternalDocumentToRequest(requestId: string, documentId: string) {
-  const { error } = await supabase.rpc('hcn_attach_internal_document_to_request', {
+  const { error } = await clinicalApi.rpc('hcn_attach_internal_document_to_request', {
     p_request_id: requestId, p_document_id: documentId,
   });
   return { error: error ? err(error, 'Unable to attach this document') : null };
@@ -567,7 +575,7 @@ export type LinkedPatientProvider = {
   relationshipNote: string | null; verificationStatus: string;
 };
 export async function getLinkedPatientProviders(organizationId: string, patientId: string) {
-  const { data, error } = await supabase.rpc('hcn_get_patient_linked_healthcare_providers', {
+  const { data, error } = await clinicalApi.rpc('hcn_get_patient_linked_healthcare_providers', {
     p_organization_id: organizationId, p_patient_id: patientId,
   });
   if (error) return { data: null as LinkedPatientProvider[] | null, error: err(error, 'Unable to load linked providers') };
