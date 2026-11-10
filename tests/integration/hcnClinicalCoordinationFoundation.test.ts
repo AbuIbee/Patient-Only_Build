@@ -662,7 +662,7 @@ describe('HCN-CLINICAL-MASTER-002 SEC-006 -- document write authority and revoca
       storage_path: storagePath, original_filename: 'unreviewed.pdf',
       mime_type: 'application/pdf', file_size_bytes: 64, uploaded_by: ctx.directorId,
     }, ctx.directorTok);
-    expect(createdStatus).toBe(201);
+    expect(createdStatus, JSON.stringify(createdBody)).toBe(201);
     const row = (createdBody as Array<{ id: string; review_status: string }>)[0];
     expect(row.review_status).toBe('received_unreviewed');
     const [patchStatus] = await http('PATCH', '/rest/v1/hcn_clinical_documents?id=eq.' + row.id, {
