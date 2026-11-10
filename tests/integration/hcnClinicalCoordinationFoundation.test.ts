@@ -671,6 +671,20 @@ describe('HCN-CLINICAL-MASTER-002 SEC-006 -- document write authority and revoca
     expect(patchStatus).toBeGreaterThanOrEqual(400);
   });
 
+  it('rejects a Director associating a document with a patient not covered by that organization', async () => {
+    const ctx = await orgWithDirectorAndPatient('sec006-org-match');
+    const otherPatientId = sql("INSERT INTO patients(first_name,last_name,preferred_name,address,location) VALUES('Uncovered','Test','Uncovered','1 Ave','Facility') RETURNING id;");
+    createdPatientIds.push(otherPatientId);
+    const [status] = await http('POST', '/rest/v1/hcn_clinical_documents', {
+      organization_id: ctx.orgId, patient_id: otherPatientId,
+      category: 'patient_provided_documents', classification: 'patient_shared_document',
+      storage_path: otherPatientId + '/mismatched-' + stamp + '.pdf',
+      original_filename: 'mismatched.pdf', mime_type: 'application/pdf',
+      file_size_bytes: 64, uploaded_by: ctx.directorId,
+    }, ctx.directorTok);
+    expect(status).toBeGreaterThanOrEqual(400);
+  });
+
   it('an uploader cannot continue reading a clinical document after assignment revocation', async () => {
     const ctx = await orgWithDirectorAndPatient('sec006-revoked');
     const caregiver = await addCaregiver(ctx, 'sec006-revoked-cg');

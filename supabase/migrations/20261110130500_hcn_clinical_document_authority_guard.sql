@@ -23,8 +23,8 @@ WITH CHECK (
   AND EXISTS (
     SELECT 1 FROM public.covered_patient_memberships c
     JOIN public.organization_licenses l ON l.organization_id = c.organization_id
-    WHERE c.patient_id = patient_id
-      AND c.organization_id = organization_id
+    WHERE c.patient_id = hcn_clinical_documents.patient_id
+      AND c.organization_id = hcn_clinical_documents.organization_id
       AND c.status = 'active'
       AND l.status = 'active'
   )
