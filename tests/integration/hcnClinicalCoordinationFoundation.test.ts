@@ -671,6 +671,36 @@ describe('HCN-CLINICAL-MASTER-002 SEC-006 -- document write authority and revoca
     expect(patchStatus).toBeGreaterThanOrEqual(400);
   });
 
+  it('requires true clinical approval before a Caregiver can read classified care instructions', async () => {
+    const ctx=await orgWithDirectorAndPatient('sec006-instruction-release');
+    const caregiver=await addCaregiver(ctx,'sec006-instruction-cg');
+    const id=sql("INSERT INTO hcn_clinical_documents(organization_id,patient_id,category,classification,storage_path,original_filename,mime_type,file_size_bytes,uploaded_by,review_status,reviewed_by) VALUES ('" +
+      ctx.orgId + "','" + ctx.patientId + "','care_instructions','caregiver_approved_instructions','" +
+      ctx.patientId + "/instruction-" + stamp + ".pdf','instruction.pdf','application/pdf',64,'" +
+      ctx.directorId + "','accepted','" + ctx.directorId + "') RETURNING id;");
+    const [beforeStatus, before]=await http('GET',
+      '/rest/v1/hcn_clinical_documents?id=eq.'+id+'&select=id',undefined,caregiver.tok);
+    expect(beforeStatus).toBe(200);
+    expect(before).toEqual([]);
+    const [accessStatus,allowedBefore]=await rpc('hcn_can_view_clinical_document',
+      {p_document_id:id},caregiver.tok);
+    expect(accessStatus).toBe(200);
+    expect(allowedBefore).toBe(false);
+
+    // Synthetic fixture advances through the separately tested
+    // clinician-specific approval path; this isolates the read gate.
+    sql("UPDATE hcn_clinical_documents SET review_status='clinical_approved',reviewed_by='" +
+      ctx.medicalId + "' WHERE id='" + id + "';");
+    const [afterStatus,after]=await http('GET',
+      '/rest/v1/hcn_clinical_documents?id=eq.'+id+'&select=id',undefined,caregiver.tok);
+    expect(afterStatus).toBe(200);
+    expect(after).toHaveLength(1);
+    sql("UPDATE hcn_clinical_documents SET is_archived=true WHERE id='" + id + "';");
+    const [,archived]=await http('GET',
+      '/rest/v1/hcn_clinical_documents?id=eq.'+id+'&select=id',undefined,caregiver.tok);
+    expect(archived).toEqual([]);
+  });
+
   it('rejects a Director associating a document with a patient not covered by that organization', async () => {
     const ctx = await orgWithDirectorAndPatient('sec006-org-match');
     const otherPatientId = sql("INSERT INTO patients(first_name,last_name,preferred_name,address,location) VALUES('Uncovered','Test','Uncovered','1 Ave','Facility') RETURNING id;");
