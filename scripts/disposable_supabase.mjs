@@ -86,7 +86,13 @@ function rewriteConfig(configText) {
     .replace(/^(port = )55323$/m, `$1${PORTS.studio}`)
     .replace(/^(port = )55324$/m, `$1${PORTS.inbucket}`)
     .replace(/^(port = )55327$/m, `$1${PORTS.analytics}`)
-    .replace(/^(inspector_port = )8083$/m, `$1${PORTS.inspector}`);
+    .replace(/^(inspector_port = )8083$/m, `$1${PORTS.inspector}`)
+    // Keep the disposable test stack focused on auth/db/storage/edge.
+    // Studio and Analytics are not exercised by any Clinical Coordination
+    // integration/Playwright flow; their large optional images were the
+    // direct source of observed Docker registry rate-limit failures.
+    .replace(/^(\[studio\]\r?\nenabled = )true$/m, '$1false')
+    .replace(/^(\[analytics\]\r?\nenabled = )true$/m, '$1false');
 }
 
 // The exact, confirmed-transient signature from the real failing run
