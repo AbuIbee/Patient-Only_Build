@@ -43,6 +43,7 @@ import {
 import { acknowledgeHelpActivation } from '@/services/patientClinicalRecordService';
 import { PREVISIT_SECTIONS, acknowledgePrevisit } from '@/services/hcnCareOperationsService';
 import CareEscalationPanel from './CareEscalationPanel';
+import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import { selectCurrentOrNextVisit } from './selectCurrentOrNextVisit';
@@ -541,7 +542,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
               )}
               {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id, 'handoffs')} title="Select a patient to record or review Shift Handoffs" />}
               {nav === 'alerts' && <><CareEscalationPanel orgId={orgId} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><AlertsView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id, 'safety')} /></>}
-              {nav === 'careTeam' && <CareTeamView orgId={orgId} patients={patients} />}
+              {nav === 'careTeam' && <><CareTeamView orgId={orgId} patients={patients} /><ClinicalCoordinationPanel orgId={orgId} userId={state.currentUser?.id ?? ''} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/></>}
               {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view their Documents" />}
               {nav === 'organization' && <OrganizationView orgId={orgId} orgName={orgName} patients={patients} />}
               {nav === 'settings' && <SettingsView userName={state.currentUser?.firstName} onLogout={handleLogout} />}

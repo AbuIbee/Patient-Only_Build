@@ -45,6 +45,7 @@ import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
 import CareEscalationPanel from './CareEscalationPanel';
+import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
 type ClinicalRole = Extract<StaffRole, 'medical_professional' | 'therapist'>;
@@ -242,7 +243,10 @@ export default function ClinicalOfficeDashboard({ filterRole, basePath = null }:
           loadError={loadError}
         />
       ) : nav === 'escalations' && myOrg ? (
-        <CareEscalationPanel orgId={myOrg.organizationId} role="clinical" patients={patients.filter(p=>p.organizationId===myOrg.organizationId).map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
+        <div className="space-y-4">
+          <CareEscalationPanel orgId={myOrg.organizationId} role="clinical" patients={patients.filter(p=>p.organizationId===myOrg.organizationId).map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
+          <ClinicalCoordinationPanel orgId={myOrg.organizationId} userId={state.currentUser?.id ?? ''} role="clinical" patients={patients.filter(p=>p.organizationId===myOrg.organizationId).map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
+        </div>
       ) : nav === 'credentials' ? (
         <CredentialsView credentials={credentials} />
       ) : nav === 'reports' ? (

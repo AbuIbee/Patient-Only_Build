@@ -101,6 +101,391 @@ export interface Database {
         }
         Relationships: []
       }
+      // HCN-CLINICAL-MASTER-002 / CONTINUATION -- generated via
+      // `supabase gen types typescript --local` against the disposable
+      // stack with migrations 20261109100000 through 20261110000300
+      // applied, then hand-merged into this file (this file is not
+      // itself auto-generated -- see the hcn_care_escalations entry
+      // above for the established precedent of merging new HCN tables
+      // in by hand rather than regenerating the whole file).
+      hcn_clinical_documents: {
+        Row: {
+          category: string
+          checksum_sha256: string | null
+          classification: string
+          created_at: string
+          file_size_bytes: number
+          id: string
+          is_archived: boolean
+          mime_type: string
+          organization_id: string
+          original_filename: string
+          patient_id: string
+          review_notes: string | null
+          review_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          storage_path: string
+          supersedes_document_id: string | null
+          updated_at: string
+          uploaded_by: string | null
+          uploader_external_label: string | null
+          version_number: number
+        }
+        Insert: {
+          category: string
+          checksum_sha256?: string | null
+          classification?: string
+          created_at?: string
+          file_size_bytes: number
+          id?: string
+          is_archived?: boolean
+          mime_type: string
+          organization_id: string
+          original_filename: string
+          patient_id: string
+          review_notes?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          storage_path: string
+          supersedes_document_id?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+          uploader_external_label?: string | null
+          version_number?: number
+        }
+        Update: {
+          category?: string
+          checksum_sha256?: string | null
+          classification?: string
+          created_at?: string
+          file_size_bytes?: number
+          id?: string
+          is_archived?: boolean
+          mime_type?: string
+          organization_id?: string
+          original_filename?: string
+          patient_id?: string
+          review_notes?: string | null
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          storage_path?: string
+          supersedes_document_id?: string | null
+          updated_at?: string
+          uploaded_by?: string | null
+          uploader_external_label?: string | null
+          version_number?: number
+        }
+        Relationships: []
+      }
+      hcn_clinical_request_documents: {
+        Row: { created_at: string; direction: string; document_id: string; id: string; request_id: string }
+        Insert: { created_at?: string; direction: string; document_id: string; id?: string; request_id: string }
+        Update: { created_at?: string; direction?: string; document_id?: string; id?: string; request_id?: string }
+        Relationships: []
+      }
+      hcn_clinical_request_events: {
+        Row: {
+          actor_external_label: string | null
+          actor_user_id: string | null
+          created_at: string
+          details: Json
+          event_type: string
+          id: string
+          request_id: string
+        }
+        Insert: {
+          actor_external_label?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          details?: Json
+          event_type: string
+          id?: string
+          request_id: string
+        }
+        Update: {
+          actor_external_label?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          details?: Json
+          event_type?: string
+          id?: string
+          request_id?: string
+        }
+        Relationships: []
+      }
+      hcn_clinical_requests: {
+        Row: {
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          closed_at: string | null
+          created_at: string
+          created_by: string
+          deadline_at: string | null
+          description: string | null
+          follow_up_owner_id: string | null
+          id: string
+          organization_id: string
+          patient_id: string
+          provider_id: string
+          request_type: string
+          requested_items: Json
+          sent_at: string | null
+          status: string
+          title: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          closed_at?: string | null
+          created_at?: string
+          created_by: string
+          deadline_at?: string | null
+          description?: string | null
+          follow_up_owner_id?: string | null
+          id?: string
+          organization_id: string
+          patient_id: string
+          provider_id: string
+          request_type: string
+          requested_items?: Json
+          sent_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string
+          deadline_at?: string | null
+          description?: string | null
+          follow_up_owner_id?: string | null
+          id?: string
+          organization_id?: string
+          patient_id?: string
+          provider_id?: string
+          request_type?: string
+          requested_items?: Json
+          sent_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      hcn_document_grants: {
+        Row: {
+          document_id: string
+          expires_at: string | null
+          grantee_type: string
+          grantee_user_id: string | null
+          granted_at: string
+          granted_by: string
+          id: string
+          request_id: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+        }
+        Insert: {
+          document_id: string
+          expires_at?: string | null
+          grantee_type: string
+          grantee_user_id?: string | null
+          granted_at?: string
+          granted_by: string
+          id?: string
+          request_id?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+        }
+        Update: {
+          document_id?: string
+          expires_at?: string | null
+          grantee_type?: string
+          grantee_user_id?: string | null
+          granted_at?: string
+          granted_by?: string
+          id?: string
+          request_id?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+        }
+        Relationships: []
+      }
+      hcn_external_access_tokens: {
+        Row: {
+          created_at: string
+          created_by: string
+          expires_at: string
+          first_verified_at: string | null
+          id: string
+          last_accessed_at: string | null
+          recipient_email: string
+          recipient_label: string | null
+          request_id: string
+          revoked_at: string | null
+          revoked_by: string | null
+          status: string
+          token_hash: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          expires_at: string
+          first_verified_at?: string | null
+          id?: string
+          last_accessed_at?: string | null
+          recipient_email: string
+          recipient_label?: string | null
+          request_id: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+          token_hash: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          first_verified_at?: string | null
+          id?: string
+          last_accessed_at?: string | null
+          recipient_email?: string
+          recipient_label?: string | null
+          request_id?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          status?: string
+          token_hash?: string
+        }
+        Relationships: []
+      }
+      hcn_external_verification_codes: {
+        Row: { attempt_count: number; code_hash: string; consumed_at: string | null; created_at: string; expires_at: string; id: string; token_id: string }
+        Insert: { attempt_count?: number; code_hash: string; consumed_at?: string | null; created_at?: string; expires_at: string; id?: string; token_id: string }
+        Update: { attempt_count?: number; code_hash?: string; consumed_at?: string | null; created_at?: string; expires_at?: string; id?: string; token_id?: string }
+        Relationships: []
+      }
+      hcn_external_verified_sessions: {
+        Row: { created_at: string; expires_at: string; id: string; last_used_at: string | null; revoked_at: string | null; session_token_hash: string; token_id: string }
+        Insert: { created_at?: string; expires_at: string; id?: string; last_used_at?: string | null; revoked_at?: string | null; session_token_hash: string; token_id: string }
+        Update: { created_at?: string; expires_at?: string; id?: string; last_used_at?: string | null; revoked_at?: string | null; session_token_hash?: string; token_id?: string }
+        Relationships: []
+      }
+      hcn_healthcare_providers: {
+        Row: {
+          created_at: string
+          created_by: string
+          credentials: string | null
+          display_name: string
+          fax_number: string | null
+          id: string
+          is_active: boolean
+          office_address: string | null
+          office_phone: string | null
+          organization_id: string
+          practice_name: string | null
+          professional_identifier: string | null
+          professional_title: string | null
+          secure_contact_email: string | null
+          specialty: string
+          specialty_other_label: string | null
+          updated_at: string
+          updated_by: string | null
+          verification_status: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          credentials?: string | null
+          display_name: string
+          fax_number?: string | null
+          id?: string
+          is_active?: boolean
+          office_address?: string | null
+          office_phone?: string | null
+          organization_id: string
+          practice_name?: string | null
+          professional_identifier?: string | null
+          professional_title?: string | null
+          secure_contact_email?: string | null
+          specialty: string
+          specialty_other_label?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          verification_status?: string
+          version?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          credentials?: string | null
+          display_name?: string
+          fax_number?: string | null
+          id?: string
+          is_active?: boolean
+          office_address?: string | null
+          office_phone?: string | null
+          organization_id?: string
+          practice_name?: string | null
+          professional_identifier?: string | null
+          professional_title?: string | null
+          secure_contact_email?: string | null
+          specialty?: string
+          specialty_other_label?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          verification_status?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      hcn_patient_provider_associations: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          is_active: boolean
+          organization_id: string
+          patient_id: string
+          provider_id: string
+          relationship_note: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          patient_id: string
+          provider_id: string
+          relationship_note?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          patient_id?: string
+          provider_id?: string
+          relationship_note?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           id: string
@@ -4506,6 +4891,125 @@ export interface Database {
       hcn_director_triage_escalation: { Args: { p_id: string; p_action: string; p_note: string }; Returns: boolean }
       hcn_clinician_review_escalation: { Args: { p_id: string; p_note: string }; Returns: boolean }
       hcn_director_close_escalation: { Args: { p_id: string; p_note: string }; Returns: boolean }
+      // HCN-CLINICAL-MASTER-002 / CONTINUATION -- merged in the same way
+      // as the hcn_care_escalations functions above (hand-merged from a
+      // local `supabase gen types` run, not auto-generated for this
+      // whole file). Only the functions actually callable from the
+      // frontend via supabase.rpc() with the authenticated/anon key are
+      // included here -- the external-provider-facing functions
+      // (hcn_request_external_verification_code, hcn_verify_external_code,
+      // hcn_external_session_request_info, hcn_list_external_shared_documents,
+      // hcn_record_external_document_upload, hcn_submit_external_response,
+      // hcn_get_external_recipient_contact) are service_role-only and are
+      // called exclusively through the hcn-external-request-access Edge
+      // Function via plain fetch, never supabase.rpc() -- see
+      // src/pages/common/PublicExternalProviderAccessPage.tsx.
+      hcn_associate_provider_with_patient: {
+        Args: { p_patient_id: string; p_provider_id: string; p_relationship_note?: string | null }
+        Returns: { created_at: string; created_by: string; id: string; is_active: boolean; organization_id: string; patient_id: string; provider_id: string; relationship_note: string | null; updated_at: string }
+      }
+      hcn_dissociate_provider_from_patient: { Args: { p_association_id: string }; Returns: undefined }
+      hcn_upsert_healthcare_provider: {
+        Args: {
+          p_credentials: string | null; p_display_name: string; p_expected_version?: number | null; p_fax_number: string | null
+          p_office_address: string | null; p_office_phone: string | null; p_organization_id: string; p_practice_name: string | null
+          p_professional_identifier: string | null; p_professional_title: string | null; p_provider_id: string | null
+          p_secure_contact_email: string | null; p_specialty: string; p_specialty_other_label: string | null
+        }
+        Returns: {
+          created_at: string; created_by: string; credentials: string | null; display_name: string; fax_number: string | null
+          id: string; is_active: boolean; office_address: string | null; office_phone: string | null; organization_id: string
+          practice_name: string | null; professional_identifier: string | null; professional_title: string | null
+          secure_contact_email: string | null; specialty: string; specialty_other_label: string | null; updated_at: string
+          updated_by: string | null; verification_status: string; version: number
+        }
+      }
+      hcn_set_provider_active: {
+        Args: { p_is_active: boolean; p_provider_id: string }
+        Returns: {
+          created_at: string; created_by: string; credentials: string | null; display_name: string; fax_number: string | null
+          id: string; is_active: boolean; office_address: string | null; office_phone: string | null; organization_id: string
+          practice_name: string | null; professional_identifier: string | null; professional_title: string | null
+          secure_contact_email: string | null; specialty: string; specialty_other_label: string | null; updated_at: string
+          updated_by: string | null; verification_status: string; version: number
+        }
+      }
+      hcn_create_clinical_request: {
+        Args: {
+          p_deadline_at: string | null; p_description: string | null; p_follow_up_owner_id: string | null; p_organization_id: string
+          p_patient_id: string; p_provider_id: string; p_request_type: string; p_requested_items: Json; p_title: string
+        }
+        Returns: {
+          cancellation_reason: string | null; cancelled_at: string | null; closed_at: string | null; created_at: string
+          created_by: string; deadline_at: string | null; description: string | null; follow_up_owner_id: string | null
+          id: string; organization_id: string; patient_id: string; provider_id: string; request_type: string
+          requested_items: Json; sent_at: string | null; status: string; title: string; updated_at: string; version: number
+        }
+      }
+      hcn_update_clinical_request_draft: {
+        Args: {
+          p_deadline_at: string | null; p_description: string | null; p_expected_version: number; p_follow_up_owner_id: string | null
+          p_request_id: string; p_requested_items: Json; p_title: string
+        }
+        Returns: {
+          cancellation_reason: string | null; cancelled_at: string | null; closed_at: string | null; created_at: string
+          created_by: string; deadline_at: string | null; description: string | null; follow_up_owner_id: string | null
+          id: string; organization_id: string; patient_id: string; provider_id: string; request_type: string
+          requested_items: Json; sent_at: string | null; status: string; title: string; updated_at: string; version: number
+        }
+      }
+      hcn_send_clinical_request: {
+        Args: { p_expires_in_days?: number; p_request_id: string }
+        Returns: { raw_token: string; request: Database["public"]["Tables"]["hcn_clinical_requests"]["Row"]; token_expires_at: string }[]
+      }
+      hcn_resend_clinical_request_invitation: {
+        Args: { p_expires_in_days?: number; p_request_id: string }
+        Returns: { raw_token: string; token_expires_at: string }[]
+      }
+      hcn_cancel_clinical_request: {
+        Args: { p_reason: string; p_request_id: string }
+        Returns: {
+          cancellation_reason: string | null; cancelled_at: string | null; closed_at: string | null; created_at: string
+          created_by: string; deadline_at: string | null; description: string | null; follow_up_owner_id: string | null
+          id: string; organization_id: string; patient_id: string; provider_id: string; request_type: string
+          requested_items: Json; sent_at: string | null; status: string; title: string; updated_at: string; version: number
+        }
+      }
+      hcn_revoke_clinical_request_access: { Args: { p_request_id: string }; Returns: undefined }
+      hcn_review_clinical_document: {
+        Args: { p_decision: string; p_document_id: string; p_notes: string }
+        Returns: {
+          category: string; checksum_sha256: string | null; classification: string; created_at: string; file_size_bytes: number
+          id: string; is_archived: boolean; mime_type: string; organization_id: string; original_filename: string
+          patient_id: string; review_notes: string | null; review_status: string; reviewed_at: string | null
+          reviewed_by: string | null; storage_path: string; supersedes_document_id: string | null; updated_at: string
+          uploaded_by: string | null; uploader_external_label: string | null; version_number: number
+        }
+      }
+      hcn_clinical_approve_document: {
+        Args: { p_document_id: string; p_notes: string }
+        Returns: {
+          category: string; checksum_sha256: string | null; classification: string; created_at: string; file_size_bytes: number
+          id: string; is_archived: boolean; mime_type: string; organization_id: string; original_filename: string
+          patient_id: string; review_notes: string | null; review_status: string; reviewed_at: string | null
+          reviewed_by: string | null; storage_path: string; supersedes_document_id: string | null; updated_at: string
+          uploaded_by: string | null; uploader_external_label: string | null; version_number: number
+        }
+      }
+      hcn_share_document_with_request: {
+        Args: { p_document_id: string; p_expires_at?: string | null; p_request_id: string }
+        Returns: {
+          document_id: string; expires_at: string | null; granted_at: string; granted_by: string; grantee_type: string
+          grantee_user_id: string | null; id: string; request_id: string | null; revoked_at: string | null; revoked_by: string | null
+        }
+      }
+      hcn_revoke_document_grant: { Args: { p_grant_id: string }; Returns: undefined }
+      hcn_resolve_notification_target: {
+        Args: { p_raw_token: string; p_request_id: string }
+        Returns: { already_delivered: boolean; recipient_email: string; recipient_label: string; token_id: string }[]
+      }
+      hcn_can_view_clinical_document: { Args: { p_document_id: string }; Returns: boolean }
+      hcn_is_qualified_clinician_for_patient: { Args: { p_organization_id: string; p_patient_id: string }; Returns: boolean }
       register_patient_representative: {
         Args: {
           p_patient_id: string

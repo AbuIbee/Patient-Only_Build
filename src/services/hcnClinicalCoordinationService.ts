@@ -1,0 +1,319 @@
+import { supabase } from '@/lib/supabase';
+
+// HCN-CLINICAL-MASTER-002 / CONTINUATION Phase 2 -- thin wrappers
+// around the Clinical Coordination Center's existing, already-tested
+// RPCs and tables (see supabase/migrations/20261109100000_* and the
+// four 20261110_* SEC-00x remediation migrations). No new backend
+// logic lives here -- every authorization/validation decision is
+// already enforced server-side; this module only shapes requests and
+// responses for the UI.
+
+export type HealthcareProvider = {
+  id: string; organizationId: string; displayName: string; professionalTitle: string | null;
+  specialty: string; specialtyOtherLabel: string | null; practiceName: string | null;
+  officePhone: string | null; faxNumber: string | null; secureContactEmail: string | null;
+  officeAddress: string | null; professionalIdentifier: string | null; credentials: string | null;
+  verificationStatus: string; isActive: boolean; version: number;
+};
+
+export type ClinicalRequest = {
+  id: string; organizationId: string; patientId: string; providerId: string; requestType: string;
+  title: string; description: string | null; requestedItems: unknown; status: string;
+  deadlineAt: string | null; followUpOwnerId: string | null; createdBy: string; createdAt: string;
+  sentAt: string | null; closedAt: string | null; cancelledAt: string | null; cancellationReason: string | null;
+  version: number;
+};
+
+export type ClinicalDocument = {
+  id: string; organizationId: string; patientId: string; category: string; classification: string;
+  originalFilename: string; mimeType: string; fileSizeBytes: number; checksumSha256: string | null;
+  uploadedBy: string | null; uploaderExternalLabel: string | null; versionNumber: number;
+  reviewStatus: string; reviewedBy: string | null; reviewedAt: string | null; reviewNotes: string | null;
+  storagePath: string; createdAt: string;
+};
+
+export type RequestEvent = { id: string; eventType: string; actorUserId: string | null; actorExternalLabel: string | null; details: unknown; createdAt: string };
+
+const err = (e: { message: string } | null, fallback: string) => e?.message ?? fallback;
+
+function mapProvider(r: Record<string, unknown>): HealthcareProvider {
+  return {
+    id: r.id as string, organizationId: r.organization_id as string, displayName: r.display_name as string,
+    professionalTitle: r.professional_title as string | null, specialty: r.specialty as string,
+    specialtyOtherLabel: r.specialty_other_label as string | null, practiceName: r.practice_name as string | null,
+    officePhone: r.office_phone as string | null, faxNumber: r.fax_number as string | null,
+    secureContactEmail: r.secure_contact_email as string | null, officeAddress: r.office_address as string | null,
+    professionalIdentifier: r.professional_identifier as string | null, credentials: r.credentials as string | null,
+    verificationStatus: r.verification_status as string, isActive: r.is_active as boolean, version: r.version as number,
+  };
+}
+function mapRequest(r: Record<string, unknown>): ClinicalRequest {
+  return {
+    id: r.id as string, organizationId: r.organization_id as string, patientId: r.patient_id as string,
+    providerId: r.provider_id as string, requestType: r.request_type as string, title: r.title as string,
+    description: r.description as string | null, requestedItems: r.requested_items, status: r.status as string,
+    deadlineAt: r.deadline_at as string | null, followUpOwnerId: r.follow_up_owner_id as string | null,
+    createdBy: r.created_by as string, createdAt: r.created_at as string, sentAt: r.sent_at as string | null,
+    closedAt: r.closed_at as string | null, cancelledAt: r.cancelled_at as string | null,
+    cancellationReason: r.cancellation_reason as string | null, version: r.version as number,
+  };
+}
+function mapDocument(r: Record<string, unknown>): ClinicalDocument {
+  return {
+    id: r.id as string, organizationId: r.organization_id as string, patientId: r.patient_id as string,
+    category: r.category as string, classification: r.classification as string,
+    originalFilename: r.original_filename as string, mimeType: r.mime_type as string,
+    fileSizeBytes: r.file_size_bytes as number, checksumSha256: r.checksum_sha256 as string | null,
+    uploadedBy: r.uploaded_by as string | null, uploaderExternalLabel: r.uploader_external_label as string | null,
+    versionNumber: r.version_number as number, reviewStatus: r.review_status as string,
+    reviewedBy: r.reviewed_by as string | null, reviewedAt: r.reviewed_at as string | null,
+    reviewNotes: r.review_notes as string | null, storagePath: r.storage_path as string, createdAt: r.created_at as string,
+  };
+}
+
+export async function getProviders(orgId: string) {
+  const { data, error } = await supabase.from('hcn_healthcare_providers').select('*').eq('organization_id', orgId).order('display_name');
+  if (error) return { data: null, error: err(error, 'Unable to load the provider directory') };
+  return { data: (data ?? []).map((r) => mapProvider(r as unknown as Record<string, unknown>)), error: null as string | null };
+}
+
+export async function upsertProvider(orgId: string, input: {
+  providerId?: string | null; displayName: string; professionalTitle: string | null; specialty: string;
+  specialtyOtherLabel: string | null; practiceName: string | null; officePhone: string | null; faxNumber: string | null;
+  secureContactEmail: string | null; officeAddress: string | null; professionalIdentifier: string | null;
+  credentials: string | null; expectedVersion?: number;
+}) {
+  const { data, error } = await supabase.rpc('hcn_upsert_healthcare_provider', {
+    p_organization_id: orgId, p_provider_id: input.providerId ?? null, p_display_name: input.displayName,
+    p_professional_title: input.professionalTitle, p_specialty: input.specialty, p_specialty_other_label: input.specialtyOtherLabel,
+    p_practice_name: input.practiceName, p_office_phone: input.officePhone, p_fax_number: input.faxNumber,
+    p_secure_contact_email: input.secureContactEmail, p_office_address: input.officeAddress,
+    p_professional_identifier: input.professionalIdentifier, p_credentials: input.credentials,
+    p_expected_version: input.expectedVersion,
+  });
+  if (error) return { data: null, error: err(error, 'Unable to save this provider') };
+  return { data: mapProvider(data as unknown as Record<string, unknown>), error: null as string | null };
+}
+
+export async function setProviderActive(providerId: string, isActive: boolean) {
+  const { data, error } = await supabase.rpc('hcn_set_provider_active', { p_provider_id: providerId, p_is_active: isActive });
+  if (error) return { data: null, error: err(error, 'Unable to update this provider') };
+  return { data: mapProvider(data as unknown as Record<string, unknown>), error: null as string | null };
+}
+
+export async function associateProviderWithPatient(patientId: string, providerId: string, relationshipNote?: string) {
+  const { error } = await supabase.rpc('hcn_associate_provider_with_patient', { p_patient_id: patientId, p_provider_id: providerId, p_relationship_note: relationshipNote ?? null });
+  return { error: error ? err(error, 'Unable to associate this provider with the patient') : null };
+}
+
+export async function getClinicalRequests(orgId: string, patientId?: string) {
+  let q = supabase.from('hcn_clinical_requests').select('*').eq('organization_id', orgId).order('created_at', { ascending: false });
+  if (patientId) q = q.eq('patient_id', patientId);
+  const { data, error } = await q;
+  if (error) return { data: null, error: err(error, 'Unable to load clinical requests') };
+  return { data: (data ?? []).map((r) => mapRequest(r as unknown as Record<string, unknown>)), error: null as string | null };
+}
+
+export async function createClinicalRequest(input: {
+  organizationId: string; patientId: string; providerId: string; requestType: string; title: string;
+  description: string | null; requestedItems: string[]; deadlineAt: string | null; followUpOwnerId: string | null;
+}) {
+  const { data, error } = await supabase.rpc('hcn_create_clinical_request', {
+    p_organization_id: input.organizationId, p_patient_id: input.patientId, p_provider_id: input.providerId,
+    p_request_type: input.requestType, p_title: input.title, p_description: input.description,
+    p_requested_items: input.requestedItems, p_deadline_at: input.deadlineAt, p_follow_up_owner_id: input.followUpOwnerId,
+  });
+  if (error) return { data: null, error: err(error, 'Unable to create this request') };
+  return { data: mapRequest(data as unknown as Record<string, unknown>), error: null as string | null };
+}
+
+export async function sendClinicalRequest(requestId: string, expiresInDays = 14) {
+  const { data, error } = await supabase.rpc('hcn_send_clinical_request', { p_request_id: requestId, p_expires_in_days: expiresInDays });
+  if (error) return { data: null, error: err(error, 'Unable to send this request') };
+  const row = (data ?? [])[0] as { raw_token: string; token_expires_at: string } | undefined;
+  if (!row) return { data: null, error: 'No response from the server when sending this request' };
+  return { data: { rawToken: row.raw_token, tokenExpiresAt: row.token_expires_at }, error: null as string | null };
+}
+
+export async function resendClinicalRequestInvitation(requestId: string, expiresInDays = 14) {
+  const { data, error } = await supabase.rpc('hcn_resend_clinical_request_invitation', { p_request_id: requestId, p_expires_in_days: expiresInDays });
+  if (error) return { data: null, error: err(error, 'Unable to resend this invitation') };
+  const row = (data ?? [])[0] as { raw_token: string; token_expires_at: string } | undefined;
+  if (!row) return { data: null, error: 'No response from the server when resending this invitation' };
+  return { data: { rawToken: row.raw_token, tokenExpiresAt: row.token_expires_at }, error: null as string | null };
+}
+
+export async function cancelClinicalRequest(requestId: string, reason: string) {
+  const { data, error } = await supabase.rpc('hcn_cancel_clinical_request', { p_request_id: requestId, p_reason: reason });
+  if (error) return { data: null, error: err(error, 'Unable to cancel this request') };
+  return { data: mapRequest(data as unknown as Record<string, unknown>), error: null as string | null };
+}
+
+export async function revokeClinicalRequestAccess(requestId: string) {
+  const { error } = await supabase.rpc('hcn_revoke_clinical_request_access', { p_request_id: requestId });
+  return { error: error ? err(error, 'Unable to revoke access for this request') : null };
+}
+
+export async function getDocumentsForPatient(patientId: string) {
+  const { data, error } = await supabase.from('hcn_clinical_documents').select('*').eq('patient_id', patientId).order('created_at', { ascending: false });
+  if (error) return { data: null, error: err(error, 'Unable to load documents') };
+  return { data: (data ?? []).map((r) => mapDocument(r as unknown as Record<string, unknown>)), error: null as string | null };
+}
+
+export async function getDocumentsForRequest(requestId: string) {
+  const { data, error } = await supabase
+    .from('hcn_clinical_request_documents')
+    .select('direction, document:hcn_clinical_documents(*)')
+    .eq('request_id', requestId);
+  if (error) return { data: null, error: err(error, 'Unable to load documents for this request') };
+  return {
+    data: (data ?? []).map((row) => ({
+      direction: row.direction as string,
+      document: mapDocument(row.document as unknown as Record<string, unknown>),
+    })),
+    error: null as string | null,
+  };
+}
+
+export async function getRequestEvents(requestId: string) {
+  const { data, error } = await supabase.from('hcn_clinical_request_events').select('*').eq('request_id', requestId).order('created_at');
+  if (error) return { data: null, error: err(error, 'Unable to load the event history') };
+  return {
+    data: (data ?? []).map((r) => ({
+      id: r.id as string, eventType: r.event_type as string, actorUserId: r.actor_user_id as string | null,
+      actorExternalLabel: r.actor_external_label as string | null, details: r.details, createdAt: r.created_at as string,
+    }) as RequestEvent),
+    error: null as string | null,
+  };
+}
+
+export async function reviewClinicalDocument(documentId: string, decision: string, notes: string) {
+  const { data, error } = await supabase.rpc('hcn_review_clinical_document', { p_document_id: documentId, p_decision: decision, p_notes: notes });
+  if (error) return { data: null, error: err(error, 'Unable to record this review') };
+  return { data: mapDocument(data as unknown as Record<string, unknown>), error: null as string | null };
+}
+
+export async function clinicalApproveDocument(documentId: string, notes: string) {
+  const { data, error } = await supabase.rpc('hcn_clinical_approve_document', { p_document_id: documentId, p_notes: notes });
+  if (error) return { data: null, error: err(error, 'Unable to clinically approve this document') };
+  return { data: mapDocument(data as unknown as Record<string, unknown>), error: null as string | null };
+}
+
+export async function shareDocumentWithRequest(documentId: string, requestId: string, expiresAt?: string) {
+  const { error } = await supabase.rpc('hcn_share_document_with_request', { p_document_id: documentId, p_request_id: requestId, p_expires_at: expiresAt ?? null });
+  return { error: error ? err(error, 'Unable to share this document') : null };
+}
+
+export async function getSignedDownloadUrl(storagePath: string, filename: string) {
+  const { data, error } = await supabase.storage.from('hcn-clinical-documents').createSignedUrl(storagePath, 300, { download: filename });
+  if (error || !data) return { url: null, error: err(error, 'Unable to generate a download link') };
+  return { url: data.signedUrl, error: null as string | null };
+}
+
+// Internal (Director/Caregiver/clinician) document upload. Mirrors
+// the external Edge Function's own fail-closed ordering in reverse:
+// the DB row is created FIRST (storage.objects' own RLS policy checks
+// for a matching hcn_clinical_documents row before allowing the
+// write), and is deleted again if the subsequent Storage upload fails
+// -- never leaving a document row that claims a file that was never
+// actually written.
+export async function uploadInternalDocument(input: {
+  organizationId: string; patientId: string; category: string; classification: string; file: File; uploadedBy: string;
+}) {
+  const documentId = crypto.randomUUID();
+  const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storagePath = `${input.patientId}/int-${documentId}_${safeName}`;
+  const bytes = new Uint8Array(await input.file.arrayBuffer());
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const checksum = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+
+  const { error: insertError } = await supabase.from('hcn_clinical_documents').insert({
+    id: documentId, organization_id: input.organizationId, patient_id: input.patientId, category: input.category,
+    classification: input.classification, storage_path: storagePath, original_filename: input.file.name,
+    mime_type: input.file.type || 'application/octet-stream', file_size_bytes: input.file.size,
+    checksum_sha256: checksum, uploaded_by: input.uploadedBy,
+  });
+  if (insertError) return { data: null, error: err(insertError, 'Unable to record this document') };
+
+  const { error: uploadError } = await supabase.storage.from('hcn-clinical-documents').upload(storagePath, bytes, { contentType: input.file.type || 'application/octet-stream', upsert: false });
+  if (uploadError) {
+    await supabase.from('hcn_clinical_documents').delete().eq('id', documentId);
+    return { data: null, error: err(uploadError, 'Unable to upload this file') };
+  }
+  return { data: { id: documentId, storagePath }, error: null as string | null };
+}
+
+// Sends the already-approved, PHI-free notification email for a sent
+// request's access link. Director-authenticated only (SEC-005: the
+// recipient address is now re-derived server-side from the token's
+// own row, never trusted from this call's own arguments).
+export async function sendClinicalRequestNotification(requestId: string, rawToken: string) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  if (!accessToken) return { error: 'You must be signed in to send this notification.' };
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/hcn-send-clinical-request-notification`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, apikey: anonKey },
+      body: JSON.stringify({ requestId, rawToken }),
+    });
+    const body = await res.json();
+    if (!res.ok || body.error) return { error: (body.error as string) ?? `Notification failed (${res.status})` };
+    return { error: null as string | null, alreadyDelivered: Boolean(body.alreadyDelivered), deliveryFailed: Boolean(body.deliveryFailed) };
+  } catch {
+    return { error: 'Could not reach the server to send this notification.' };
+  }
+}
+
+export const REQUEST_TYPES = [
+  { value: 'medical_documentation', label: 'Medical documentation' },
+  { value: 'therapy_documentation', label: 'Therapy documentation' },
+  { value: 'medication_list_verification', label: 'Medication list verification' },
+  { value: 'discharge_summary', label: 'Discharge summary' },
+  { value: 'clinical_clarification', label: 'Clinical clarification' },
+  { value: 'updated_caregiver_instructions', label: 'Updated caregiver instructions' },
+  { value: 'specialist_assessment', label: 'Specialist assessment' },
+  { value: 'provider_referral', label: 'Provider referral' },
+  { value: 'document_correction_or_replacement', label: 'Document correction or replacement' },
+  { value: 'general_provider_coordination', label: 'General provider coordination' },
+];
+
+export const DOCUMENT_CATEGORIES = [
+  { value: 'medical_records', label: 'Medical records' },
+  { value: 'therapy_reports', label: 'Therapy reports' },
+  { value: 'medication_lists', label: 'Medication lists' },
+  { value: 'discharge_documents', label: 'Discharge documents' },
+  { value: 'care_instructions', label: 'Care instructions' },
+  { value: 'referral_documents', label: 'Referral documents' },
+  { value: 'specialist_assessments', label: 'Specialist assessments' },
+  { value: 'patient_provided_documents', label: 'Patient-provided documents' },
+  { value: 'administrative_coordination', label: 'Administrative coordination' },
+  { value: 'other_clinical_attachment', label: 'Other clinical attachment' },
+];
+
+export const DOCUMENT_CLASSIFICATIONS = [
+  { value: 'general_care_coordination', label: 'General care coordination' },
+  { value: 'caregiver_approved_instructions', label: 'Caregiver-approved instructions' },
+  { value: 'patient_shared_document', label: 'Patient-shared document' },
+  { value: 'restricted_clinical_documentation', label: 'Restricted clinical documentation' },
+  { value: 'specially_protected_documentation', label: 'Specially protected documentation' },
+];
+
+export const PROVIDER_SPECIALTIES = [
+  { value: 'primary_care_physician', label: 'Primary care physician' },
+  { value: 'medical_specialist', label: 'Medical specialist' },
+  { value: 'nurse_practitioner', label: 'Nurse practitioner' },
+  { value: 'physical_therapist', label: 'Physical therapist' },
+  { value: 'occupational_therapist', label: 'Occupational therapist' },
+  { value: 'mental_health_therapist', label: 'Mental health therapist' },
+  { value: 'psychologist', label: 'Psychologist' },
+  { value: 'speech_language_pathologist', label: 'Speech-language pathologist' },
+  { value: 'dietitian_nutritionist', label: 'Dietitian / nutritionist' },
+  { value: 'pharmacist', label: 'Pharmacist' },
+  { value: 'social_worker_care_navigator', label: 'Social worker / care navigator' },
+  { value: 'hospital_clinic', label: 'Hospital or clinic' },
+  { value: 'wound_care_specialist', label: 'Wound care specialist' },
+  { value: 'other', label: 'Other' },
+];

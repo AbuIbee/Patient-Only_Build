@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import {
   Building2, Users, UserPlus, Trash2, LayoutDashboard, UserCog,
   Loader2, CreditCard, ClipboardList, MessageSquare, Link2, Unlink, CalendarClock,
-  ClipboardCheck, ShieldAlert, BarChart3, Settings as SettingsIcon, ChevronRight, CheckCircle2,
+  ClipboardCheck, ShieldAlert, BarChart3, Settings as SettingsIcon, ChevronRight, CheckCircle2, Stethoscope,
 } from 'lucide-react';
 import {
   getMyOrganizations, getOrgMembers, getOrgLicense, getOrgCoveredPatients, closePatientCoverage,
@@ -49,6 +49,7 @@ import HealthcareContacts from '@/components/healthcare/HealthcareContacts';
 import PatientInformation from '@/components/healthcare/PatientInformation';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
 import CareEscalationPanel from './CareEscalationPanel';
+import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
 import DirectorScheduleCalendar from './DirectorScheduleCalendar';
 import DirectorReportBuilder from './DirectorReportBuilder';
@@ -1103,7 +1104,7 @@ function AssignmentsCard({ orgId, members }: {
 // `is_active_org_director()` RLS — no new authorization surface.
 type DirectorNavKey =
   | 'dashboard' | 'overview' | 'applications' | 'staff' | 'patients' | 'assignments' | 'scheduling'
-  | 'operations' | 'incidents' | 'communications' | 'reports' | 'licensing' | 'ownership' | 'settings';
+  | 'operations' | 'incidents' | 'communications' | 'clinical' | 'reports' | 'licensing' | 'ownership' | 'settings';
 
 const DIRECTOR_NAV_ITEMS: OfficeNavItem<DirectorNavKey>[] = [
   { key: 'dashboard', label: 'Director Dashboard', icon: LayoutDashboard },
@@ -1116,6 +1117,7 @@ const DIRECTOR_NAV_ITEMS: OfficeNavItem<DirectorNavKey>[] = [
   { key: 'operations', label: 'Care Operations', icon: ClipboardCheck },
   { key: 'incidents', label: 'Incidents and Escalations', icon: ShieldAlert },
   { key: 'communications', label: 'Care Communications', icon: MessageSquare },
+  { key: 'clinical', label: 'Clinical Coordination', icon: Stethoscope },
   { key: 'reports', label: 'Reports and Insights', icon: BarChart3 },
   { key: 'licensing', label: 'Licensing and Entitlements', icon: CreditCard },
   // MMA-P1-FINAL-CLOSURE Priority 2 — always present in the nav (so the
@@ -1129,7 +1131,7 @@ const DIRECTOR_NAV_ITEMS: OfficeNavItem<DirectorNavKey>[] = [
 ];
 const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ORGANIZATION', items: ['dashboard', 'overview', 'applications', 'staff', 'patients'] },
-  { label: 'CARE OPERATIONS', items: ['assignments', 'scheduling', 'operations', 'incidents', 'communications'] },
+  { label: 'CARE OPERATIONS', items: ['assignments', 'scheduling', 'operations', 'incidents', 'communications', 'clinical'] },
   { label: 'ADMINISTRATION', items: ['reports', 'licensing', 'ownership', 'settings'] },
 ];
 
@@ -1806,6 +1808,8 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
         <div className="space-y-4"><CareEscalationPanel orgId={organizationId} role="director" patients={coveredPatients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><IncidentsView incidents={incidents} onResolved={() => { void refresh(); }} loadError={loadError} /></div>
       ) : nav === 'communications' ? (
         <DirectorCommunicationsView orgId={organizationId} />
+      ) : nav === 'clinical' ? (
+        <ClinicalCoordinationPanel orgId={organizationId} userId={state.currentUser?.id ?? ''} role="director" patients={coveredPatients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
       ) : nav === 'reports' ? (
         <DirectorReportBuilder orgId={organizationId} orgName={orgName} members={members} patients={coveredPatients} />
       ) : nav === 'licensing' ? (

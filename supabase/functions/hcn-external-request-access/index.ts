@@ -45,7 +45,13 @@ async function sendVerificationCodeEmail(email: string, label: string, code: str
     return false;
   }
   try {
-    const res = await fetch('https://api.resend.com/emails', {
+    // RESEND_API_URL defaults to the real Resend endpoint in every real
+    // deployment; it exists only so disposable-stack E2E tests can
+    // point this at a local mock server (Resend has no official test
+    // sandbox endpoint) to verify the real rendered external-provider
+    // UI end-to-end, including actual code delivery -- never set in
+    // production.
+    const res = await fetch(Deno.env.get('RESEND_API_URL') || 'https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({

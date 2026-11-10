@@ -5,6 +5,7 @@ import LoginPage from '@/pages/common/LoginPage';
 import ResetPasswordPage from '@/pages/common/ResetPasswordPage';
 import ActivatePatientPage from '@/pages/common/ActivatePatientPage';
 import PublicPatientIntakePage from '@/pages/common/PublicPatientIntakePage';
+import PublicExternalProviderAccessPage from '@/pages/common/PublicExternalProviderAccessPage';
 import AboutUsPage from '@/pages/common/AboutUsPage';
 import BusinessLandingPage from '@/pages/common/BusinessLandingPage';
 import ProfessionalLandingPage from '@/pages/professional/ProfessionalLandingPage';
@@ -94,6 +95,13 @@ function AppContent() {
   // unchanged — this flag defaults to false and is additive only.
   const isEnterpriseLandingRoute = import.meta.env.VITE_ENTERPRISE_SITE === 'true' && currentPath === '/';
   const isPublicPatientIntakeRoute = currentPath === '/patient-intake';
+  // HCN-CLINICAL-MASTER-002 Feature 2/SEC-001 -- the external
+  // healthcare provider's own no-account access point. The exact path
+  // is NOT a free choice: hcn-send-clinical-request-notification
+  // already hardcodes this link as `${appUrl}/external-request?rt=...`
+  // in every notification email already sent/testable against this
+  // branch, so the route must match that literally.
+  const isExternalClinicalAccessRoute = currentPath === '/external-request';
   const isPrivacyRoute = currentPath === '/privacy';
   const isAboutUsRoute = currentPath === '/about-us';
   // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase C item 1: a separate
@@ -149,7 +157,7 @@ function AppContent() {
   // public routes, which still pass through the ordinary
   // checkingSession/renderContent path.
   const isPublicRoute =
-    isEnterpriseLandingRoute || isPublicPatientIntakeRoute || isPrivacyRoute || isAboutUsRoute || isBusinessRoute || isProfessionalRoute || isLegacyOfficeRoute || isActivationRoute;
+    isEnterpriseLandingRoute || isPublicPatientIntakeRoute || isExternalClinicalAccessRoute || isPrivacyRoute || isAboutUsRoute || isBusinessRoute || isProfessionalRoute || isLegacyOfficeRoute || isActivationRoute;
 
   // Canonicalize a legacy office alias (/admin, /caregiver, /medical,
   // /therapy) to its /Professional/<Office> equivalent BEFORE paint —
@@ -718,6 +726,10 @@ function AppContent() {
 
     if (isPublicPatientIntakeRoute) {
       return <PublicPatientIntakePage />;
+    }
+
+    if (isExternalClinicalAccessRoute) {
+      return <PublicExternalProviderAccessPage />;
     }
 
     // P1 CORRECTIVE ORDER — the one centralized professional entrance.
