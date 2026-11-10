@@ -61,6 +61,10 @@ jobs:
       - name: Run integration tests against the disposable stack (explicit target, never a default)
         run: |
           eval "$(node scripts/disposable_supabase.mjs env | sed 's/^/export /')"
+          # The disposable stack already serves Edge Functions at its own
+          # /functions/v1 endpoint; two HCN HTTP suites require this explicit
+          # fail-closed target rather than an unconfigured URL.
+          export MMA_TEST_FUNCTIONS_BASE="${MMA_TEST_API_BASE}/functions/v1"
           npm run test:integration
       - name: Upload integration test results
         if: ${{ !cancelled() }}
