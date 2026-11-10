@@ -29,8 +29,12 @@ async function seedDirectorWithPatient(label: string) {
 async function cleanup(orgId: string, patientId: string, directorId: string) {
   sql(`
     DELETE FROM hcn_patient_provider_associations WHERE organization_id = '${orgId}';
+    DELETE FROM hcn_clinical_request_documents WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id = '${orgId}');
+    DELETE FROM hcn_document_grants WHERE document_id IN (SELECT id FROM hcn_clinical_documents WHERE organization_id = '${orgId}');
     DELETE FROM hcn_clinical_request_events WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id = '${orgId}');
     DELETE FROM hcn_clinical_requests WHERE organization_id = '${orgId}';
+    DELETE FROM storage.objects WHERE bucket_id = 'hcn-clinical-documents' AND name LIKE '${patientId}/%';
+    DELETE FROM hcn_clinical_documents WHERE organization_id = '${orgId}';
     DELETE FROM hcn_healthcare_providers WHERE organization_id = '${orgId}';
     DELETE FROM covered_patient_memberships WHERE organization_id = '${orgId}';
     DELETE FROM organization_memberships WHERE organization_id = '${orgId}';
@@ -76,6 +80,28 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
     await expect(page.getByText('E2E Director-Created Request')).toBeVisible({ timeout: 15000 });
     const requestCount = sql(`SELECT count(*) FROM hcn_clinical_requests WHERE organization_id='${ctx.orgId}';`);
     expect(requestCount).toBe('1');
+
+    // Workstream C — actual browser upload, request attachment and
+    // Director administrative review on a disposable fictional patient.
+    await page.getByText('E2E Director-Created Request', { exact: true }).click();
+    await expect(page.getByRole('heading', { name: /documents & history/i })).toBeVisible();
+    const uploadInput=page.locator('section[aria-label="Clinical Coordination"] input[type="file"]');
+    await uploadInput.setInputFiles({
+      name:'synthetic-discharge.pdf',
+      mimeType:'application/pdf',
+      buffer:Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF'),
+    });
+    await page.getByRole('button',{name:/^upload$/i}).click();
+    await expect(page.getByText('synthetic-discharge.pdf')).toBeVisible({timeout:20000});
+    const linked=sql("SELECT count(*) FROM hcn_clinical_request_documents rd JOIN hcn_clinical_documents d ON d.id=rd.document_id WHERE rd.request_id='" + 
+      sql("SELECT id FROM hcn_clinical_requests WHERE organization_id='" + ctx.orgId + "' LIMIT 1;") + "' AND rd.direction='uploaded_by_care_team';");
+    expect(linked).toBe('1');
+
+    await page.getByRole('button',{name:/^accept$/i}).click();
+    await expect(page.getByText(/accepted/i).last()).toBeVisible({timeout:15000});
+    const accepted=sql("SELECT review_status FROM hcn_clinical_documents WHERE patient_id='" + ctx.patientId + "' ORDER BY created_at DESC LIMIT 1;");
+    expect(accepted).toBe('accepted');
+
   } finally {
     await cleanup(ctx.orgId, ctx.patientId, ctx.directorId);
   }
