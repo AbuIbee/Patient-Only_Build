@@ -56,6 +56,7 @@ afterAll(async () => {
       DELETE FROM hcn_external_verification_codes WHERE token_id IN (SELECT id FROM hcn_external_access_tokens WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id IN (${orgIds})));
       DELETE FROM hcn_external_verified_sessions WHERE token_id IN (SELECT id FROM hcn_external_access_tokens WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id IN (${orgIds})));
       DELETE FROM hcn_external_access_tokens WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id IN (${orgIds}));
+      DELETE FROM hcn_clinical_reminder_deliveries WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id IN (${orgIds}));
       DELETE FROM hcn_clinical_request_events WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id IN (${orgIds}));
       DELETE FROM hcn_clinical_request_documents WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id IN (${orgIds}));
       DELETE FROM hcn_document_grants WHERE document_id IN (SELECT id FROM hcn_clinical_documents WHERE organization_id IN (${orgIds}));
@@ -236,5 +237,79 @@ describe('HCN-CLINICAL-MASTER-002-CONTINUATION Phase 4 -- Director reporting rec
     const ctxB = await orgWithDirectorAndPatient('report-xorg-b');
     const [status] = await rpc('hcn_get_clinical_coordination_report', { p_organization_id: ctxA.orgId }, ctxB.directorTok);
     expect(status).toBeGreaterThanOrEqual(400);
+  });
+});
+
+
+describe('HCN-CLINICAL-MASTER-002 Workstream B: provider-accepted reminder ledger', () => {
+  it('claims exactly one valid overdue invitation without treating a claim as delivered', async () => {
+    const ctx = await orgWithDirectorAndPatient('delivery-claim');
+    const requestId = await createOverdueSentRequest(ctx, 'delivery-claim');
+    const [claimStatus, first] = (await rpc('hcn_claim_due_clinical_reminders',
+      { p_cooldown_hours: 24, p_batch_size: 25 }, SERVICE)) as
+      [number, { attempt_id: string; request_id: string; recipient_email: string }[]];
+    expect(claimStatus).toBe(200);
+    const row = first.find((r) => r.request_id === requestId);
+    expect(row?.attempt_id).toBeTruthy();
+    expect(row?.recipient_email).toMatch(/@example-clinic\.test$/);
+    const falseSentCount = sql("SELECT count(*) FROM hcn_clinical_request_events WHERE request_id='" +
+      requestId + "' AND event_type='reminder_sent';");
+    expect(falseSentCount).toBe('0');
+
+    const [, repeated] = (await rpc('hcn_claim_due_clinical_reminders',
+      { p_cooldown_hours: 24, p_batch_size: 25 }, SERVICE)) as
+      [number, { request_id: string }[]];
+    expect(repeated.some((r) => r.request_id === requestId)).toBe(false);
+
+    const [failureStatus, markedFailed] = await rpc('hcn_complete_clinical_reminder', {
+      p_attempt_id: row!.attempt_id, p_accepted: false,
+      p_message_id: null, p_error_code: 'synthetic_failure',
+    }, SERVICE);
+    expect(failureStatus).toBe(200);
+    expect(markedFailed).toBe(true);
+    expect(sql("SELECT count(*) FROM hcn_clinical_request_events WHERE request_id='" +
+      requestId + "' AND event_type='reminder_sent';")).toBe('0');
+    expect(sql("SELECT count(*) FROM hcn_clinical_request_events WHERE request_id='" +
+      requestId + "' AND event_type='reminder_failed';")).toBe('1');
+
+    const [, soon] = (await rpc('hcn_claim_due_clinical_reminders',
+      { p_cooldown_hours: 24, p_batch_size: 25 }, SERVICE)) as
+      [number, { request_id: string }[]];
+    expect(soon.some((r) => r.request_id === requestId)).toBe(false);
+
+    // Fast-forward only this synthetic attempt to permit a bounded retry.
+    sql("UPDATE hcn_clinical_reminder_deliveries SET finished_at=now()-interval '2 hours' WHERE id='" + row!.attempt_id + "';");
+    const [, retry] = (await rpc('hcn_claim_due_clinical_reminders',
+      { p_cooldown_hours: 24, p_batch_size: 25 }, SERVICE)) as
+      [number, { attempt_id: string; request_id: string }[]];
+    const retried = retry.find((r) => r.request_id === requestId);
+    expect(retried?.attempt_id).toBeTruthy();
+    expect(retried!.attempt_id).not.toBe(row!.attempt_id);
+    const [, accepted] = await rpc('hcn_complete_clinical_reminder', {
+      p_attempt_id: retried!.attempt_id, p_accepted: true,
+      p_message_id: 'synthetic-resend-id', p_error_code: null,
+    }, SERVICE);
+    expect(accepted).toBe(true);
+    expect(sql("SELECT count(*) FROM hcn_clinical_request_events WHERE request_id='" +
+      requestId + "' AND event_type='reminder_sent';")).toBe('1');
+    const [, duplicate] = await rpc('hcn_complete_clinical_reminder', {
+      p_attempt_id: retried!.attempt_id, p_accepted: true,
+      p_message_id: 'synthetic-resend-id', p_error_code: null,
+    }, SERVICE);
+    expect(duplicate).toBe(false);
+    const [, cooled] = (await rpc('hcn_claim_due_clinical_reminders',
+      { p_cooldown_hours: 24, p_batch_size: 25 }, SERVICE)) as
+      [number, { request_id: string }[]];
+    expect(cooled.some((r) => r.request_id === requestId)).toBe(false);
+  });
+
+  it('does not claim explicitly revoked request access', async () => {
+    const ctx = await orgWithDirectorAndPatient('delivery-revoked');
+    const id = await createOverdueSentRequest(ctx, 'delivery-revoked');
+    await rpc('hcn_revoke_clinical_request_access', { p_request_id: id }, ctx.directorTok);
+    const [, claimed] = (await rpc('hcn_claim_due_clinical_reminders',
+      { p_cooldown_hours: 24, p_batch_size: 25 }, SERVICE)) as
+      [number, { request_id: string }[]];
+    expect(claimed.some((r) => r.request_id === id)).toBe(false);
   });
 });
