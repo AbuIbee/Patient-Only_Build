@@ -39,4 +39,29 @@ select cron.schedule(
 To stop it: `select cron.unschedule('hcn-process-clinical-reminders');`
 To check its run history: `select * from cron.job_run_details where jobid = (select jobid from cron.job where jobname = 'hcn-process-clinical-reminders') order by start_time desc;`
 
-**Before activating:** confirm `RESEND_API_KEY` is configured if any future enhancement adds live email sending (today's worker only records events — no email is sent by this worker at all, so "no PHI through Resend" holds trivially); confirm `pg_cron`/`pg_net` are enabled on the production project (`create extension if not exists pg_cron;` / `pg_net;` — both standard, no approval beyond normal migration review needed); pick a cadence that matches the real support team's response-time expectations.
+**Before activating:** verify `RESEND_API_KEY` with a controlled non-PHI test email; confirm `pg_cron`/`pg_net` are enabled on the production project (`create extension if not exists pg_cron;` / `pg_net;` — both standard, no approval beyond normal migration review needed); pick a cadence that matches the real support team's response-time expectations.
+
+## Updated delivery semantics — 2026-11-10
+
+The current hcn-process-clinical-reminders Edge Function now sends actual generic, non-PHI emails.
+The newer delivery ledger records `reminder_sent` only after Resend accepts the email;
+`reminder_failed` represents a failed delivery attempt, subject to bounded retries.
+The local cron demonstration documented above predates this change and proves scheduler
+execution only. It is not proof of email delivery or mailbox receipt.
+
+The SQL shown above is an illustration, NOT a directly deployable job.
+Never paste a literal service-role key into SQL history, migration scripts,
+cron.job, CI logs, or GitHub source. Resolve a worker credential server-side
+using narrowly privileged encrypted-secret storage (e.g. Supabase Vault)
+or a dedicated worker-only credential configured in both the scheduler and
+Edge Function. The connected tools do not currently expose secret installation,
+so activating the production scheduled job is BLOCKED until a protected
+credential path is available and verified.
+
+Do not schedule the legacy event-only RPC. Schedule only the audited
+`hcn-process-clinical-reminders` Edge Function after completing the
+real email test, receipt check, revocation and expiry tests.
+
+Operational evidence: `cron.job_run_details`, `hcn_clinical_reminder_deliveries`,
+`hcn_clinical_request_events`, and the Resend Logs. An API response
+from Resend proves acceptance by the provider, not inbox delivery.
