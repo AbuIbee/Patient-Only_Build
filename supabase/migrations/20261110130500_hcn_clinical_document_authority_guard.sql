@@ -66,7 +66,21 @@ BEGIN
   END IF;
 
   IF v_doc.classification IN ('general_care_coordination', 'caregiver_approved_instructions', 'patient_shared_document') THEN
-    RETURN public.has_patient_access(v_doc.patient_id);
+    -- Directors/Owners oversee all currently covered patients of their
+    -- organization even without an explicit staff_patient_assignments row.
+    RETURN public.has_patient_access(v_doc.patient_id)
+      OR (
+        (public.is_active_org_director(v_doc.organization_id)
+          OR public.is_organization_owner(v_doc.organization_id))
+        AND EXISTS (
+          SELECT 1 FROM public.covered_patient_memberships c
+          JOIN public.organization_licenses l ON l.organization_id = c.organization_id
+          WHERE c.organization_id = v_doc.organization_id
+            AND c.patient_id = v_doc.patient_id
+            AND c.status = 'active'
+            AND l.status = 'active'
+        )
+      );
   END IF;
 
   IF v_doc.classification = 'restricted_clinical_documentation' THEN
