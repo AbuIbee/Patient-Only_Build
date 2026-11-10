@@ -71,7 +71,14 @@ jobs:
       run: npm ci
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps
+    - name: Start local mock Resend for external-provider browser tests
+      run: |
+        node tests/e2e_support/mockResendServer.mjs > /tmp/hcn_mock_resend.log 2>&1 &
+        echo $! > /tmp/hcn_mock_resend.pid
+        npx wait-on http-get://127.0.0.1:8999/last-email?to=healthcheck
     - name: Start disposable Supabase stack
+      env:
+        MMA_TEST_MOCK_RESEND: '1'
       run: node scripts/disposable_supabase.mjs start
     - name: Build and serve the frontend against the disposable stack
       run: |
@@ -93,6 +100,7 @@ jobs:
           tests/e2e_hcn_coordination_plan_ui.spec.ts \
           tests/e2e_hcn_director_clinical_coordination.spec.ts \
           tests/e2e_hcn_caregiver_clinical_role_views.spec.ts \
+          tests/e2e_hcn_external_provider_access.spec.ts \
           tests/e2e_hcn_edge_storage_denied.spec.ts \
           tests/e2e_application_correction_flow.spec.ts \
           tests/e2e_director_application_wizard.spec.ts \
@@ -112,6 +120,7 @@ jobs:
       run: |
         kill "$(cat /tmp/vite_preview.pid)" 2>/dev/null || true
         node scripts/disposable_supabase.mjs stop
+        kill "$(cat /tmp/hcn_mock_resend.pid)" 2>/dev/null || true
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:

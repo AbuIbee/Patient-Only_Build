@@ -158,7 +158,20 @@ function start() {
     // see the comment on TEST_FRONTEND_PORT above. Written only into
     // this throwaway workdir's own copy, never into the repo's actual
     // supabase/functions/.
-    writeFileSync(join(WORKDIR, 'supabase', 'functions', '.env'), `APP_URL=http://127.0.0.1:${TEST_FRONTEND_PORT}\n`);
+    // The mock Resend URL is available ONLY when the disposable
+    // Playwright job explicitly opts in. No production key is copied.
+    // Supabase's local Edge runtime runs in Docker; host.docker.internal
+    // resolves the host test server, while the browser reads its
+    // captured messages at http://127.0.0.1:8999.
+    const edgeEnv = [
+      `APP_URL=http://127.0.0.1:${TEST_FRONTEND_PORT}`,
+      ...(process.env.MMA_TEST_MOCK_RESEND === '1' ? [
+        'RESEND_API_KEY=HCN_LOCAL_MOCK_ONLY',
+        'RESEND_API_URL=http://host.docker.internal:8999/emails',
+        'RESEND_FROM_ADDRESS=Haneen Test <notifications@haneencarenetwork.com>',
+      ] : []),
+    ].join('\\n') + '\\n';
+    writeFileSync(join(WORKDIR, 'supabase', 'functions', '.env'), edgeEnv);
   }
   const seedPath = join(REPO_ROOT, 'supabase', 'seed.sql');
   if (existsSync(seedPath)) cpSync(seedPath, join(WORKDIR, 'supabase', 'seed.sql'));
