@@ -3,8 +3,9 @@ import { toast } from 'sonner';
 import { CheckCircle2, ClipboardCheck, Download, ListChecks, RefreshCw } from 'lucide-react';
 import {
   type CoordinationTask, type CoordinationTaskKind, type EligiblePlanStaff, type ClinicalDocument,
+  type CoordinationPlanParticipant,
   getCoordinationTasks, getCoordinationTaskDependencies, getInstructionAcknowledgements,
-  getEligiblePlanStaff, getDocumentsForPatient, getCoordinationPlanParticipants,
+  getEligiblePlanStaff, getDocumentsForPatient,
   getAuthorizedClinicalDocument, getSignedDownloadUrl, createCoordinationTask,
   setCoordinationTaskStatus, reviewCoordinationTask, acknowledgeCoordinationInstruction,
 } from '@/services/hcnClinicalCoordinationService';
@@ -19,6 +20,12 @@ import {
 type Props = {
   planId: string; patientId: string; userId: string;
   role: 'director' | 'caregiver' | 'clinical'; active: boolean;
+  // Owned by the parent (ClinicalCoordinationPanel), which already
+  // refetches this on every participant add/remove -- passed down
+  // rather than independently refetched here so a newly added
+  // participant is immediately assignable, instead of only appearing
+  // after this panel's own unrelated refresh() happens to re-run.
+  planParticipants: CoordinationPlanParticipant[];
 };
 const TYPES: { value: CoordinationTaskKind; label: string }[] = [
   { value: 'medical_review', label: 'Medical review' },
@@ -31,11 +38,14 @@ const EMPTY_FORM = {
   assigneeId: '', dueAt: '', sourceDocumentId: '', dependencyIds: [] as string[],
 };
 
-export default function CoordinationTasksPanel({ planId, patientId, userId, role, active }: Props) {
+export default function CoordinationTasksPanel({ planId, patientId, userId, role, active, planParticipants }: Props) {
   const [tasks, setTasks] = useState<CoordinationTask[]>([]);
   const [dependencies, setDependencies] = useState<Record<string, string[]>>({});
   const [staff, setStaff] = useState<EligiblePlanStaff[]>([]);
-  const [currentPlanMemberIds, setCurrentPlanMemberIds] = useState<string[]>([]);
+  const currentPlanMemberIds = planParticipants
+    .filter((member) => member.participantType === 'internal_user' && !member.removedAt)
+    .map((member) => member.participantUserId)
+    .filter((id): id is string => Boolean(id));
   const [openedInstructions, setOpenedInstructions] = useState<string[]>([]);
   const [documents, setDocuments] = useState<ClinicalDocument[]>([]);
   const [acknowledged, setAcknowledged] = useState<string[]>([]);
@@ -50,25 +60,20 @@ export default function CoordinationTasksPanel({ planId, patientId, userId, role
     setLoading(true);
     setLoadError('');
     try {
-      const [taskResponse, dependencyResponse, ackResponse, staffResponse, docsResponse, participantResponse] = await Promise.all([
+      const [taskResponse, dependencyResponse, ackResponse, staffResponse, docsResponse] = await Promise.all([
         getCoordinationTasks(planId),
         getCoordinationTaskDependencies(planId),
         getInstructionAcknowledgements(planId),
         role === 'director' ? getEligiblePlanStaff(planId) : Promise.resolve({ data: [] as EligiblePlanStaff[], error: null }),
         role === 'director' ? getDocumentsForPatient(patientId) : Promise.resolve({ data: [] as ClinicalDocument[], error: null }),
-        role === 'director' ? getCoordinationPlanParticipants(planId) : Promise.resolve({ data: [], error: null }),
       ]);
       const failure = taskResponse.error || dependencyResponse.error || ackResponse.error || staffResponse.error ||
-        docsResponse.error || participantResponse.error;
+        docsResponse.error;
       if (failure) throw new Error(failure);
       setTasks(taskResponse.data ?? []);
       setDependencies(dependencyResponse.data ?? {});
       setAcknowledged(ackResponse.data ?? []);
       setStaff(staffResponse.data ?? []);
-      setCurrentPlanMemberIds((participantResponse.data ?? [])
-        .filter((member) => member.participantType === 'internal_user' && !member.removedAt)
-        .map((member) => member.participantUserId)
-        .filter((id): id is string => Boolean(id)));
       setDocuments(docsResponse.data ?? []);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Unable to load coordination tasks.');
@@ -79,7 +84,7 @@ export default function CoordinationTasksPanel({ planId, patientId, userId, role
 
   useEffect(() => {
     setTasks([]); setDependencies({}); setAcknowledged([]);
-    setCurrentPlanMemberIds([]); setOpenedInstructions([]);
+    setOpenedInstructions([]);
     setForm(EMPTY_FORM); setResultNotes({});
     void refresh();
   }, [refresh]);

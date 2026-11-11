@@ -726,7 +726,8 @@ export default function ClinicalCoordinationPanel({
             )}
 
             <CoordinationTasksPanel planId={selectedPlan.id} patientId={selectedPlan.patientId}
-              userId={userId} role={role} active={selectedPlan.status === 'active'} />
+              userId={userId} role={role} active={selectedPlan.status === 'active'}
+              planParticipants={planParticipants} />
 
             <div>
               <h5 className="text-xs font-semibold text-ent-muted mb-1">Shared timeline</h5>

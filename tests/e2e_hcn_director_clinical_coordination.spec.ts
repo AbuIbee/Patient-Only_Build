@@ -5,7 +5,8 @@
 // Coordination" nav item, real provider creation and clinical request
 // creation through the actual rendered form controls.
 import { test, expect } from '@playwright/test';
-import { authSignUp, authDeleteUser, sql } from './integration/_runtime';
+import { createClient } from '@supabase/supabase-js';
+import { authSignUp, authDeleteUser, sql, BASE, SERVICE } from './integration/_runtime';
 
 const frontendBase = process.env.MMA_E2E_FRONTEND_BASE;
 const ready = Boolean(frontendBase && process.env.MMA_TEST_API_BASE && process.env.MMA_TEST_DB_CONTAINER);
@@ -27,13 +28,22 @@ async function seedDirectorWithPatient(label: string) {
 }
 
 async function cleanup(orgId: string, patientId: string, directorId: string) {
+  // Direct `DELETE FROM storage.objects` is blocked by Supabase Storage's
+  // own protective trigger even for the postgres superuser (confirmed
+  // live elsewhere in this codebase -- see supabase/migrations/101_r28_...
+  // and tests/integration/credentialDocumentPurge.test.ts). Fetch the
+  // storage_path values from their owning metadata rows BEFORE that row
+  // is deleted below, then remove the underlying objects through the
+  // Storage API itself, the same established pattern used there.
+  const pathList = sql(
+    `SELECT string_agg(storage_path, '|') FROM hcn_clinical_documents WHERE organization_id = '${orgId}';`,
+  );
   sql(`
     DELETE FROM hcn_patient_provider_associations WHERE organization_id = '${orgId}';
     DELETE FROM hcn_clinical_request_documents WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id = '${orgId}');
     DELETE FROM hcn_document_grants WHERE document_id IN (SELECT id FROM hcn_clinical_documents WHERE organization_id = '${orgId}');
     DELETE FROM hcn_clinical_request_events WHERE request_id IN (SELECT id FROM hcn_clinical_requests WHERE organization_id = '${orgId}');
     DELETE FROM hcn_clinical_requests WHERE organization_id = '${orgId}';
-    DELETE FROM storage.objects WHERE bucket_id = 'hcn-clinical-documents' AND name LIKE '${patientId}/%';
     DELETE FROM hcn_clinical_documents WHERE organization_id = '${orgId}';
     DELETE FROM hcn_healthcare_providers WHERE organization_id = '${orgId}';
     DELETE FROM covered_patient_memberships WHERE organization_id = '${orgId}';
@@ -42,6 +52,9 @@ async function cleanup(orgId: string, patientId: string, directorId: string) {
     DELETE FROM organizations WHERE id = '${orgId}';
     DELETE FROM patients WHERE id = '${patientId}';
   `);
+  if (pathList) {
+    await createClient(BASE, SERVICE).storage.from('hcn-clinical-documents').remove(pathList.split('|'));
+  }
   await authDeleteUser(directorId);
 }
 
