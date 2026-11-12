@@ -78,6 +78,32 @@ export async function getProviders(orgId: string) {
   return { data: (data ?? []).map((r) => mapProvider(r as unknown as Record<string, unknown>)), error: null as string | null };
 }
 
+export type ProviderPatientAssociation = {
+  id: string;
+  providerId: string;
+  patientId: string;
+};
+
+/** Tenant-scoped, active associations. Only the Director directory calls this;
+ * patient names come from the already authorized covered-patient list.
+ */
+export async function getProviderPatientAssociations(orgId: string) {
+  const { data, error } = await supabase
+    .from('hcn_patient_provider_associations')
+    .select('id, provider_id, patient_id')
+    .eq('organization_id', orgId)
+    .eq('is_active', true);
+  if (error) return { data: null as ProviderPatientAssociation[] | null, error: err(error, 'Unable to load provider-patient associations') };
+  return {
+    data: (data ?? []).map((row) => ({
+      id: row.id as string,
+      providerId: row.provider_id as string,
+      patientId: row.patient_id as string,
+    })),
+    error: null as string | null,
+  };
+}
+
 export async function upsertProvider(orgId: string, input: {
   providerId?: string | null; displayName: string; professionalTitle: string | null; specialty: string;
   specialtyOtherLabel: string | null; practiceName: string | null; officePhone: string | null; faxNumber: string | null;
