@@ -44,7 +44,7 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
   test.skip(!READY, 'Requires explicitly configured disposable Supabase and frontend');
   const ctx = await seed();
   try {
-    await page.goto(`${FRONTEND}/Professional`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${FRONTEND}/Professional/Admin`, { waitUntil: 'domcontentloaded' });
     await page.getByPlaceholder('you@example.com').fill(ctx.email);
     await page.getByPlaceholder('Your password').fill(PASSWORD);
     await page.getByRole('button', { name: /sign in/i }).click();
