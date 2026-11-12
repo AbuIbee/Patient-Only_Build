@@ -143,3 +143,31 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.hcn_list_provider_thread_documents(uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.hcn_list_provider_thread_documents(uuid) TO authenticated;
+
+
+-- Storage INSERT checks hcn_clinical_documents through caller RLS;
+-- permit ONLY the active verified provider's own documented upload metadata.
+CREATE POLICY "Verified provider reads own patient-scoped uploaded metadata"
+  ON public.hcn_clinical_documents FOR SELECT TO authenticated
+  USING (
+    uploaded_by=(SELECT auth.uid())
+    AND EXISTS (
+      SELECT 1 FROM public.hcn_provider_thread_documents td
+      WHERE td.document_id=id
+        AND public.hcn_is_authenticated_provider_for_thread(td.thread_id)
+    )
+  );
+
+CREATE POLICY "Verified provider downloads own finalized clinical upload"
+  ON storage.objects FOR SELECT TO authenticated
+  USING (
+    bucket_id='hcn-clinical-documents'
+    AND EXISTS (
+      SELECT 1 FROM public.hcn_clinical_documents d
+      JOIN public.hcn_provider_thread_documents td ON td.document_id=d.id
+      WHERE d.storage_path=storage.objects.name
+        AND d.uploaded_by=(SELECT auth.uid())
+        AND td.upload_state='ready'
+        AND public.hcn_is_authenticated_provider_for_thread(td.thread_id)
+    )
+  );
