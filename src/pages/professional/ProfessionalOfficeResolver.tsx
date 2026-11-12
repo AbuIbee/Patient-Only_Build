@@ -24,6 +24,8 @@ import SelfServiceApplicationFlow from './SelfServiceApplicationFlow';
 import { PendingInvitesBanner } from '@/pages/enterprise/EnterpriseDashboardRouter';
 import EnterpriseCaregiverDashboard from '@/pages/enterprise/EnterpriseCaregiverDashboard';
 import ClinicalOfficeDashboard from '@/pages/enterprise/ClinicalOfficeDashboard';
+import ProviderInbox from '@/pages/enterprise/HcnProviderInbox';
+import { getClaimableProviders, type ClaimableProvider } from '@/services/hcnProviderMessagingService';
 import EnterprisePatientDashboard from '@/pages/patient/EnterprisePatientDashboard';
 import PatientLayout from '@/pages/patient/PatientLayout';
 import { shouldRenderHaneenClassicPatientPortal } from '@/pages/patient/shouldRenderHaneenClassicPatientPortal';
@@ -130,13 +132,13 @@ function RedeemInvitationSection({ onApplicationStarted }: { onApplicationStarte
   );
 }
 
-export type ProfessionalOfficeKey = 'admin' | 'caregiver' | 'medical' | 'therapy' | 'patient';
+export type ProfessionalOfficeKey = 'admin' | 'caregiver' | 'medical' | 'therapy' | 'patient' | 'provider';
 
 const OFFICE_SEGMENT: Record<ProfessionalOfficeKey, string> = {
-  admin: 'Admin', caregiver: 'Caregiver', medical: 'Medical', therapy: 'Therapy', patient: 'Patient',
+  admin: 'Admin', caregiver: 'Caregiver', medical: 'Medical', therapy: 'Therapy', patient: 'Patient', provider: 'Provider',
 };
 const OFFICE_LABEL: Record<ProfessionalOfficeKey, string> = {
-  admin: 'Admin / Director', caregiver: 'Enterprise Caregiver', medical: 'Medical Professional', therapy: 'Therapist Professional', patient: 'Enterprise Patient',
+  admin: 'Admin / Director', caregiver: 'Enterprise Caregiver', medical: 'Medical Professional', therapy: 'Therapist Professional', patient: 'Enterprise Patient', provider: 'Verified External Provider',
 };
 // Priority order when no office is explicitly requested in the URL and
 // the signed-in user holds more than one — identical ordering to
@@ -144,7 +146,7 @@ const OFFICE_LABEL: Record<ProfessionalOfficeKey, string> = {
 // therapist > medical > caregiver), with Enterprise patient appended
 // last since it is the newly-added fifth dimension and no existing
 // behavior ever ranked it.
-const PRIORITY_ORDER: ProfessionalOfficeKey[] = ['admin', 'therapy', 'medical', 'caregiver', 'patient'];
+const PRIORITY_ORDER: ProfessionalOfficeKey[] = ['admin', 'therapy', 'medical', 'caregiver', 'provider', 'patient'];
 
 function parseRequestedOffice(): ProfessionalOfficeKey | null {
   const segments = window.location.pathname.split('/').filter(Boolean); // ['Professional', 'Admin', ...]
@@ -354,17 +356,20 @@ export default function ProfessionalOfficeResolver() {
   const [myApplication, setMyApplication] = useState<ProfessionalApplication | null>(null);
   const [pendingInvites, setPendingInvites] = useState<PendingOrgInvite[]>([]);
   const [licenseBlocked, setLicenseBlocked] = useState<LicenseBlockedMembership[]>([]);
+  const [providerAccounts, setProviderAccounts] = useState<ClaimableProvider[]>([]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [o, subjectResult, app, invites, blocked] = await Promise.all([
+    const [o, subjectResult, app, invites, blocked, providerList] = await Promise.all([
       getMyOrganizations(), supabase.rpc('get_my_patient_office_subject'), getMyApplication(), getMyPendingOrgInvites(), getMyLicenseBlockedMemberships(),
+      getClaimableProviders().catch(() => [] as ClaimableProvider[]),
     ]);
     setOrgs(o);
     setPatientOfficeSubjectId(typeof subjectResult.data === 'string' ? subjectResult.data : null);
     setMyApplication(app);
     setPendingInvites(invites);
     setLicenseBlocked(blocked);
+    setProviderAccounts(providerList);
     setLoading(false);
   }, []);
 
@@ -404,6 +409,7 @@ export default function ProfessionalOfficeResolver() {
     ...(medical ? [{ key: 'medical' as const, orgName: medical.organizationName }] : []),
     ...(caregiver ? [{ key: 'caregiver' as const, orgName: caregiver.organizationName }] : []),
     ...(patientOfficeSubjectId ? [{ key: 'patient' as const, orgName: 'Your Care Organization' }] : []),
+    ...(providerAccounts.length ? [{ key: 'provider' as const, orgName: providerAccounts[0].organizationName }] : []),
   ];
 
   if (availableOffices.length === 0) {
@@ -535,6 +541,7 @@ export default function ProfessionalOfficeResolver() {
       {effective === 'medical' && <ClinicalOfficeDashboard filterRole="medical_professional" basePath={officeBasePath} />}
       {effective === 'therapy' && <ClinicalOfficeDashboard filterRole="therapist" basePath={officeBasePath} />}
       {effective === 'patient' && patientOfficeSubjectId && <EnterprisePatientDashboard basePath={officeBasePath} subjectPatientId={patientOfficeSubjectId} />}
+      {effective === 'provider' && state.currentUser?.id && <ProviderInbox userId={state.currentUser.id} />}
     </div>
   );
 }
