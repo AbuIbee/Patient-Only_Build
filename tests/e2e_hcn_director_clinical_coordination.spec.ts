@@ -82,11 +82,12 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
     // Create a clinical request through the real form. The Clinical
     // Requests section's own patient/provider selects appear earlier
     // in the DOM than the (separate) Coordination Plans section's own
-    // patient select -- .first() disambiguates deliberately rather
-    // than relying on an incidental count.
+    // patient select -- scope to the Clinical Requests region so a new
+    // conversation panel cannot steal the wrong dropdown.
     await page.getByRole('button', { name: /^new request$/i }).click();
-    await page.locator('select').filter({ hasText: 'Select patient…' }).first().selectOption({ index: 1 });
-    await page.locator('select').filter({ hasText: 'Select provider…' }).first().selectOption({ index: 1 });
+    const clinicalRequestSection = page.getByRole('region', { name: 'Clinical Requests' });
+    await clinicalRequestSection.locator('select').filter({ hasText: 'Select patient…' }).selectOption({ index: 1 });
+    await clinicalRequestSection.locator('select').filter({ hasText: 'Select provider…' }).selectOption({ index: 1 });
     await page.getByPlaceholder('Title').fill('E2E Director-Created Request');
     await page.getByRole('button', { name: /create as draft/i }).click();
 
