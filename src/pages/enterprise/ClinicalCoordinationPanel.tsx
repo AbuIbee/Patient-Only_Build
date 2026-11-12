@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import CoordinationTasksPanel from '@/components/healthcare/CoordinationTasksPanel';
+import { DirectorProviderConversations } from '@/pages/enterprise/HcnProviderInbox';
+import { listOrgProviderAccounts, decideProviderAccount } from '@/services/hcnProviderMessagingService';
 import { getVisibleClinicalProviderResponses, summarizeClinicalActivity } from '@/services/hcnClinicalRequestResponsePresentation';
 import { Stethoscope, RefreshCw, Send, Download, Upload, UserPlus, ShieldCheck, Users } from 'lucide-react';
 import {
@@ -53,6 +55,7 @@ export default function ClinicalCoordinationPanel({
 }) {
   const [providers, setProviders] = useState<HealthcareProvider[]>([]);
   const [providerAssociations, setProviderAssociations] = useState<ProviderPatientAssociation[]>([]);
+  const [providerAccounts, setProviderAccounts] = useState<{provider_id:string;status:string;user_id:string}[]>([]);
   const [associationLoadError, setAssociationLoadError] = useState<string | null>(null);
   const [requests, setRequests] = useState<ClinicalRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,6 +112,8 @@ export default function ClinicalCoordinationPanel({
         const associations = await getProviderPatientAssociations(orgId);
         setAssociationLoadError(associations.error);
         setProviderAssociations(associations.data ?? []);
+        try { setProviderAccounts(await listOrgProviderAccounts(orgId)); }
+        catch (e) { setError(e instanceof Error ? e.message : 'Provider account status could not load'); }
         const rep = await getClinicalCoordinationReport(orgId);
         if (!rep.error) setReport(rep.data);
         const metrics = await getCoordinationTaskMetrics(orgId);
@@ -278,6 +283,21 @@ export default function ClinicalCoordinationPanel({
       toast.success('Provider associated with patient.');
       await refresh();
     } finally { setBusy(false); }
+  };
+
+  const decideProvider = async (providerId: string, approve: boolean) => {
+    const evidence = window.prompt(approve
+      ? 'Describe the provider identity and professional credential verification evidence (at least 12 characters):'
+      : 'Reason for rejecting this provider account (at least 12 characters):');
+    if (evidence === null) return;
+    if (evidence.trim().length < 12) { toast.error('A justification of at least 12 characters is required.'); return; }
+    setBusy(true);
+    try {
+      await decideProviderAccount(providerId, approve, evidence.trim());
+      toast.success(approve ? 'Provider account activated after approval.' : 'Provider account rejected.');
+      await refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not decide provider account'); }
+    finally { setBusy(false); }
   };
 
   const submitNewRequest = async () => {
@@ -522,6 +542,7 @@ export default function ClinicalCoordinationPanel({
               <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-sm border-b border-ent-line/50 pb-2">
                 <div className="min-w-0">
                   <span>{p.displayName} <span className="text-ent-muted">({PROVIDER_SPECIALTIES.find((s) => s.value === p.specialty)?.label ?? p.specialty})</span></span>
+                  {role === 'director' && <p className="text-xs text-ent-muted mt-1">Account: {providerAccounts.find(a=>a.provider_id===p.id)?.status ?? 'Not claimed'}</p>}
                   {role === 'director' && (
                     <p className="text-xs text-ent-muted mt-1 whitespace-normal break-words"
                       aria-label={`Associated patients for ${p.displayName}`}>
@@ -539,6 +560,14 @@ export default function ClinicalCoordinationPanel({
                 </div>
                 {role === 'director' && (
                   <div className="flex flex-wrap items-center gap-2">
+                    {providerAccounts.find(a=>a.provider_id===p.id)?.status==='pending' && (
+                      <button type="button" disabled={busy} className="rounded border border-ent-green px-2 py-1 text-xs"
+                        onClick={()=>{void decideProvider(p.id,true);}}>Verify &amp; approve account</button>
+                    )}
+                    {providerAccounts.find(a=>a.provider_id===p.id)?.status==='pending' && (
+                      <button type="button" disabled={busy} className="rounded border border-ent-line px-2 py-1 text-xs"
+                        onClick={()=>{void decideProvider(p.id,false);}}>Reject</button>
+                    )}
                     <button type="button" disabled={busy} className="rounded border border-ent-line px-2 py-1 text-xs"
                       onClick={() => editProvider(p)}>Edit</button>
                     <button type="button" disabled={busy} className="rounded border border-ent-line px-2 py-1 text-xs"
@@ -557,6 +586,11 @@ export default function ClinicalCoordinationPanel({
           </ul>
         )}
       </div>
+
+      {role === 'director' && (
+        <DirectorProviderConversations organizationId={orgId} userId={userId}
+          patients={patients} providers={providers} />
+      )}
 
       {/* Request list */}
       <div className="rounded-xl border border-ent-line p-3 space-y-3">
