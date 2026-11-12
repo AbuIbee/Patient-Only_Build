@@ -62,13 +62,14 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
   test.skip(!ready, 'Requires an explicitly configured disposable stack + frontend target');
   const ctx = await seedDirectorWithPatient('nav');
   try {
-    await page.goto(`${frontendBase}/Professional`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${frontendBase}/Professional/Admin`, { waitUntil: 'domcontentloaded' });
     await page.getByPlaceholder('you@example.com').fill(ctx.email);
     await page.getByPlaceholder('Your password').fill(PW);
     await page.getByRole('button', { name: /sign in/i }).click();
 
-    await expect(page.getByText('Clinical Coordination')).toBeVisible({ timeout: 20000 });
-    await page.getByText('Clinical Coordination').click();
+    const directorNav = page.getByRole('navigation', { name: 'ADMIN OFFICE navigation' });
+    await expect(directorNav.getByRole('button', { name: 'Clinical Coordination' })).toBeVisible({ timeout: 20000 });
+    await directorNav.getByRole('button', { name: 'Clinical Coordination' }).click();
 
     await expect(page.getByRole('heading', { name: 'Clinical Coordination' })).toBeVisible({ timeout: 15000 });
 
