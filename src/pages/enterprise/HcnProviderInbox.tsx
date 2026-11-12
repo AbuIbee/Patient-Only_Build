@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { reviewClinicalDocument } from '@/services/hcnClinicalCoordinationService';
 import {
   claimProviderAccount, getClaimableProviders, listProviderThreads,
   openProviderThread, listProviderMessages, postProviderMessage,
-  listProviderSharedDocuments, getProviderDocumentDownloadUrl,
+  listProviderSharedDocuments, getProviderDocumentDownloadUrl, listProviderThreadDocuments,
+  uploadProviderThreadDocument, type ProviderThreadDocument,
   type ClaimableProvider, type ProviderThread, type ProviderMessage, type SharedProviderDocument,
 } from '@/services/hcnProviderMessagingService';
 
@@ -15,20 +17,24 @@ export function ProviderConversation({
 }: { threadId: string; userId: string; providerView?: boolean }) {
   const [messages, setMessages] = useState<ProviderMessage[]>([]);
   const [sharedDocs, setSharedDocs] = useState<SharedProviderDocument[]>([]);
+  const [providerUploads,setProviderUploads] = useState<ProviderThreadDocument[]>([]);
+  const [selectedFile,setSelectedFile] = useState<File | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement|null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const refresh = useCallback(async () => {
     try {
-      const [msgs,docs] = await Promise.all([
+      const [msgs,docs,uploads] = await Promise.all([
         listProviderMessages(threadId),
         providerView ? listProviderSharedDocuments(threadId) : Promise.resolve([] as SharedProviderDocument[]),
+        listProviderThreadDocuments(threadId),
       ]);
-      setMessages(msgs); setSharedDocs(docs); setError('');
+      setMessages(msgs); setSharedDocs(docs); setProviderUploads(uploads); setError('');
     } catch (e) {
       // Fail closed when authorization is revoked or the account expires:
       // do not retain previously fetched clinical messages/documents in DOM.
-      setMessages([]); setSharedDocs([]);
+      setMessages([]); setSharedDocs([]); setProviderUploads([]);
       setError(e instanceof Error ? e.message : 'Could not load messages or authorized documents');
     }
   }, [threadId, providerView]);
@@ -50,6 +56,30 @@ export function ProviderConversation({
       await refresh();
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Message not sent'); }
     finally { setBusy(false); }
+  };
+  const upload=async()=>{
+    if(!selectedFile||busy)return;
+    setBusy(true);
+    try{
+      await uploadProviderThreadDocument(threadId,selectedFile);
+      setSelectedFile(null);
+      if(uploadInputRef.current)uploadInputRef.current.value='';
+      toast.success('Document received by secure storage and attached to this clinical conversation.');
+      await refresh();
+    }catch(e){toast.error(e instanceof Error?e.message:'Clinical upload failed');}
+    finally{setBusy(false);}
+  };
+  const decideDocument=async(documentId:string,decision:string)=>{
+    const notes=window.prompt('Review notes for this clinical document:');
+    if(notes===null)return;
+    setBusy(true);
+    try{
+      const result=await reviewClinicalDocument(documentId,decision,notes.trim()||'Reviewed by Director.');
+      if(result.error)throw new Error(result.error);
+      toast.success('Document review decision recorded.');
+      await refresh();
+    }catch(e){toast.error(e instanceof Error?e.message:'Document review failed');}
+    finally{setBusy(false);}
   };
   return (
     <section aria-label="Secure clinical conversation" className={panel}>
@@ -83,6 +113,40 @@ export function ProviderConversation({
           ))}
         </section>
       )}
+      <section aria-label="Provider-to-care-team attachments" className="space-y-2 rounded-xl border border-ent-line p-3">
+        <h4 className="text-sm font-bold text-ent-ink">Documents sent by provider</h4>
+        {providerUploads.length===0&&<p className="text-xs text-ent-muted">No provider documents have been received in this conversation yet.</p>}
+        {providerUploads.map(doc=>(
+          <div key={doc.documentId} className="flex items-center justify-between flex-wrap gap-2 border-b border-ent-line pb-2">
+            <div className="min-w-0"><p className="text-sm font-semibold break-words">{doc.filename}</p>
+              <p className="text-xs text-ent-muted">{doc.reviewStatus.replace(/_/g,' ')} · {new Date(doc.createdAt).toLocaleString()}</p></div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={btn} onClick={()=>{
+                void getProviderDocumentDownloadUrl(doc.storagePath)
+                  .then(url=>window.open(url,'_blank','noopener,noreferrer'))
+                  .catch(e=>toast.error(e instanceof Error?e.message:'Download not authorized'));
+              }}>Download</button>
+              {!providerView&&doc.reviewStatus==='received_unreviewed'&&(
+                <>
+                  <button type="button" disabled={busy} className={btn} onClick={()=>{void decideDocument(doc.documentId,'accepted');}}>Accept</button>
+                  <button type="button" disabled={busy} className={btn} onClick={()=>{void decideDocument(doc.documentId,'revision_required');}}>Needs revision</button>
+                  <button type="button" disabled={busy} className={btn} onClick={()=>{void decideDocument(doc.documentId,'forwarded_for_clinical_review');}}>Clinical review</button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+        {providerView&&(
+          <div className="space-y-2 pt-2">
+            <label htmlFor="provider-thread-upload" className="block text-xs font-semibold">Upload a document securely (25 MiB maximum)</label>
+            <input id="provider-thread-upload" ref={uploadInputRef} type="file"
+              accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.doc,.docx,.xls,.xlsx"
+              className="block w-full text-sm" onChange={e=>setSelectedFile(e.target.files?.[0]??null)} />
+            <button type="button" className={btn} disabled={busy||!selectedFile}
+              onClick={()=>{void upload();}}>Upload to care team</button>
+          </div>
+        )}
+      </section>
       <label className="text-xs font-semibold text-ent-ink" htmlFor="secure-provider-reply">Reply securely</label>
       <textarea id="secure-provider-reply" className="w-full rounded-xl border border-ent-line p-3 text-sm"
         rows={3} maxLength={10000} value={draft} onChange={(e)=>setDraft(e.target.value)}
