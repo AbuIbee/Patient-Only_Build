@@ -47,7 +47,7 @@ BEGIN
 
   RETURN v_row;
 END;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.hcn_assign_caregiver_to_patient(p_org_id uuid, p_caregiver_id uuid, p_patient_id uuid)
  RETURNS staff_patient_assignments
@@ -90,7 +90,7 @@ BEGIN
     SET org_role='caregiver',is_active=true,assigned_by=EXCLUDED.assigned_by,updated_at=now()
   RETURNING * INTO v_row;
   RETURN v_row;
-END; $function$
+END; $function$;
 
 CREATE OR REPLACE FUNCTION public.hcn_director_schedule_assigned_visit(p_org_id uuid, p_patient_id uuid, p_caregiver_id uuid, p_scheduled_start timestamp with time zone, p_scheduled_end timestamp with time zone)
  RETURNS caregiver_visits
@@ -147,7 +147,7 @@ BEGIN
   RETURNING * INTO v_row;
   RETURN v_row;
 END;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION hcn_private.current_staff_patient_v1(p_org uuid, p_patient uuid, p_role text DEFAULT NULL::text)
  RETURNS boolean
@@ -173,7 +173,7 @@ AS $function$
         WHEN 'therapist' THEN public.is_therapist_for_patient(p_patient)
         ELSE true END
   );
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.hcn_acknowledge_previsit(p_visit_id uuid, p_sections text[], p_attestation text)
  RETURNS uuid
@@ -237,7 +237,7 @@ BEGIN
   RETURNING id INTO v_id;
   RETURN v_id;
 END;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.hcn_enforce_active_specialist_capacity()
  RETURNS trigger
@@ -281,7 +281,7 @@ BEGIN
   RAISE EXCEPTION 'No specialist slots remain for tier % (% of % occupied)',v_tier,v_used,LEAST(v_slots,v_catalog_slots) USING ERRCODE='23514';
  END IF;
  RETURN NEW;
-END $function$
+END $function$;
 
 CREATE OR REPLACE FUNCTION public.is_medical_professional_for_patient(p_patient_id uuid)
  RETURNS boolean
@@ -297,7 +297,7 @@ OR EXISTS (
   AND spa.org_role='medical_professional' AND spa.is_active
   AND public.hcn_has_director_office_patient_assignment(spa.organization_id,p_patient_id,'medical_professional')
 );
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.is_therapist_for_patient(p_patient_id uuid)
  RETURNS boolean
@@ -314,4 +314,4 @@ OR EXISTS (
   AND spa.org_role='therapist' AND spa.is_active
   AND public.hcn_has_director_office_patient_assignment(spa.organization_id,p_patient_id,'therapist')
 );
-$function$
+$function$;
