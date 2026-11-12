@@ -129,7 +129,10 @@ serve(async (request) => {
         text:
           'A secure request requires your attention in Haneen Care Network.\n\n' +
           `Open it securely here: ${destinationUrl}\n\n` +
-          'This link is specific to this one request and will expire. If you were not expecting this, you can disregard this message.',
+          (destinationUrl.endsWith('/Professional/Provider')
+            ? 'Sign in to your approved provider account to view the request. Clinical information is only available within Haneen.'
+            : 'This request-specific link will expire and requires recipient verification.') +
+          ' If you were not expecting this, you can disregard this message.',
       }),
     });
 
