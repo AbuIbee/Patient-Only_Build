@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import CoordinationTasksPanel from '@/components/healthcare/CoordinationTasksPanel';
 import { DirectorProviderConversations } from '@/pages/enterprise/HcnProviderInbox';
-import { listOrgProviderAccounts, decideProviderAccount } from '@/services/hcnProviderMessagingService';
+import { listOrgProviderAccounts, decideProviderAccount, openProviderThread, postProviderMessage } from '@/services/hcnProviderMessagingService';
 import { getVisibleClinicalProviderResponses, summarizeClinicalActivity } from '@/services/hcnClinicalRequestResponsePresentation';
 import { Stethoscope, RefreshCw, Send, Download, Upload, UserPlus, ShieldCheck, Users } from 'lucide-react';
 import {
@@ -326,6 +326,33 @@ export default function ClinicalCoordinationPanel({
     try {
       const r = resend ? await resendClinicalRequestInvitation(requestId) : await sendClinicalRequest(requestId);
       if (r.error || !r.data) { toast.error(r.error ?? 'Could not send this request.'); return; }
+      const requestRecord = requests.find(request => request.id === requestId);
+      const approvedProvider = requestRecord && providerAccounts.some(
+        account => account.provider_id === requestRecord.providerId && account.status === 'active');
+      if (approvedProvider && requestRecord) {
+        // An approved provider's generic email links to their persistent
+        // Haneen Inbox. Create its patient-scoped thread before notifying.
+        // Deterministic clientMessageId prevents duplicate initial messages
+        // when a request invitation is resent.
+        try {
+          const threadId = await openProviderThread(orgId, requestRecord.patientId, requestRecord.providerId);
+          const items = Array.isArray(requestRecord.requestedItems)
+            ? requestRecord.requestedItems.filter((item): item is string => typeof item === 'string').join('\n')
+            : '';
+          const message = [
+            `Clinical request: ${requestRecord.title}`,
+            requestRecord.description?.trim() ?? '',
+            items ? `Requested items:\n${items}` : '',
+            requestRecord.deadlineAt ? `Requested response by: ${new Date(requestRecord.deadlineAt).toLocaleDateString()}` : '',
+          ].filter(Boolean).join('\n\n');
+          await postProviderMessage(threadId, message, requestId);
+        } catch (e) {
+          toast.error('Request recorded, but the approved provider inbox could not be updated. No notification was sent: ' +
+            (e instanceof Error ? e.message : 'unknown error'));
+          await refresh();
+          return;
+        }
+      }
       const note = await sendClinicalRequestNotification(requestId, r.data.rawToken);
       if (note.error) toast.error(`Request ${resend ? 'resent' : 'sent'}, but the notification email failed: ${note.error}`);
       else toast.success(`Request ${resend ? 'resent' : 'sent'} and the provider has been notified.`);
