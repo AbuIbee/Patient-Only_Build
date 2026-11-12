@@ -69,6 +69,16 @@ BEGIN
   IF v_confirmed IS NULL OR v_email IS DISTINCT FROM lower(btrim(v_provider.secure_contact_email)) THEN
     RAISE EXCEPTION 'Confirmed provider email no longer matches account';
   END IF;
+  -- An internal Director must never use the external-provider identity
+  -- workflow as a workaround for independent Owner Office approval.
+  IF p_approve AND EXISTS(
+    SELECT 1 FROM public.organization_memberships m
+    WHERE m.organization_id=v_provider.organization_id
+      AND m.user_id=v_account.user_id AND m.status='active'
+      AND m.org_role IN ('director','co_director')
+  ) THEN
+    RAISE EXCEPTION 'Director cannot activate an additional clinical office via external-provider onboarding; independent Owner approval and licensed Office activation are required';
+  END IF;
   IF p_approve AND NOT v_provider.is_active THEN RAISE EXCEPTION 'Provider has been deactivated'; END IF;
   UPDATE public.hcn_provider_accounts SET
     status=CASE WHEN p_approve THEN 'active' ELSE 'rejected' END,
