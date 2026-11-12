@@ -16,7 +16,8 @@ REVOKE ALL ON public.hcn_provider_thread_documents FROM PUBLIC,anon;
 GRANT SELECT ON public.hcn_provider_thread_documents TO authenticated;
 CREATE POLICY "Only active conversation participants can read thread document associations"
   ON public.hcn_provider_thread_documents FOR SELECT TO authenticated
-  USING(public.hcn_can_access_provider_thread(thread_id) AND upload_state='ready');
+  USING(public.hcn_can_access_provider_thread(thread_id)
+    AND (upload_state='ready' OR public.hcn_is_authenticated_provider_for_thread(thread_id)));
 
 CREATE OR REPLACE FUNCTION public.hcn_is_authenticated_provider_for_thread(p_thread uuid)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path='public' AS $$
