@@ -22,6 +22,7 @@ export default function DirectorOfficeAccessPanel({organizationId,currentUserId}
   organizationId:string;currentUserId:string;
 }) {
   const [requests,setRequests]=useState<OfficeRequest[]>([]);
+  const [grants,setGrants]=useState<{user_id:string;capability:string;status:string}[]>([]);
   const [capability,setCapability]=useState<Capability>('caregiver');
   const [reason,setReason]=useState('');
   const [busy,setBusy]=useState(false);
@@ -30,13 +31,17 @@ export default function DirectorOfficeAccessPanel({organizationId,currentUserId}
 
   const refresh=useCallback(async()=>{
     try {
-      const [{data,error:fetchError},{data:isOwner,error:ownerError}] = await Promise.all([
+      const [{data,error:fetchError},{data:isOwner,error:ownerError},{data:activeGrants,error:grantError}] = await Promise.all([
         officeApi.from('hcn_director_office_requests').select('*')
           .eq('organization_id',organizationId).order('requested_at',{ascending:false}),
         officeApi.rpc('am_i_org_owner',{p_org_id:organizationId}),
+        officeApi.from('hcn_director_office_grants').select('user_id,capability,status')
+          .eq('organization_id',organizationId),
       ]);
       if(fetchError) throw fetchError;
       if(ownerError) throw ownerError;
+      if(grantError) throw grantError;
+      setGrants((activeGrants??[]) as {user_id:string;capability:string;status:string}[]);
       setRequests((data??[]) as OfficeRequest[]);
       setOwner(Boolean(isOwner));
       setError('');
@@ -71,7 +76,7 @@ export default function DirectorOfficeAccessPanel({organizationId,currentUserId}
         p_request_id:req.id,p_approve:approve,p_note:note.trim(),
       });
       if(rpcError)throw rpcError;
-      toast.success(approve?'Owner review approved. Office activation remains gated by permissions.':'Office request rejected.');
+      toast.success(approve?'Owner approval activated the requested office under its role and licensing restrictions.':'Office request rejected.');
       await refresh();
     }catch(e){toast.error(e instanceof Error?e.message:'Could not review office request');}
     finally{setBusy(false);}
@@ -109,8 +114,8 @@ export default function DirectorOfficeAccessPanel({organizationId,currentUserId}
           </button>
         </div>
         <p className="text-xs text-ent-muted">
-          Approval review does not automatically create a new role. Effective office activation remains blocked until
-          additional-office licensing, permissions and role-specific access tests pass.
+          Office activation requires an independent Owner decision, an active license, and applicable professional
+          credentials. Only an assigned patient is visible in a secondary clinical or caregiver office.
         </p>
         {error && <p role="alert" className="text-sm text-ent-rust">{error}</p>}
       </div>
@@ -126,7 +131,12 @@ export default function DirectorOfficeAccessPanel({organizationId,currentUserId}
               <p className="text-sm text-ent-muted">{r.request_reason}</p>
               <p className="text-xs text-ent-muted">Requested {new Date(r.requested_at).toLocaleString()}</p>
               {r.decision_note && <p className="text-xs text-ent-muted">Owner decision: {r.decision_note}</p>}
-              {r.status==='approved' && <p className="text-xs text-ent-rust">Approval recorded; office privileges are not activated yet.</p>}
+              {r.status==='approved' &&
+                <p className="text-xs text-ent-muted">
+                  {grants.some(g=>g.user_id===r.requester_id && g.capability===r.capability && g.status==='active')
+                    ? 'Additional office active — switch offices to access assigned work.'
+                    : 'Additional office inactive or revoked.'}
+                </p>}
               <div className="flex gap-2 flex-wrap">
                 {r.status==='pending' && r.requester_id===currentUserId && (
                   <button type="button" disabled={busy} onClick={()=>{void cancel(r.id);}}
