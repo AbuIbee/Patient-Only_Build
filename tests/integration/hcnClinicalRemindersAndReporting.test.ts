@@ -47,6 +47,27 @@ async function createOverdueSentRequest(ctx: { orgId: string; directorTok: strin
   return request.id as string;
 }
 
+async function createProvider(ctx: { orgId: string; directorTok: string }, label: string) {
+  const providerEmail = `remind-provider-${stamp}-${label}@example-clinic.test`;
+  const [, provider] = (await rpc('hcn_upsert_healthcare_provider', {
+    p_organization_id: ctx.orgId, p_provider_id: null, p_display_name: `Dr. Remind ${label}`, p_professional_title: 'MD',
+    p_specialty: 'medical_specialist', p_specialty_other_label: null, p_practice_name: null, p_office_phone: null,
+    p_fax_number: null, p_secure_contact_email: providerEmail, p_office_address: null, p_professional_identifier: null, p_credentials: null,
+  }, ctx.directorTok)) as [number, { id: string }];
+  return provider.id as string;
+}
+
+// Deliberately left in 'draft' -- never calls hcn_send_clinical_request --
+// so sent_at stays NULL, exactly like a request a Director has started
+// but not yet sent.
+async function createDraftRequest(ctx: { orgId: string; directorTok: string; patientId: string }, providerId: string, label: string) {
+  const [, request] = (await rpc('hcn_create_clinical_request', {
+    p_organization_id: ctx.orgId, p_patient_id: ctx.patientId, p_provider_id: providerId, p_request_type: 'medical_documentation',
+    p_title: `Draft Request ${label}`, p_description: null, p_requested_items: [], p_deadline_at: null, p_follow_up_owner_id: null,
+  }, ctx.directorTok)) as [number, { id: string }];
+  return request.id as string;
+}
+
 afterAll(async () => {
   if (createdOrgIds.length) {
     const orgIds = createdOrgIds.map((id) => `'${id}'`).join(',');
@@ -332,5 +353,86 @@ describe('HCN provider performance reporting', () => {
     const [denied]=await rpc('hcn_get_clinical_provider_performance',
       {p_organization_id:ctx.orgId},foreign.directorTok);
     expect(denied).toBeGreaterThanOrEqual(400);
+  });
+});
+
+// HCN-CLINICAL-MASTER-002 reporting-accuracy correction: the report
+// must reflect ONLY requests that were actually sent -- a provider
+// with zero requests, or with requests still sitting as unsent drafts,
+// has produced no response activity and must not appear.
+describe('HCN provider performance reporting -- sent vs. unsent-draft semantics', () => {
+  it('excludes a provider with zero clinical requests', async () => {
+    const ctx = await orgWithDirectorAndPatient('perf-zero');
+    await createProvider(ctx, 'perf-zero');
+    const [status, rows] = (await rpc('hcn_get_clinical_provider_performance',
+      { p_organization_id: ctx.orgId }, ctx.directorTok)) as [number, unknown[]];
+    expect(status).toBe(200);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('excludes a provider whose only request is an unsent draft', async () => {
+    const ctx = await orgWithDirectorAndPatient('perf-draft');
+    const providerId = await createProvider(ctx, 'perf-draft');
+    await createDraftRequest(ctx, providerId, 'perf-draft');
+    const [status, rows] = (await rpc('hcn_get_clinical_provider_performance',
+      { p_organization_id: ctx.orgId }, ctx.directorTok)) as [number, unknown[]];
+    expect(status).toBe(200);
+    expect(rows).toHaveLength(0);
+  });
+
+  it('includes a provider once a request has actually been sent', async () => {
+    const ctx = await orgWithDirectorAndPatient('perf-sent');
+    const providerId = await createProvider(ctx, 'perf-sent');
+    const requestId = await createDraftRequest(ctx, providerId, 'perf-sent');
+    await rpc('hcn_send_clinical_request', { p_request_id: requestId, p_expires_in_days: 14 }, ctx.directorTok);
+    const [status, rows] = (await rpc('hcn_get_clinical_provider_performance',
+      { p_organization_id: ctx.orgId }, ctx.directorTok)) as
+      [number, { provider_id: string; total_requests: number; responses_received: number }[]];
+    expect(status).toBe(200);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].provider_id).toBe(providerId);
+    expect(rows[0].total_requests).toBe(1);
+    expect(rows[0].responses_received).toBe(0);
+  });
+
+  it('counts a submitted response and computes the correct average response duration', async () => {
+    const ctx = await orgWithDirectorAndPatient('perf-response');
+    const providerId = await createProvider(ctx, 'perf-response');
+    const requestId = await createDraftRequest(ctx, providerId, 'perf-response');
+    await rpc('hcn_send_clinical_request', { p_request_id: requestId, p_expires_in_days: 14 }, ctx.directorTok);
+    // Backdate sent_at by exactly 3 hours, then record the response
+    // event at "now" -- a deterministic, known duration rather than a
+    // real-time wait. The event row is inserted directly (the same
+    // established pattern as hcnClinicalCoordinationFoundation.test.ts's
+    // own direct hcn_clinical_request_events INSERT) because this test
+    // is proving the report's own arithmetic, not re-proving the
+    // external verification/response-submission HTTP flow already
+    // covered by tests/integration/hcnExternalRequestAccessFunction.test.ts.
+    sql(`
+      UPDATE hcn_clinical_requests SET sent_at = now() - interval '3 hours' WHERE id='${requestId}';
+      INSERT INTO hcn_clinical_request_events(request_id, event_type, actor_external_label, details)
+      VALUES ('${requestId}', 'response_submitted', 'Dr. Remind perf-response', jsonb_build_object('response_text', 'See attached.'));
+    `);
+    const [status, rows] = (await rpc('hcn_get_clinical_provider_performance',
+      { p_organization_id: ctx.orgId }, ctx.directorTok)) as
+      [number, { provider_id: string; responses_received: number; average_response_hours: number | null }[]];
+    expect(status).toBe(200);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].provider_id).toBe(providerId);
+    expect(rows[0].responses_received).toBe(1);
+    expect(rows[0].average_response_hours).not.toBeNull();
+    expect(rows[0].average_response_hours as number).toBeGreaterThanOrEqual(2.9);
+    expect(rows[0].average_response_hours as number).toBeLessThanOrEqual(3.1);
+  });
+
+  it('denies access to a Director from a different organization', async () => {
+    const ctx = await orgWithDirectorAndPatient('perf-denied-primary');
+    const providerId = await createProvider(ctx, 'perf-denied-primary');
+    const requestId = await createDraftRequest(ctx, providerId, 'perf-denied-primary');
+    await rpc('hcn_send_clinical_request', { p_request_id: requestId, p_expires_in_days: 14 }, ctx.directorTok);
+    const foreign = await orgWithDirectorAndPatient('perf-denied-foreign');
+    const [status] = await rpc('hcn_get_clinical_provider_performance',
+      { p_organization_id: ctx.orgId }, foreign.directorTok);
+    expect(status).toBeGreaterThanOrEqual(400);
   });
 });
