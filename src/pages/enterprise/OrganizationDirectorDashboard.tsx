@@ -18,11 +18,8 @@ import {
   assignCaregiverToPatient, unassignCaregiverFromPatient,
   getOrgStaffPatientAssignments, assignStaffToPatient, unassignStaffFromPatient,
   getOrgCommunicationsOverview,
-  amIOrgOwner, getMyOwnerCapabilityGrants, ownerSelfAssignCapability, ownerRevokeOwnCapability,
-  OWNER_CAPABILITIES,
   type OrgLicense, type OrgRole, type OrgMembershipRow, type OrgPackageType,
   type StaffPatientAssignment, type StaffRole, type OrgCommunicationsOverview, type OrgCoveredPatient,
-  type OwnerCapability, type OwnerCapabilityGrant,
 } from '@/services/organizationService';
 import {
   directorApproveApplication, requestApplicationCorrections, rejectApplication, recordCredentialVerification,
@@ -53,6 +50,7 @@ import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
 import DirectorScheduleCalendar from './DirectorScheduleCalendar';
 import DirectorAttendancePanel, { DirectorRecentAttendance } from './DirectorAttendancePanel';
+import DirectorOfficeAccessPanel from './DirectorOfficeAccessPanel';
 import DirectorReportBuilder from './DirectorReportBuilder';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
@@ -1583,93 +1581,8 @@ function IncidentsView({ incidents, onResolved, loadError }: { incidents: OrgInc
 // server-side by every mutation this view performs — a non-owner seeing
 // this tab (everyone does; see the nav-item comment above) gets an
 // explanatory denial, never a disabled-looking action.
-const CAPABILITY_LABEL: Record<OwnerCapability, string> = {
-  caregiver: 'Caregiver', therapist: 'Therapist', medical_professional: 'Medical Professional', billing_admin: 'Billing Admin',
-};
-
-function OwnershipView({ orgId }: { orgId: string }) {
-  const [loading, setLoading] = useState(true);
-  const [isOwner, setIsOwner] = useState(false);
-  const [grants, setGrants] = useState<OwnerCapabilityGrant[]>([]);
-  const [busy, setBusy] = useState<OwnerCapability | null>(null);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const owner = await amIOrgOwner(orgId);
-      setIsOwner(owner);
-      setGrants(owner ? await getMyOwnerCapabilityGrants(orgId) : []);
-    } finally {
-      setLoading(false);
-    }
-  }, [orgId]);
-
-  useEffect(() => { void refresh(); }, [refresh]);
-
-  const activeFor = (capability: OwnerCapability) => grants.find((g) => g.capability === capability && g.status === 'active');
-
-  const toggle = async (capability: OwnerCapability, currentlyActive: boolean) => {
-    setBusy(capability);
-    try {
-      const { error } = currentlyActive ? await ownerRevokeOwnCapability(orgId, capability) : await ownerSelfAssignCapability(orgId, capability);
-      if (error) { toast.error(error); return; }
-      toast.success(currentlyActive ? `${CAPABILITY_LABEL[capability]} capability revoked.` : `${CAPABILITY_LABEL[capability]} capability self-assigned.`);
-      void refresh();
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>;
-
-  if (!isOwner) {
-    return (
-      <OfficeCard>
-        <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Office Ownership</h2></div>
-        <p className="text-sm text-ent-text">
-          This section is available only to this organization&apos;s Owner. Director authority and Owner authority are
-          distinct — holding Director access does not, by itself, grant Owner capability self-assignment.
-        </p>
-      </OfficeCard>
-    );
-  }
-
-  return (
-    <OfficeCard>
-      <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Office Ownership</h2></div>
-      <p className="text-sm text-ent-text">
-        As this organization&apos;s Owner, you may explicitly self-assign operational capability within this organization.
-        Ownership alone grants no clinical access — each capability below must be deliberately assigned, is scoped to
-        this organization only, remains subject to active patient coverage and license status, and is fully auditable.
-      </p>
-      <ul className="space-y-2">
-        {OWNER_CAPABILITIES.map((capability) => {
-          const grant = activeFor(capability);
-          const active = !!grant;
-          return (
-            <li key={capability} className="flex items-center justify-between gap-3 p-3 bg-ent-bg rounded-xl border border-ent-line">
-              <div>
-                <p className="font-semibold text-ent-ink">{CAPABILITY_LABEL[capability]}</p>
-                <p className="text-xs text-ent-muted">
-                  {active ? `Self-assigned ${new Date(grant.grantedAt).toLocaleDateString()}` : 'Not currently self-assigned'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => { void toggle(capability, active); }}
-                disabled={busy === capability}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 ${
-                  active ? 'border border-red-300 text-red-600 hover:bg-red-50' : 'bg-ent-bronze hover:opacity-90 text-white'
-                }`}
-              >
-                {busy === capability ? 'Working…' : active ? 'Revoke' : 'Self-assign'}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </OfficeCard>
-  );
+function OwnershipView({ orgId, userId }: { orgId: string; userId: string }) {
+  return <DirectorOfficeAccessPanel organizationId={orgId} currentUserId={userId} />;
 }
 
 function OrganizationSettingsView({ orgName, packageType, onOpenBilling }: { orgName: string; packageType: OrgPackageType; onOpenBilling: () => void }) {
@@ -1697,9 +1610,10 @@ function OrganizationSettingsView({ orgName, packageType, onOpenBilling }: { org
 type DirectorSettingsTab = 'overview' | 'licensing' | 'settings' | 'ownership';
 
 function DirectorOrganizationSettingsPage({
-  orgId, orgName, packageType, members, coveredCount, license, initialTab,
+  orgId, orgName, packageType, members, coveredCount, license, initialTab, userId,
 }: {
   orgId: string;
+  userId: string;
   orgName: string;
   packageType: OrgPackageType;
   members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
@@ -1758,7 +1672,7 @@ function DirectorOrganizationSettingsPage({
             </div>
           )
         ) : activeTab === 'ownership' ? (
-          <OwnershipView orgId={orgId} />
+          <OwnershipView orgId={orgId} userId={userId} />
         ) : (
           <OrganizationSettingsView orgName={orgName} packageType={packageType}
             onOpenBilling={() => { setActiveTab('licensing'); setBillingOpen(true); }} />
@@ -1896,6 +1810,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
           key={nav}
           initialTab={nav === 'settings' ? 'overview' : nav}
           orgId={organizationId}
+          userId={state.currentUser?.id ?? ''}
           orgName={orgName}
           packageType={packageType}
           members={members}
