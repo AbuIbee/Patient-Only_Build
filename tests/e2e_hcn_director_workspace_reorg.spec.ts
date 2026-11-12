@@ -77,6 +77,12 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     expect(staffHeadings.findIndex(t => t.includes('Staff Inventory'))).toBeLessThan(
       staffHeadings.findIndex(t => t.includes('Staff-to-Patient Assignments')),
     );
+    // Moving the panel must not break the existing authorized write path.
+    await page.locator('select').filter({ hasText: 'Select staff member…' }).selectOption(ctx.caregiverId);
+    await page.locator('select').filter({ hasText: 'Select covered patient…' }).selectOption(ctx.patientId);
+    await page.getByRole('button', { name: 'Assign', exact: true }).click();
+    await expect(page.getByText('E2E Navigation Patient')).toBeVisible();
+    expect(sql(`SELECT count(*) FROM staff_patient_assignments WHERE organization_id='${ctx.orgId}' AND user_id='${ctx.caregiverId}' AND patient_id='${ctx.patientId}' AND is_active=true;`)).toBe('1');
 
     await nav.getByRole('button', { name: 'Employee Schedule' }).click();
     await expect(page).toHaveURL(/\/Professional\/Admin\/scheduling$/i);
@@ -101,6 +107,13 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     await expect(page.getByRole('tab', { name: 'Organization Overview' })).toHaveAttribute('aria-selected', 'true');
     await page.goto(`${FRONTEND}/Professional/Admin/ownership`);
     await expect(page.getByRole('tab', { name: 'Organization Ownership' })).toHaveAttribute('aria-selected', 'true');
+
+    // Shared shell's mobile drawer must reflect the same regrouped navigation.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: 'Open navigation' }).click();
+    await expect(page.getByRole('button', { name: 'Employee Schedule' })).toBeVisible();
+    await page.getByRole('button', { name: 'Employee Schedule' }).click();
+    await expect(page).toHaveURL(/\/Professional\/Admin\/scheduling$/i);
   } finally {
     await cleanup(ctx);
   }
