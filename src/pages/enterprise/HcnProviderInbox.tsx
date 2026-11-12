@@ -3,23 +3,30 @@ import { toast } from 'sonner';
 import {
   claimProviderAccount, getClaimableProviders, listProviderThreads,
   openProviderThread, listProviderMessages, postProviderMessage,
-  type ClaimableProvider, type ProviderThread, type ProviderMessage,
+  listProviderSharedDocuments, getProviderDocumentDownloadUrl,
+  type ClaimableProvider, type ProviderThread, type ProviderMessage, type SharedProviderDocument,
 } from '@/services/hcnProviderMessagingService';
 
 const panel = 'rounded-2xl border border-ent-line bg-white p-4 space-y-3';
 const btn = 'rounded-xl border border-ent-line px-3 py-2 text-sm font-semibold disabled:opacity-50';
 
 export function ProviderConversation({
-  threadId, userId,
-}: { threadId: string; userId: string }) {
+  threadId, userId, providerView = false,
+}: { threadId: string; userId: string; providerView?: boolean }) {
   const [messages, setMessages] = useState<ProviderMessage[]>([]);
+  const [sharedDocs, setSharedDocs] = useState<SharedProviderDocument[]>([]);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const refresh = useCallback(async () => {
-    try { setMessages(await listProviderMessages(threadId)); setError(''); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not load messages'); }
-  }, [threadId]);
+    try {
+      const [msgs,docs] = await Promise.all([
+        listProviderMessages(threadId),
+        providerView ? listProviderSharedDocuments(threadId) : Promise.resolve([] as SharedProviderDocument[]),
+      ]);
+      setMessages(msgs); setSharedDocs(docs); setError('');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not load messages or authorized documents'); }
+  }, [threadId, providerView]);
 
   useEffect(() => {
     void refresh();
@@ -52,6 +59,25 @@ export function ProviderConversation({
           </li>
         ))}
       </ol>
+      {providerView && (
+        <section aria-label="Documents shared with you" className="space-y-2 rounded-xl border border-ent-line p-3">
+          <h4 className="text-sm font-bold text-ent-ink">Documents shared securely with you</h4>
+          {sharedDocs.length===0 && <p className="text-xs text-ent-muted">No documents have been explicitly shared with you for this patient.</p>}
+          {sharedDocs.map(doc=>(
+            <div key={doc.documentId} className="flex items-center justify-between gap-2 border-b border-ent-line py-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold break-words">{doc.filename}</p>
+                <p className="text-xs text-ent-muted">Shared: {new Date(doc.sharedAt).toLocaleString()}</p>
+              </div>
+              <button type="button" className={btn} onClick={() => {
+                void getProviderDocumentDownloadUrl(doc.storagePath)
+                  .then(url=>window.open(url,'_blank','noopener,noreferrer'))
+                  .catch(e=>toast.error(e instanceof Error?e.message:'Download not authorized'));
+              }}>Download</button>
+            </div>
+          ))}
+        </section>
+      )}
       <label className="text-xs font-semibold text-ent-ink" htmlFor="secure-provider-reply">Reply securely</label>
       <textarea id="secure-provider-reply" className="w-full rounded-xl border border-ent-line p-3 text-sm"
         rows={3} maxLength={10000} value={draft} onChange={(e)=>setDraft(e.target.value)}
@@ -167,7 +193,7 @@ export default function ProviderInbox({ userId }: { userId: string }) {
           {threads.map(t=><button type="button" key={t.threadId} className={`${btn} block w-full text-left ${selectedId===t.threadId?'bg-ent-pale':''}`}
             onClick={()=>setSelectedId(t.threadId)}>{t.patientName} · {t.providerName}</button>)}
         </section>
-        {selectedId && <ProviderConversation key={selectedId} threadId={selectedId} userId={userId}/>}
+        {selectedId && <ProviderConversation key={selectedId} threadId={selectedId} userId={userId} providerView />}
       </div>
     </main>
   );
