@@ -57,7 +57,7 @@ AS $function$
       AND ack.latest_patient_information_at IS NOT DISTINCT FROM
         (SELECT max(i.updated_at) FROM public.hcn_patient_information i WHERE i.patient_id=v.patient_id AND i.organization_id=v.organization_id)
   );
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.end_caregiver_visit(p_visit_id uuid, p_visit_notes text DEFAULT NULL::text)
  RETURNS caregiver_visits
@@ -93,4 +93,4 @@ BEGIN
   WHERE id = p_visit_id RETURNING * INTO v_row;
   RETURN v_row;
 END;
-$function$
+$function$;
