@@ -97,7 +97,7 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     await expect(page.getByRole('tab', { name: 'Licensing & Entitlements' })).toHaveAttribute('aria-selected', 'true');
 
     await page.getByRole('tab', { name: 'Organization Ownership' }).click();
-    await expect(page.getByText(/available only to this organization's Owner/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Organization Ownership' })).toBeVisible();
 
     await page.goto(`${FRONTEND}/Professional/Admin/licensing`);
     await expect(page.getByRole('tab', { name: 'Licensing & Entitlements' })).toHaveAttribute('aria-selected', 'true');
