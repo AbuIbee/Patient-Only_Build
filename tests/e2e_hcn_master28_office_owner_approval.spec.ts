@@ -1,6 +1,6 @@
 // Master #28 two real signed-in users. Disposable, synthetic only.
 import {test,expect} from '@playwright/test';
-import {authSignUp,authDeleteUser,login,rpc,sql} from './integration/_runtime';
+import {authSignUp,authDeleteUser,sql} from './integration/_runtime';
 const BASE=process.env.MMA_E2E_FRONTEND_BASE;
 const READY=Boolean(BASE&&process.env.MMA_TEST_DB_CONTAINER&&process.env.MMA_TEST_API_BASE);
 const PW='HcnOffice28!Browser';
@@ -48,11 +48,21 @@ test('Owner independently approves caregiver office; patient scoped, then revoke
     await review.getByRole('button',{name:'Approve request'}).click();
     await expect(review.getByText(/Office access active/)).toBeVisible({timeout:15000});
 
-    const token=await login(emails[1],PW);
-    const [code,assigned]=await rpc('assign_staff_to_patient',{
-      p_org_id:org,p_user_id:users[1],p_patient_id:patient,p_org_role:'caregiver',
-    },token);
-    expect(code,JSON.stringify(assigned)).toBe(200);
+    // Assign the newly approved secondary caregiver through the real
+    // Director staff management UI, not by bypassing the visible controls.
+    await directorPage.reload();
+    const navAfterApproval=directorPage.getByRole('navigation',{name:'ADMIN OFFICE navigation'});
+    await navAfterApproval.getByRole('button',{name:'Staff Management'}).click();
+    const assignmentCard=directorPage.getByRole('heading',{name:'Staff-to-Patient Assignments'}).locator('xpath=../..');
+    await expect(assignmentCard.locator('select').filter({hasText:'Select staff member…'})
+      .locator('option').filter({hasText:'Caregiver'})).toHaveCount(1);
+    await assignmentCard.locator('select').filter({hasText:'Select staff member…'}).selectOption(users[1]);
+    await assignmentCard.locator('select').filter({hasText:'Select covered patient…'}).selectOption(patient);
+    await assignmentCard.getByRole('button',{name:'Assign',exact:true}).click();
+    await expect(assignmentCard.getByText('Synthetic Office Patient')).toBeVisible({timeout:15000});
+    expect(sql('SELECT count(*) FROM staff_patient_assignments WHERE organization_id='+q(org)+
+      ' AND patient_id='+q(patient)+' AND user_id='+q(users[1])+
+      " AND org_role='caregiver' AND is_active=true;")).toBe('1');
     await directorPage.reload();
     const caregiver=directorPage.getByRole('button',{name:/Enterprise Caregiver/});
     await expect(caregiver).toBeVisible({timeout:25000});
