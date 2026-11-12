@@ -87,6 +87,28 @@ describe('HCN Master #28 — permanent provider authorization', () => {
       const [wrongRead] = await rpc('hcn_list_provider_messages',{p_thread_id:thread},tokens[3]);
       expect(wrongRead).toBeGreaterThanOrEqual(400);
 
+      // A Director cannot bypass Owner Office approval by claiming an external
+      // provider account under the Director's own email.
+      const [selfProviderCode,selfProvider] = await rpc('hcn_upsert_healthcare_provider',{
+        p_organization_id:org,p_provider_id:null,p_display_name:'M28 Director Self-Claim',
+        p_professional_title:'Synthetic Director',p_specialty:'primary_care_physician',
+        p_specialty_other_label:null,p_practice_name:'Synthetic Clinic',
+        p_office_phone:null,p_fax_number:null,p_secure_contact_email:emails[0],
+        p_office_address:null,p_professional_identifier:'TEST-SELF-001',
+        p_credentials:'Synthetic self-claim',p_expected_version:null,
+      },tokens[0]);
+      expect(selfProviderCode,JSON.stringify(selfProvider)).toBe(200);
+      const selfProviderId=(selfProvider as {id:string}).id;
+      const [selfClaimCode] = await rpc('hcn_claim_provider_account',{
+        p_provider_id:selfProviderId,
+      },tokens[0]);
+      expect(selfClaimCode).toBe(200);
+      const [bypassApproval] = await rpc('hcn_decide_provider_account',{
+        p_provider_id:selfProviderId,p_approve:true,
+        p_evidence_note:'Another Director attempts to grant clinical office access',
+      },tokens[1]);
+      expect(bypassApproval).toBeGreaterThanOrEqual(400);
+
       sql('UPDATE hcn_provider_accounts SET status=' +quoted('revoked')+
         ' WHERE provider_id='+quoted(provider)+';');
       const [revokedRead] = await rpc('hcn_list_provider_messages',{p_thread_id:thread},tokens[2]);
@@ -94,9 +116,9 @@ describe('HCN Master #28 — permanent provider authorization', () => {
     } finally {
       if(thread)sql('DELETE FROM hcn_provider_messages WHERE thread_id='+quoted(thread)+';'+
         'DELETE FROM hcn_provider_threads WHERE id='+quoted(thread)+';');
-      if(provider)sql('DELETE FROM hcn_provider_accounts WHERE provider_id='+quoted(provider)+';'+
-        'DELETE FROM hcn_patient_provider_associations WHERE provider_id='+quoted(provider)+';'+
-        'DELETE FROM hcn_healthcare_providers WHERE id='+quoted(provider)+';');
+      if(org)sql('DELETE FROM hcn_provider_accounts WHERE organization_id='+quoted(org)+';'+
+        'DELETE FROM hcn_patient_provider_associations WHERE organization_id='+quoted(org)+';'+
+        'DELETE FROM hcn_healthcare_providers WHERE organization_id='+quoted(org)+';');
       if(org)sql('DELETE FROM covered_patient_memberships WHERE organization_id='+quoted(org)+';'+
         'DELETE FROM organization_memberships WHERE organization_id='+quoted(org)+';'+
         'DELETE FROM organization_licenses WHERE organization_id='+quoted(org)+';'+
