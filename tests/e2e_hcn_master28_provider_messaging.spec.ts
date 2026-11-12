@@ -1,7 +1,8 @@
 // HCN Master #28: real Director + approved Provider browser correspondence.
 // Uses isolated disposable Supabase and synthetic patient, never real email.
 import { test, expect } from '@playwright/test';
-import { authSignUp, authDeleteUser, login, rpc, sql } from './integration/_runtime';
+import { authSignUp, authDeleteUser, login, rpc, sql, BASE, SERVICE } from './integration/_runtime';
+import { createClient } from '@supabase/supabase-js';
 const FRONTEND = process.env.MMA_E2E_FRONTEND_BASE;
 const READY=Boolean(FRONTEND && process.env.MMA_TEST_DB_CONTAINER && process.env.MMA_TEST_API_BASE);
 const PW='HcnMaster28Browser!';
@@ -87,6 +88,18 @@ test('verified Provider account exchanges 3 messages without repeating OTP; revo
     await providerThread.getByRole('textbox',{name:'Reply securely'}).fill('Synthetic answer from the verified provider');
     await providerThread.getByRole('button',{name:'Send message'}).click();
     await expect(directorThread.getByText('Synthetic answer from the verified provider')).toBeVisible({timeout:20000});
+
+    // Real provider-to-Director document upload, storage receipt, and review.
+    await providerThread.getByLabel('Upload a document securely (25 MiB maximum)').setInputFiles({
+      name:'synthetic-provider-review.pdf',mimeType:'application/pdf',
+      buffer:Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF'),
+    });
+    await providerThread.getByRole('button',{name:'Upload to care team'}).click();
+    await expect(providerThread.getByText('synthetic-provider-review.pdf')).toBeVisible({timeout:20000});
+    await expect(directorThread.getByText('synthetic-provider-review.pdf')).toBeVisible({timeout:20000});
+    directorPage.once('dialog',dialog=>dialog.accept('Synthetic provider upload reviewed'));
+    await directorThread.getByRole('button',{name:'Accept',exact:true}).click();
+    expect(sql("SELECT review_status FROM hcn_clinical_documents WHERE organization_id="+q(org)+" LIMIT 1;")).toBe('accepted');
     await directorThread.getByRole('textbox',{name:'Reply securely'}).fill('Synthetic follow-up from Director');
     await directorThread.getByRole('button',{name:'Send message'}).click();
     await expect(providerThread.getByText('Synthetic follow-up from Director')).toBeVisible({timeout:20000});
@@ -101,6 +114,13 @@ test('verified Provider account exchanges 3 messages without repeating OTP; revo
   } finally {
     await directorContext.close();await providerContext.close();
     if(org) {
+      const uploadedPaths=sql("SELECT string_agg(d.storage_path,'|') FROM hcn_clinical_documents d "+
+        "JOIN hcn_provider_thread_documents td ON td.document_id=d.id "+
+        "JOIN hcn_provider_threads t ON t.id=td.thread_id WHERE t.organization_id="+q(org)+";");
+      sql("DELETE FROM hcn_provider_thread_documents WHERE thread_id IN "+
+        "(SELECT id FROM hcn_provider_threads WHERE organization_id="+q(org)+");"+
+        "DELETE FROM hcn_clinical_documents WHERE organization_id="+q(org)+";");
+      if(uploadedPaths) await createClient(BASE,SERVICE).storage.from('hcn-clinical-documents').remove(uploadedPaths.split('|'));
       sql("DELETE FROM hcn_provider_messages WHERE thread_id IN "+
         "(SELECT id FROM hcn_provider_threads WHERE organization_id="+q(org)+");"+
         "DELETE FROM hcn_provider_threads WHERE organization_id="+q(org)+";");
