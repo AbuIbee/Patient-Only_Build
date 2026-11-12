@@ -24,7 +24,9 @@ REVOKE ALL ON public.hcn_director_office_grants FROM PUBLIC,anon,authenticated;
 GRANT SELECT ON public.hcn_director_office_grants TO authenticated;
 CREATE POLICY "Director sees own secondary office grants; Owner oversees organization"
 ON public.hcn_director_office_grants FOR SELECT TO authenticated
-USING(user_id=(SELECT auth.uid()) OR public.is_organization_owner(organization_id));
+USING(user_id=(SELECT auth.uid())
+  OR public.is_active_org_director(organization_id)
+  OR public.is_organization_owner(organization_id));
 
 CREATE OR REPLACE FUNCTION public.hcn_has_active_director_office(p_org uuid,p_capability text)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
