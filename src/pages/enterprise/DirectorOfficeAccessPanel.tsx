@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
+const officeApi = supabase as unknown as SupabaseClient;
 import { toast } from 'sonner';
 
 type Capability = 'caregiver'|'therapist'|'medical_professional'|'billing_admin';
@@ -29,9 +31,9 @@ export default function DirectorOfficeAccessPanel({organizationId,currentUserId}
   const refresh=useCallback(async()=>{
     try {
       const [{data,error:fetchError},{data:isOwner,error:ownerError}] = await Promise.all([
-        supabase.from('hcn_director_office_requests').select('*')
+        officeApi.from('hcn_director_office_requests').select('*')
           .eq('organization_id',organizationId).order('requested_at',{ascending:false}),
-        supabase.rpc('am_i_org_owner',{p_org_id:organizationId}),
+        officeApi.rpc('am_i_org_owner',{p_org_id:organizationId}),
       ]);
       if(fetchError) throw fetchError;
       if(ownerError) throw ownerError;
@@ -46,7 +48,7 @@ export default function DirectorOfficeAccessPanel({organizationId,currentUserId}
     if(reason.trim().length<10 || busy)return;
     setBusy(true);
     try {
-      const {error:rpcError}=await supabase.rpc('hcn_request_director_office',{
+      const {error:rpcError}=await officeApi.rpc('hcn_request_director_office',{
         p_org:organizationId,p_capability:capability,p_reason:reason.trim(),
       });
       if(rpcError)throw rpcError;
@@ -65,7 +67,7 @@ export default function DirectorOfficeAccessPanel({organizationId,currentUserId}
     if(note.trim().length<10){toast.error('A reason of at least 10 characters is required.');return;}
     setBusy(true);
     try{
-      const {error:rpcError}=await supabase.rpc('hcn_decide_director_office_request',{
+      const {error:rpcError}=await officeApi.rpc('hcn_decide_director_office_request',{
         p_request_id:req.id,p_approve:approve,p_note:note.trim(),
       });
       if(rpcError)throw rpcError;
@@ -78,7 +80,7 @@ export default function DirectorOfficeAccessPanel({organizationId,currentUserId}
   const cancel=async(id:string)=>{
     setBusy(true);
     try{
-      const {error:rpcError}=await supabase.rpc('hcn_cancel_director_office_request',{p_request_id:id});
+      const {error:rpcError}=await officeApi.rpc('hcn_cancel_director_office_request',{p_request_id:id});
       if(rpcError)throw rpcError;
       await refresh();
     }catch(e){toast.error(e instanceof Error?e.message:'Could not cancel request');}
