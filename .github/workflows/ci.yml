@@ -129,6 +129,7 @@ jobs:
             tests/e2e_hcn_external_provider_access.spec.ts \
             tests/e2e_hcn_director_workspace_reorg.spec.ts \
             tests/e2e_hcn_master28_provider_messaging.spec.ts \
+            tests/e2e_hcn_master28_office_owner_approval.spec.ts \
             tests/e2e_hcn_master28_owner_office_approval.spec.ts
       - name: Tear down isolated browser test systems
         if: always()
