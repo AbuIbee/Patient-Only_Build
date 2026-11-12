@@ -10,6 +10,9 @@ const q=(s:string)=> "'" + s.replace(/'/g,"''") + "'";
 
 test('verified Provider account exchanges 3 messages without repeating OTP; revocation stops read',async({browser})=>{
   test.skip(!READY,'Requires isolated frontend and disposable Supabase');
+  // Two authenticated browsers + provider approval + multiple exchanges and
+  // document operations cannot reliably finish inside the default 30s.
+  test.setTimeout(150_000);
   const stamp=Date.now();
   const dirEmail='m28-e2e-dir-'+stamp+'@local.test';
   const providerEmail='m28-e2e-provider-'+stamp+'@local.test';
@@ -55,7 +58,7 @@ test('verified Provider account exchanges 3 messages without repeating OTP; revo
     await providerPage.getByRole('button',{name:'Claim my account'}).click();
     await expect(providerPage.getByText(/Awaiting organization approval/)).toBeVisible();
 
-    await directorPage.goto(FRONTEND+'/Professional');
+    await directorPage.goto(FRONTEND+'/Professional/Admin');
     await directorPage.getByPlaceholder('you@example.com').fill(dirEmail);
     await directorPage.getByPlaceholder('Your password').fill(PW);
     await directorPage.getByRole('button',{name:/sign in/i}).click();
