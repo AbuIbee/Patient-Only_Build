@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import CoordinationTasksPanel from '@/components/healthcare/CoordinationTasksPanel';
 import { DirectorProviderConversations } from '@/pages/enterprise/HcnProviderInbox';
@@ -12,7 +12,7 @@ import {
   sendClinicalRequest, resendClinicalRequestInvitation, cancelClinicalRequest, revokeClinicalRequestAccess,
   getDocumentsForRequest, getRequestEvents, reviewClinicalDocument, clinicalApproveDocument,
   publishProviderDocumentToPatient,
-  attachInternalDocumentToRequest,
+  attachInternalDocumentToRequest, shareClinicalDocumentWithProvider,
   uploadInternalDocument, getSignedDownloadUrl, sendClinicalRequestNotification,
   getCoordinationPlans, createCoordinationPlan, addCoordinationPlanParticipant, getCoordinationPlanParticipants,
   postCoordinationPlanUpdate, getCoordinationPlanUpdates, closeCoordinationPlan,
@@ -84,6 +84,7 @@ export default function ClinicalCoordinationPanel({
   const [uploadCategory, setUploadCategory] = useState('other_clinical_attachment');
   const [uploadClassification, setUploadClassification] = useState('general_care_coordination');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
 
   const [planPatientId, setPlanPatientId] = useState(patients[0]?.id ?? '');
@@ -373,6 +374,19 @@ export default function ClinicalCoordinationPanel({
       }
       toast.success(`${uploadFile.name} uploaded and attached to this request (not shared externally).`);
       setUploadFile(null);
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
+      await openRequest(selectedRequest.id);
+    } finally { setBusy(false); }
+  };
+
+  const doShare = async (doc: ClinicalDocument) => {
+    if (!selectedRequest || busy) return;
+    if (!window.confirm(`Share ${doc.originalFilename} securely with the verified provider assigned to this patient? The provider will be able to access it after signing in.`)) return;
+    setBusy(true);
+    try {
+      const r = await shareClinicalDocumentWithProvider(selectedRequest.id, doc.id);
+      if (r.error) { toast.error(r.error); return; }
+      toast.success('Reviewed document shared securely with the authorized provider.');
       await openRequest(selectedRequest.id);
     } finally { setBusy(false); }
   };
@@ -696,6 +710,14 @@ export default function ClinicalCoordinationPanel({
                 </div>
                 <div className="flex gap-1 items-center">
                   <button type="button" onClick={() => { void doDownload(doc); }} className="text-xs rounded border border-ent-line px-2 py-1"><Download className="h-3 w-3 inline mr-1" />Download</button>
+                  {role === 'director' && direction === 'uploaded_by_care_team' &&
+                    ['accepted','clinical_approved'].includes(doc.reviewStatus) &&
+                    doc.classification === 'general_care_coordination' && (
+                      <button type="button" disabled={busy} onClick={() => { void doShare(doc); }}
+                        className="text-xs rounded border border-ent-green px-2 py-1 font-semibold">
+                        Share securely with provider
+                      </button>
+                    )}
                   {role === 'director' && doc.reviewStatus === 'received_unreviewed' && (
                     <>
                       <button type="button" disabled={busy} onClick={() => { void doAdministrativeReview(doc.id, 'accepted'); }} className="text-xs rounded border border-ent-green px-2 py-1 text-ent-green">Accept</button>
@@ -732,7 +754,7 @@ export default function ClinicalCoordinationPanel({
             <select className="rounded-lg border border-ent-line p-2 text-sm" value={uploadClassification} onChange={(e) => setUploadClassification(e.target.value)}>
               {DOCUMENT_CLASSIFICATIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
-            <input type="file" aria-label="Choose internal clinical document" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-sm" />
+            <input ref={uploadInputRef} type="file" aria-label="Choose internal clinical document" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-sm" />
             <button type="button" disabled={busy || !uploadFile} onClick={() => { void doUpload(); }} className="rounded-lg bg-ent-bronze px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"><Upload className="h-3 w-3 inline mr-1" />Upload</button>
           </div>
 
