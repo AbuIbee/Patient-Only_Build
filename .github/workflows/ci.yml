@@ -85,7 +85,8 @@ jobs:
 
   clinical-playwright:
     needs: [static-checks, integration]
-    if: github.event_name == 'push'
+    # Browser acceptance must gate PRs as well as pushes; disposable synthetic data only.
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -125,7 +126,8 @@ jobs:
             tests/e2e_hcn_coordination_plan_ui.spec.ts \
             tests/e2e_hcn_director_clinical_coordination.spec.ts \
             tests/e2e_hcn_caregiver_clinical_role_views.spec.ts \
-            tests/e2e_hcn_external_provider_access.spec.ts
+            tests/e2e_hcn_external_provider_access.spec.ts \
+            tests/e2e_hcn_director_workspace_reorg.spec.ts
       - name: Tear down isolated browser test systems
         if: always()
         run: |
