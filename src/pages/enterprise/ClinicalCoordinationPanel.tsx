@@ -4,9 +4,9 @@ import CoordinationTasksPanel from '@/components/healthcare/CoordinationTasksPan
 import { getVisibleClinicalProviderResponses } from '@/services/hcnClinicalRequestResponsePresentation';
 import { Stethoscope, RefreshCw, Send, Download, Upload, UserPlus, ShieldCheck, Users } from 'lucide-react';
 import {
-  type HealthcareProvider, type ClinicalRequest, type ClinicalDocument, type RequestEvent,
+  type HealthcareProvider, type ProviderPatientAssociation, type ClinicalRequest, type ClinicalDocument, type RequestEvent,
   type CoordinationPlan, type CoordinationPlanParticipant, type CoordinationPlanUpdate,
-  getProviders, upsertProvider, setProviderActive, associateProviderWithPatient, getClinicalRequests, createClinicalRequest,
+  getProviders, getProviderPatientAssociations, upsertProvider, setProviderActive, associateProviderWithPatient, getClinicalRequests, createClinicalRequest,
   sendClinicalRequest, resendClinicalRequestInvitation, cancelClinicalRequest, revokeClinicalRequestAccess,
   getDocumentsForRequest, getRequestEvents, reviewClinicalDocument, clinicalApproveDocument,
   publishProviderDocumentToPatient,
@@ -52,6 +52,8 @@ export default function ClinicalCoordinationPanel({
   orgId: string; userId: string; role: Role; patients?: { id: string; name: string }[];
 }) {
   const [providers, setProviders] = useState<HealthcareProvider[]>([]);
+  const [providerAssociations, setProviderAssociations] = useState<ProviderPatientAssociation[]>([]);
+  const [associationLoadError, setAssociationLoadError] = useState<string | null>(null);
   const [requests, setRequests] = useState<ClinicalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +106,9 @@ export default function ClinicalCoordinationPanel({
       if (p.error) setError(p.error); else setProviders(p.data ?? []);
       if (r.error) setError(r.error); else setRequests(r.data ?? []);
       if (role === 'director') {
+        const associations = await getProviderPatientAssociations(orgId);
+        setAssociationLoadError(associations.error);
+        setProviderAssociations(associations.data ?? []);
         const rep = await getClinicalCoordinationReport(orgId);
         if (!rep.error) setReport(rep.data);
         const metrics = await getCoordinationTaskMetrics(orgId);
@@ -270,6 +275,7 @@ export default function ClinicalCoordinationPanel({
       const r = await associateProviderWithPatient(patientId, providerId);
       if (r.error) { toast.error(r.error); return; }
       toast.success('Provider associated with patient.');
+      await refresh();
     } finally { setBusy(false); }
   };
 
@@ -512,8 +518,24 @@ export default function ClinicalCoordinationPanel({
             {providers.filter((p) => [p.displayName, p.practiceName, p.specialty].some((value) =>
               (value ?? '').toLowerCase().includes(providerSearch.toLowerCase().trim())
             )).map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-2 text-sm border-b border-ent-line/50 pb-1">
-                <span>{p.displayName} <span className="text-ent-muted">({PROVIDER_SPECIALTIES.find((s) => s.value === p.specialty)?.label ?? p.specialty})</span></span>
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-sm border-b border-ent-line/50 pb-2">
+                <div className="min-w-0">
+                  <span>{p.displayName} <span className="text-ent-muted">({PROVIDER_SPECIALTIES.find((s) => s.value === p.specialty)?.label ?? p.specialty})</span></span>
+                  {role === 'director' && (
+                    <p className="text-xs text-ent-muted mt-1 whitespace-normal break-words"
+                      aria-label={`Associated patients for ${p.displayName}`}>
+                      <span className="font-semibold">Associated patients: </span>
+                      {associationLoadError ? (
+                        <span role="alert">Could not load associations: {associationLoadError}</span>
+                      ) : (() => {
+                        const linked = patients.filter((patient) =>
+                          providerAssociations.some((association) =>
+                            association.providerId === p.id && association.patientId === patient.id));
+                        return linked.length ? linked.map((patient) => patient.name).join(', ') : 'None';
+                      })()}
+                    </p>
+                  )}
+                </div>
                 {role === 'director' && (
                   <div className="flex flex-wrap items-center gap-2">
                     <button type="button" disabled={busy} className="rounded border border-ent-line px-2 py-1 text-xs"
