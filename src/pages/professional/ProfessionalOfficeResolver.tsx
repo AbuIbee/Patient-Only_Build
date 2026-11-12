@@ -25,7 +25,8 @@ import { PendingInvitesBanner } from '@/pages/enterprise/EnterpriseDashboardRout
 import EnterpriseCaregiverDashboard from '@/pages/enterprise/EnterpriseCaregiverDashboard';
 import ClinicalOfficeDashboard from '@/pages/enterprise/ClinicalOfficeDashboard';
 import ProviderInbox from '@/pages/enterprise/HcnProviderInbox';
-import OrganizationOwnerOffice, { listMyOwnedOrganizations, type OwnedOrganization } from '@/pages/enterprise/OrganizationOwnerOffice';
+import OrganizationOwnerOffice from '@/pages/enterprise/OrganizationOwnerOffice';
+import { listMyOwnedOrganizations, type OwnedOrganization } from '@/services/hcnOwnerOfficeService';
 import { getClaimableProviders, type ClaimableProvider } from '@/services/hcnProviderMessagingService';
 import EnterprisePatientDashboard from '@/pages/patient/EnterprisePatientDashboard';
 import PatientLayout from '@/pages/patient/PatientLayout';
