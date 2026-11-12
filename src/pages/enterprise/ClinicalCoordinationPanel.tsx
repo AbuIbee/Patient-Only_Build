@@ -634,7 +634,7 @@ export default function ClinicalCoordinationPanel({
       )}
 
       {/* Request list */}
-      <div className="rounded-xl border border-ent-line p-3 space-y-3">
+      <section role="region" aria-label="Clinical Requests" className="rounded-xl border border-ent-line p-3 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-sm">Clinical Requests</h3>
           {role === 'director' && (
@@ -684,7 +684,7 @@ export default function ClinicalCoordinationPanel({
             ))}
           </ul>
         )}
-      </div>
+      </section>
 
       {/* Request detail */}
       {selectedRequest && (
