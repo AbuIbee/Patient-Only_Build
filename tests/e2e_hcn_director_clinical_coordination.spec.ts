@@ -110,6 +110,10 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
     await expect(providerResponses.getByText(/Please review tomorrow/)).toBeVisible();
     await expect(providerResponses.getByText('E2E Verified Provider', { exact: false })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Original clinical request' })).toContainText('No message or description was entered');
+    const activity = page.getByRole('region', { name: 'Clinical activity summary' });
+    await expect(activity).toContainText('Provider response received');
+    await expect(activity).not.toContainText('recipient verified');
+    await expect(page.getByText('Event history', { exact: true })).toHaveCount(0);
 
     const uploadInput=page.locator('section[aria-label="Clinical Coordination"] input[type="file"]');
     await uploadInput.setInputFiles({
@@ -122,6 +126,7 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
     const linked=sql("SELECT count(*) FROM hcn_clinical_request_documents rd JOIN hcn_clinical_documents d ON d.id=rd.document_id WHERE rd.request_id='" + 
       sql("SELECT id FROM hcn_clinical_requests WHERE organization_id='" + ctx.orgId + "' LIMIT 1;") + "' AND rd.direction='uploaded_by_care_team';");
     expect(linked).toBe('1');
+    await expect(activity).toContainText('1 document attached internally');
 
     await page.getByRole('button',{name:/^accept$/i}).click();
     await expect(page.getByText(/accepted/i).last()).toBeVisible({timeout:15000});
