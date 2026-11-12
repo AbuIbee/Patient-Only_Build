@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import CoordinationTasksPanel from '@/components/healthcare/CoordinationTasksPanel';
+import { getVisibleClinicalProviderResponses, summarizeClinicalActivity } from '@/services/hcnClinicalRequestResponsePresentation';
 import { Stethoscope, RefreshCw, Send, Download, Upload, UserPlus, ShieldCheck, Users } from 'lucide-react';
 import {
-  type HealthcareProvider, type ClinicalRequest, type ClinicalDocument, type RequestEvent,
+  type HealthcareProvider, type ProviderPatientAssociation, type ClinicalRequest, type ClinicalDocument, type RequestEvent,
   type CoordinationPlan, type CoordinationPlanParticipant, type CoordinationPlanUpdate,
-  getProviders, upsertProvider, setProviderActive, associateProviderWithPatient, getClinicalRequests, createClinicalRequest,
+  getProviders, getProviderPatientAssociations, upsertProvider, setProviderActive, associateProviderWithPatient, getClinicalRequests, createClinicalRequest,
   sendClinicalRequest, resendClinicalRequestInvitation, cancelClinicalRequest, revokeClinicalRequestAccess,
   getDocumentsForRequest, getRequestEvents, reviewClinicalDocument, clinicalApproveDocument,
   publishProviderDocumentToPatient,
@@ -51,6 +52,8 @@ export default function ClinicalCoordinationPanel({
   orgId: string; userId: string; role: Role; patients?: { id: string; name: string }[];
 }) {
   const [providers, setProviders] = useState<HealthcareProvider[]>([]);
+  const [providerAssociations, setProviderAssociations] = useState<ProviderPatientAssociation[]>([]);
+  const [associationLoadError, setAssociationLoadError] = useState<string | null>(null);
   const [requests, setRequests] = useState<ClinicalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +61,7 @@ export default function ClinicalCoordinationPanel({
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [requestDocs, setRequestDocs] = useState<{ direction: string; document: ClinicalDocument }[]>([]);
   const [events, setEvents] = useState<RequestEvent[]>([]);
+  const [requestDetailError, setRequestDetailError] = useState<string | null>(null);
 
   const [showNewProvider, setShowNewProvider] = useState(false);
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
@@ -102,6 +106,9 @@ export default function ClinicalCoordinationPanel({
       if (p.error) setError(p.error); else setProviders(p.data ?? []);
       if (r.error) setError(r.error); else setRequests(r.data ?? []);
       if (role === 'director') {
+        const associations = await getProviderPatientAssociations(orgId);
+        setAssociationLoadError(associations.error);
+        setProviderAssociations(associations.data ?? []);
         const rep = await getClinicalCoordinationReport(orgId);
         if (!rep.error) setReport(rep.data);
         const metrics = await getCoordinationTaskMetrics(orgId);
@@ -120,9 +127,12 @@ export default function ClinicalCoordinationPanel({
     const [docs, evts] = await Promise.all([getDocumentsForRequest(id), getRequestEvents(id)]);
     setRequestDocs(docs.data ?? []);
     setEvents(evts.data ?? []);
+    setRequestDetailError([docs.error, evts.error].filter((message): message is string => !!message).join(' · ') || null);
   }, []);
 
   const selectedRequest = requests.find((r) => r.id === selectedRequestId) ?? null;
+  const visibleProviderResponses = getVisibleClinicalProviderResponses(events);
+  const activitySummary = summarizeClinicalActivity(events, requestDocs);
 
   const refreshPlans = useCallback(async (patientId: string) => {
     if (!patientId) { setPlans([]); return; }
@@ -266,6 +276,7 @@ export default function ClinicalCoordinationPanel({
       const r = await associateProviderWithPatient(patientId, providerId);
       if (r.error) { toast.error(r.error); return; }
       toast.success('Provider associated with patient.');
+      await refresh();
     } finally { setBusy(false); }
   };
 
@@ -508,8 +519,24 @@ export default function ClinicalCoordinationPanel({
             {providers.filter((p) => [p.displayName, p.practiceName, p.specialty].some((value) =>
               (value ?? '').toLowerCase().includes(providerSearch.toLowerCase().trim())
             )).map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-2 text-sm border-b border-ent-line/50 pb-1">
-                <span>{p.displayName} <span className="text-ent-muted">({PROVIDER_SPECIALTIES.find((s) => s.value === p.specialty)?.label ?? p.specialty})</span></span>
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-sm border-b border-ent-line/50 pb-2">
+                <div className="min-w-0">
+                  <span>{p.displayName} <span className="text-ent-muted">({PROVIDER_SPECIALTIES.find((s) => s.value === p.specialty)?.label ?? p.specialty})</span></span>
+                  {role === 'director' && (
+                    <p className="text-xs text-ent-muted mt-1 whitespace-normal break-words"
+                      aria-label={`Associated patients for ${p.displayName}`}>
+                      <span className="font-semibold">Associated patients: </span>
+                      {associationLoadError ? (
+                        <span role="alert">Could not load associations: {associationLoadError}</span>
+                      ) : (() => {
+                        const linked = patients.filter((patient) =>
+                          providerAssociations.some((association) =>
+                            association.providerId === p.id && association.patientId === patient.id));
+                        return linked.length ? linked.map((patient) => patient.name).join(', ') : 'None';
+                      })()}
+                    </p>
+                  )}
+                </div>
                 {role === 'director' && (
                   <div className="flex flex-wrap items-center gap-2">
                     <button type="button" disabled={busy} className="rounded border border-ent-line px-2 py-1 text-xs"
@@ -587,10 +614,46 @@ export default function ClinicalCoordinationPanel({
       {/* Request detail */}
       {selectedRequest && (
         <div className="rounded-xl border border-ent-line p-3 space-y-3">
-          <h3 className="font-semibold text-sm">{selectedRequest.title} — documents & history</h3>
+          <h3 className="font-semibold text-sm">{selectedRequest.title} — request, provider replies &amp; documents</h3>
+          <section aria-label="Original clinical request" className="rounded-lg border border-ent-line bg-ent-bg p-3 space-y-1">
+            <h4 className="text-sm font-semibold text-ent-ink">Original request to provider</h4>
+            <p className="text-xs text-ent-muted">The notification email contains a secure access link only. The clinical request itself is shown inside the verified provider portal, not copied into the email.</p>
+            {selectedRequest.description?.trim()
+              ? <p className="text-sm text-ent-ink whitespace-pre-wrap break-words">{selectedRequest.description}</p>
+              : <p className="text-xs text-ent-muted">No message or description was entered in this request.</p>}
+            {Array.isArray(selectedRequest.requestedItems) && selectedRequest.requestedItems.length > 0 && (
+              <div className="text-sm text-ent-ink">
+                <strong>Requested items</strong>
+                <ul className="list-disc pl-5">
+                  {selectedRequest.requestedItems.map((item, index) => (
+                    <li key={index}>{typeof item === 'string' ? item : 'Requested clinical item'}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+
+          <section aria-label="Provider responses" className="rounded-lg border border-ent-line bg-ent-bg p-3 space-y-2">
+            <h4 className="text-sm font-semibold text-ent-ink">Provider responses</h4>
+            <p className="text-xs text-ent-muted">Messages submitted through Haneen's verified provider link appear here. Direct replies to the notification email are not imported.</p>
+            {requestDetailError ? (
+              <p role="alert" className="text-sm text-ent-rust">Could not load all request details: {requestDetailError}</p>
+            ) : visibleProviderResponses.length === 0 ? (
+              <p className="text-sm text-ent-muted">No written provider response is recorded for this request.</p>
+            ) : (
+              <ul className="space-y-2">
+                {visibleProviderResponses.map((reply) => (
+                  <li key={reply.id} className="rounded-lg border border-ent-line bg-white p-3 space-y-1">
+                    <p className="text-xs text-ent-muted">{reply.senderLabel || 'Verified external provider'} · {new Date(reply.createdAt).toLocaleString()}</p>
+                    <p className="text-sm text-ent-ink whitespace-pre-wrap break-words">{reply.responseText}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
           <div className="space-y-2">
-            {requestDocs.length === 0 ? <p className="text-sm text-ent-muted">No documents yet.</p> : requestDocs.map(({ direction, document: doc }) => (
+            {requestDocs.length === 0 ? <p className="text-sm text-ent-muted">No documents are attached to this request.</p> : requestDocs.map(({ direction, document: doc }) => (
               <div key={doc.id} className="flex items-center justify-between gap-2 border border-ent-line rounded-lg p-2">
                 <div className="text-sm">
                   <div>{doc.originalFilename} <span className="text-ent-muted text-xs">({direction === 'shared_with_recipient' ? 'shared with provider' :
@@ -624,7 +687,7 @@ export default function ClinicalCoordinationPanel({
 
           {(role === 'director' || role === 'caregiver' || role === 'clinical') && (
             <div className="space-y-1">
-              <input type="text" placeholder="Review notes (used for the next action above)" value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} className="block w-full rounded-lg border border-ent-line p-2 text-sm" />
+              <input type="text" placeholder="Document review notes only — not included in the provider email" value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} className="block w-full rounded-lg border border-ent-line p-2 text-sm" />
             </div>
           )}
 
@@ -635,16 +698,28 @@ export default function ClinicalCoordinationPanel({
             <select className="rounded-lg border border-ent-line p-2 text-sm" value={uploadClassification} onChange={(e) => setUploadClassification(e.target.value)}>
               {DOCUMENT_CLASSIFICATIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
-            <input type="file" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-sm" />
+            <input type="file" aria-label="Choose internal clinical document" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-sm" />
             <button type="button" disabled={busy || !uploadFile} onClick={() => { void doUpload(); }} className="rounded-lg bg-ent-bronze px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"><Upload className="h-3 w-3 inline mr-1" />Upload</button>
           </div>
 
-          <div>
-            <h4 className="text-xs font-semibold text-ent-muted mb-1">Event history</h4>
-            <ul className="text-xs text-ent-muted space-y-0.5">
-              {events.map((ev) => <li key={ev.id}>{new Date(ev.createdAt).toLocaleString()} — {ev.eventType.replace(/_/g, ' ')}</li>)}
-            </ul>
-          </div>
+          <p className="text-xs text-ent-muted">Choose File only selects a local file. Click Upload to store and attach it; internal uploads are not shared with the provider automatically.</p>
+          <section aria-label="Clinical activity summary" className="rounded-lg border border-ent-line bg-ent-bg p-3 space-y-2">
+            <h4 className="text-sm font-semibold text-ent-ink">Activity summary</h4>
+            {activitySummary.length === 0 ? (
+              <p className="text-xs text-ent-muted">No delivery, response, or document activity yet.</p>
+            ) : (
+              <ul className="space-y-1.5 text-xs text-ent-ink">
+                {activitySummary.map((item) => (
+                  <li key={item.key} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                    <span>{item.label}</span>
+                    <time className="text-ent-muted" dateTime={item.occurredAt}>
+                      {new Date(item.occurredAt).toLocaleString()}
+                    </time>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       )}
 
