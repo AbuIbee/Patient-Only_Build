@@ -108,3 +108,60 @@ export async function getProviderDocumentDownloadUrl(path: string): Promise<stri
   if (error || !data?.signedUrl) throw new Error(error?.message || 'Could not authorize document download');
   return data.signedUrl;
 }
+
+export type ProviderThreadDocument = {
+  documentId: string;
+  filename: string;
+  storagePath: string;
+  reviewStatus: string;
+  createdAt: string;
+  uploadedBy: string;
+};
+
+export async function listProviderThreadDocuments(threadId: string): Promise<ProviderThreadDocument[]> {
+  const {data,error}=await providerApi.rpc('hcn_list_provider_thread_documents',{p_thread_id:threadId});
+  if(error)throw new Error(error.message);
+  return (data??[]).map((r:Record<string,unknown>)=>({
+    documentId:String(r.document_id),filename:String(r.original_filename),
+    storagePath:String(r.storage_path),reviewStatus:String(r.review_status),
+    createdAt:String(r.created_at),uploadedBy:String(r.uploaded_by),
+  }));
+}
+
+export async function uploadProviderThreadDocument(threadId: string, file: File): Promise<string> {
+  if(file.size<1 || file.size>25*1024*1024)throw new Error('File size must be between 1 byte and 25 MiB');
+  const ext=file.name.toLowerCase().split('.').pop();
+  const inferredMime:Record<string,string>={
+    pdf:'application/pdf',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',
+    txt:'text/plain',csv:'text/csv',doc:'application/msword',
+    docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls:'application/vnd.ms-excel',
+    xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  };
+  const mimeType=file.type||inferredMime[ext??'']||'application/octet-stream';
+  if(!Object.values(inferredMime).includes(mimeType))throw new Error('Unsupported document file type');
+  const bytes=new Uint8Array(await file.arrayBuffer());
+  const digest=await crypto.subtle.digest('SHA-256',bytes);
+  const sha256=Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  const documentId=crypto.randomUUID();
+  const {data:path,error:prepareError}=await providerApi.rpc('hcn_prepare_provider_document_upload',{
+    p_thread_id:threadId,p_document_id:documentId,p_filename:file.name,p_mime_type:mimeType,
+    p_file_size:file.size,p_category:'other_clinical_attachment',p_sha256:sha256,
+  });
+  if(prepareError||typeof path!=='string')throw new Error(prepareError?.message||'Could not authorize clinical document upload');
+  const {error:uploadError}=await supabase.storage.from('hcn-clinical-documents')
+    .upload(path,bytes,{contentType:mimeType,upsert:false});
+  if(uploadError){
+    // Abort metadata only if secure Storage confirms no object exists.
+    const {error:abortError}=await providerApi.rpc('hcn_abort_provider_document_upload',{
+      p_thread_id:threadId,p_document_id:documentId,
+    });
+    if(abortError)throw new Error('Storage upload failed; metadata cleanup also failed. Contact the Director: '+abortError.message);
+    throw new Error('Secure upload failed: '+uploadError.message);
+  }
+  const {error:finalizeError}=await providerApi.rpc('hcn_finalize_provider_document_upload',{
+    p_thread_id:threadId,p_document_id:documentId,
+  });
+  if(finalizeError)throw new Error('File reached secure storage but receipt confirmation failed. Contact your Director: '+finalizeError.message);
+  return documentId;
+}
