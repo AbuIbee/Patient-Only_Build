@@ -59,7 +59,7 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     ]);
     await expect(nav.getByRole('button', { name: 'Organization Overview' })).toHaveCount(0);
     await expect(nav.getByRole('button', { name: 'Licensing and Entitlements' })).toHaveCount(0);
-    await expect(nav.getByRole('button', { name: 'Organization Ownership' })).toHaveCount(0);
+    await expect(nav.getByRole('button', { name: 'Office Ownership' })).toHaveCount(0);
 
     await nav.getByRole('button', { name: 'Patient Management' }).click();
     await expect(page).toHaveURL(/\/Professional\/Admin\/patients$/i);
@@ -89,15 +89,15 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
 
     await nav.getByRole('button', { name: 'Organization Settings' }).click();
     await expect(page).toHaveURL(/\/Professional\/Admin\/settings$/i);
-    for (const label of ['Organization Overview', 'Licensing & Entitlements', 'Organization Settings', 'Organization Ownership']) {
+    for (const label of ['Organization Overview', 'Licensing & Entitlements', 'Organization Settings', 'Office Ownership']) {
       await expect(page.getByRole('tab', { name: label })).toBeVisible();
     }
     await page.getByRole('tab', { name: 'Organization Settings' }).click();
     await page.getByRole('button', { name: /Open Billing & Add-Ons/i }).click();
     await expect(page.getByRole('tab', { name: 'Licensing & Entitlements' })).toHaveAttribute('aria-selected', 'true');
 
-    await page.getByRole('tab', { name: 'Organization Ownership' }).click();
-    await expect(page.getByRole('heading', { name: 'Organization Ownership' })).toBeVisible();
+    await page.getByRole('tab', { name: 'Office Ownership' }).click();
+    await expect(page.getByRole('heading', { name: 'Office Ownership' })).toBeVisible();
 
     await page.goto(`${FRONTEND}/Professional/Admin/licensing`);
     await expect(page.getByRole('tab', { name: 'Licensing & Entitlements' })).toHaveAttribute('aria-selected', 'true');
@@ -106,7 +106,7 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     await page.goto(`${FRONTEND}/Professional/Admin/overview`);
     await expect(page.getByRole('tab', { name: 'Organization Overview' })).toHaveAttribute('aria-selected', 'true');
     await page.goto(`${FRONTEND}/Professional/Admin/ownership`);
-    await expect(page.getByRole('tab', { name: 'Organization Ownership' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'Office Ownership' })).toHaveAttribute('aria-selected', 'true');
 
     // Shared shell's mobile drawer must reflect the same regrouped navigation.
     await page.setViewportSize({ width: 390, height: 844 });
