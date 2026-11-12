@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
 import {
   claimProviderAccount, getClaimableProviders, listProviderThreads,
   openProviderThread, listProviderMessages, postProviderMessage,
