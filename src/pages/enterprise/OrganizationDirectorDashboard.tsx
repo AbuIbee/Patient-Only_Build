@@ -1121,8 +1121,8 @@ const DIRECTOR_NAV_ITEMS: OfficeNavItem<DirectorNavKey>[] = [
   { key: 'settings', label: 'Organization Settings', icon: SettingsIcon },
 ];
 const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
-  { label: 'ORGANIZATION', items: ['dashboard', 'staff', 'patients', 'scheduling'] },
-  { label: 'CARE OPERATIONS', items: ['assignments', 'operations', 'incidents', 'communications', 'clinical'] },
+  { label: 'ORGANIZATION', items: ['dashboard', 'clinical', 'staff', 'patients', 'scheduling'] },
+  { label: 'CARE OPERATIONS', items: ['assignments', 'operations', 'incidents', 'communications'] },
   { label: 'ADMINISTRATION', items: ['applications', 'reports', 'settings'] },
 ];
 
