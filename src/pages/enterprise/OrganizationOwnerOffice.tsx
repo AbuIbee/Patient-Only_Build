@@ -2,22 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { listMyOwnedOrganizations, type OwnedOrganization } from '@/services/hcnOwnerOfficeService';
 
 const ownerApi = supabase as unknown as SupabaseClient;
-export type OwnedOrganization = { organizationId:string; organizationName:string };
 type OwnerRequest = {
   requestId:string; requesterId:string; requesterName:string;
   capability:string; status:'pending'|'approved'|'rejected'|'cancelled';
   reason:string; requestedAt:string; decidedAt:string|null; decisionNote:string|null;
 };
-
-export async function listMyOwnedOrganizations(): Promise<OwnedOrganization[]> {
-  const {data,error}=await ownerApi.rpc('hcn_list_my_owned_organizations');
-  if(error)throw new Error(error.message);
-  return (data??[]).map((r:Record<string,unknown>)=>({
-    organizationId:String(r.organization_id),organizationName:String(r.organization_name),
-  }));
-}
 
 async function listOwnerRequests(orgId:string):Promise<OwnerRequest[]> {
   const {data,error}=await ownerApi.rpc('hcn_owner_list_office_requests',{p_org:orgId});
