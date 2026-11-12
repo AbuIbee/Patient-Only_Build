@@ -651,7 +651,7 @@ function StaffCard({ orgId, orgName, members, onChanged }: {
             <li key={m.id} className="flex items-center justify-between gap-3 p-3 bg-ent-bg rounded-xl border border-ent-line">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-ent-ink truncate">{m.firstName} {m.lastName} <span className="text-xs text-ent-muted">({m.email})</span></p>
-                <p className="text-xs text-ent-muted">{ROLE_LABELS[m.orgRole]} — {m.status}</p>
+                <p className="text-xs text-ent-muted">{ROLE_LABELS[m.orgRole]} — {m.isSecondaryOffice ? 'Owner-approved secondary office' : m.status}</p>
               </div>
               <div className="flex flex-shrink-0 flex-col sm:flex-row gap-1 items-end sm:items-center">
                 {m.orgRole === 'caregiver' && m.status === 'invited' && (
@@ -662,13 +662,19 @@ function StaffCard({ orgId, orgName, members, onChanged }: {
                     {resendingId === m.id ? 'Sending…' : 'Resend setup email'}
                   </button>
                 )}
-                <button type="button"
-                  onClick={() => { void remove(m.userId, `${m.firstName} ${m.lastName}`); }}
-                  disabled={removingId === m.userId}
-                  className="flex-shrink-0 p-2 rounded-lg text-ent-rust hover:bg-ent-rust/10 disabled:opacity-60"
-                  aria-label="Remove staff member">
-                  {removingId === m.userId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                </button>
+                {m.isSecondaryOffice ? (
+                  <span className="text-xs text-ent-muted" title="Only the Owner can revoke this office in Office Ownership">
+                    Revoke through Office Ownership
+                  </span>
+                ) : (
+                  <button type="button"
+                    onClick={() => { void remove(m.userId, `${m.firstName} ${m.lastName}`); }}
+                    disabled={removingId === m.userId}
+                    className="flex-shrink-0 p-2 rounded-lg text-ent-rust hover:bg-ent-rust/10 disabled:opacity-60"
+                    aria-label="Remove staff member">
+                    {removingId === m.userId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  </button>
+                )}
               </div>
             </li>
           ))}
@@ -1017,7 +1023,9 @@ function AssignmentsCard({ orgId, members }: {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const staffOptions = members.filter((m) => m.orgRole !== 'director' && m.status === 'active');
+  // Only staff whose effective office matches the selected assignment role.
+  // Secondary offices are separate grants, never mutable primary memberships.
+  const staffOptions = members.filter((m) => m.orgRole === role && m.status === 'active');
 
   const assign = async () => {
     if (!staffId || !patientId) { toast.error('Select both a staff member and a patient.'); return; }
@@ -1060,7 +1068,7 @@ function AssignmentsCard({ orgId, members }: {
           <option value="">Select covered patient…</option>
           {coveredPatients.map((p) => <option key={p.patientId} value={p.patientId}>{p.preferredName || `${p.firstName} ${p.lastName}`}</option>)}
         </select>
-        <select value={role} onChange={(e) => setRole(e.target.value as StaffRole)} className={inputCls + ' sm:w-44'}>
+        <select value={role} onChange={(e) => { setRole(e.target.value as StaffRole); setStaffId(''); }} className={inputCls + ' sm:w-44'}>
           <option value="caregiver">Caregiver</option>
           <option value="therapist">Therapist</option>
           <option value="medical_professional">Medical Professional</option>
@@ -1069,7 +1077,7 @@ function AssignmentsCard({ orgId, members }: {
           {saving ? 'Saving…' : 'Assign'}
         </button>
       </div>
-      <p className="text-xs text-ent-muted -mt-2">The staff member must already hold that role in this organization, and the patient must already be covered.</p>
+      <p className="text-xs text-ent-muted -mt-2">The staff member must have an active primary or independently Owner-approved secondary office for this role. A separate active patient assignment is required before patient access.</p>
 
       {loading ? (
         <Loader2 className="w-5 h-5 animate-spin text-ent-bronze" />
