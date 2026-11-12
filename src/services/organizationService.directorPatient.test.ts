@@ -1,13 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mock = vi.hoisted(() => ({ invoke: vi.fn(), rpc: vi.fn() }));
+const mock = vi.hoisted(() => ({
+  invoke: vi.fn(), rpc: vi.fn(), from: vi.fn(), select: vi.fn(), eq: vi.fn(),
+}));
 vi.mock('@/lib/supabase', () => ({
-  supabase: { functions: { invoke: mock.invoke }, rpc: mock.rpc },
+  supabase: { functions: { invoke: mock.invoke }, rpc: mock.rpc, from: mock.from },
 }));
 import { createDirectorPatient, assignCaregiverToPatient,
   unassignCaregiverFromPatient, getOrgMembers } from './organizationService';
 
 describe('HCN Director-controlled patient enrollment and employee inventory', () => {
-  beforeEach(() => { mock.invoke.mockReset(); mock.rpc.mockReset(); });
+  beforeEach(() => {
+    mock.invoke.mockReset(); mock.rpc.mockReset(); mock.from.mockReset();
+    mock.select.mockReset(); mock.eq.mockReset();
+    mock.from.mockReturnValue({ select: mock.select });
+    mock.select.mockReturnValue({ eq: mock.eq });
+    mock.eq.mockImplementation((_column: string, _value: unknown) => ({
+      eq: mock.eq,
+    }));
+    // The second .eq() ends the fluent query chain.
+    mock.eq.mockImplementationOnce(() => ({ eq: mock.eq }));
+    mock.eq.mockResolvedValue({data:[],error:null});
+  });
 
   it('shows invited staff with readable names and email in the manager inventory', async () => {
     mock.rpc.mockResolvedValue({
