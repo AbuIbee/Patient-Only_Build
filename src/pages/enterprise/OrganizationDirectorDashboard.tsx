@@ -1622,7 +1622,7 @@ function OwnershipView({ orgId }: { orgId: string }) {
   if (!isOwner) {
     return (
       <OfficeCard>
-        <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Organization Ownership</h2></div>
+        <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Office Ownership</h2></div>
         <p className="text-sm text-ent-text">
           This section is available only to this organization&apos;s Owner. Director authority and Owner authority are
           distinct — holding Director access does not, by itself, grant Owner capability self-assignment.
@@ -1633,7 +1633,7 @@ function OwnershipView({ orgId }: { orgId: string }) {
 
   return (
     <OfficeCard>
-      <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Organization Ownership</h2></div>
+      <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Office Ownership</h2></div>
       <p className="text-sm text-ent-text">
         As this organization&apos;s Owner, you may explicitly self-assign operational capability within this organization.
         Ownership alone grants no clinical access — each capability below must be deliberately assigned, is scoped to
@@ -1710,7 +1710,7 @@ function DirectorOrganizationSettingsPage({
     { key: 'overview', label: 'Organization Overview' },
     { key: 'licensing', label: 'Licensing & Entitlements' },
     { key: 'settings', label: 'Organization Settings' },
-    { key: 'ownership', label: 'Organization Ownership' },
+    { key: 'ownership', label: 'Office Ownership' },
   ];
   const selectTab = (tab: DirectorSettingsTab) => {
     setActiveTab(tab);
