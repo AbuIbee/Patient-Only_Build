@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import CoordinationTasksPanel from '@/components/healthcare/CoordinationTasksPanel';
-import { getVisibleClinicalProviderResponses } from '@/services/hcnClinicalRequestResponsePresentation';
+import { getVisibleClinicalProviderResponses, summarizeClinicalActivity } from '@/services/hcnClinicalRequestResponsePresentation';
 import { Stethoscope, RefreshCw, Send, Download, Upload, UserPlus, ShieldCheck, Users } from 'lucide-react';
 import {
   type HealthcareProvider, type ProviderPatientAssociation, type ClinicalRequest, type ClinicalDocument, type RequestEvent,
@@ -132,6 +132,7 @@ export default function ClinicalCoordinationPanel({
 
   const selectedRequest = requests.find((r) => r.id === selectedRequestId) ?? null;
   const visibleProviderResponses = getVisibleClinicalProviderResponses(events);
+  const activitySummary = summarizeClinicalActivity(events, requestDocs);
 
   const refreshPlans = useCallback(async (patientId: string) => {
     if (!patientId) { setPlans([]); return; }
@@ -702,12 +703,23 @@ export default function ClinicalCoordinationPanel({
           </div>
 
           <p className="text-xs text-ent-muted">Choose File only selects a local file. Click Upload to store and attach it; internal uploads are not shared with the provider automatically.</p>
-          <div>
-            <h4 className="text-xs font-semibold text-ent-muted mb-1">Event history</h4>
-            <ul className="text-xs text-ent-muted space-y-0.5">
-              {events.map((ev) => <li key={ev.id}>{new Date(ev.createdAt).toLocaleString()} — {ev.eventType.replace(/_/g, ' ')}</li>)}
-            </ul>
-          </div>
+          <section aria-label="Clinical activity summary" className="rounded-lg border border-ent-line bg-ent-bg p-3 space-y-2">
+            <h4 className="text-sm font-semibold text-ent-ink">Activity summary</h4>
+            {activitySummary.length === 0 ? (
+              <p className="text-xs text-ent-muted">No delivery, response, or document activity yet.</p>
+            ) : (
+              <ul className="space-y-1.5 text-xs text-ent-ink">
+                {activitySummary.map((item) => (
+                  <li key={item.key} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                    <span>{item.label}</span>
+                    <time className="text-ent-muted" dateTime={item.occurredAt}>
+                      {new Date(item.occurredAt).toLocaleString()}
+                    </time>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       )}
 
