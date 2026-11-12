@@ -25,7 +25,12 @@ export function ProviderConversation({
         providerView ? listProviderSharedDocuments(threadId) : Promise.resolve([] as SharedProviderDocument[]),
       ]);
       setMessages(msgs); setSharedDocs(docs); setError('');
-    } catch (e) { setError(e instanceof Error ? e.message : 'Could not load messages or authorized documents'); }
+    } catch (e) {
+      // Fail closed when authorization is revoked or the account expires:
+      // do not retain previously fetched clinical messages/documents in DOM.
+      setMessages([]); setSharedDocs([]);
+      setError(e instanceof Error ? e.message : 'Could not load messages or authorized documents');
+    }
   }, [threadId, providerView]);
 
   useEffect(() => {
@@ -161,7 +166,10 @@ export default function ProviderInbox({ userId }: { userId: string }) {
     try {
       const [accounts, inbox] = await Promise.all([getClaimableProviders(),listProviderThreads()]);
       setClaimable(accounts); setThreads(inbox); setError('');
-    } catch(e) { setError(e instanceof Error ? e.message : 'Could not load provider workspace'); }
+    } catch(e) {
+      setThreads([]); setClaimable([]);
+      setError(e instanceof Error ? e.message : 'Could not load provider workspace');
+    }
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
 
