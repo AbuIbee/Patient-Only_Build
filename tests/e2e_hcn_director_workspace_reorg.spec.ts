@@ -62,7 +62,7 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     await expect(nav.getByRole('button', { name: 'Organization Ownership' })).toHaveCount(0);
 
     await nav.getByRole('button', { name: 'Patient Management' }).click();
-    await expect(page).toHaveURL(/\\/Professional\\/Admin\\/patients$/i);
+    await expect(page).toHaveURL(/\/Professional\/Admin\/patients$/i);
     await expect(page.getByRole('heading', { name: 'Covered Patients (1)' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Create Patient Account' })).toBeVisible();
     const patientHeadings = await page.locator('main h2').allTextContents();
@@ -79,10 +79,10 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     );
 
     await nav.getByRole('button', { name: 'Employee Schedule' }).click();
-    await expect(page).toHaveURL(/\\/Professional\\/Admin\\/scheduling$/i);
+    await expect(page).toHaveURL(/\/Professional\/Admin\/scheduling$/i);
 
     await nav.getByRole('button', { name: 'Organization Settings' }).click();
-    await expect(page).toHaveURL(/\\/Professional\\/Admin\\/settings$/i);
+    await expect(page).toHaveURL(/\/Professional\/Admin\/settings$/i);
     for (const label of ['Organization Overview', 'Licensing & Entitlements', 'Organization Settings', 'Organization Ownership']) {
       await expect(page.getByRole('tab', { name: label })).toBeVisible();
     }
