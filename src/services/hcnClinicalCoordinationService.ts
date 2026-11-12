@@ -662,7 +662,7 @@ export async function publishProviderDocumentToPatient(documentId: string) {
  * never grants an external provider access to the document.
  */
 export async function shareClinicalDocumentWithProvider(requestId: string, documentId: string) {
-  const { data, error } = await supabase.rpc('hcn_share_clinical_document_with_recipient', {
+  const { data, error } = await clinicalApi.rpc('hcn_share_clinical_document_with_recipient', {
     p_request_id: requestId, p_document_id: documentId,
   });
   return { data: data as string | null, error: error ? err(error, 'Document could not be shared securely') : null };
