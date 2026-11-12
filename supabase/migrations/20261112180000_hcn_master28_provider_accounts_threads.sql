@@ -189,3 +189,48 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.hcn_post_provider_message(uuid,text,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.hcn_post_provider_message(uuid,text,uuid) TO authenticated;
+
+
+-- Lookup provides only names for providers matching the signed-in user's
+-- confirmed email; it never returns another provider's contact address.
+CREATE OR REPLACE FUNCTION public.hcn_list_claimable_provider_accounts()
+RETURNS TABLE(provider_id uuid,provider_name text,organization_name text,account_status text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path='public' AS $$
+  SELECT p.id, p.display_name, o.name,coalesce(a.status,'unclaimed')
+  FROM public.hcn_healthcare_providers p
+  JOIN public.organizations o ON o.id=p.organization_id
+  JOIN auth.users u ON u.id=(SELECT auth.uid()) AND u.email_confirmed_at IS NOT NULL
+    AND lower(btrim(u.email))=lower(btrim(p.secure_contact_email))
+  LEFT JOIN public.hcn_provider_accounts a ON a.provider_id=p.id
+  WHERE p.is_active AND (a.id IS NULL OR a.user_id=(SELECT auth.uid()));
+$$;
+REVOKE ALL ON FUNCTION public.hcn_list_claimable_provider_accounts() FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.hcn_list_claimable_provider_accounts() TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.hcn_list_my_provider_threads()
+RETURNS TABLE(thread_id uuid,organization_id uuid,provider_id uuid,patient_id uuid,patient_name text,provider_name text,last_activity timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path='public' AS $$
+  SELECT t.id,t.organization_id,t.provider_id,t.patient_id,
+    coalesce(nullif(p.preferred_name,''), concat_ws(' ',p.first_name,p.last_name)),
+    hp.display_name,t.updated_at
+  FROM public.hcn_provider_threads t
+  JOIN public.patients p ON p.id=t.patient_id
+  JOIN public.hcn_healthcare_providers hp ON hp.id=t.provider_id
+  WHERE public.hcn_can_access_provider_thread(t.id)
+  ORDER BY t.updated_at DESC;
+$$;
+REVOKE ALL ON FUNCTION public.hcn_list_my_provider_threads() FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.hcn_list_my_provider_threads() TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.hcn_list_provider_messages(p_thread_id uuid)
+RETURNS TABLE(message_id uuid,sender_user_id uuid,message_text text,created_at timestamptz)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='public' AS $$
+BEGIN
+  IF NOT public.hcn_can_access_provider_thread(p_thread_id) THEN
+    RAISE EXCEPTION 'Not authorized for this clinical conversation';
+  END IF;
+  RETURN QUERY SELECT m.id,m.sender_user_id,m.message_text,m.created_at
+  FROM public.hcn_provider_messages m WHERE m.thread_id=p_thread_id ORDER BY m.created_at,m.id;
+END $$;
+REVOKE ALL ON FUNCTION public.hcn_list_provider_messages(uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.hcn_list_provider_messages(uuid) TO authenticated;
