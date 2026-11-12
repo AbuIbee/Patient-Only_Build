@@ -41,6 +41,51 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
   JOIN public.organization_licenses l ON l.organization_id=g.organization_id AND l.status='active'
   WHERE g.organization_id=p_org AND g.user_id=(SELECT auth.uid())
    AND g.capability=p_capability AND g.status='active'
+   -- A later license downgrade or credential revocation must cut off the
+   -- secondary office immediately, not only prevent future grants.
+   AND (
+     g.capability NOT IN ('therapist','medical_professional')
+     OR (
+       EXISTS(SELECT 1 FROM public.professional_applications a
+        WHERE a.target_organization_id=g.organization_id
+          AND a.applicant_user_id=g.user_id
+          AND a.requested_office=g.capability
+          AND a.credential_verification_status='independently_verified'
+          AND a.status IN ('approved','pending_review','resubmitted'))
+       AND EXISTS(
+         SELECT 1 FROM public.organization_licenses lic
+         JOIN public.license_tier_catalog tier ON tier.tier_code=lic.license_tier_code
+         WHERE lic.organization_id=g.organization_id AND lic.status='active'
+           AND LEAST(lic.specialist_slot_count,tier.specialist_slot_count)>0
+           AND (
+             (SELECT count(*) FROM public.organization_memberships mm
+              WHERE mm.organization_id=g.organization_id AND mm.status='active'
+                AND mm.org_role IN ('medical_professional','therapist','other_specialist'))
+             +(SELECT count(*) FROM public.hcn_director_office_grants gg
+              WHERE gg.organization_id=g.organization_id AND gg.status='active'
+                AND gg.capability IN ('medical_professional','therapist'))
+           )<=LEAST(lic.specialist_slot_count,tier.specialist_slot_count)
+       )
+     )
+   )
+   AND (g.capability<>'caregiver' OR EXISTS(
+     SELECT 1 FROM public.organization_licenses lic WHERE lic.organization_id=g.organization_id
+       AND (lic.max_caregiver_seats IS NULL OR
+         (SELECT count(*) FROM public.organization_memberships mm
+          WHERE mm.organization_id=g.organization_id AND mm.org_role='caregiver' AND mm.status='active')
+          +(SELECT count(*) FROM public.hcn_director_office_grants gg
+            WHERE gg.organization_id=g.organization_id AND gg.capability='caregiver' AND gg.status='active')
+          <=lic.max_caregiver_seats)
+   ))
+   AND (g.capability<>'billing_admin' OR EXISTS(
+     SELECT 1 FROM public.organization_licenses lic WHERE lic.organization_id=g.organization_id
+       AND (lic.max_billing_admin_seats IS NULL OR
+         (SELECT count(*) FROM public.organization_memberships mm
+          WHERE mm.organization_id=g.organization_id AND mm.org_role='billing_admin' AND mm.status='active')
+          +(SELECT count(*) FROM public.hcn_director_office_grants gg
+            WHERE gg.organization_id=g.organization_id AND gg.capability='billing_admin' AND gg.status='active')
+          <=lic.max_billing_admin_seats)
+   ))
  );
 $$;
 REVOKE ALL ON FUNCTION public.hcn_has_active_director_office(uuid,text) FROM PUBLIC,anon;
