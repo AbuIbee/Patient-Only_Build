@@ -127,7 +127,8 @@ jobs:
             tests/e2e_hcn_director_clinical_coordination.spec.ts \
             tests/e2e_hcn_caregiver_clinical_role_views.spec.ts \
             tests/e2e_hcn_external_provider_access.spec.ts \
-            tests/e2e_hcn_director_workspace_reorg.spec.ts
+            tests/e2e_hcn_director_workspace_reorg.spec.ts \
+            tests/e2e_hcn_master28_provider_messaging.spec.ts
       - name: Tear down isolated browser test systems
         if: always()
         run: |
