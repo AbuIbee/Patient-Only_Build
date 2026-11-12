@@ -657,3 +657,13 @@ export async function publishProviderDocumentToPatient(documentId: string) {
     error: error ? err(error, 'Unable to share this reviewed provider document') : null as string | null,
   };
 }
+
+/** Director release is a separate audited step: internal upload alone
+ * never grants an external provider access to the document.
+ */
+export async function shareClinicalDocumentWithProvider(requestId: string, documentId: string) {
+  const { data, error } = await supabase.rpc('hcn_share_clinical_document_with_recipient', {
+    p_request_id: requestId, p_document_id: documentId,
+  });
+  return { data: data as string | null, error: error ? err(error, 'Document could not be shared securely') : null };
+}
