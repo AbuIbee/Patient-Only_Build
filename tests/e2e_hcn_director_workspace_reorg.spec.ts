@@ -51,10 +51,15 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
 
     const nav = page.getByRole('navigation', { name: 'ADMIN OFFICE navigation' });
     await expect(nav.getByRole('button', { name: 'Director Dashboard' })).toBeVisible({ timeout: 20000 });
+    // Clinical Coordination is a top-priority Organization destination.
+    await nav.getByRole('button', { name: 'Clinical Coordination' }).click();
+    await expect(page).toHaveURL(/\/Professional\/Admin\/clinical$/i);
+    await expect(page.getByRole('heading', { name: 'Clinical Coordination' })).toBeVisible();
+
     expect((await nav.locator('button').allTextContents()).map(t => t.trim())).toEqual([
-      'Director Dashboard', 'Staff Management', 'Patient Management', 'Employee Schedule',
+      'Director Dashboard', 'Clinical Coordination', 'Staff Management', 'Patient Management', 'Employee Schedule',
       'Assignments and Coverage', 'Care Operations', 'Incidents and Escalations',
-      'Care Communications', 'Clinical Coordination', 'Professional Applications & Approvals',
+      'Care Communications', 'Professional Applications & Approvals',
       'Reports and Insights', 'Organization Settings',
     ]);
     await expect(nav.getByRole('button', { name: 'Organization Overview' })).toHaveCount(0);
