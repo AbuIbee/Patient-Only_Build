@@ -12,7 +12,7 @@ test('verified Provider account exchanges 3 messages without repeating OTP; revo
   const stamp=Date.now();
   const dirEmail='m28-e2e-dir-'+stamp+'@local.test';
   const providerEmail='m28-e2e-provider-'+stamp+'@local.test';
-  const ids:string[]=[];let org='',patient='',provider='',thread='';
+  const ids:string[]=[];let org='',patient='',provider='';
   const directorContext=await browser.newContext();
   const providerContext=await browser.newContext();
   const directorPage=await directorContext.newPage();
@@ -92,7 +92,7 @@ test('verified Provider account exchanges 3 messages without repeating OTP; revo
     await expect(providerThread.getByText('Synthetic follow-up from Director')).toBeVisible({timeout:20000});
     expect(sql("SELECT count(*) FROM hcn_provider_messages WHERE thread_id IN "+
       "(SELECT id FROM hcn_provider_threads WHERE organization_id="+q(org)+");")).toBe('3');
-    thread=sql("SELECT id FROM hcn_provider_threads WHERE organization_id="+q(org)+" LIMIT 1;");
+
 
     // Revocation immediately changes backend authority and clears data on refresh.
     sql("UPDATE hcn_provider_accounts SET status='revoked' WHERE provider_id="+q(provider)+";");
