@@ -31,6 +31,7 @@ export default function OrganizationOwnerOffice({currentUserId}:{currentUserId:s
   const [orgs,setOrgs]=useState<OwnedOrganization[]>([]);
   const [orgId,setOrgId]=useState('');
   const [requests,setRequests]=useState<OwnerRequest[]>([]);
+  const [activeGrants,setActiveGrants]=useState<{user_id:string;capability:string;status:string}[]>([]);
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
@@ -41,6 +42,12 @@ export default function OrganizationOwnerOffice({currentUserId}:{currentUserId:s
       const selected=owned.find(org=>org.organizationId===orgId)?.organizationId||owned[0]?.organizationId||'';
       setOrgId(selected);
       setRequests(selected?await listOwnerRequests(selected):[]);
+      if(selected){
+        const {data:grants,error:grantsError}=await ownerApi.from('hcn_director_office_grants')
+          .select('user_id,capability,status').eq('organization_id',selected);
+        if(grantsError)throw grantsError;
+        setActiveGrants((grants??[]) as {user_id:string;capability:string;status:string}[]);
+      } else setActiveGrants([]);
       setError('');
     } catch(e) { setRequests([]);setError(e instanceof Error?e.message:'Owner approval queue unavailable'); }
     finally{setLoading(false);}
@@ -61,10 +68,25 @@ export default function OrganizationOwnerOffice({currentUserId}:{currentUserId:s
       });
       if(rpcError)throw rpcError;
       toast.success(approve?
-        'Decision recorded. Additional office access remains disabled until license and role activation checks pass.':
+        'Approved — secondary office access is now active within verified licensing and role limits.':
         'Office request rejected.');
       await refresh();
     } catch(e) {toast.error(e instanceof Error?e.message:'Owner review failed');}
+    finally{setBusy(false);}
+  };
+  const revoke = async(request:OwnerRequest)=>{
+    if(busy)return;
+    const reason=window.prompt('Reason to revoke this additional office (at least 10 characters):');
+    if(reason===null)return;
+    if(reason.trim().length<10){toast.error('Revocation requires a reason of at least 10 characters.');return;}
+    setBusy(true);
+    try {
+      const {error:rpcError}=await ownerApi.rpc('hcn_revoke_director_office_grant',{
+        p_org:orgId,p_user:request.requesterId,p_capability:request.capability,p_reason:reason.trim(),
+      });
+      if(rpcError)throw rpcError;
+      toast.success('The secondary office was revoked.');await refresh();
+    }catch(e){toast.error(e instanceof Error?e.message:'Office revocation failed');}
     finally{setBusy(false);}
   };
   return (
@@ -109,8 +131,23 @@ export default function OrganizationOwnerOffice({currentUserId}:{currentUserId:s
                 )}
                 {request.status==='pending'&&request.requesterId===currentUserId&&
                   <p className="text-xs text-ent-rust">Self-approval is prohibited. A different Organization Owner must review.</p>}
-                {request.status==='approved'&&
-                  <p className="text-xs text-ent-muted">Review approved; additional office privileges are not yet activated.</p>}
+                {request.status==='approved'&&(
+                  <div className="space-y-1">
+                    <p className="text-xs text-ent-muted">
+                      {activeGrants.some(g=>g.user_id===request.requesterId &&
+                        g.capability===request.capability && g.status==='active')
+                        ? 'Office access active — scope and license restrictions enforced.'
+                        : 'Office access inactive or revoked.'}
+                    </p>
+                    {request.requesterId!==currentUserId &&
+                      activeGrants.some(g=>g.user_id===request.requesterId &&
+                        g.capability===request.capability && g.status==='active') && (
+                        <button type="button" disabled={busy}
+                          className="text-xs border border-ent-rust rounded-lg px-2 py-1"
+                          onClick={()=>{void revoke(request);}}>Revoke office access</button>
+                      )}
+                  </div>
+                )}
               </li>
             ))}
           </ul>
