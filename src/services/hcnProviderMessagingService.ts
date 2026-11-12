@@ -83,3 +83,28 @@ export async function postProviderMessage(threadId: string, messageText: string,
   });
   if (error) throw new Error(error.message);
 }
+
+export type SharedProviderDocument = {
+  documentId: string;
+  filename: string;
+  storagePath: string;
+  sharedAt: string;
+};
+
+export async function listProviderSharedDocuments(threadId: string): Promise<SharedProviderDocument[]> {
+  const { data, error } = await providerApi.rpc('hcn_list_provider_shared_documents', { p_thread_id: threadId });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((doc: Record<string, unknown>) => ({
+    documentId: String(doc.document_id),
+    filename: String(doc.filename),
+    storagePath: String(doc.storage_path),
+    sharedAt: String(doc.shared_at),
+  }));
+}
+
+export async function getProviderDocumentDownloadUrl(path: string): Promise<string> {
+  const { data, error } = await supabase.storage.from('hcn-clinical-documents')
+    .createSignedUrl(path, 60);
+  if (error || !data?.signedUrl) throw new Error(error?.message || 'Could not authorize document download');
+  return data.signedUrl;
+}
