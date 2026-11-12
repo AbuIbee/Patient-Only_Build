@@ -52,6 +52,7 @@ import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
 import DirectorScheduleCalendar from './DirectorScheduleCalendar';
+import DirectorAttendancePanel, { DirectorRecentAttendance } from './DirectorAttendancePanel';
 import DirectorReportBuilder from './DirectorReportBuilder';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
@@ -1224,6 +1225,8 @@ function DashboardHome({ orgId, orgName, members, visits, incidents, handoffs, p
 
         <OfficeCard>
           <h2 className="font-bold text-ent-ink">Recent Staff Activity</h2>
+          <DirectorRecentAttendance visits={visits} />
+          <h3 className="text-xs font-semibold text-ent-muted mt-2">Shift handoffs (separate)</h3>
           {recentHandoffs.length === 0 ? (
             <p className="text-sm text-ent-text">No shift handoffs recorded yet across your organization.</p>
           ) : (
@@ -1876,7 +1879,10 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       ) : nav === 'scheduling' ? (
         <DirectorScheduleCalendar orgId={organizationId} patients={coveredPatients} members={members} onChanged={() => { void refresh(); }} />
       ) : nav === 'operations' ? (
-        <CareOperationsView handoffs={handoffs} loadError={loadError} />
+        <div className="space-y-4">
+          <DirectorAttendancePanel organizationId={organizationId} />
+          <CareOperationsView handoffs={handoffs} loadError={loadError} />
+        </div>
       ) : nav === 'incidents' ? (
         <div className="space-y-4"><CareEscalationPanel orgId={organizationId} role="director" patients={coveredPatients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><IncidentsView incidents={incidents} onResolved={() => { void refresh(); }} loadError={loadError} /></div>
       ) : nav === 'communications' ? (
