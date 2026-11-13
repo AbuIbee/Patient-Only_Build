@@ -78,7 +78,8 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
     await page.getByPlaceholder('Provider or practice name').fill('Dr. E2E Director Flow');
     await page.getByPlaceholder('Secure contact email (used for external access, optional)').fill(`e2e-dirclin-provider-${Date.now()}@example-clinic.test`);
     await page.getByRole('button', { name: /^save provider$/i }).click();
-    await expect(page.getByText('Dr. E2E Director Flow')).toBeVisible({ timeout: 15000 });
+    // Target visible provider-directory row, not an <option> in the separate conversation selector.
+    await expect(page.locator('span').filter({ hasText: /^Dr\. E2E Director Flow \(/ })).toBeVisible({ timeout: 15000 });
 
     // Create a clinical request through the real form. The Clinical
     // Requests section's own patient/provider selects appear earlier
