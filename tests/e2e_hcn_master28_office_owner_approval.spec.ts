@@ -68,7 +68,7 @@ test('Owner independently approves caregiver office; patient scoped, then revoke
     const caregiver=directorPage.getByRole('button',{name:/Enterprise Caregiver/});
     await expect(caregiver).toBeVisible({timeout:25000});
     await caregiver.click();
-    await expect(directorPage).toHaveURL(/\/Professional\/Caregiver$/i);
+    await expect(directorPage).toHaveURL(/\/Professional\/Caregiver\/(?:dashboard)?$/i);
     await expect(directorPage.getByText('Synthetic Office Patient')).toBeVisible({timeout:25000});
 
     ownerPage.once('dialog',d=>d.accept('Synthetic test complete; revoke caregiver office now'));
