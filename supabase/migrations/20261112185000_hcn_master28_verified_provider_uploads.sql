@@ -154,7 +154,7 @@ CREATE POLICY "Verified provider reads own patient-scoped uploaded metadata"
     uploaded_by=(SELECT auth.uid())
     AND EXISTS (
       SELECT 1 FROM public.hcn_provider_thread_documents td
-      WHERE td.document_id=id
+      WHERE td.document_id=public.hcn_clinical_documents.id
         AND public.hcn_is_authenticated_provider_for_thread(td.thread_id)
     )
   );
