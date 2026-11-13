@@ -315,3 +315,8 @@ OR EXISTS (
   AND public.hcn_has_director_office_patient_assignment(spa.organization_id,p_patient_id,'therapist')
 );
 $function$;
+
+-- Trigger helper must never be directly callable as an anonymous RPC.
+-- The existing generic security guard requires ZERO anon-executable
+-- functions in the public schema, including inherited PUBLIC privileges.
+REVOKE ALL ON FUNCTION public.hcn_enforce_active_specialist_capacity() FROM PUBLIC, anon;
