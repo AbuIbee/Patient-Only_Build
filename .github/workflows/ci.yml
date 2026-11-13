@@ -63,6 +63,8 @@ jobs:
           eval "$(node scripts/disposable_supabase.mjs env | sed 's/^/export /')"
           export MMA_TEST_FUNCTIONS_BASE="${MMA_TEST_API_BASE}/functions/v1"
           npx vitest run --config vitest.integration.config.ts tests/integration/hcnClinicalCoordinationFoundation.test.ts -t 'SEC-006'
+          # Release gate: no anon EXECUTE on ANY public schema function.
+          npx vitest run --config vitest.integration.config.ts tests/integration/round7MasterCorrectiveSecurity.test.ts -t 'EXHAUSTIVE GUARD'
       - name: Run integration tests against the disposable stack (explicit target, never a default)
         run: |
           eval "$(node scripts/disposable_supabase.mjs env | sed 's/^/export /')"
