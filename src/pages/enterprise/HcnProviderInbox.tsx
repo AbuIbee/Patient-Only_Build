@@ -19,6 +19,7 @@ export function ProviderConversation({
   const [sharedDocs, setSharedDocs] = useState<SharedProviderDocument[]>([]);
   const [providerUploads,setProviderUploads] = useState<ProviderThreadDocument[]>([]);
   const [selectedFile,setSelectedFile] = useState<File | null>(null);
+  const [uploadError,setUploadError] = useState('');
   const uploadInputRef = useRef<HTMLInputElement|null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
@@ -60,13 +61,18 @@ export function ProviderConversation({
   const upload=async()=>{
     if(!selectedFile||busy)return;
     setBusy(true);
+    setUploadError('');
     try{
       await uploadProviderThreadDocument(threadId,selectedFile);
       setSelectedFile(null);
       if(uploadInputRef.current)uploadInputRef.current.value='';
       toast.success('Document received by secure storage and attached to this clinical conversation.');
       await refresh();
-    }catch(e){toast.error(e instanceof Error?e.message:'Clinical upload failed');}
+    }catch(e){
+      const message=e instanceof Error?e.message:'Clinical upload failed';
+      setUploadError(message);
+      toast.error(message);
+    }
     finally{setBusy(false);}
   };
   const decideDocument=async(documentId:string,decision:string)=>{
@@ -138,6 +144,7 @@ export function ProviderConversation({
         ))}
         {providerView&&(
           <div className="space-y-2 pt-2">
+            {uploadError && <p role="alert" className="text-sm text-ent-rust">Secure upload failed: {uploadError}</p>}
             <label htmlFor="provider-thread-upload" className="block text-xs font-semibold">Upload a document securely (25 MiB maximum)</label>
             <input id="provider-thread-upload" ref={uploadInputRef} type="file"
               accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.doc,.docx,.xls,.xlsx"
