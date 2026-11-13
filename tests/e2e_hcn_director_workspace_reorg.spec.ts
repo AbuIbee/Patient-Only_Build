@@ -86,7 +86,8 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     await page.locator('select').filter({ hasText: 'Select staff member…' }).selectOption(ctx.caregiverId);
     await page.locator('select').filter({ hasText: 'Select covered patient…' }).selectOption(ctx.patientId);
     await page.getByRole('button', { name: 'Assign', exact: true }).click();
-    await expect(page.getByText('E2E Navigation Patient')).toBeVisible();
+    // The patient also occurs inside a hidden <option>; assert the rendered assignment row.
+    await expect(page.locator('p.text-sm.text-ent-ink').filter({ hasText: 'E2E Navigation Patient' })).toBeVisible();
     expect(sql(`SELECT count(*) FROM staff_patient_assignments WHERE organization_id='${ctx.orgId}' AND user_id='${ctx.caregiverId}' AND patient_id='${ctx.patientId}' AND is_active=true;`)).toBe('1');
 
     await nav.getByRole('button', { name: 'Employee Schedule' }).click();
