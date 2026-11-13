@@ -59,7 +59,8 @@ test('Owner independently approves caregiver office; patient scoped, then revoke
     await assignmentCard.locator('select').filter({hasText:'Select staff member…'}).selectOption(users[1]);
     await assignmentCard.locator('select').filter({hasText:'Select covered patient…'}).selectOption(patient);
     await assignmentCard.getByRole('button',{name:'Assign',exact:true}).click();
-    await expect(assignmentCard.getByText('Synthetic Office Patient')).toBeVisible({timeout:15000});
+    // The label exists in both the select option and visible assignment row.
+    await expect(assignmentCard.locator('p.text-sm.text-ent-ink').filter({hasText:'Synthetic Office Patient'})).toBeVisible({timeout:15000});
     expect(sql('SELECT count(*) FROM staff_patient_assignments WHERE organization_id='+q(org)+
       ' AND patient_id='+q(patient)+' AND user_id='+q(users[1])+
       " AND org_role='caregiver' AND is_active=true;")).toBe('1');
