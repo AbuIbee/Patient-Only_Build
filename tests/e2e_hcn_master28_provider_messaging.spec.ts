@@ -12,7 +12,7 @@ test('verified Provider account exchanges 3 messages without repeating OTP; revo
   test.skip(!READY,'Requires isolated frontend and disposable Supabase');
   // Two authenticated browsers + provider approval + multiple exchanges and
   // document operations cannot reliably finish inside the default 30s.
-  test.setTimeout(150_000);
+  test.setTimeout(180_000);
   const stamp=Date.now();
   const dirEmail='m28-e2e-dir-'+stamp+'@local.test';
   const providerEmail='m28-e2e-provider-'+stamp+'@local.test';
@@ -84,7 +84,12 @@ test('verified Provider account exchanges 3 messages without repeating OTP; revo
     await directorThread.getByRole('button',{name:'Send message'}).click();
     await expect(directorThread.getByText('Synthetic question from Director')).toBeVisible();
 
+    const remember = providerPage.waitForResponse(response =>
+      response.url().endsWith('/api/hcn-provider-session') && response.request().postDataJSON()?.action === 'enroll');
     await providerPage.getByRole('button',{name:'Refresh inbox'}).click();
+    expect((await remember).status()).toBe(200);
+    expect((await providerContext.cookies()).some(cookie =>
+      cookie.name === '__Host-hcn-provider-session' && cookie.httpOnly && cookie.secure)).toBe(true);
     await providerPage.getByRole('button',{name:/Browser Test Patient · Dr. Synthetic Provider/}).click();
     const providerThread=providerPage.getByRole('region',{name:'Secure clinical conversation'});
     await expect(providerThread.getByText('Synthetic question from Director')).toBeVisible({timeout:15000});
@@ -121,10 +126,49 @@ test('verified Provider account exchanges 3 messages without repeating OTP; revo
       "(SELECT id FROM hcn_provider_threads WHERE organization_id="+q(org)+");")).toBe('3');
 
 
+    // An email opened in a fresh tab has no tab-scoped auth state.
+    await providerPage.close();
+    const emailPage = await providerContext.newPage();
+    await emailPage.goto(FRONTEND+'/Professional/Provider');
+    await expect(emailPage.getByRole('heading',{name:/Provider Inbox/i})).toBeVisible({timeout:25000});
+    await emailPage.getByRole('button',{name:/Browser Test Patient · Dr. Synthetic Provider/}).click();
+    await expect(emailPage.getByText('Synthetic follow-up from Director')).toBeVisible();
+
+    const reopenedBrowser = await browser.newContext({ storageState: await providerContext.storageState() });
+    try {
+      const reopenedPage = await reopenedBrowser.newPage();
+      await reopenedPage.goto(FRONTEND+'/Professional/Provider');
+      await expect(reopenedPage.getByRole('heading',{name:/Provider Inbox/i})).toBeVisible({timeout:25000});
+      await reopenedPage.getByRole('button',{name:/Browser Test Patient · Dr. Synthetic Provider/}).click();
+      await expect(reopenedPage.getByText('Synthetic follow-up from Director')).toBeVisible();
+      // Copy the rotated cookie back only to simulate reopening the same browser profile.
+      await providerContext.addCookies(await reopenedBrowser.cookies());
+    } finally {
+      await reopenedBrowser.close();
+    }
+
+    const otherDevice = await browser.newContext();
+    try {
+      const otherPage = await otherDevice.newPage();
+      await otherPage.goto(FRONTEND+'/Professional/Provider');
+      await expect(otherPage.getByRole('heading',{name:'Sign In',exact:true})).toBeVisible();
+      await otherPage.getByPlaceholder('you@example.com').fill(providerEmail);
+      await otherPage.getByPlaceholder('Your password').fill(PW);
+      await otherPage.getByRole('button',{name:/sign in/i}).click();
+      await expect(otherPage.getByRole('heading',{name:/Provider Inbox/i})).toBeVisible();
+      await otherPage.getByRole('button',{name:'Sign out',exact:true}).click();
+      await expect(otherPage.getByRole('heading',{name:'Sign In',exact:true})).toBeVisible();
+    } finally {
+      await otherDevice.close();
+    }
+
     // Revocation immediately changes backend authority and clears data on refresh.
     sql("UPDATE hcn_provider_accounts SET status='revoked' WHERE provider_id="+q(provider)+";");
-    await providerPage.reload();
-    await expect(providerPage.getByRole('region',{name:'Secure clinical conversation'})).toHaveCount(0);
+    await emailPage.close();
+    const revokedPage = await providerContext.newPage();
+    await revokedPage.goto(FRONTEND+'/Professional/Provider');
+    await expect(revokedPage.getByRole('heading',{name:'Sign In',exact:true})).toBeVisible();
+    await expect(revokedPage.getByRole('region',{name:'Secure clinical conversation'})).toHaveCount(0);
   } finally {
     await directorContext.close();await providerContext.close();
     if(org) {
