@@ -1,20 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
-import { safeSessionStorage, installVolatileSessionStorageIfDenied } from './safeSessionStorage';
+import { installVolatileSessionStorageIfDenied } from './safeSessionStorage';
+import { providerAwareFetch, providerAwareSessionStorage } from './providerBrowserSession';
 import { enterpriseAuthLock } from './tabScopedAuthLock';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-// ─── HIPAA: Use sessionStorage so auth token is never persisted across ────────
-// browser sessions. Closing the tab / browser clears the token entirely.
-// This prevents a new browser window from restoring a previous patient session.
-// @supabase/phoenix accesses window.sessionStorage in its constructor,
-// independently of the GoTrue Auth adapter below. Edge can throw SecurityError
-// on property resolution, before React mounts. Install a volatile compatibility
-// adapter BEFORE createClient initializes Realtime; never persist to localStorage.
+// The shared Supabase session stays in this tab. Approved external providers
+// can restore it from a server-set HttpOnly cookie on the Provider Inbox route.
+// Install the volatile fallback before Realtime reads sessionStorage in Edge.
 installVolatileSessionStorageIfDenied();
-const sessionStorageAdapter = safeSessionStorage;
 
 // REMEDIATION B (activation-session isolation): this shared, persistent
 // client must NEVER consume a patient activation/recovery token from the
@@ -30,11 +26,12 @@ const isActivationRoute =
   typeof window !== 'undefined' && window.location.pathname === '/activate';
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
+  global: { fetch: providerAwareFetch },
   auth: {
     persistSession:     true,           // keep within this tab
     autoRefreshToken:   true,
     detectSessionInUrl: !isActivationRoute,
-    storage:            sessionStorageAdapter, // ← sessionStorage, not localStorage
+    storage:            providerAwareSessionStorage,
     // Haneen Edge can deny navigator.locks.request() (SecurityError), blocking
     // both session restore and password login. Scope the compatibility lock
     // to the professional deployment; do not alter the residential client.

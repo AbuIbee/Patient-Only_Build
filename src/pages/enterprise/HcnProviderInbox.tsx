@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+import { rememberProviderSession } from '@/lib/providerBrowserSession';
 import { reviewClinicalDocument } from '@/services/hcnClinicalCoordinationService';
 import {
   claimProviderAccount, getClaimableProviders, listProviderThreads,
@@ -227,7 +229,7 @@ export function DirectorProviderConversations({
   );
 }
 
-export default function ProviderInbox({ userId }: { userId: string }) {
+export default function ProviderInbox({ userId, onLogout }: { userId: string; onLogout: () => void }) {
   const [claimable, setClaimable] = useState<ClaimableProvider[]>([]);
   const [threads, setThreads] = useState<ProviderThread[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -244,6 +246,20 @@ export default function ProviderInbox({ userId }: { userId: string }) {
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
 
+  const isApproved = claimable.some((account) => account.status === 'active');
+  const remembering = useRef<Promise<void> | null>(null);
+  useEffect(() => {
+    if (!isApproved || remembering.current) return;
+    remembering.current = (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || session.user.id !== userId) return;
+      const remembered = await rememberProviderSession(session);
+      if (remembered) await supabase.auth.setSession(remembered);
+    })().catch(() => {
+      setError('This browser could not remember your sign-in.');
+    });
+  }, [isApproved, userId]);
+
   const claim = async (providerId: string) => {
     setBusy(true);
     try { await claimProviderAccount(providerId); toast.success('Account claim recorded; organization approval is required.'); await refresh(); }
@@ -254,7 +270,8 @@ export default function ProviderInbox({ userId }: { userId: string }) {
     <main className="min-h-screen bg-ent-bg p-4 sm:p-8">
       <div className="mx-auto max-w-4xl space-y-4">
         <header className={panel}><h1 className="text-xl font-bold text-ent-ink">Haneen Care Network — Provider Inbox</h1>
-          <p className="text-sm text-ent-muted">Verified provider accounts use their normal Haneen sign-in session for ongoing secure correspondence.</p></header>
+          <p className="text-sm text-ent-muted">Use your verified account to open new requests from any browser.</p>
+          <button type="button" className={btn} onClick={() => { void Promise.resolve(remembering.current).then(onLogout); }}>Sign out</button></header>
         {error && <div className={panel} role="alert">{error}</div>}
         {claimable.map(a=>(
           <section key={a.providerId} className={panel}>

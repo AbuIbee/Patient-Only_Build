@@ -28,6 +28,28 @@ export default defineConfig({
     inspectAttr(),
     react(),
     {
+      name: 'hcn-provider-session-browser-tests',
+      async configurePreviewServer(server) {
+        if (process.env.MMA_PROVIDER_SESSION_TEST !== '1') return;
+        const { default: handler } = await import('./api/hcn-provider-session');
+        server.middlewares.use('/api/hcn-provider-session', (request, response, next) => {
+          if (request.method !== 'POST') return next();
+          void (async () => {
+            const chunks: Buffer[] = [];
+            for await (const chunk of request) chunks.push(Buffer.from(chunk));
+            const result = await handler.fetch(new Request('http://' + request.headers.host + '/api/hcn-provider-session', {
+              method: 'POST',
+              headers: { origin: request.headers.origin ?? '', cookie: request.headers.cookie ?? '' },
+              body: Buffer.concat(chunks).toString(),
+            }));
+            response.statusCode = result.status;
+            result.headers.forEach((value, key) => response.setHeader(key, value));
+            response.end(await result.text());
+          })().catch(next);
+        });
+      },
+    },
+    {
       name: 'haneen-enterprise-html-branding',
       // Static build-time HTML branding is required for browser titles,
       // favicon, and crawlers; React-only title changes arrive too late.
