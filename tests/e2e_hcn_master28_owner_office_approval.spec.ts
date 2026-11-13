@@ -57,6 +57,8 @@ test('a distinct Organization Owner can review a Director office request, withou
   }finally{
     await ownerContext.close();await directorContext.close();
     if(org)sql("DELETE FROM account_management_audit WHERE organization_id="+q(org)+";"+
+      // Deleting approved requests before their dependent grants violates FK.
+      "DELETE FROM hcn_director_office_grants WHERE organization_id="+q(org)+";"+
       "DELETE FROM hcn_director_office_requests WHERE organization_id="+q(org)+";"+
       "DELETE FROM organization_memberships WHERE organization_id="+q(org)+";"+
       "DELETE FROM organization_licenses WHERE organization_id="+q(org)+";"+
