@@ -11,6 +11,7 @@ import { useApp } from '@/store/useApp';
 import ProfessionalLoginPage from './ProfessionalLoginPage';
 import ProfessionalOfficeResolver from './ProfessionalOfficeResolver';
 import ProfessionalRegisterPage from './ProfessionalRegisterPage';
+import ProviderRegisterPage from './ProviderRegisterPage';
 import PlatformOwnerAdminPage from './PlatformOwnerAdminPage';
 
 export default function ProfessionalEntryRouter() {
@@ -18,9 +19,13 @@ export default function ProfessionalEntryRouter() {
   const path = window.location.pathname;
   const isRegisterRoute = /^\/Professional\/Register(\/|$)/i.test(path);
   const isOwnerRoute = /^\/Professional\/Owner(\/|$)/i.test(path);
+  const isProviderRoute = /^\/Professional\/Provider(\/|$)/i.test(path);
 
   if (isRegisterRoute) {
     return <ProfessionalRegisterPage />;
+  }
+  if (!state.isAuthenticated && isProviderRoute) {
+    return <ProviderRegisterPage />;
   }
   if (!state.isAuthenticated) {
     return <ProfessionalLoginPage />;

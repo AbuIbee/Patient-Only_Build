@@ -22,12 +22,13 @@ export interface OrgVisit {
   caregiverId: string; caregiverName: string;
   scheduledStart: string | null; scheduledEnd: string | null;
   actualStart: string | null; actualEnd: string | null;
+  visitNotes: string | null;
   status: VisitStatus;
 }
 
 function mapOrgVisit(r: {
   id: string; patient_id: string; caregiver_id: string; scheduled_start: string | null; scheduled_end: string | null;
-  actual_start: string | null; actual_end: string | null; status: string; patients: unknown; profiles: unknown;
+  actual_start: string | null; actual_end: string | null; visit_notes: string | null; status: string; patients: unknown; profiles: unknown;
 }): OrgVisit {
   const patient = r.patients as unknown as { first_name: string; last_name: string; preferred_name: string | null } | null;
   const caregiver = r.profiles as unknown as { first_name: string; last_name: string } | null;
@@ -36,10 +37,11 @@ function mapOrgVisit(r: {
     patientName: patient ? (patient.preferred_name || `${patient.first_name} ${patient.last_name}`) : 'Unknown patient',
     caregiverId: r.caregiver_id, caregiverName: caregiver ? `${caregiver.first_name} ${caregiver.last_name}` : 'Unknown staff',
     scheduledStart: r.scheduled_start, scheduledEnd: r.scheduled_end, actualStart: r.actual_start, actualEnd: r.actual_end,
+    visitNotes: r.visit_notes,
     status: r.status as VisitStatus,
   };
 }
-const ORG_VISIT_SELECT = 'id, patient_id, caregiver_id, scheduled_start, scheduled_end, actual_start, actual_end, status, patients:patient_id(first_name, last_name, preferred_name), profiles:caregiver_id(first_name, last_name)';
+const ORG_VISIT_SELECT = 'id, patient_id, caregiver_id, scheduled_start, scheduled_end, actual_start, actual_end, visit_notes, status, patients:patient_id(first_name, last_name, preferred_name), profiles:caregiver_id(first_name, last_name)';
 
 export async function getOrgVisits(orgId: string, limit = 50): Promise<OrgVisit[]> {
   const { data, error } = await supabase

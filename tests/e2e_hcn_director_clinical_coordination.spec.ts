@@ -62,13 +62,14 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
   test.skip(!ready, 'Requires an explicitly configured disposable stack + frontend target');
   const ctx = await seedDirectorWithPatient('nav');
   try {
-    await page.goto(`${frontendBase}/Professional`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${frontendBase}/Professional/Admin`, { waitUntil: 'domcontentloaded' });
     await page.getByPlaceholder('you@example.com').fill(ctx.email);
     await page.getByPlaceholder('Your password').fill(PW);
     await page.getByRole('button', { name: /sign in/i }).click();
 
-    await expect(page.getByText('Clinical Coordination')).toBeVisible({ timeout: 20000 });
-    await page.getByText('Clinical Coordination').click();
+    const directorNav = page.getByRole('navigation', { name: 'ADMIN OFFICE navigation' });
+    await expect(directorNav.getByRole('button', { name: 'Clinical Coordination' })).toBeVisible({ timeout: 20000 });
+    await directorNav.getByRole('button', { name: 'Clinical Coordination' }).click();
 
     await expect(page.getByRole('heading', { name: 'Clinical Coordination' })).toBeVisible({ timeout: 15000 });
 
@@ -77,16 +78,18 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
     await page.getByPlaceholder('Provider or practice name').fill('Dr. E2E Director Flow');
     await page.getByPlaceholder('Secure contact email (used for external access, optional)').fill(`e2e-dirclin-provider-${Date.now()}@example-clinic.test`);
     await page.getByRole('button', { name: /^save provider$/i }).click();
-    await expect(page.getByText('Dr. E2E Director Flow')).toBeVisible({ timeout: 15000 });
+    // Target visible provider-directory row, not an <option> in the separate conversation selector.
+    await expect(page.locator('span').filter({ hasText: /^Dr\. E2E Director Flow \(/ })).toBeVisible({ timeout: 15000 });
 
     // Create a clinical request through the real form. The Clinical
     // Requests section's own patient/provider selects appear earlier
     // in the DOM than the (separate) Coordination Plans section's own
-    // patient select -- .first() disambiguates deliberately rather
-    // than relying on an incidental count.
+    // patient select -- scope to the Clinical Requests region so a new
+    // conversation panel cannot steal the wrong dropdown.
     await page.getByRole('button', { name: /^new request$/i }).click();
-    await page.locator('select').filter({ hasText: 'Select patient…' }).first().selectOption({ index: 1 });
-    await page.locator('select').filter({ hasText: 'Select provider…' }).first().selectOption({ index: 1 });
+    const clinicalRequestSection = page.getByRole('region', { name: 'Clinical Requests' });
+    await clinicalRequestSection.locator('select').filter({ hasText: 'Select patient…' }).selectOption({ index: 1 });
+    await clinicalRequestSection.locator('select').filter({ hasText: 'Select provider…' }).selectOption({ index: 1 });
     await page.getByPlaceholder('Title').fill('E2E Director-Created Request');
     await page.getByRole('button', { name: /create as draft/i }).click();
 
@@ -94,10 +97,27 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
     const requestCount = sql(`SELECT count(*) FROM hcn_clinical_requests WHERE organization_id='${ctx.orgId}';`);
     expect(requestCount).toBe('1');
 
+    // Simulate the backend's durable verified-provider reply (fictional text).
+    // The Director must be able to READ it, not just see a response_submitted event.
+    const createdRequestId = sql(`SELECT id FROM hcn_clinical_requests WHERE organization_id='${ctx.orgId}' LIMIT 1;`);
+    sql(`INSERT INTO hcn_clinical_request_events(request_id,event_type,actor_external_label,details)
+      VALUES('${createdRequestId}','response_submitted','E2E Verified Provider',
+      '{"response_text":"E2E provider reply: patient care instructions received.\\nPlease review tomorrow."}'::jsonb);`);
+
     // Workstream C — actual browser upload, request attachment and
     // Director administrative review on a disposable fictional patient.
     await page.getByText('E2E Director-Created Request', { exact: true }).click();
-    await expect(page.getByRole('heading', { name: /documents & history/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /request, provider replies & documents/i })).toBeVisible();
+    const providerResponses = page.getByRole('region', { name: 'Provider responses' });
+    await expect(providerResponses.getByText(/E2E provider reply: patient care instructions received/)).toBeVisible();
+    await expect(providerResponses.getByText(/Please review tomorrow/)).toBeVisible();
+    await expect(providerResponses.getByText('E2E Verified Provider', { exact: false })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Original clinical request' })).toContainText('No message or description was entered');
+    const activity = page.getByRole('region', { name: 'Clinical activity summary' });
+    await expect(activity).toContainText('Provider response received');
+    await expect(activity).not.toContainText('recipient verified');
+    await expect(page.getByText('Event history', { exact: true })).toHaveCount(0);
+
     const uploadInput=page.locator('section[aria-label="Clinical Coordination"] input[type="file"]');
     await uploadInput.setInputFiles({
       name:'synthetic-discharge.pdf',
@@ -109,6 +129,7 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
     const linked=sql("SELECT count(*) FROM hcn_clinical_request_documents rd JOIN hcn_clinical_documents d ON d.id=rd.document_id WHERE rd.request_id='" + 
       sql("SELECT id FROM hcn_clinical_requests WHERE organization_id='" + ctx.orgId + "' LIMIT 1;") + "' AND rd.direction='uploaded_by_care_team';");
     expect(linked).toBe('1');
+    await expect(activity).toContainText('1 document attached internally');
 
     await page.getByRole('button',{name:/^accept$/i}).click();
     await expect(page.getByText(/accepted/i).last()).toBeVisible({timeout:15000});

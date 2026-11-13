@@ -51,12 +51,14 @@ test('a real signed-in Director creates a coordination plan, adds a participant,
   test.skip(!ready, 'Requires an explicitly configured disposable stack + frontend target');
   const ctx = await seedDirectorWithAssignedCaregiver('ui');
   try {
-    await page.goto(`${frontendBase}/Professional`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${frontendBase}/Professional/Admin`, { waitUntil: 'domcontentloaded' });
     await page.getByPlaceholder('you@example.com').fill(ctx.directorEmail);
     await page.getByPlaceholder('Your password').fill(PW);
     await page.getByRole('button', { name: /sign in/i }).click();
 
-    await page.getByText('Clinical Coordination').click();
+    const directorNav = page.getByRole('navigation', { name: 'ADMIN OFFICE navigation' });
+    await expect(directorNav.getByRole('button', { name: 'Clinical Coordination' })).toBeVisible({ timeout: 20000 });
+    await directorNav.getByRole('button', { name: 'Clinical Coordination' }).click();
     await expect(page.getByRole('heading', { name: 'Coordination Plans' })).toBeVisible({ timeout: 20000 });
 
     // Select the patient in the Coordination Plans section specifically

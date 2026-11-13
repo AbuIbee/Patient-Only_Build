@@ -18,11 +18,8 @@ import {
   assignCaregiverToPatient, unassignCaregiverFromPatient,
   getOrgStaffPatientAssignments, assignStaffToPatient, unassignStaffFromPatient,
   getOrgCommunicationsOverview,
-  amIOrgOwner, getMyOwnerCapabilityGrants, ownerSelfAssignCapability, ownerRevokeOwnCapability,
-  OWNER_CAPABILITIES,
   type OrgLicense, type OrgRole, type OrgMembershipRow, type OrgPackageType,
   type StaffPatientAssignment, type StaffRole, type OrgCommunicationsOverview, type OrgCoveredPatient,
-  type OwnerCapability, type OwnerCapabilityGrant,
 } from '@/services/organizationService';
 import {
   directorApproveApplication, requestApplicationCorrections, rejectApplication, recordCredentialVerification,
@@ -52,6 +49,8 @@ import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
 import DirectorScheduleCalendar from './DirectorScheduleCalendar';
+import DirectorAttendancePanel, { DirectorRecentAttendance } from './DirectorAttendancePanel';
+import DirectorOfficeAccessPanel from './DirectorOfficeAccessPanel';
 import DirectorReportBuilder from './DirectorReportBuilder';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
 
@@ -652,7 +651,7 @@ function StaffCard({ orgId, orgName, members, onChanged }: {
             <li key={m.id} className="flex items-center justify-between gap-3 p-3 bg-ent-bg rounded-xl border border-ent-line">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-ent-ink truncate">{m.firstName} {m.lastName} <span className="text-xs text-ent-muted">({m.email})</span></p>
-                <p className="text-xs text-ent-muted">{ROLE_LABELS[m.orgRole]} — {m.status}</p>
+                <p className="text-xs text-ent-muted">{ROLE_LABELS[m.orgRole]} — {m.isSecondaryOffice ? 'Owner-approved secondary office' : m.status}</p>
               </div>
               <div className="flex flex-shrink-0 flex-col sm:flex-row gap-1 items-end sm:items-center">
                 {m.orgRole === 'caregiver' && m.status === 'invited' && (
@@ -663,13 +662,19 @@ function StaffCard({ orgId, orgName, members, onChanged }: {
                     {resendingId === m.id ? 'Sending…' : 'Resend setup email'}
                   </button>
                 )}
-                <button type="button"
-                  onClick={() => { void remove(m.userId, `${m.firstName} ${m.lastName}`); }}
-                  disabled={removingId === m.userId}
-                  className="flex-shrink-0 p-2 rounded-lg text-ent-rust hover:bg-ent-rust/10 disabled:opacity-60"
-                  aria-label="Remove staff member">
-                  {removingId === m.userId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                </button>
+                {m.isSecondaryOffice ? (
+                  <span className="text-xs text-ent-muted" title="Only the Owner can revoke this office in Office Ownership">
+                    Revoke through Office Ownership
+                  </span>
+                ) : (
+                  <button type="button"
+                    onClick={() => { void remove(m.userId, `${m.firstName} ${m.lastName}`); }}
+                    disabled={removingId === m.userId}
+                    className="flex-shrink-0 p-2 rounded-lg text-ent-rust hover:bg-ent-rust/10 disabled:opacity-60"
+                    aria-label="Remove staff member">
+                    {removingId === m.userId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  </button>
+                )}
               </div>
             </li>
           ))}
@@ -793,8 +798,6 @@ function CoveredPatientsCard({ orgId, members, onChanged, initialInformationPati
 
   return (
     <div className="space-y-4">
-    <DirectorPatientEnrollmentCard orgId={orgId} members={members}
-      onCreated={(patientId) => { refresh(); onChanged(); if (patientId) setOpenContactsPatientId(patientId); }} />
     <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">
       <div className="flex items-center gap-2">
         <ClipboardList className="w-5 h-5 text-ent-bronze" />
@@ -807,7 +810,7 @@ function CoveredPatientsCard({ orgId, members, onChanged, initialInformationPati
       {loading ? (
         <Loader2 className="w-5 h-5 animate-spin text-ent-bronze" />
       ) : active.length === 0 ? (
-        <p className="text-sm text-ent-muted">No patients are covered yet. Create a patient above; then assign an activated caregiver to grant patient-specific access.</p>
+        <p className="text-sm text-ent-muted">No patients are covered yet. Create a patient below; then assign an activated caregiver to grant patient-specific access.</p>
       ) : (
         <ul className="space-y-2">
           {matchingActive.map((p) => (
@@ -881,6 +884,8 @@ function CoveredPatientsCard({ orgId, members, onChanged, initialInformationPati
         />
       )}
     </div>
+    <DirectorPatientEnrollmentCard orgId={orgId} members={members}
+      onCreated={(patientId) => { refresh(); onChanged(); if (patientId) setOpenContactsPatientId(patientId); }} />
     </div>
   );
 }
@@ -1018,7 +1023,9 @@ function AssignmentsCard({ orgId, members }: {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const staffOptions = members.filter((m) => m.orgRole !== 'director' && m.status === 'active');
+  // Only staff whose effective office matches the selected assignment role.
+  // Secondary offices are separate grants, never mutable primary memberships.
+  const staffOptions = members.filter((m) => m.orgRole === role && m.status === 'active');
 
   const assign = async () => {
     if (!staffId || !patientId) { toast.error('Select both a staff member and a patient.'); return; }
@@ -1061,7 +1068,7 @@ function AssignmentsCard({ orgId, members }: {
           <option value="">Select covered patient…</option>
           {coveredPatients.map((p) => <option key={p.patientId} value={p.patientId}>{p.preferredName || `${p.firstName} ${p.lastName}`}</option>)}
         </select>
-        <select value={role} onChange={(e) => setRole(e.target.value as StaffRole)} className={inputCls + ' sm:w-44'}>
+        <select value={role} onChange={(e) => { setRole(e.target.value as StaffRole); setStaffId(''); }} className={inputCls + ' sm:w-44'}>
           <option value="caregiver">Caregiver</option>
           <option value="therapist">Therapist</option>
           <option value="medical_professional">Medical Professional</option>
@@ -1070,7 +1077,7 @@ function AssignmentsCard({ orgId, members }: {
           {saving ? 'Saving…' : 'Assign'}
         </button>
       </div>
-      <p className="text-xs text-ent-muted -mt-2">The staff member must already hold that role in this organization, and the patient must already be covered.</p>
+      <p className="text-xs text-ent-muted -mt-2">The staff member must have an active primary or independently Owner-approved secondary office for this role. A separate active patient assignment is required before patient access.</p>
 
       {loading ? (
         <Loader2 className="w-5 h-5 animate-spin text-ent-bronze" />
@@ -1108,31 +1115,22 @@ type DirectorNavKey =
 
 const DIRECTOR_NAV_ITEMS: OfficeNavItem<DirectorNavKey>[] = [
   { key: 'dashboard', label: 'Director Dashboard', icon: LayoutDashboard },
-  { key: 'overview', label: 'Organization Overview', icon: Building2 },
-  { key: 'applications', label: 'Professional Applications & Approvals', icon: ClipboardList },
   { key: 'staff', label: 'Staff Management', icon: Users },
   { key: 'patients', label: 'Patient Management', icon: UserCog },
   { key: 'assignments', label: 'Assignments and Coverage', icon: Link2 },
-  { key: 'scheduling', label: 'Scheduling Oversight', icon: CalendarClock },
+  { key: 'scheduling', label: 'Employee Schedule', icon: CalendarClock },
   { key: 'operations', label: 'Care Operations', icon: ClipboardCheck },
   { key: 'incidents', label: 'Incidents and Escalations', icon: ShieldAlert },
   { key: 'communications', label: 'Care Communications', icon: MessageSquare },
   { key: 'clinical', label: 'Clinical Coordination', icon: Stethoscope },
+  { key: 'applications', label: 'Professional Applications & Approvals', icon: ClipboardList },
   { key: 'reports', label: 'Reports and Insights', icon: BarChart3 },
-  { key: 'licensing', label: 'Licensing and Entitlements', icon: CreditCard },
-  // MMA-P1-FINAL-CLOSURE Priority 2 — always present in the nav (so the
-  // tab's own content can explain, to a non-owner, why it is empty),
-  // but its content is gated inside OwnershipView on am_i_org_owner() —
-  // never by hiding the tab, which would just be a different way of
-  // "a hidden button is not authorization" (this directive's own
-  // standard applies equally to showing a denial message vs an action).
-  { key: 'ownership', label: 'Organization Ownership', icon: ShieldAlert },
   { key: 'settings', label: 'Organization Settings', icon: SettingsIcon },
 ];
 const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
-  { label: 'ORGANIZATION', items: ['dashboard', 'overview', 'applications', 'staff', 'patients'] },
-  { label: 'CARE OPERATIONS', items: ['assignments', 'scheduling', 'operations', 'incidents', 'communications', 'clinical'] },
-  { label: 'ADMINISTRATION', items: ['reports', 'licensing', 'ownership', 'settings'] },
+  { label: 'ORGANIZATION', items: ['dashboard', 'clinical', 'staff', 'patients', 'scheduling'] },
+  { label: 'CARE OPERATIONS', items: ['assignments', 'operations', 'incidents', 'communications'] },
+  { label: 'ADMINISTRATION', items: ['applications', 'reports', 'settings'] },
 ];
 
 function DashboardHome({ orgId, orgName, members, visits, incidents, handoffs, patients, onOpenPatient, onNavigate }: {
@@ -1233,6 +1231,8 @@ function DashboardHome({ orgId, orgName, members, visits, incidents, handoffs, p
 
         <OfficeCard>
           <h2 className="font-bold text-ent-ink">Recent Staff Activity</h2>
+          <DirectorRecentAttendance visits={visits} />
+          <h3 className="text-xs font-semibold text-ent-muted mt-2">Shift handoffs (separate)</h3>
           {recentHandoffs.length === 0 ? (
             <p className="text-sm text-ent-text">No shift handoffs recorded yet across your organization.</p>
           ) : (
@@ -1589,93 +1589,8 @@ function IncidentsView({ incidents, onResolved, loadError }: { incidents: OrgInc
 // server-side by every mutation this view performs — a non-owner seeing
 // this tab (everyone does; see the nav-item comment above) gets an
 // explanatory denial, never a disabled-looking action.
-const CAPABILITY_LABEL: Record<OwnerCapability, string> = {
-  caregiver: 'Caregiver', therapist: 'Therapist', medical_professional: 'Medical Professional', billing_admin: 'Billing Admin',
-};
-
-function OwnershipView({ orgId }: { orgId: string }) {
-  const [loading, setLoading] = useState(true);
-  const [isOwner, setIsOwner] = useState(false);
-  const [grants, setGrants] = useState<OwnerCapabilityGrant[]>([]);
-  const [busy, setBusy] = useState<OwnerCapability | null>(null);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const owner = await amIOrgOwner(orgId);
-      setIsOwner(owner);
-      setGrants(owner ? await getMyOwnerCapabilityGrants(orgId) : []);
-    } finally {
-      setLoading(false);
-    }
-  }, [orgId]);
-
-  useEffect(() => { void refresh(); }, [refresh]);
-
-  const activeFor = (capability: OwnerCapability) => grants.find((g) => g.capability === capability && g.status === 'active');
-
-  const toggle = async (capability: OwnerCapability, currentlyActive: boolean) => {
-    setBusy(capability);
-    try {
-      const { error } = currentlyActive ? await ownerRevokeOwnCapability(orgId, capability) : await ownerSelfAssignCapability(orgId, capability);
-      if (error) { toast.error(error); return; }
-      toast.success(currentlyActive ? `${CAPABILITY_LABEL[capability]} capability revoked.` : `${CAPABILITY_LABEL[capability]} capability self-assigned.`);
-      void refresh();
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>;
-
-  if (!isOwner) {
-    return (
-      <OfficeCard>
-        <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Organization Ownership</h2></div>
-        <p className="text-sm text-ent-text">
-          This section is available only to this organization&apos;s Owner. Director authority and Owner authority are
-          distinct — holding Director access does not, by itself, grant Owner capability self-assignment.
-        </p>
-      </OfficeCard>
-    );
-  }
-
-  return (
-    <OfficeCard>
-      <div className="flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-ent-bronze" /><h2 className="font-bold text-ent-ink">Organization Ownership</h2></div>
-      <p className="text-sm text-ent-text">
-        As this organization&apos;s Owner, you may explicitly self-assign operational capability within this organization.
-        Ownership alone grants no clinical access — each capability below must be deliberately assigned, is scoped to
-        this organization only, remains subject to active patient coverage and license status, and is fully auditable.
-      </p>
-      <ul className="space-y-2">
-        {OWNER_CAPABILITIES.map((capability) => {
-          const grant = activeFor(capability);
-          const active = !!grant;
-          return (
-            <li key={capability} className="flex items-center justify-between gap-3 p-3 bg-ent-bg rounded-xl border border-ent-line">
-              <div>
-                <p className="font-semibold text-ent-ink">{CAPABILITY_LABEL[capability]}</p>
-                <p className="text-xs text-ent-muted">
-                  {active ? `Self-assigned ${new Date(grant.grantedAt).toLocaleDateString()}` : 'Not currently self-assigned'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => { void toggle(capability, active); }}
-                disabled={busy === capability}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-60 ${
-                  active ? 'border border-red-300 text-red-600 hover:bg-red-50' : 'bg-ent-bronze hover:opacity-90 text-white'
-                }`}
-              >
-                {busy === capability ? 'Working…' : active ? 'Revoke' : 'Self-assign'}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </OfficeCard>
-  );
+function OwnershipView({ orgId, userId }: { orgId: string; userId: string }) {
+  return <DirectorOfficeAccessPanel organizationId={orgId} currentUserId={userId} />;
 }
 
 function OrganizationSettingsView({ orgName, packageType, onOpenBilling }: { orgName: string; packageType: OrgPackageType; onOpenBilling: () => void }) {
@@ -1697,7 +1612,88 @@ function OrganizationSettingsView({ orgName, packageType, onOpenBilling }: { org
   );
 }
 
-const DIRECTOR_NAV_KEYS = DIRECTOR_NAV_ITEMS.map((n) => n.key) as DirectorNavKey[];
+// Existing bookmarks remain valid even though these three destinations are
+// now internal tabs of the Organization Settings page.
+
+type DirectorSettingsTab = 'overview' | 'licensing' | 'settings' | 'ownership';
+
+function DirectorOrganizationSettingsPage({
+  orgId, orgName, packageType, members, coveredCount, license, initialTab, userId,
+}: {
+  orgId: string;
+  userId: string;
+  orgName: string;
+  packageType: OrgPackageType;
+  members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
+  coveredCount: number;
+  license: OrgLicense | null;
+  initialTab: DirectorSettingsTab;
+}) {
+  const [activeTab, setActiveTab] = useState<DirectorSettingsTab>(initialTab);
+  const [billingOpen, setBillingOpen] = useState(false);
+  const tabs: { key: DirectorSettingsTab; label: string }[] = [
+    { key: 'overview', label: 'Organization Overview' },
+    { key: 'licensing', label: 'Licensing & Entitlements' },
+    { key: 'settings', label: 'Organization Settings' },
+    { key: 'ownership', label: 'Office Ownership' },
+  ];
+  const selectTab = (tab: DirectorSettingsTab) => {
+    setActiveTab(tab);
+    setBillingOpen(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <OfficeCard>
+        <h1 className="text-xl font-bold text-ent-ink">Organization Settings</h1>
+        <div role="tablist" aria-label="Organization Settings sections" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          {tabs.map((tab) => (
+            <button key={tab.key} type="button" role="tab"
+              id={`organization-settings-tab-${tab.key}`}
+              aria-controls={`organization-settings-panel-${tab.key}`}
+              aria-selected={activeTab === tab.key}
+              onClick={() => selectTab(tab.key)}
+              className={`rounded-xl border px-3 py-2.5 text-sm font-semibold text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze ${activeTab === tab.key ? 'bg-ent-green-active border-ent-bronze text-ent-forest' : 'border-ent-line bg-ent-bg text-ent-ink hover:bg-ent-pale'}`}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </OfficeCard>
+      <div role="tabpanel" id={`organization-settings-panel-${activeTab}`}
+        aria-labelledby={`organization-settings-tab-${activeTab}`}>
+        {activeTab === 'overview' ? (
+          <OrganizationOverviewView orgName={orgName} packageType={packageType} members={members} coveredCount={coveredCount} />
+        ) : activeTab === 'licensing' ? (
+          billingOpen ? (
+            <div className="space-y-4">
+              <button type="button" onClick={() => setBillingOpen(false)} className="text-sm font-semibold text-ent-bronze hover:underline">← Back to Licensing</button>
+              <OrganizationBillingPage organizationId={orgId} orgName={orgName || 'Organization'} packageType={packageType} />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <LicenseCard orgId={orgId} license={license} />
+              {license?.status === 'active' && <AmendmentRequestSection orgId={orgId} />}
+              <button type="button" onClick={() => setBillingOpen(true)}
+                className="flex items-center gap-1.5 text-sm font-semibold text-ent-bronze hover:underline">
+                Open Billing &amp; Add-Ons <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )
+        ) : activeTab === 'ownership' ? (
+          <OwnershipView orgId={orgId} userId={userId} />
+        ) : (
+          <OrganizationSettingsView orgName={orgName} packageType={packageType}
+            onOpenBilling={() => { setActiveTab('licensing'); setBillingOpen(true); }} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+const DIRECTOR_NAV_KEYS: DirectorNavKey[] = [
+  ...DIRECTOR_NAV_ITEMS.map((n) => n.key),
+  'overview', 'licensing', 'ownership',
+];
 
 // basePath defaults to null (no URL sync) so every EXISTING caller
 // (/business, the old top-level /Admin) keeps its exact established
@@ -1718,7 +1714,6 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   const [handoffs, setHandoffs] = useState<OrgShiftHandoff[]>([]);
   const [loading, setLoading] = useState(true);
   const [nav, setNav] = useOfficeUrlSync<DirectorNavKey>(basePath, DIRECTOR_NAV_KEYS, 'dashboard');
-  const [billingOpen, setBillingOpen] = useState(false);
   // MMA-CODEX-011 finding 011-03 (NAV-06/F-18, P1): getOrgVisits/
   // getOrgIncidentReports/getOrgShiftHandoffs (all plain) discarded
   // their error and returned [] on failure, which Scheduling Oversight
@@ -1768,7 +1763,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   const fullName = state.currentUser?.firstName ? `${state.currentUser.firstName} ${state.currentUser.lastName ?? ''}`.trim() : 'Director';
   const initials = (state.currentUser?.firstName?.[0] ?? 'D').toUpperCase();
 
-  const navigate = (key: DirectorNavKey) => { setBillingOpen(false); setNav(key); };
+  const navigate = (key: DirectorNavKey) => { setNav(key); };
   const openPatientInformation = (patientId: string) => {
     setSelectedInformationPatientId(patientId);
     navigate('patients');
@@ -1777,7 +1772,9 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   return (
     <EnterpriseOfficeShell
       officeBadge="ADMIN OFFICE" orgLabel={orgName || 'Organization'} roleLabel="Director" fullName={fullName} initials={initials}
-      navItems={DIRECTOR_NAV_ITEMS} navGroups={DIRECTOR_NAV_GROUPS} activeNav={nav} onNavigate={navigate}
+      navItems={DIRECTOR_NAV_ITEMS} navGroups={DIRECTOR_NAV_GROUPS}
+      activeNav={nav === 'overview' || nav === 'licensing' || nav === 'ownership' ? 'settings' : nav}
+      onNavigate={navigate}
       onLogout={() => { void handleLogout(); }}
     >
       {!loading && loadError && (nav === 'dashboard' || nav === 'scheduling' || nav === 'operations' || nav === 'incidents' || nav === 'reports') && (
@@ -1790,12 +1787,13 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : nav === 'dashboard' ? (
         <DashboardHome orgId={organizationId} orgName={orgName} members={members} visits={visits} incidents={incidents} handoffs={handoffs} patients={coveredPatients} onOpenPatient={openPatientInformation} onNavigate={navigate} />
-      ) : nav === 'overview' ? (
-        <OrganizationOverviewView orgName={orgName} packageType={packageType} members={members} coveredCount={coveredCount} />
       ) : nav === 'applications' ? (
         <ApplicationsReviewView organizationId={organizationId} />
       ) : nav === 'staff' ? (
-        <StaffCard orgId={organizationId} orgName={orgName} members={members} onChanged={() => { void refresh(); }} />
+        <div className="space-y-4">
+          <StaffCard orgId={organizationId} orgName={orgName} members={members} onChanged={() => { void refresh(); }} />
+          <AssignmentsCard orgId={organizationId} members={members} />
+        </div>
       ) : nav === 'patients' ? (
         <CoveredPatientsCard orgId={organizationId} members={members} initialInformationPatientId={selectedInformationPatientId} onChanged={() => { void refresh(); }} />
       ) : nav === 'assignments' ? (
@@ -1803,7 +1801,10 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       ) : nav === 'scheduling' ? (
         <DirectorScheduleCalendar orgId={organizationId} patients={coveredPatients} members={members} onChanged={() => { void refresh(); }} />
       ) : nav === 'operations' ? (
-        <CareOperationsView handoffs={handoffs} loadError={loadError} />
+        <div className="space-y-4">
+          <DirectorAttendancePanel organizationId={organizationId} />
+          <CareOperationsView handoffs={handoffs} loadError={loadError} />
+        </div>
       ) : nav === 'incidents' ? (
         <div className="space-y-4"><CareEscalationPanel orgId={organizationId} role="director" patients={coveredPatients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><IncidentsView incidents={incidents} onResolved={() => { void refresh(); }} loadError={loadError} /></div>
       ) : nav === 'communications' ? (
@@ -1812,25 +1813,18 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
         <ClinicalCoordinationPanel orgId={organizationId} userId={state.currentUser?.id ?? ''} role="director" patients={coveredPatients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
       ) : nav === 'reports' ? (
         <DirectorReportBuilder orgId={organizationId} orgName={orgName} members={members} patients={coveredPatients} />
-      ) : nav === 'licensing' ? (
-        billingOpen ? (
-          <div className="space-y-4">
-            <button type="button" onClick={() => setBillingOpen(false)} className="text-sm font-semibold text-ent-bronze hover:underline">← Back to Licensing</button>
-            <OrganizationBillingPage organizationId={organizationId} orgName={orgName || 'Organization'} packageType={packageType} />
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <LicenseCard orgId={organizationId} license={license} />
-            {license?.status === 'active' && <AmendmentRequestSection orgId={organizationId} />}
-            <button type="button" onClick={() => setBillingOpen(true)} className="flex items-center gap-1.5 text-sm font-semibold text-ent-bronze hover:underline">
-              Open Billing &amp; Add-Ons <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )
-      ) : nav === 'ownership' ? (
-        <OwnershipView orgId={organizationId} />
-      ) : nav === 'settings' ? (
-        <OrganizationSettingsView orgName={orgName} packageType={packageType} onOpenBilling={() => { setNav('licensing'); setBillingOpen(true); }} />
+      ) : (nav === 'overview' || nav === 'licensing' || nav === 'ownership' || nav === 'settings') ? (
+        <DirectorOrganizationSettingsPage
+          key={nav}
+          initialTab={nav === 'settings' ? 'overview' : nav}
+          orgId={organizationId}
+          userId={state.currentUser?.id ?? ''}
+          orgName={orgName}
+          packageType={packageType}
+          members={members}
+          coveredCount={coveredCount}
+          license={license}
+        />
       ) : null}
     </EnterpriseOfficeShell>
   );

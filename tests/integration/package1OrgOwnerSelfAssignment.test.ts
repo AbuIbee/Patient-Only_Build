@@ -3,7 +3,7 @@
 //
 // Proves, against real RLS/RPC (never a mocked permission check):
 //   1. An org's Owner (organizations.owner_user_id, backfilled from
-//      created_by) can self-assign a clinical capability
+//      created_by), when NOT also an active Director, can self-assign a clinical capability
 //      (medical_professional/therapist) to themselves, explicitly and
 //      auditably, without any Platform Owner intervention.
 //   2. Before self-assignment, the Owner has NO patient access through
@@ -20,7 +20,10 @@
 //      exception).
 //   5. Revocation is self-service, auditable, and immediately removes
 //      the resulting patient access.
-//   6. Every self-assign/revoke call writes a real account_management_
+//   6. A dual-role Owner+Director must use the independent approval path
+//      (covered in hcnMaster28OfficeApproval.test.ts), not this legacy
+//      Owner-only self-grant path.
+//   7. Every self-assign/revoke call writes a real account_management_
 //      audit row recording actor, target, organization, and action.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
@@ -50,8 +53,11 @@ beforeAll(async () => {
     INSERT INTO organization_licenses(organization_id,licensed_seats,covered_patient_capacity,annual_license_fee,status) VALUES
       ('${ORG_A}',10,10,999,'active'),
       ('${ORG_B}',10,10,999,'active');
+    -- Fixture distinguishes Owner-only (legacy Owner capability path)
+    -- from Director (must request independent approval under Master #28).
+    -- The former Owner+Director fixture became an invalid positive
+    -- self-assignment expectation after the new privilege-escalation guard.
     INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES
-      ('${ORG_A}','${ids.ownerA}','director','active'),
       ('${ORG_A}','${ids.directorA}','director','active');
     INSERT INTO patients(id,first_name,last_name,preferred_name,address,location) VALUES
       ('${ids.patientA}','P1Owner','PatientA','P1Owner PatientA','1 P1Owner Ave','P1Owner Facility'),

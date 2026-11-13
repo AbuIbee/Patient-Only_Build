@@ -78,6 +78,32 @@ export async function getProviders(orgId: string) {
   return { data: (data ?? []).map((r) => mapProvider(r as unknown as Record<string, unknown>)), error: null as string | null };
 }
 
+export type ProviderPatientAssociation = {
+  id: string;
+  providerId: string;
+  patientId: string;
+};
+
+/** Tenant-scoped, active associations. Only the Director directory calls this;
+ * patient names come from the already authorized covered-patient list.
+ */
+export async function getProviderPatientAssociations(orgId: string) {
+  const { data, error } = await supabase
+    .from('hcn_patient_provider_associations')
+    .select('id, provider_id, patient_id')
+    .eq('organization_id', orgId)
+    .eq('is_active', true);
+  if (error) return { data: null as ProviderPatientAssociation[] | null, error: err(error, 'Unable to load provider-patient associations') };
+  return {
+    data: (data ?? []).map((row) => ({
+      id: row.id as string,
+      providerId: row.provider_id as string,
+      patientId: row.patient_id as string,
+    })),
+    error: null as string | null,
+  };
+}
+
 export async function upsertProvider(orgId: string, input: {
   providerId?: string | null; displayName: string; professionalTitle: string | null; specialty: string;
   specialtyOtherLabel: string | null; practiceName: string | null; officePhone: string | null; faxNumber: string | null;
@@ -630,4 +656,14 @@ export async function publishProviderDocumentToPatient(documentId: string) {
     data: data ? mapDocument(data as Record<string, unknown>) : null,
     error: error ? err(error, 'Unable to share this reviewed provider document') : null as string | null,
   };
+}
+
+/** Director release is a separate audited step: internal upload alone
+ * never grants an external provider access to the document.
+ */
+export async function shareClinicalDocumentWithProvider(requestId: string, documentId: string) {
+  const { data, error } = await clinicalApi.rpc('hcn_share_clinical_document_with_recipient', {
+    p_request_id: requestId, p_document_id: documentId,
+  });
+  return { data: data as string | null, error: error ? err(error, 'Document could not be shared securely') : null };
 }

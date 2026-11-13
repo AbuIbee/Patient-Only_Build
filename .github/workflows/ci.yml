@@ -63,6 +63,8 @@ jobs:
           eval "$(node scripts/disposable_supabase.mjs env | sed 's/^/export /')"
           export MMA_TEST_FUNCTIONS_BASE="${MMA_TEST_API_BASE}/functions/v1"
           npx vitest run --config vitest.integration.config.ts tests/integration/hcnClinicalCoordinationFoundation.test.ts -t 'SEC-006'
+          # Release gate: no anon EXECUTE on ANY public schema function.
+          npx vitest run --config vitest.integration.config.ts tests/integration/round7MasterCorrectiveSecurity.test.ts -t 'EXHAUSTIVE GUARD'
       - name: Run integration tests against the disposable stack (explicit target, never a default)
         run: |
           eval "$(node scripts/disposable_supabase.mjs env | sed 's/^/export /')"
@@ -85,7 +87,8 @@ jobs:
 
   clinical-playwright:
     needs: [static-checks, integration]
-    if: github.event_name == 'push'
+    # Browser acceptance must gate PRs as well as pushes; disposable synthetic data only.
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -125,7 +128,11 @@ jobs:
             tests/e2e_hcn_coordination_plan_ui.spec.ts \
             tests/e2e_hcn_director_clinical_coordination.spec.ts \
             tests/e2e_hcn_caregiver_clinical_role_views.spec.ts \
-            tests/e2e_hcn_external_provider_access.spec.ts
+            tests/e2e_hcn_external_provider_access.spec.ts \
+            tests/e2e_hcn_director_workspace_reorg.spec.ts \
+            tests/e2e_hcn_master28_provider_messaging.spec.ts \
+            tests/e2e_hcn_master28_office_owner_approval.spec.ts \
+            tests/e2e_hcn_master28_owner_office_approval.spec.ts
       - name: Tear down isolated browser test systems
         if: always()
         run: |

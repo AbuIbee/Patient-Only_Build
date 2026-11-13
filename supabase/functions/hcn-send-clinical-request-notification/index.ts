@@ -91,7 +91,25 @@ serve(async (request) => {
 
     const resendApiKey = Deno.env.get('RESEND_API_KEY') ?? '';
     const appUrl = (Deno.env.get('APP_URL') ?? 'https://www.haneencarenetwork.com').replace(/\/$/, '');
-    const externalUrl = `${appUrl}/external-request?rt=${encodeURIComponent(rawToken)}`;
+    // One-time verified provider accounts receive a normal sign-in link,
+    // not a new one-time-code challenge on every request. Unapproved
+    // legacy external contacts retain their existing short-lived link.
+    let destinationUrl = `${appUrl}/external-request?rt=${encodeURIComponent(rawToken)}`;
+    const { data: requestRow } = await admin.from('hcn_clinical_requests')
+      .select('provider_id').eq('id', requestId).maybeSingle();
+    if (requestRow?.provider_id) {
+      const { data: account } = await admin.from('hcn_provider_accounts')
+        .select('user_id,status').eq('provider_id',requestRow.provider_id)
+        .eq('status','active').maybeSingle();
+      if (account?.user_id) {
+        const { data: signedInProvider } = await admin.auth.admin.getUserById(account.user_id);
+        const verifiedEmail = signedInProvider?.user?.email?.trim().toLowerCase();
+        if (signedInProvider?.user?.email_confirmed_at &&
+            verifiedEmail === recipientEmail.trim().toLowerCase()) {
+          destinationUrl = `${appUrl}/Professional/Provider`;
+        }
+      }
+    }
 
     if (!resendApiKey) {
       await admin.rpc('hcn_record_request_event', {
@@ -110,8 +128,11 @@ serve(async (request) => {
         subject: 'Action requested in Haneen Care Network',
         text:
           'A secure request requires your attention in Haneen Care Network.\n\n' +
-          `Open it securely here: ${externalUrl}\n\n` +
-          'This link is specific to this one request and will expire. If you were not expecting this, you can disregard this message.',
+          `Open it securely here: ${destinationUrl}\n\n` +
+          (destinationUrl.endsWith('/Professional/Provider')
+            ? 'Sign in to your approved provider account to view the request. Clinical information is only available within Haneen.'
+            : 'This request-specific link will expire and requires recipient verification.') +
+          ' If you were not expecting this, you can disregard this message.',
       }),
     });
 

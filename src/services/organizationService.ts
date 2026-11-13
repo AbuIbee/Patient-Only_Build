@@ -4,6 +4,7 @@
 // in this file performs or should be trusted to perform an authorization
 // decision on its own.
 import { supabase } from '@/lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type OrgRole = 'director' | 'caregiver' | 'therapist' | 'medical_professional' | 'billing_admin';
 export type OrgPackageType = 'therapist' | 'integrated_care';
@@ -69,6 +70,8 @@ export interface OrgMembershipRow {
   orgRole: OrgRole;
   status: 'invited' | 'active' | 'revoked' | 'declined';
   createdAt: string;
+  /** Approved extra office, not a replaceable primary membership. */
+  isSecondaryOffice?: boolean;
 }
 
 export type OrgLicenseStatus = 'proposed' | 'active' | 'expired' | 'suspended' | 'canceled';
@@ -359,12 +362,34 @@ export async function getOrgMembers(orgId: string): Promise<(OrgMembershipRow & 
   // activation, producing anonymous-looking "() Caregiver - invited" rows.
   const { data, error } = await supabase.rpc('hcn_get_org_staff_roster', { p_org_id: orgId });
   if (error) throw new Error(error.message);
-  return (data ?? []).map((r) => ({
+  const roster = (data ?? []).map((r) => ({
     id: r.id, userId: r.user_id, orgRole: r.org_role as OrgRole,
     status: r.status as OrgMembershipRow['status'], createdAt: r.created_at,
     firstName: r.first_name ?? '', lastName: r.last_name ?? '',
     email: r.email ?? '',
   }));
+  // A Director with an independently approved secondary office retains
+  // their original membership. For assignment pickers only, show the second
+  // office as a virtual inventory row; never present its UUID as a primary
+  // membership that can be removed via removeOrgMember().
+  const grantClient = supabase as unknown as SupabaseClient;
+  const { data: grants, error: grantsError } = await grantClient
+    .from('hcn_director_office_grants')
+    .select('id,user_id,capability,status,granted_at')
+    .eq('organization_id', orgId).eq('status', 'active');
+  if (grantsError) throw new Error(grantsError.message);
+  const secondary = (grants ?? []).flatMap((g) => {
+    const primary = roster.find((m) => m.userId === g.user_id);
+    if (!primary || !['director', 'co_director'].includes(primary.orgRole) || primary.status !== 'active') return [];
+    return [{
+      id: String(g.id), userId: String(g.user_id),
+      orgRole: String(g.capability) as OrgRole,
+      status: 'active' as const, createdAt: String(g.granted_at),
+      firstName: primary.firstName, lastName: primary.lastName,
+      email: primary.email, isSecondaryOffice: true,
+    }];
+  });
+  return [...roster, ...secondary];
 }
 
 export async function createDirectorPatient(
