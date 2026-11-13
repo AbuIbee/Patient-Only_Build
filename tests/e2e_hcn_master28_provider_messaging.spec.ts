@@ -98,6 +98,17 @@ test('verified Provider account exchanges 3 messages without repeating OTP; revo
       buffer:Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF'),
     });
     await providerThread.getByRole('button',{name:'Upload to care team'}).click();
+    // Separate storage preparation/finalization from the UI rendering check.
+    // A pending row indicates Storage/receipt failure; no row indicates that
+    // preparation was rejected before upload. The provider UI also displays
+    // the actual error persistently instead of hiding it in a transient toast.
+    await expect.poll(() => sql("SELECT coalesce(string_agg(td.upload_state,','),'none') "+
+      "FROM hcn_provider_thread_documents td JOIN hcn_provider_threads t ON t.id=td.thread_id "+
+      "WHERE t.organization_id="+q(org)+";"),{
+        timeout:20000,
+        message:'Provider document must be durably finalized in private storage before being shown to either office',
+      }).toBe('ready');
+    await expect(providerThread.getByRole('alert', {name:/Secure upload failed/i})).toHaveCount(0);
     await expect(providerThread.getByText('synthetic-provider-review.pdf')).toBeVisible({timeout:20000});
     await expect(directorThread.getByText('synthetic-provider-review.pdf')).toBeVisible({timeout:20000});
     directorPage.once('dialog',dialog=>dialog.accept('Synthetic provider upload reviewed'));
