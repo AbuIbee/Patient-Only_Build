@@ -172,3 +172,26 @@ CREATE POLICY "Verified provider downloads own finalized clinical upload"
         AND public.hcn_is_authenticated_provider_for_thread(td.thread_id)
     )
   );
+
+
+-- Provider upload preparation writes clinical metadata as a definer RPC, but
+-- Supabase Storage performs its own INSERT against storage.objects as the
+-- authenticated provider. The existing internal-user upload policy does not
+-- grant this external provider the narrowly scoped Storage INSERT.
+--
+-- An upload is permitted ONLY for the exact path and document ID already
+-- prepared for the active provider's patient-specific thread. No general
+-- bucket upload permissions, overwrite/upsert, or unrestricted UPDATE/DELETE.
+CREATE POLICY "Verified provider inserts only prepared thread object"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id='hcn-clinical-documents'
+    AND EXISTS (
+      SELECT 1 FROM public.hcn_clinical_documents d
+      JOIN public.hcn_provider_thread_documents td ON td.document_id=d.id
+      WHERE d.storage_path=storage.objects.name
+        AND d.uploaded_by=(SELECT auth.uid())
+        AND td.upload_state='pending'
+        AND public.hcn_is_authenticated_provider_for_thread(td.thread_id)
+    )
+  );
