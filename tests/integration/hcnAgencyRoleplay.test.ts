@@ -160,6 +160,8 @@ it('rehearses a fictional agency in role order, with specialist handoffs after t
     expect(await http('GET', '/rest/v1/messages?conversation_id=eq.' + clinical.id + '&select=id',
       undefined, patient.token)).toEqual([200, []]);
   } finally {
+    sql('DELETE FROM hcn_previsit_acknowledgments WHERE visit_id IN ' +
+      '(SELECT id FROM caregiver_visits WHERE organization_id=' + quote(org) + ')');
     if (patient) sql('DELETE FROM patients WHERE id=' + quote(patient.id));
     sql('DELETE FROM organizations WHERE id=' + quote(org));
     for (const id of users) await authDeleteUser(id);
