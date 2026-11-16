@@ -8,8 +8,8 @@ const frontend = requireE2eEnv('MMA_E2E_FRONTEND_BASE');
 const password = 'HcnTierBrowser9!';
 const tiers = [
   { name: 'Essential', slots: 0, patients: 12, monthly: '$250.00' },
-  { name: 'Plus', slots: 1, patients: 35, monthly: '$410.00' },
-  { name: 'Complete', slots: 3, patients: 160, monthly: '$1080.00' },
+  { name: 'Plus', slots: 1, patients: 22, monthly: '$306.00' },
+  { name: 'Complete', slots: 3, patients: 62, monthly: '$590.00' },
 ];
 
 for (const tier of tiers) {
