@@ -1,4 +1,4 @@
-// HCN Master #28: real Director + approved Provider browser correspondence.
+// HCN Master #28: real Director + independently approved Provider accounts.
 // Uses isolated disposable Supabase and synthetic patient, never real email.
 import { test, expect } from '@playwright/test';
 import { authSignUp, authDeleteUser, login, rpc, sql, BASE, SERVICE } from './integration/_runtime';
@@ -8,7 +8,7 @@ const READY=Boolean(FRONTEND && process.env.MMA_TEST_DB_CONTAINER && process.env
 const PW='HcnMaster28Browser!';
 const q=(s:string)=> "'" + s.replace(/'/g,"''") + "'";
 
-test('verified Provider account exchanges 3 messages without repeating OTP; revocation stops read',async({browser})=>{
+test('two Provider identities claim independently, exchange private messages, and retain separate access',async({browser})=>{
   test.skip(!READY,'Requires isolated frontend and disposable Supabase');
   // Two authenticated browsers + provider approval + multiple exchanges and
   // document operations cannot reliably finish inside the default 30s.
@@ -16,17 +16,22 @@ test('verified Provider account exchanges 3 messages without repeating OTP; revo
   const stamp=Date.now();
   const dirEmail='m28-e2e-dir-'+stamp+'@local.test';
   const providerEmail='m28-e2e-provider-'+stamp+'@local.test';
+  const secondProviderEmail='m28-e2e-provider-two-'+stamp+'@local.test';
+  const secondProviderName='Dr. Second Synthetic Provider';
   const ids:string[]=[];let org='',patient='',provider='';
   const directorContext=await browser.newContext();
   const providerContext=await browser.newContext();
+  const secondProviderContext=await browser.newContext();
   const directorPage=await directorContext.newPage();
   const providerPage=await providerContext.newPage();
   try {
     const director=await authSignUp(dirEmail,PW);
     const providerUser=await authSignUp(providerEmail,PW);
     ids.push(director,providerUser);
+    const secondProviderUser=await authSignUp(secondProviderEmail,PW);
+    ids.push(secondProviderUser);
     sql("UPDATE profiles SET must_change_password=false,provisioning_status='complete' WHERE id IN ("+
-      [director,providerUser].map(q).join(',')+");");
+      ids.map(q).join(',')+");");
     org=sql("INSERT INTO organizations(name,package_type,created_by) VALUES("+
       q('Master 28 Browser '+stamp)+",'integrated_care',"+q(director)+") RETURNING id;");
     patient=sql("INSERT INTO patients(first_name,last_name,preferred_name,address,location) VALUES("+
@@ -125,6 +130,68 @@ test('verified Provider account exchanges 3 messages without repeating OTP; revo
     expect(sql("SELECT count(*) FROM hcn_provider_messages WHERE thread_id IN "+
       "(SELECT id FROM hcn_provider_threads WHERE organization_id="+q(org)+");")).toBe('3');
 
+    const secondProviderDetails = {
+      p_organization_id: org, p_display_name: secondProviderName,
+      p_professional_title: 'Test MD', p_specialty: 'primary_care_physician',
+      p_specialty_other_label: null, p_practice_name: 'Synthetic Clinic',
+      p_office_phone: null, p_fax_number: null, p_office_address: null,
+      p_professional_identifier: 'TEST-BROWSER-002', p_credentials: 'Fictional identity only',
+    };
+    const [secondCreateStatus, secondCreated] = await rpc('hcn_upsert_healthcare_provider', {
+      ...secondProviderDetails, p_provider_id: null, p_expected_version: null,
+      p_secure_contact_email: providerEmail,
+    }, directorToken);
+    expect(secondCreateStatus, JSON.stringify(secondCreated)).toBe(200);
+    const secondProvider = secondCreated as { id: string; version: number };
+
+    await providerPage.getByRole('button', { name: 'Refresh inbox' }).click();
+    const duplicateClaim = providerPage.locator('section').filter({ hasText: secondProviderName });
+    await expect(duplicateClaim.getByText(/Separate sign-in required/)).toBeVisible();
+    await expect(duplicateClaim.getByRole('button', { name: 'Claim my account' })).toHaveCount(0);
+
+    const [correctedStatus, corrected] = await rpc('hcn_upsert_healthcare_provider', {
+      ...secondProviderDetails, p_provider_id: secondProvider.id, p_expected_version: secondProvider.version,
+      p_secure_contact_email: secondProviderEmail,
+    }, directorToken);
+    expect(correctedStatus, JSON.stringify(corrected)).toBe(200);
+
+    const secondProviderPage = await secondProviderContext.newPage();
+    await secondProviderPage.goto(FRONTEND+'/Professional/Provider');
+    await secondProviderPage.getByPlaceholder('you@example.com').fill(secondProviderEmail);
+    await secondProviderPage.getByPlaceholder('Your password').fill(PW);
+    await secondProviderPage.getByRole('button', { name: /sign in/i }).click();
+    await secondProviderPage.getByRole('button', { name: 'Claim my account' }).click();
+    await expect(secondProviderPage.getByText(/Awaiting organization approval/)).toBeVisible();
+    await expect(secondProviderPage.getByText('No authorized clinical conversations yet.')).toBeVisible();
+
+    await directorPage.getByRole('button', { name: 'Refresh', exact: true }).first().click();
+    const secondDirectoryEntry = directorPage.getByRole('listitem').filter({ hasText: secondProviderName });
+    directorPage.once('dialog', dialog => dialog.accept('Second fictional provider independently verified'));
+    await secondDirectoryEntry.getByRole('button', { name: 'Verify & approve account' }).click();
+    await expect(secondDirectoryEntry.getByText('Account: active')).toBeVisible();
+    const [secondAssociationStatus] = await rpc('hcn_associate_provider_with_patient', {
+      p_patient_id: patient, p_provider_id: secondProvider.id, p_relationship_note: 'Second provider browser fixture',
+    }, directorToken);
+    expect(secondAssociationStatus).toBe(200);
+    await directorPage.getByRole('button', { name: 'Refresh', exact: true }).first().click();
+    await expect(secondDirectoryEntry.getByLabel('Associated patients for '+secondProviderName)).toContainText('Browser Test Patient');
+    await panel.getByRole('combobox', { name: 'Conversation patient' }).selectOption(patient);
+    await panel.getByRole('combobox', { name: 'Conversation provider' }).selectOption(secondProvider.id);
+    await panel.getByRole('button', { name: 'Open conversation' }).click();
+    await directorThread.getByRole('textbox', { name: 'Reply securely' }).fill('Synthetic question for second provider');
+    await directorThread.getByRole('button', { name: 'Send message' }).click();
+    await expect(directorThread.getByText('Synthetic question for second provider')).toBeVisible();
+    await secondProviderPage.getByRole('button', { name: 'Refresh inbox' }).click();
+    await secondProviderPage.getByRole('button', { name: 'Browser Test Patient · '+secondProviderName, exact: true }).click();
+    const secondProviderThread = secondProviderPage.getByRole('region', { name: 'Secure clinical conversation' });
+    await expect(secondProviderThread.getByText('Synthetic question for second provider')).toBeVisible();
+    await secondProviderThread.getByRole('textbox', { name: 'Reply securely' }).fill('Synthetic answer from second provider');
+    await secondProviderThread.getByRole('button', { name: 'Send message' }).click();
+    await expect(directorThread.getByText('Synthetic answer from second provider')).toBeVisible({ timeout: 20000 });
+    await expect(secondProviderPage.getByRole('button', { name: 'Browser Test Patient · Dr. Synthetic Provider', exact: true })).toHaveCount(0);
+    await providerPage.getByRole('button', { name: 'Refresh inbox' }).click();
+    await expect(providerPage.getByRole('button', { name: 'Browser Test Patient · '+secondProviderName, exact: true })).toHaveCount(0);
+
 
     // An email opened in a fresh tab has no tab-scoped auth state.
     await providerPage.close();
@@ -171,6 +238,7 @@ test('verified Provider account exchanges 3 messages without repeating OTP; revo
     await expect(revokedPage.getByRole('region',{name:'Secure clinical conversation'})).toHaveCount(0);
   } finally {
     await directorContext.close();await providerContext.close();
+    await secondProviderContext.close();
     if(org) {
       const uploadedPaths=sql("SELECT string_agg(d.storage_path,'|') FROM hcn_clinical_documents d "+
         "JOIN hcn_provider_thread_documents td ON td.document_id=d.id "+
