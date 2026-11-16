@@ -1,9 +1,5 @@
-// HCN-ONBOARDING-PRODUCTION-001, Sections 1-2 -- proves the production
-// dead end ("Application approved — agreements pending" / "Agreement
-// signing is not yet available in this workspace") is closed for the
-// Business Associate Agreement, and that the Haneen SaaS License
-// Agreement is correctly, honestly BLOCKED rather than faked -- and
-// that billing authorization cannot begin without both.
+// Self-service BAA and SaaS agreement execution, consent and applicant
+// authorization. Billing requires both executed agreements.
 //
 // Requires the local Docker Supabase stack. Run with `npm run test:integration`.
 import { afterAll, describe, expect, it } from 'vitest';
@@ -81,14 +77,15 @@ describe('HCN-ONBOARDING-PRODUCTION-001 Sections 1-2 -- self-service first-party
     expect(contract.quote_id).toBe(quoteId);
   });
 
-  it('the Haneen SaaS License Agreement is explicitly BLOCKED, never faked', async () => {
+  it('executes the registered Haneen SaaS License Agreement without activating before the BAA', async () => {
     const { applicant, appId } = await freshApprovedApplication();
-    const [status, body] = (await rpc('self_service_execute_agreement', {
+    const [status, body] = await rpc('self_service_execute_agreement', {
       p_application_id: appId, p_contract_type: 'saas_license', p_signatory_name: 'Agreement Exec Applicant',
       p_signatory_title: 'Founder', p_consent_to_electronic_records: true, p_user_agent: 'vitest-integration',
-    }, applicant.token)) as [number, { message?: string }];
-    expect(status).toBeGreaterThanOrEqual(400);
-    expect(body.message).toMatch(/BLOCKED/);
+    }, applicant.token);
+    expect(status, JSON.stringify(body)).toBe(200);
+    expect(body).toMatchObject({ status: 'executed', template_version: 'HCN-SAAS-1.0' });
+    expect(sql(`SELECT status FROM professional_applications WHERE id='${appId}';`)).toBe('approved');
   });
 
   it('cannot execute an agreement without affirmative consent', async () => {
@@ -142,7 +139,7 @@ describe('HCN-ONBOARDING-PRODUCTION-001 Sections 1-2 -- self-service first-party
     }, applicant.token);
 
     const appStatus = sql(`SELECT status FROM professional_applications WHERE id='${appId}';`);
-    expect(appStatus).toBe('approved'); // never advances to agreements_executed -- saas_license is still blocked
+    expect(appStatus).toBe('approved'); // the SaaS agreement has not been executed
 
     const [status, body] = (await rpc('create_enterprise_billing_account', {
       p_quote_id: sql(`SELECT (application_details->>'originatingQuoteId') FROM professional_applications WHERE id='${appId}';`),

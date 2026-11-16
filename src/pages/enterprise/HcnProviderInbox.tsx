@@ -276,9 +276,10 @@ export default function ProviderInbox({ userId, onLogout }: { userId: string; on
         {claimable.map(a=>(
           <section key={a.providerId} className={panel}>
             <div className="flex items-center justify-between gap-3">
-              <div><p className="font-semibold">{a.providerName}</p><p className="text-sm text-ent-muted">{a.organizationName} · {a.status}</p></div>
+              <div><p className="font-semibold">{a.providerName}</p><p className="text-sm text-ent-muted">{a.organizationName} · {a.status === 'identity_already_linked' ? 'Separate sign-in required' : a.status}</p></div>
               {a.status==='unclaimed' && <button type="button" className={btn} disabled={busy} onClick={()=>{void claim(a.providerId);}}>Claim my account</button>}
             </div>
+            {a.status === 'identity_already_linked' && <p className="text-sm text-ent-muted">Your sign-in is already linked to another provider here. Ask the organization to invite this provider using their own email address.</p>}
             {a.status==='pending' && <p className="text-sm text-ent-muted">Awaiting organization approval. No patient records are accessible until approved.</p>}
           </section>
         ))}

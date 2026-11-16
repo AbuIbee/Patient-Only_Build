@@ -1,16 +1,5 @@
-// HCN-SAAS-1.0 directive -- proves the owner-approved Haneen SaaS
-// License and Subscription Agreement (HCN-SAAS-1.0) is registered as
-// a versioned, immutable template with a correct, independently
-// Postgres-derived content hash; that electronic signing of it stays
-// server-side BLOCKED with a precise configuration message until the
-// lawful contracting entity is confirmed (never silently permitted,
-// never faked); that the already-executed BAA is completely
-// unaffected; and that once the entity-confirmed gate is lifted (the
-// one state this test flips directly, to prove the future path works
-// without actually enabling it for real), signing, duplicate-signature
-// prevention, cross-applicant rejection, and the billing-advance gate
-// all behave correctly.
-//
+// HCN-SAAS-1.0 coverage for the immutable template, enabled signing,
+// explicit disabled-gate behavior, and deferred activation.
 // Requires the local Docker Supabase stack. Run with `npm run test:integration`.
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
@@ -63,7 +52,7 @@ async function freshApprovedApplication(): Promise<{ applicant: { email: string;
   return { applicant, appId: app.id, quoteId: app.application_details.originatingQuoteId };
 }
 
-afterEach(() => setEntityConfirmed(false)); // never leave a test in the "entity confirmed" state
+afterEach(() => setEntityConfirmed(true)); // restore the deployed owner-authorized setting
 
 afterAll(async () => {
   const orgNameList = createdOrgNames.map((n) => `'${n.replace(/'/g, "''")}'`).join(',') || "''";
@@ -103,9 +92,10 @@ describe('HCN-SAAS-1.0 -- versioned template registration', () => {
   });
 });
 
-describe('HCN-SAAS-1.0 -- signing stays BLOCKED until the contracting entity is confirmed', () => {
-  it('the approved template exists for review, but signing is refused with a precise configuration message', async () => {
-    expect(sql(`SELECT hcn_saas_contracting_entity_confirmed();`)).toBe('f');
+describe('HCN-SAAS-1.0 signing gate', () => {
+  it('starts enabled and refuses signing when the gate is explicitly disabled', async () => {
+    expect(sql(`SELECT hcn_saas_contracting_entity_confirmed();`)).toBe('t');
+    setEntityConfirmed(false);
     const { applicant, appId } = await freshApprovedApplication();
     const [status, body] = (await rpc('self_service_execute_agreement', {
       p_application_id: appId, p_contract_type: 'saas_license', p_signatory_name: 'Saas Tpl Applicant',
@@ -138,7 +128,7 @@ describe('HCN-SAAS-1.0 -- signing stays BLOCKED until the contracting entity is 
   });
 });
 
-describe('HCN-SAAS-1.0 -- once the contracting entity is confirmed (test-only state, proves the future path)', () => {
+describe('HCN-SAAS-1.0 with owner-authorized signing enabled', () => {
   it('signing succeeds, records the correct version and content hash, and performs the owner-authorized deferred activation once BOTH agreements are executed', async () => {
     const { applicant, appId, quoteId } = await freshApprovedApplication();
     await rpc('self_service_execute_agreement', {
@@ -146,7 +136,6 @@ describe('HCN-SAAS-1.0 -- once the contracting entity is confirmed (test-only st
       p_signatory_title: 'Founder', p_consent_to_electronic_records: true, p_user_agent: 'vitest-integration',
     }, applicant.token);
 
-    setEntityConfirmed(true);
     const expectedHash = sql(`SELECT content_sha256 FROM hcn_agreement_templates WHERE contract_type='saas_license';`);
 
     const [status, contract] = (await rpc('self_service_execute_agreement', {
@@ -173,7 +162,6 @@ describe('HCN-SAAS-1.0 -- once the contracting entity is confirmed (test-only st
 
   it('duplicate-signature prevention: a second signing attempt returns the original executed contract unchanged', async () => {
     const { applicant, appId } = await freshApprovedApplication();
-    setEntityConfirmed(true);
     const [, first] = (await rpc('self_service_execute_agreement', {
       p_application_id: appId, p_contract_type: 'saas_license', p_signatory_name: 'Saas Tpl Applicant',
       p_signatory_title: 'Founder', p_consent_to_electronic_records: true, p_user_agent: 'vitest-integration',
@@ -192,7 +180,6 @@ describe('HCN-SAAS-1.0 -- once the contracting entity is confirmed (test-only st
   it('cross-organization access is rejected: a different applicant cannot sign for this application', async () => {
     const { appId } = await freshApprovedApplication();
     const outsider = await freshApplicant();
-    setEntityConfirmed(true);
     const [status] = await rpc('self_service_execute_agreement', {
       p_application_id: appId, p_contract_type: 'saas_license', p_signatory_name: 'Outsider',
       p_signatory_title: null, p_consent_to_electronic_records: true, p_user_agent: 'vitest-integration',
@@ -202,7 +189,6 @@ describe('HCN-SAAS-1.0 -- once the contracting entity is confirmed (test-only st
 
   it('an unauthorized (unauthenticated) signing attempt is rejected', async () => {
     const { appId } = await freshApprovedApplication();
-    setEntityConfirmed(true);
     const [status] = await rpc('self_service_execute_agreement', {
       p_application_id: appId, p_contract_type: 'saas_license', p_signatory_name: 'Nobody',
       p_signatory_title: null, p_consent_to_electronic_records: true, p_user_agent: 'vitest-integration',

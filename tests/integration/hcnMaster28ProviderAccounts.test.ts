@@ -13,7 +13,7 @@ describe('HCN Master #28 — permanent provider authorization', () => {
     const users: string[] = [];
     let org = '', patient = '', provider = '', thread = '';
     try {
-      const emails = ['director','approver','provider','outsider'].map(
+      const emails = ['director','approver','provider','outsider','second-provider'].map(
         role => 'm28-' + role + '-' + stamp + '@local.test'
       );
       for (const email of emails) users.push(await authSignUp(email,PW));
@@ -47,6 +47,47 @@ describe('HCN Master #28 — permanent provider authorization', () => {
       const [claim,claimBody] = await rpc('hcn_claim_provider_account',{p_provider_id:provider},tokens[2]);
       expect(claim,JSON.stringify(claimBody)).toBe(200);
       expect((claimBody as {status:string}).status).toBe('pending');
+      const [repeatCode, repeat] = await rpc('hcn_claim_provider_account', { p_provider_id: provider }, tokens[2]);
+      expect(repeatCode).toBe(200);
+      expect(repeat).toEqual(claimBody);
+
+      const secondProviderDetails = {
+        p_organization_id: org, p_provider_id: null, p_display_name: 'Second Synthetic Clinician',
+        p_professional_title: 'Test MD', p_specialty: 'primary_care_physician',
+        p_specialty_other_label: null, p_practice_name: 'Synthetic Clinic',
+        p_office_phone: null, p_fax_number: null, p_secure_contact_email: emails[2],
+        p_office_address: null, p_professional_identifier: 'TEST-NPI-002',
+        p_credentials: 'Synthetic test credentials', p_expected_version: null,
+      };
+      const [secondCreateCode, secondCreated] = await rpc('hcn_upsert_healthcare_provider', secondProviderDetails, tokens[0]);
+      expect(secondCreateCode, JSON.stringify(secondCreated)).toBe(200);
+      const secondProvider = (secondCreated as { id: string }).id;
+      const [listCode, claimable] = await rpc('hcn_list_claimable_provider_accounts', {}, tokens[2]);
+      expect(listCode).toBe(200);
+      expect(claimable).toEqual(expect.arrayContaining([
+        expect.objectContaining({ provider_id: provider, account_status: 'pending' }),
+        expect.objectContaining({ provider_id: secondProvider, account_status: 'identity_already_linked' }),
+      ]));
+      const [duplicateStatus, duplicate] = await rpc('hcn_claim_provider_account', { p_provider_id: secondProvider }, tokens[2]);
+      expect(duplicateStatus).toBeGreaterThanOrEqual(400);
+      expect(duplicate).toMatchObject({ message: expect.stringContaining('already linked to another provider') });
+
+      // Once the Director addresses the separate invitation to the intended
+      // clinician, the second clinician can claim and be approved independently.
+      const [updatedCode, updated] = await rpc('hcn_upsert_healthcare_provider', {
+        ...secondProviderDetails, p_provider_id: secondProvider,
+        p_expected_version: (secondCreated as { version: number }).version,
+        p_secure_contact_email: emails[4],
+      }, tokens[0]);
+      expect(updatedCode, JSON.stringify(updated)).toBe(200);
+      const [secondClaimCode, secondClaim] = await rpc('hcn_claim_provider_account', { p_provider_id: secondProvider }, tokens[4]);
+      expect(secondClaimCode, JSON.stringify(secondClaim)).toBe(200);
+      expect(secondClaim).toMatchObject({ status: 'pending', user_id: users[4] });
+      const [secondApprovedCode, secondApproved] = await rpc('hcn_decide_provider_account', {
+        p_provider_id: secondProvider, p_approve: true, p_evidence_note: 'Second synthetic clinician credentials verified independently',
+      }, tokens[1]);
+      expect(secondApprovedCode, JSON.stringify(secondApproved)).toBe(200);
+      expect(secondApproved).toMatchObject({ status: 'active', user_id: users[4] });
 
       const [premature] = await rpc('hcn_open_provider_thread',
         {p_org:org,p_patient:patient,p_provider:provider},tokens[0]);
@@ -86,6 +127,8 @@ describe('HCN Master #28 — permanent provider authorization', () => {
       expect((received as unknown[]).length).toBe(3);
       const [wrongRead] = await rpc('hcn_list_provider_messages',{p_thread_id:thread},tokens[3]);
       expect(wrongRead).toBeGreaterThanOrEqual(400);
+      const [otherProviderRead] = await rpc('hcn_list_provider_messages', { p_thread_id: thread }, tokens[4]);
+      expect(otherProviderRead).toBeGreaterThanOrEqual(400);
 
       // A Director cannot bypass Owner Office approval by claiming an external
       // provider account under the Director's own email.
