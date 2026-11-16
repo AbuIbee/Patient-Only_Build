@@ -178,6 +178,8 @@ test('two Provider identities claim independently, exchange private messages, an
     await panel.getByRole('combobox', { name: 'Conversation patient' }).selectOption(patient);
     await panel.getByRole('combobox', { name: 'Conversation provider' }).selectOption(secondProvider.id);
     await panel.getByRole('button', { name: 'Open conversation' }).click();
+    await expect(panel.getByRole('button', { name: 'Browser Test Patient · '+secondProviderName, exact: true })).toBeVisible();
+    await expect(directorThread.getByText('No correspondence in this thread yet.')).toBeVisible();
     await directorThread.getByRole('textbox', { name: 'Reply securely' }).fill('Synthetic question for second provider');
     await directorThread.getByRole('button', { name: 'Send message' }).click();
     await expect(directorThread.getByText('Synthetic question for second provider')).toBeVisible();

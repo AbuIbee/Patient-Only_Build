@@ -78,6 +78,7 @@ for (const tier of tiers) {
     expect(sql(`SELECT status, annual_license_fee_snapshot_cents ${application};`)).toBe('approved|0');
     await page.getByRole('link', { name: 'Continue to agreements' }).click();
 
+    await expect(page.getByRole('heading', { name: 'Application approved — agreements pending' })).toBeVisible();
     await page.locator('#baa-signatory-name').fill(applicant);
     await page.getByLabel(/I have read and agree to the complete Business Associate Agreement/).check();
     await page.getByLabel(/I consent to conduct this transaction/).check();
