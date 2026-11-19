@@ -10,6 +10,7 @@ import AboutUsPage from '@/pages/common/AboutUsPage';
 import BusinessLandingPage from '@/pages/common/BusinessLandingPage';
 import ProfessionalLandingPage from '@/pages/professional/ProfessionalLandingPage';
 import PrivacyPage from '@/pages/privacy/PrivacyPage';
+import EnterprisePricingPage from '@/pages/professional/EnterprisePricingPage';
 import { Toaster } from '@/components/ui/sonner';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -104,6 +105,7 @@ function AppContent() {
   // branch, so the route must match that literally.
   const isExternalClinicalAccessRoute = currentPath === '/external-request';
   const isPrivacyRoute = currentPath === '/privacy';
+  const isEnterprisePricingRoute = currentPath === '/pricing' && import.meta.env.VITE_ENTERPRISE_SITE === 'true';
   const isAboutUsRoute = currentPath === '/about-us';
   // OWNER-PRICING-BUSINESS-REGISTRATION-REPAIR Phase C item 1: a separate
   // commercial landing route — same public-route pattern as the other
@@ -158,7 +160,7 @@ function AppContent() {
   // public routes, which still pass through the ordinary
   // checkingSession/renderContent path.
   const isPublicRoute =
-    isEnterpriseLandingRoute || isPublicPatientIntakeRoute || isExternalClinicalAccessRoute || isPrivacyRoute || isAboutUsRoute || isBusinessRoute || isProfessionalRoute || isLegacyOfficeRoute || isActivationRoute;
+    isEnterpriseLandingRoute || isEnterprisePricingRoute || isPublicPatientIntakeRoute || isExternalClinicalAccessRoute || isPrivacyRoute || isAboutUsRoute || isBusinessRoute || isProfessionalRoute || isLegacyOfficeRoute || isActivationRoute;
 
   // Canonicalize a legacy office alias (/admin, /caregiver, /medical,
   // /therapy) to its /Professional/<Office> equivalent BEFORE paint —
@@ -726,6 +728,7 @@ function AppContent() {
     if (isPrivacyRoute) {
       return <PrivacyPage />;
     }
+    if (isEnterprisePricingRoute) return <EnterprisePricingPage />;
 
     if (isAboutUsRoute) {
       return <AboutUsPage />;

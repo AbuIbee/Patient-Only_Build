@@ -9,6 +9,9 @@
 // tier, and no billing information at all.
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+import { getMyApplicationDraft } from '@/services/professionalApplicationService';
+import type { Json } from '@/types/supabase';
 import { Loader2, ShieldCheck, CheckCircle2, AlertTriangle } from 'lucide-react';
 import {
   loadPublishedLicenseTiers, previewAnnualLicenseCharge, previewMonthlyPatientFeeCents, startSelfServiceApplication,
@@ -88,6 +91,58 @@ export default function SelfServiceApplicationFlow({ legalName, contactEmail, on
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<SelfServiceApplicationResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const [draftLoading,setDraftLoading]=useState(true);
+  const [savingDraft,setSavingDraft]=useState(false);
+  const [draftMessage,setDraftMessage]=useState('');
+  useEffect(()=>{
+    let active=true;
+    void getMyApplicationDraft().then(draft=>{
+      if(!active)return;
+      const d=draft?.applicationDetails?.selfServiceDraft as Record<string,unknown>|undefined;
+      if(!d)return;
+      if(typeof d.initialPatients==='string') setInitialPatients(d.initialPatients);
+      if(typeof d.fullLegalName==='string') setFullLegalName(d.fullLegalName);
+      if(typeof d.applicantEmail==='string') setApplicantEmail(d.applicantEmail);
+      if(typeof d.legalBusinessName==='string') setLegalBusinessName(d.legalBusinessName);
+      if(typeof d.legalForm==='string') setLegalForm(d.legalForm);
+      if(typeof d.businessClassification==='string') setBusinessClassification(d.businessClassification);
+      if(typeof d.formationJurisdiction==='string') setFormationJurisdiction(d.formationJurisdiction);
+      if(typeof d.registeredAddress==='string') setRegisteredAddress(d.registeredAddress);
+      if(typeof d.businessPhone==='string') setBusinessPhone(d.businessPhone);
+      if(typeof d.mobile==='string') setMobile(d.mobile);
+      if(typeof d.title==='string') setTitle(d.title);
+      if(typeof d.relationshipToEntity==='string') setRelationshipToEntity(d.relationshipToEntity);
+      if(typeof d.billingContact==='string') setBillingContact(d.billingContact);
+      if(typeof d.billingAddress==='string') setBillingAddress(d.billingAddress);
+      if(typeof d.billingEmail==='string') setBillingEmail(d.billingEmail);
+      if(typeof d.signatureName==='string') setSignatureName(d.signatureName);
+      if(typeof d.couponCode==='string') setCouponCode(d.couponCode);
+      if(typeof d.authorizedSignatory==='boolean') setAuthorizedSignatory(d.authorizedSignatory);
+      if(typeof d.authorityAttestation==='boolean') setAuthorityAttestation(d.authorityAttestation);
+      if(typeof d.accuracyAttestation==='boolean') setAccuracyAttestation(d.accuracyAttestation);
+      if(typeof d.authorizedSignatoryConfirmed==='boolean') setAuthorizedSignatoryConfirmed(d.authorizedSignatoryConfirmed);
+      if(typeof d.privacyAck==='boolean') setPrivacyAck(d.privacyAck);
+      if(d.selectedTier==='essential'||d.selectedTier==='plus'||d.selectedTier==='complete')setSelectedTier(d.selectedTier);
+      if(d.step==='tier'||d.step==='starter'||d.step==='pricing')setStep(d.step);
+      setDraftMessage('Saved application restored. Review your details before submitting.');
+    }).catch(()=>{if(active)setDraftMessage('Unable to restore your saved draft. Retry before entering changes.');})
+      .finally(()=>{if(active)setDraftLoading(false);});
+    return()=>{active=false;};
+  },[]);
+  const saveDraft=async()=>{
+    if(savingDraft||!['tier','starter','pricing'].includes(step))return;
+    setSavingDraft(true);
+    try{
+      const snapshot={step,selectedTier,initialPatients,fullLegalName,applicantEmail,legalBusinessName,legalForm,businessClassification,formationJurisdiction,registeredAddress,businessPhone,mobile,title,relationshipToEntity,billingContact,billingAddress,billingEmail,signatureName,couponCode,authorizedSignatory,authorityAttestation,accuracyAttestation,authorizedSignatoryConfirmed,privacyAck};
+      const rpc=supabase.rpc.bind(supabase) as unknown as (name:string,args:Record<string,Json>)=>Promise<{error:{message:string}|null}>;
+      const {error}=await rpc('hcn_save_self_service_draft',{p_snapshot:snapshot as unknown as Json});
+      if(error){setDraftMessage(error.message);return;}
+      setDraftMessage('Draft saved. You can sign out and return to this application.');
+    }catch(error){setDraftMessage(error instanceof Error?error.message:'Draft was not saved. Please retry.');}finally{setSavingDraft(false);}
+  };
+  const draftActions=<div className="space-y-2"><button type="button" onClick={()=>{void saveDraft();}} disabled={savingDraft} className="rounded-xl border border-ent-line px-4 py-2 text-sm font-semibold">{savingDraft?'Saving draft…':'Save Draft'}</button><p role="status" className="text-sm text-ent-muted">{draftMessage}</p></div>;
+
 
   useEffect(() => {
     let active = true;
@@ -170,9 +225,12 @@ export default function SelfServiceApplicationFlow({ legalName, contactEmail, on
 
   const declarationsComplete = accuracyAttestation && authorizedSignatoryConfirmed && privacyAck && signatureName.trim();
 
+  if(draftLoading)return <p role="status">Restoring application draft…</p>;
+
   if (step === 'tier') {
     return (
       <div className="space-y-4">
+        {draftActions}
         <h2 className="text-lg font-bold text-ent-ink">Choose your license tier</h2>
         <div className="grid grid-cols-1 gap-3">
           {tiers.map((t) => (
@@ -210,6 +268,7 @@ export default function SelfServiceApplicationFlow({ legalName, contactEmail, on
   if (step === 'starter') {
     return (
       <div className="space-y-4">
+        {draftActions}
         <button type="button" onClick={() => setStep('tier')} className="text-xs font-semibold text-ent-bronze hover:underline">← Choose a different tier</button>
         <h2 className="text-lg font-bold text-ent-ink">Starter application</h2>
         <p className="text-xs text-ent-muted">Just enough to verify eligibility and establish your license. Operational setup (specialist assignments, staff, patients) happens after activation.</p>
@@ -261,6 +320,7 @@ export default function SelfServiceApplicationFlow({ legalName, contactEmail, on
   if (step === 'pricing') {
     return (
       <div className="space-y-4">
+        {draftActions}
         <button type="button" onClick={() => setStep('starter')} className="text-xs font-semibold text-ent-bronze hover:underline">← Back</button>
         <h2 className="text-lg font-bold text-ent-ink">Pricing and agreements</h2>
 
@@ -282,6 +342,12 @@ export default function SelfServiceApplicationFlow({ legalName, contactEmail, on
           </span>
         </div>
 
+        {monthlyPreview !== null && (
+          <p className="text-sm text-ent-ink">
+            Separate monthly patient fee: {centsToDisplay(monthlyPreview)} estimated for {initialPatients} active patients.
+            {' '}The annual promotional code does not waive monthly charges. A separate payment authorization is required.
+          </p>
+        )}
         <p className="text-xs font-bold text-ent-ink uppercase tracking-wide pt-2">Declarations</p>
         <CheckField label="I confirm the information in this application is accurate. *" checked={accuracyAttestation} onChange={setAccuracyAttestation} />
         <CheckField label="I confirm I am authorized to sign on behalf of this business. *" checked={authorizedSignatoryConfirmed} onChange={setAuthorizedSignatoryConfirmed} />

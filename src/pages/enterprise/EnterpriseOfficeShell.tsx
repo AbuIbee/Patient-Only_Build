@@ -28,6 +28,7 @@ export interface OfficeNavItem<K extends string> {
   key: K;
   label: string;
   icon: LucideIcon;
+  parentKey?: K;
 }
 
 export interface OfficeNavGroup<K extends string> {
@@ -72,7 +73,7 @@ export function EnterpriseOfficeShell<K extends string>({
             : `w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg text-left text-[12.5px] font-semibold transition-colors ${isActive ? 'bg-ent-green-active text-ent-forest' : 'text-ent-text hover:bg-ent-pale'}`
         }
       >
-        <Icon className="w-4 h-4 flex-shrink-0" /> {item.label}
+        {item.parentKey && <span className="ml-4" aria-hidden="true">↳</span>}<Icon className="w-4 h-4 flex-shrink-0" /> {item.label}
       </button>
     );
   };

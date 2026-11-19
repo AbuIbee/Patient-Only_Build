@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import Stripe from 'https://esm.sh/stripe@14.21.0?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { enterpriseProcessorReady } from '../_shared/enterpriseProcessorOutcome.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
   apiVersion: '2023-10-16',
@@ -15,6 +16,17 @@ const supabase = createClient(
 const FREE_TIER = 'free_tier';
 const PAID_TIER = 'paid_tier';
 const ACTIVE_STATUS = 'active';
+
+const processorOutcomeReady = async (subscription: Stripe.Subscription, component: string, paymentStatus?: string) => {
+  let saved = Boolean(subscription.default_payment_method);
+  if (!saved && typeof subscription.customer === 'string') {
+    const customer = await stripe.customers.retrieve(subscription.customer);
+    saved = !customer.deleted && Boolean(customer.invoice_settings.default_payment_method);
+  }
+  const invoice = typeof subscription.latest_invoice === 'string'
+    ? await stripe.invoices.retrieve(subscription.latest_invoice) : subscription.latest_invoice;
+  return enterpriseProcessorReady({component,subscriptionStatus:subscription.status,savedPaymentMethod:saved,invoicePaid:invoice?.paid===true,checkoutPaymentStatus:paymentStatus});
+};
 
 const toIsoDate = (unixSeconds: number | null | undefined): string | null => {
   if (!unixSeconds) return null;
@@ -308,9 +320,14 @@ serve(async (req) => {
     return new Response('Webhook signature failed', { status: 400 });
   }
 
+  if (Deno.env.get('HCN_REQUIRE_STRIPE_SANDBOX') === 'true' && event.livemode !== false) {
+    return new Response('Sandbox events only', {status:400});
+  }
   console.log(`Stripe webhook received: ${event.type}`);
 
   try {
+    const expectedAccount=Deno.env.get('HCN_STRIPE_ACCOUNT_ID');
+    if(expectedAccount && (await stripe.accounts.retrieve()).id!==expectedAccount) throw new Error('Stripe account binding mismatch');
     /*
      * LEGACY WEBHOOK LOGIC RETAINED FOR REVIEW ONLY
      *
@@ -331,11 +348,26 @@ serve(async (req) => {
      */
 
     switch (event.type) {
+      case 'checkout.session.expired':
+      case 'checkout.session.async_payment_failed': {
+        const session=event.data.object as Stripe.Checkout.Session;
+        if(session.metadata?.billing_type!=='enterprise')break;
+        const accountId=session.metadata?.billing_account_id;
+        const quoteId=session.metadata?.quote_id;
+        const component=session.metadata?.billing_component??'annual_license';
+        if(!accountId||!quoteId||(await findEnterpriseBillingAccountByQuote(quoteId,component))?.id!==accountId)throw new Error('Checkout failure binding mismatch');
+        if(await recordEnterpriseEventOnce(event.id,event.type,accountId,session)==='skip')break;
+        const {error}=await supabase.from('enterprise_billing_accounts').update({status:event.type==='checkout.session.expired'?'canceled':'past_due'}).eq('id',accountId).eq('stripe_checkout_session_id',session.id).in('status',['pending','incomplete']);
+        if(error)throw error;
+        await markEnterpriseEventProcessed(event.id);
+        break;
+      }
       /*
        * Stripe Checkout completed successfully.
        * This is the event that upgrades Free Tier to Paid Tier.
        */
-      case 'checkout.session.completed': {
+      case 'checkout.session.completed':
+      case 'checkout.session.async_payment_succeeded': {
         const session = event.data.object as Stripe.Checkout.Session;
 
         if (session.metadata?.billing_type === 'enterprise') {
@@ -358,6 +390,14 @@ serve(async (req) => {
           }
           if (!billingAccountId) {
             throw new Error(`Enterprise checkout session ${session.id} has no matching billing account (quote_id ${quoteId}).`);
+          }
+
+          if (!quoteId || (await findEnterpriseBillingAccountByQuote(quoteId,billingComponent))?.id !== billingAccountId) {
+            throw new Error('Enterprise checkout quote/component binding does not match the billing account.');
+          }
+          const confirmedSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+          if (confirmedSubscription.customer !== stripeCustomerId || !await processorOutcomeReady(confirmedSubscription,billingComponent,session.payment_status)) {
+            throw new Error('Processor has not confirmed the chargeable component or saved recurring payment method.');
           }
 
           await updateEnterpriseBillingAccount(billingAccountId, {
@@ -457,7 +497,8 @@ serve(async (req) => {
             incomplete: 'incomplete',
             incomplete_expired: 'canceled',
           };
-          const mappedStatus = stripeStatusToOurs[stripeSubscription.status];
+          let mappedStatus = stripeStatusToOurs[stripeSubscription.status];
+          if (mappedStatus === 'active' && !await processorOutcomeReady(stripeSubscription,billingComponent)) mappedStatus='incomplete';
           if (!mappedStatus) {
             console.warn(`Enterprise subscription ${stripeSubscription.id} has unhandled Stripe status ${stripeSubscription.status} -- not changing stored status.`);
             await markEnterpriseEventProcessed(event.id);

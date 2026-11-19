@@ -1,2 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# Immutable agreement content inside SQL must not acquire Windows CRLF bytes.
+supabase/migrations/*.sql text eol=lf

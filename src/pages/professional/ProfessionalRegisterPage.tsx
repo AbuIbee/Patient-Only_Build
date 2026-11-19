@@ -16,6 +16,7 @@ import {
   type RequestedOffice,
 } from '@/services/professionalApplicationService';
 import SelfServiceApplicationFlow from './SelfServiceApplicationFlow';
+import { supabase } from '@/lib/supabase';
 
 const OFFICE_OPTIONS: { key: RequestedOffice; label: string; description: string; icon: typeof Building2 }[] = [
   { key: 'director', label: 'Purchase a License / Become a Director', description: 'Select a license tier and complete a self-service application to start and lead a new Enterprise organization.', icon: Building2 },
@@ -106,13 +107,13 @@ function AccountStep({ onDone }: { onDone: (identity: { firstName: string; lastN
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">First Name</label><input value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputCls} /></div>
-        <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Last Name</label><input value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputCls} /></div>
+        <div className="space-y-1"><label htmlFor="professional-first-name" className="text-sm font-medium text-ent-ink">First Name</label><input id="professional-first-name" autoComplete="given-name" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputCls} /></div>
+        <div className="space-y-1"><label htmlFor="professional-last-name" className="text-sm font-medium text-ent-ink">Last Name</label><input id="professional-last-name" autoComplete="family-name" value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputCls} /></div>
       </div>
-      <div className="space-y-1"><label className="text-sm font-medium text-ent-ink">Email Address</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} /></div>
+      <div className="space-y-1"><label htmlFor="professional-email" className="text-sm font-medium text-ent-ink">Email Address</label><input id="professional-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} /></div>
       <div className="space-y-1">
-        <label className="text-sm font-medium text-ent-ink">Password</label>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 11 characters" className={inputCls} />
+        <label htmlFor="professional-password" className="text-sm font-medium text-ent-ink">Password</label>
+        <input id="professional-password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 11 characters" className={inputCls} />
       </div>
       <button type="button" onClick={() => { void submit(); }} disabled={loading} className="w-full py-3 rounded-xl bg-ent-bronze hover:opacity-90 text-white font-semibold disabled:opacity-60">
         {loading ? 'Creating account…' : 'Continue'}
@@ -125,7 +126,7 @@ function AccountStep({ onDone }: { onDone: (identity: { firstName: string; lastN
 }
 
 export default function ProfessionalRegisterPage() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const [step, setStep] = useState<'account' | 'office' | 'form' | 'submitted'>(state.isAuthenticated ? 'office' : 'account');
   const [office, setOffice] = useState<RequestedOffice | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -205,6 +206,7 @@ export default function ProfessionalRegisterPage() {
             <div className="font-bold text-ent-ink text-sm leading-tight">Haneen Care Network</div>
             <div className="text-[10px] font-extrabold tracking-[0.14em] text-ent-bronze mt-0.5">PROFESSIONAL WORKSPACE</div>
           </div>
+          {state.isAuthenticated && <button type="button" className="ml-auto rounded-xl border border-ent-line px-3 py-2 text-sm" onClick={()=>{void supabase.auth.signOut().finally(()=>{dispatch({type:'LOGOUT'});window.location.assign('/Professional');});}}>Logout</button>}
         </div>
       </header>
 
@@ -247,43 +249,7 @@ export default function ProfessionalRegisterPage() {
             {step === 'form' && office === 'director' && (
               <div className="space-y-4">
                 <button type="button" onClick={() => setStep('office')} className="text-xs font-semibold text-ent-bronze hover:underline">← Choose a different office</button>
-                {!legalName.trim() || !contactEmail.trim() ? (
-                  <>
-                    <h2 className="text-lg font-bold text-ent-ink">Your identity</h2>
-                    <label className="space-y-1 block text-sm font-medium text-ent-ink">
-                      <span>Legal Name *</span>
-                      <input value={legalName} onChange={(e) => setLegalName(e.target.value)} className={inputCls} />
-                    </label>
-                    <label className="space-y-1 block text-sm font-medium text-ent-ink">
-                      <span>Contact Email *</span>
-                      <input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className={inputCls} />
-                    </label>
-                    {/*
-                      CONFIRMED DEFECT (commit e43a296a): a "Continue to
-                      application" button was added here, disabled by
-                      this exact same `!legalName.trim() ||
-                      !contactEmail.trim()` expression -- but that is
-                      also the condition gating this entire branch, so
-                      the button was permanently disabled for every
-                      render in which it could ever be visible, and the
-                      view already auto-advances to
-                      SelfServiceApplicationFlow the instant both fields
-                      hold content (a pre-existing, intentional behavior
-                      this page's own E2E suite documents and asserts --
-                      see tests/e2e_professional_access_states.spec.ts).
-                      The button could never be clicked and never
-                      changed any real behavior; removed as dead/
-                      misleading UI rather than reinstated with new
-                      gating state, which would have broken that
-                      already-tested auto-advance. The informational
-                      line below is kept -- it is accurate and useful on
-                      its own.
-                    */}
-                    <p className="text-xs text-ent-muted">Your existing signed-in account will be used; no second account is created.</p>
-                  </>
-                ) : (
-                  <SelfServiceApplicationFlow legalName={legalName} contactEmail={contactEmail} />
-                )}
+                <SelfServiceApplicationFlow legalName={legalName} contactEmail={contactEmail} />
               </div>
             )}
 

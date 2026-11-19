@@ -490,6 +490,8 @@ export default function ProfessionalLandingPage() {
             <a href="#how-it-works" className="hover:underline">How to Apply</a>
             <a href="/Professional" className="hover:underline">Professional Sign In</a>
             <a href="/Professional/Register" className="hover:underline">Apply</a>
+            <a href="/pricing" className="hover:underline">Organization pricing</a>
+            <a href="/privacy" className="hover:underline">Privacy & Legal</a>
           </nav>
         </div>
         <p className="mx-auto mt-8 max-w-7xl border-t border-[#24435e] pt-6 text-xs leading-relaxed text-[#a8c5d8]">Professional office access depends on application approval, licensing, role and patient authorization. Haneen is not an emergency response service.</p>

@@ -31,7 +31,7 @@ async function mkUser(email: string): Promise<string> {
 }
 
 test.describe('Real-browser agreement execution (HCN-ONBOARDING-PRODUCTION-001)', () => {
-  test('a signed-in applicant with an approved application can sign the real BAA text and sees the SaaS License Agreement as honestly blocked', async ({ page }) => {
+  test('an approved applicant can sign the BAA while the enabled SaaS signature still requires affirmative consent', async ({ page }) => {
     const email = `agreement-e2e-${stamp}@local.test`;
     const orgName = `Agreement E2E Org ${stamp}`;
     const id = await mkUser(email);
@@ -72,8 +72,7 @@ test.describe('Real-browser agreement execution (HCN-ONBOARDING-PRODUCTION-001)'
       // configuration message -- never a fake, clickable "sign"
       // button, and never silently absent.
       await expect(page.getByText('Agreement Version HCN-SAAS-1.0')).toBeVisible();
-      await expect(page.getByText(/Haneen Care Network's lawful contracting entity has not yet been legally confirmed/)).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Signing temporarily disabled' })).toBeDisabled();
+      await expect(page.getByRole('button', { name: 'I Agree and Electronically Sign' })).toBeDisabled();
 
       await page.locator('#baa-signatory-name').fill('Agreement E2E Applicant');
       await page.locator('#baa-signatory-title').fill('Founder');

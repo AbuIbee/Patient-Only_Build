@@ -13,7 +13,7 @@ const tiers = [
 ];
 
 for (const tier of tiers) {
-  test(`${tier.name} applicant reaches Director access after both agreements with deferred billing`, async ({ page }) => {
+  test(`${tier.name} applicant signs both agreements but stays gated pending processor confirmation`, async ({ page }) => {
     test.setTimeout(90000);
     const stamp = Date.now();
     const email = `hcn-tier-${tier.name.toLowerCase()}-${stamp}@local.test`;
@@ -90,17 +90,23 @@ for (const tier of tiers) {
     await page.getByLabel(/I confirm that I am authorized to bind/).check();
     await page.getByLabel(/I consent to electronic execution and retention/).check();
     await page.getByRole('button', { name: 'I Agree and Electronically Sign' }).click();
-    await expect.poll(() => sql(`SELECT status ${application};`)).toBe('active');
+    await expect.poll(() => sql(`SELECT status ${application};`)).toBe('agreements_executed');
+    await expect(page.getByRole('heading', { name: 'Agreements signed — authorize billing' })).toBeVisible();
     await page.goto(frontend + '/Professional/Admin');
-    await expect(page.getByRole('heading', { name: 'Director Dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Agreements signed — authorize billing' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Director Dashboard', exact: true })).toHaveCount(0);
 
     const org = `(SELECT target_organization_id ${application})`;
-    expect(sql(`SELECT status, specialist_slot_count FROM organization_licenses WHERE organization_id=${org};`))
-      .toBe(`active|${tier.slots}`);
+    expect(sql(`SELECT status FROM organization_licenses WHERE organization_id=${org};`)).toBe('proposed');
+    expect(sql(`SELECT selected_tier_code ${application};`)).toBe(tier.name.toLowerCase());
     expect(sql(`SELECT template_version FROM enterprise_contracts WHERE quote_id=${quote} AND contract_type='saas_license' AND status='executed';`))
       .toBe('HCN-SAAS-1.0');
+    expect(sql(`SELECT content_sha256 FROM enterprise_contracts WHERE quote_id=${quote} AND contract_type='saas_license' AND status='executed';`))
+      .toBe('ba5483418398f1209975a4eeeded6177a393de904df08d45a24fb11dae0a567f');
+    expect(sql(`SELECT content_sha256 FROM enterprise_contracts WHERE quote_id=${quote} AND contract_type='baa' AND status='executed';`))
+      .toBe('bd00a8e062c29f6875fca6e754e32803beb64f1025ae5b42bc0ffb4ac614e01d');
     expect(sql(`SELECT provider_payment_confirmed FROM hcn_deferred_billing_activations WHERE application_id=(SELECT id ${application});`))
-      .toBe('f');
+      .toBe('');
     expect(sql(`SELECT count(*) FROM enterprise_billing_accounts WHERE quote_id=${quote};`)).toBe('0');
   });
 }

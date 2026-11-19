@@ -3,6 +3,14 @@ import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 import { inspectAttr } from 'kimi-plugin-inspect-react'
 
+// A preview push must never silently inherit the production backend.
+if (process.env.VERCEL_ENV === 'preview' && process.env.VITE_ENTERPRISE_SITE === 'true') {
+  const backend=process.env.VITE_SUPABASE_URL ?? '';
+  if (!backend.startsWith('https://') || backend.includes('zgkghauitpyzzljbtrxk') || process.env.VITE_HCN_STRIPE_ACCOUNT_ID !== 'acct_1UZkU9LBHt8JsROY') {
+    throw new Error('Professional preview requires an isolated HTTPS backend and explicit Haneen Stripe sandbox binding.');
+  }
+}
+
 // MMA-PROF-ONBOARD-004 P0-1 -- root cause of the blank /Professional/Owner
 // (and every other deep-linked route) page: with a relative base, the
 // built index.html's asset <script>/<link> src are "./assets/...",

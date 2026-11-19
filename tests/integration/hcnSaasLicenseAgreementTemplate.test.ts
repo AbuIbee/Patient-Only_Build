@@ -124,12 +124,12 @@ describe('HCN-SAAS-1.0 signing gate', () => {
     expect(status).toBe(200);
     expect(contract.status).toBe('executed');
     expect(contract.template_version).toBe('HCN-BAA-2026-04-19');
-    expect(contract.content_sha256).toBeNull(); // BAA was never registered in hcn_agreement_templates -- unaffected, unchanged
+    expect(contract.content_sha256).toBe('bd00a8e062c29f6875fca6e754e32803beb64f1025ae5b42bc0ffb4ac614e01d');
   });
 });
 
 describe('HCN-SAAS-1.0 with owner-authorized signing enabled', () => {
-  it('signing succeeds, records the correct version and content hash, and performs the owner-authorized deferred activation once BOTH agreements are executed', async () => {
+  it('signing records the version and content hash while activation waits for processor confirmation after BOTH agreements', async () => {
     const { applicant, appId, quoteId } = await freshApprovedApplication();
     await rpc('self_service_execute_agreement', {
       p_application_id: appId, p_contract_type: 'baa', p_signatory_name: 'Saas Tpl Applicant',
@@ -149,13 +149,13 @@ describe('HCN-SAAS-1.0 with owner-authorized signing enabled', () => {
     expect(contract.quote_id).toBe(quoteId);
 
     const appStatus = sql(`SELECT status FROM professional_applications WHERE id='${appId}';`);
-    expect(appStatus).toBe('active');
+    expect(appStatus).toBe('agreements_executed');
     // The owner-approved processor bypass activates the license but never
     // invents payment confirmation or creates a Stripe subscription.
     const deferred = sql(`SELECT provider_payment_confirmed FROM hcn_deferred_billing_activations WHERE application_id='${appId}';`);
-    expect(deferred).toBe('f');
-    expect(sql(`SELECT l.status FROM organization_licenses l JOIN professional_applications p ON p.target_organization_id=l.organization_id WHERE p.id='${appId}';`)).toBe('active');
-    expect(sql(`SELECT m.status FROM organization_memberships m JOIN professional_applications p ON p.target_organization_id=m.organization_id AND p.applicant_user_id=m.user_id WHERE p.id='${appId}' AND m.org_role='director';`)).toBe('active');
+    expect(deferred).toBe('');
+    expect(sql(`SELECT l.status FROM organization_licenses l JOIN professional_applications p ON p.target_organization_id=l.organization_id WHERE p.id='${appId}';`)).toBe('proposed');
+    expect(sql(`SELECT m.status FROM organization_memberships m JOIN professional_applications p ON p.target_organization_id=m.organization_id AND p.applicant_user_id=m.user_id WHERE p.id='${appId}' AND m.org_role='director';`)).toBe('invited');
     const billingCount = sql(`SELECT count(*) FROM enterprise_billing_accounts WHERE quote_id='${quoteId}';`);
     expect(billingCount).toBe('0');
   });

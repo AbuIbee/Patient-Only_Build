@@ -1111,13 +1111,14 @@ function AssignmentsCard({ orgId, members }: {
 // `is_active_org_director()` RLS — no new authorization surface.
 type DirectorNavKey =
   | 'dashboard' | 'overview' | 'applications' | 'staff' | 'patients' | 'assignments' | 'scheduling'
-  | 'operations' | 'incidents' | 'communications' | 'clinical' | 'reports' | 'licensing' | 'ownership' | 'settings';
+  | 'operations' | 'incidents' | 'communications' | 'clinical' | 'reports' | 'licensing' | 'ownership' | 'settings' | 'create-patient';
 
 const DIRECTOR_NAV_ITEMS: OfficeNavItem<DirectorNavKey>[] = [
   { key: 'dashboard', label: 'Director Dashboard', icon: LayoutDashboard },
   { key: 'staff', label: 'Staff Management', icon: Users },
-  { key: 'patients', label: 'Patient Management', icon: UserCog },
-  { key: 'assignments', label: 'Assignments and Coverage', icon: Link2 },
+  { key: 'patients', label: 'Covered Patients', icon: UserCog },
+  { key: 'create-patient', label: 'Create Patient Account', icon: UserPlus, parentKey: 'patients' },
+  { key: 'assignments', label: 'Staff-to-Patient Assignments', icon: Link2 },
   { key: 'scheduling', label: 'Employee Schedule', icon: CalendarClock },
   { key: 'operations', label: 'Care Operations', icon: ClipboardCheck },
   { key: 'incidents', label: 'Incidents and Escalations', icon: ShieldAlert },
@@ -1128,8 +1129,9 @@ const DIRECTOR_NAV_ITEMS: OfficeNavItem<DirectorNavKey>[] = [
   { key: 'settings', label: 'Organization Settings', icon: SettingsIcon },
 ];
 const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
-  { label: 'ORGANIZATION', items: ['dashboard', 'clinical', 'staff', 'patients', 'scheduling'] },
-  { label: 'CARE OPERATIONS', items: ['assignments', 'operations', 'incidents', 'communications'] },
+  { label: 'ORGANIZATION', items: ['dashboard', 'clinical', 'patients', 'create-patient', 'scheduling'] },
+  { label: 'STAFF INVENTORY', items: ['staff', 'assignments'] },
+  { label: 'CARE OPERATIONS', items: ['operations', 'incidents', 'communications'] },
   { label: 'ADMINISTRATION', items: ['applications', 'reports', 'settings'] },
 ];
 
@@ -1809,6 +1811,8 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
         <div className="space-y-4"><CareEscalationPanel orgId={organizationId} role="director" patients={coveredPatients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><IncidentsView incidents={incidents} onResolved={() => { void refresh(); }} loadError={loadError} /></div>
       ) : nav === 'communications' ? (
         <DirectorCommunicationsView orgId={organizationId} />
+      ) : nav === 'create-patient' ? (
+        <DirectorPatientEnrollmentCard orgId={organizationId} members={members} onCreated={() => { void refresh(); }} />
       ) : nav === 'clinical' ? (
         <ClinicalCoordinationPanel orgId={organizationId} userId={state.currentUser?.id ?? ''} role="director" patients={coveredPatients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
       ) : nav === 'reports' ? (

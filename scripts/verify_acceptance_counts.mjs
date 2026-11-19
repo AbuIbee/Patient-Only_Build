@@ -118,7 +118,7 @@ function countNavKeys(filePath, arrayVarName) {
     else if (text[i] === ']') { depth--; if (depth === 0) { end = i; break; } }
   }
   const body = text.slice(arrayStart, end + 1);
-  return [...body.matchAll(/key:\s*'[^']+'/g)].length;
+  return [...body.matchAll(/key:\s*'([^']+)'/g)].map((m) => m[1]);
 }
 
 const navCounts = {
@@ -130,10 +130,17 @@ const navCounts = {
 };
 let totalNav = 0;
 for (const [office, count] of Object.entries(navCounts)) {
-  oks.push(`Navigation — ${office}: ${count} destinations`);
-  totalNav += count;
+  oks.push(`Navigation — ${office}: ${count.length} destinations`);
+  totalNav += count.length;
 }
-check('60 navigation destinations: total across all 5 offices', totalNav, 60);
+const navManifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/acceptance/HCN_NAVIGATION_RECONCILIATION.json'), 'utf8'));
+const expectedNavTotal = navManifest.baseline + navManifest.additions.length - navManifest.consolidations.length;
+check(`Navigation reconciled from ${navManifest.baseline} legacy rows + ${navManifest.additions.length} explicit destinations/actions - ${navManifest.consolidations.length} consolidations`, totalNav, expectedNavTotal);
+for (const role of navManifest.roles) {
+  const keys = countNavKeys(role.file, role.array);
+  check(`${role.role}: approved navigation keys and order`, JSON.stringify(keys), JSON.stringify(role.keys));
+  check(`${role.role}: every destination has a requirement mapping`, role.requirements.filter(Boolean).length, keys.length);
+}
 
 // ---------------------------------------------------------------------
 // 4. 25 ordered office-pair communication combinations — the 5x5 grid

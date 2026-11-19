@@ -52,6 +52,7 @@ async function freshApprovedApplication(): Promise<{ applicant: { email: string;
 afterAll(async () => {
   const orgNameList = createdOrgNames.map((n) => `'${n.replace(/'/g, "''")}'`).join(',') || "''";
   sql(`
+    DELETE FROM hcn_deferred_billing_activations WHERE application_id IN (SELECT id FROM professional_applications WHERE applicant_user_id IN ('${createdApplicantIds.join("','")}'));
     DELETE FROM enterprise_contracts WHERE quote_id IN (SELECT (application_details->>'originatingQuoteId')::uuid FROM professional_applications WHERE applicant_user_id IN ('${createdApplicantIds.join("','")}'));
     DELETE FROM professional_application_events WHERE application_id IN (SELECT id FROM professional_applications WHERE applicant_user_id IN ('${createdApplicantIds.join("','")}'));
     DELETE FROM professional_applications WHERE applicant_user_id IN ('${createdApplicantIds.join("','")}');
@@ -63,6 +64,48 @@ afterAll(async () => {
 });
 
 describe('HCN-ONBOARDING-PRODUCTION-001 Sections 1-2 -- self-service first-party agreement execution', () => {
+  it.each(['none', 'baa', 'saas_license', 'both'] as const)('both billing components enforce signed agreements: %s', async (signed) => {
+    const { applicant, appId, quoteId } = await freshApprovedApplication();
+    try {
+      for (const type of ['baa', 'saas_license'] as const) {
+        if (signed !== 'both' && signed !== type) continue;
+        const [status, contract] = await rpc('self_service_execute_agreement', {
+          p_application_id: appId, p_contract_type: type, p_signatory_name: 'Agreement Exec Applicant',
+          p_signatory_title: 'Founder', p_consent_to_electronic_records: true, p_user_agent: 'acceptance-regression',
+        }, applicant.token) as [number, { id: string; status: string; template_version: string }];
+        expect(status, JSON.stringify(contract)).toBe(200);
+        expect(contract.status).toBe('executed');
+        expect(contract.template_version).toBe(type === 'baa' ? 'HCN-BAA-2026-04-19' : 'HCN-SAAS-1.0');
+        expect(sql(`SELECT status FROM enterprise_contracts WHERE id='${contract.id}';`)).toBe('executed');
+      }
+      const [annualStatus, annual] = await rpc('create_enterprise_billing_account', {
+        p_quote_id: quoteId, p_billing_contact_email: applicant.email,
+      }, applicant.token) as [number, { message?: string }];
+      if (signed === 'both') expect(annualStatus, JSON.stringify(annual)).toBe(200);
+      else {
+        expect(annualStatus).toBeGreaterThanOrEqual(400);
+        expect(annual.message).toMatch(/Both the SaaS License Agreement and Business Associate Agreement must be executed/);
+        // Isolated diagnostic: a legacy annual row must not bypass the monthly gate.
+        // This is not signature, payment or activation evidence.
+        sql(`INSERT INTO enterprise_billing_accounts(quote_id,billing_contact_email,currency,unit_amount_cents,billing_interval,billing_component,created_by)
+          VALUES('${quoteId}','${applicant.email}','usd',0,'year','annual_license','${applicant.id}');`);
+      }
+      const [monthlyStatus, monthly] = await rpc('create_enterprise_monthly_billing_component', {
+        p_quote_id: quoteId, p_billing_timezone: 'America/New_York',
+      }, applicant.token) as [number, { message?: string; id?: string; billing_component?: string }];
+      if (signed === 'both') {
+        expect(monthlyStatus, JSON.stringify(monthly)).toBe(200);
+        expect(monthly.billing_component).toBe('monthly_patients');
+        expect(sql(`SELECT count(*) FROM enterprise_billing_accounts WHERE quote_id='${quoteId}';`)).toBe('2');
+      } else {
+        expect(monthlyStatus, JSON.stringify(monthly)).toBeGreaterThanOrEqual(400);
+        expect(monthly.message).toMatch(/Both the SaaS License Agreement and Business Associate Agreement must be executed/);
+        expect(sql(`SELECT count(*) FROM enterprise_billing_accounts WHERE quote_id='${quoteId}' AND billing_component='monthly_patients';`)).toBe('0');
+      }
+    } finally {
+      sql(`DELETE FROM enterprise_billing_accounts WHERE quote_id='${quoteId}';`);
+    }
+  });
   it('a fresh approved application can execute the Business Associate Agreement for real', async () => {
     const { applicant, appId, quoteId } = await freshApprovedApplication();
     const [status, contract] = (await rpc('self_service_execute_agreement', {

@@ -1,0 +1,230 @@
+{
+  "baseline": 60,
+  "additions": [
+    {
+      "role": "Director",
+      "key": "clinical",
+      "requirement": "NAV-L01"
+    },
+    {
+      "role": "Medical",
+      "key": "escalations",
+      "requirement": "NAV-L02"
+    },
+    {
+      "role": "Therapy",
+      "key": "escalations",
+      "requirement": "NAV-L03"
+    },
+    {
+      "role": "Patient",
+      "key": "information",
+      "requirement": "NAV-L04"
+    },
+    {
+      "role": "Director",
+      "key": "create-patient",
+      "requirement": "NAV-04; HCN-L02",
+      "kind": "explicit nested action for existing requirement"
+    }
+  ],
+  "consolidations": [
+    {
+      "role": "Director",
+      "key": "overview",
+      "into": "settings",
+      "requirement": "NAV-02; NAV-12; HCN-L02"
+    },
+    {
+      "role": "Director",
+      "key": "licensing",
+      "into": "settings",
+      "requirement": "NAV-11; NAV-12; HCN-L02"
+    }
+  ],
+  "roles": [
+    {
+      "role": "Director",
+      "route": "/Professional/Admin/:key",
+      "file": "src/pages/enterprise/OrganizationDirectorDashboard.tsx",
+      "array": "DIRECTOR_NAV_ITEMS",
+      "keys": [
+        "dashboard",
+        "staff",
+        "patients",
+        "create-patient",
+        "assignments",
+        "scheduling",
+        "operations",
+        "incidents",
+        "communications",
+        "clinical",
+        "applications",
+        "reports",
+        "settings"
+      ],
+      "requirements": [
+        "NAV-01",
+        "NAV-03",
+        "NAV-04",
+        "NAV-04; HCN-L02",
+        "NAV-05",
+        "NAV-06",
+        "NAV-07",
+        "NAV-08",
+        "NAV-09",
+        "NAV-L01",
+        "NAV-13",
+        "NAV-10",
+        "NAV-02; NAV-11; NAV-12; HCN-08; HCN-L02"
+      ]
+    },
+    {
+      "role": "Caregiver",
+      "route": "/Professional/Caregiver/:key",
+      "file": "src/pages/enterprise/EnterpriseCaregiverDashboard.tsx",
+      "array": "NAV_ITEMS",
+      "keys": [
+        "dashboard",
+        "patients",
+        "schedule",
+        "tasks",
+        "records",
+        "communications",
+        "notes",
+        "handoffs",
+        "alerts",
+        "visits",
+        "careTeam",
+        "documents",
+        "organization",
+        "settings"
+      ],
+      "requirements": [
+        "NAV-14",
+        "NAV-15",
+        "NAV-16",
+        "NAV-17",
+        "NAV-18",
+        "NAV-19",
+        "NAV-20",
+        "NAV-21",
+        "NAV-22",
+        "NAV-23",
+        "NAV-24",
+        "NAV-25",
+        "NAV-26",
+        "NAV-27"
+      ]
+    },
+    {
+      "role": "Medical",
+      "route": "/Professional/Medical/:key",
+      "file": "src/pages/enterprise/ClinicalOfficeDashboard.tsx",
+      "array": "MEDICAL_NAV_ITEMS",
+      "keys": [
+        "dashboard",
+        "patients",
+        "schedule",
+        "assessments",
+        "diagnoses",
+        "medications",
+        "careplan",
+        "documentation",
+        "communication",
+        "reports",
+        "escalations",
+        "credentials",
+        "settings"
+      ],
+      "requirements": [
+        "NAV-28",
+        "NAV-29",
+        "NAV-30",
+        "NAV-31",
+        "NAV-32",
+        "NAV-33",
+        "NAV-34",
+        "NAV-35",
+        "NAV-36",
+        "NAV-37",
+        "NAV-L02",
+        "NAV-38",
+        "NAV-39"
+      ]
+    },
+    {
+      "role": "Therapy",
+      "route": "/Professional/Therapy/:key",
+      "file": "src/pages/enterprise/ClinicalOfficeDashboard.tsx",
+      "array": "THERAPY_NAV_ITEMS",
+      "keys": [
+        "dashboard",
+        "patients",
+        "schedule",
+        "careplan",
+        "documentation",
+        "goals",
+        "communication",
+        "escalations",
+        "reports",
+        "credentials",
+        "documents",
+        "settings"
+      ],
+      "requirements": [
+        "NAV-40",
+        "NAV-41",
+        "NAV-42",
+        "NAV-43",
+        "NAV-44",
+        "NAV-45",
+        "NAV-46",
+        "NAV-L03",
+        "NAV-47",
+        "NAV-48",
+        "NAV-49",
+        "NAV-50"
+      ]
+    },
+    {
+      "role": "Patient",
+      "route": "/Professional/Patient/:key",
+      "file": "src/pages/patient/EnterprisePatientDashboard.tsx",
+      "array": "NAV_ITEMS",
+      "keys": [
+        "dashboard",
+        "information",
+        "careplan",
+        "appointments",
+        "health",
+        "medications",
+        "messages",
+        "careteam",
+        "documents",
+        "preferences",
+        "settings"
+      ],
+      "requirements": [
+        "NAV-51",
+        "NAV-L04",
+        "NAV-52",
+        "NAV-53",
+        "NAV-54",
+        "NAV-55",
+        "NAV-56",
+        "NAV-57",
+        "NAV-58",
+        "NAV-59",
+        "NAV-60"
+      ]
+    }
+  ],
+  "old_checkout_extra": {
+    "role": "Director",
+    "key": "ownership",
+    "requirement": "HCN-08; HCN-L02; NAV-12",
+    "disposition": "Old a4d9490 had a separate Organization Ownership entry beyond the legacy 60. Candidate consolidates Office Ownership inside Organization Settings. This entry is not an approved additional destination."
+  },
+  "scope": "Source inventory only; each action and access boundary still needs authenticated acceptance evidence. Professional routes synchronize office keys under /Professional/<office>/<key>; the route and key fields identify each destination. Direct routing does not grant an office."
+}

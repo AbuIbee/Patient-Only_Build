@@ -218,7 +218,7 @@ serve(async (request) => {
       '/checkout/sessions',
       {
         customer: customerId,
-        'payment_method_types[0]': 'card',
+        payment_method_collection: 'always',
         mode: 'subscription',
         success_url: `${appUrl}?enterprise_monthly_checkout=success&quote_id=${encodeURIComponent(quoteId)}`,
         cancel_url: `${appUrl}?enterprise_monthly_checkout=cancelled&quote_id=${encodeURIComponent(quoteId)}`,

@@ -40,25 +40,27 @@
 //   MMA_TEST_API_BASE=http://127.0.0.1:57321 MMA_TEST_DB_CONTAINER=supabase_db_mma-ent-caregiver-master-003 \
 //     npx vitest run --config vitest.integration.config.ts <files...>
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, openSync, closeSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, openSync, closeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const REPO_ROOT = join(import.meta.dirname, '..');
-const PROJECT_ID = 'mma-ent-caregiver-master-003';
+// A separate named acceptance stack preserves the November 16 fixture and its signatures.
+const acceptanceStack = process.env.MMA_ACCEPTANCE_ISOLATED === '20261118';
+const PROJECT_ID = acceptanceStack ? 'hcn-acceptance-20261118' : 'mma-ent-caregiver-master-003';
 const WORKDIR = join(tmpdir(), PROJECT_ID);
 
 // Deliberately far from supabase_db_repo's 55321-55329 and PAY2PAY's
 // 54321-54329, and from the now-torn-down audit stack's 56321-56329.
 const PORTS = {
-  api: 57321,
-  db: 57322,
-  shadow: 57320,
-  pooler: 57329,
-  studio: 57323,
-  inbucket: 57324,
-  analytics: 57327,
-  inspector: 58083,
+  api: acceptanceStack ? 58321 : 57321,
+  db: acceptanceStack ? 58322 : 57322,
+  shadow: acceptanceStack ? 58320 : 57320,
+  pooler: acceptanceStack ? 58329 : 57329,
+  studio: acceptanceStack ? 58323 : 57323,
+  inbucket: acceptanceStack ? 58324 : 57324,
+  analytics: acceptanceStack ? 58327 : 57327,
+  inspector: acceptanceStack ? 59083 : 58083,
 };
 
 // MMA-ENT-CAREGIVER-MASTER-004, Workstream D (H15): the owner's actual
@@ -171,6 +173,14 @@ function start() {
   rmSync(WORKDIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 1000 });
   mkdirSync(join(WORKDIR, 'supabase'), { recursive: true });
   cpSync(join(REPO_ROOT, 'supabase', 'migrations'), join(WORKDIR, 'supabase', 'migrations'), { recursive: true });
+  // Match Git's canonical SQL bytes even when an older Windows checkout has
+  // CRLF files. Only new disposable migrations are normalized; never rewrite
+  // a registered template or a previously signed record in a running database.
+  for (const file of readdirSync(join(WORKDIR, 'supabase', 'migrations'))) {
+    if (!file.endsWith('.sql')) continue;
+    const copied = join(WORKDIR, 'supabase', 'migrations', file);
+    writeFileSync(copied, readFileSync(copied, 'utf8').replace(/\r\n/g, '\n'));
+  }
   if (existsSync(join(REPO_ROOT, 'supabase', 'functions'))) {
     cpSync(join(REPO_ROOT, 'supabase', 'functions'), join(WORKDIR, 'supabase', 'functions'), { recursive: true });
     // H15: APP_URL fallback for the activation-link Edge Functions —
