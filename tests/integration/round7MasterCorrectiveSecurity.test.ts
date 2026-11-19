@@ -171,7 +171,10 @@ describe('FUNC-01 — visit completion requires notes and a manually submitted d
       `SELECT id FROM public.caregiver_visits WHERE patient_id='${ids.patientA}' AND caregiver_id='${ids.caregiverA}' AND status='in_progress' LIMIT 1;`,
     );
     const actualStart = sql(`SELECT actual_start::text FROM public.caregiver_visits WHERE id='${visitId}';`);
-    const args = { p_visit_id: visitId, p_visit_notes: 'Real visit notes recorded', p_actual_end: actualStart };
+    const args = {
+      p_visit_id: visitId, p_visit_notes: 'Real visit notes recorded', p_actual_end: actualStart,
+      p_checklist: { medication: 'completed', bloodPressure: 'not_applicable', meal: 'not_completed' },
+    };
 
     const [emptyNotesStatus] = await rpc('end_caregiver_visit', { ...args, p_visit_notes: '   ' }, tok.caregiverA);
     expect(emptyNotesStatus).toBeGreaterThanOrEqual(400);
@@ -180,6 +183,17 @@ describe('FUNC-01 — visit completion requires notes and a manually submitted d
     }, tok.caregiverA);
     expect(noDepartureStatus).toBe(400);
     expect(noDeparture).toMatchObject({ message: 'Enter the actual departure date and time to check out' });
+
+    const [noChecklistStatus, noChecklist] = await rpc('end_caregiver_visit', {
+      p_visit_id: visitId, p_visit_notes: args.p_visit_notes, p_actual_end: actualStart, p_checklist: null,
+    }, tok.caregiverA);
+    expect(noChecklistStatus).toBe(400);
+    expect(noChecklist).toMatchObject({ message: 'Complete every required visit checklist item before checkout' });
+
+    const [partialChecklistStatus] = await rpc('end_caregiver_visit', {
+      ...args, p_checklist: { medication: 'completed', meal: 'not_completed' },
+    }, tok.caregiverA);
+    expect(partialChecklistStatus).toBe(400);
 
     for (const departure of [
       sql(`SELECT (actual_start - interval '1 second')::text FROM public.caregiver_visits WHERE id='${visitId}';`),

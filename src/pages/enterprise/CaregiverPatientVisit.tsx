@@ -74,12 +74,12 @@ export default function CaregiverPatientVisit({ organizationId, patientId, visit
     setPending(true);
     setError(null);
     try {
-      const checklist = CHECKOUT_ITEMS.map(item => {
-        const outcome = outcomes[item.id];
-        const label = outcome === 'completed' ? item.complete : outcome === 'not_completed' ? 'Not done' : 'Not applicable';
-        return `${item.label}: ${label}`;
-      }).join('\n');
-      const result = await endCaregiverVisit(visit.id, `${notes.trim()}\n\nVisit checklist\n${checklist}`, departureDate.toISOString());
+      const checklist = {
+        medication: outcomes.medication!,
+        bloodPressure: outcomes.bloodPressure!,
+        meal: outcomes.meal!,
+      };
+      const result = await endCaregiverVisit(visit.id, notes.trim(), departureDate.toISOString(), checklist);
       if (!result.visit) { setError(result.error ?? 'Could not check out.'); return; }
       setVisit(result.visit);
       setCheckoutOpen(false);
