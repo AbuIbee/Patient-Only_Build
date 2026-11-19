@@ -5575,7 +5575,9 @@ export interface Database {
         }
       }
       end_caregiver_visit: {
-        Args: { p_visit_id: string; p_visit_notes?: string }
+        Args:
+          | { p_visit_id: string; p_visit_notes?: string }
+          | { p_visit_id: string; p_visit_notes: string; p_actual_end: string }
         Returns: {
           actual_end: string | null
           actual_start: string | null

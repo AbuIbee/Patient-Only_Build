@@ -33,7 +33,10 @@ BEGIN
   INSERT INTO hcn_legacy_results VALUES('legacy caregiver may start without Haneen acknowledgment',
     (public.start_caregiver_visit(v_visit)).status='in_progress');
 
-  UPDATE public.caregiver_visits SET status='scheduled', actual_start=null WHERE id=v_visit;
+  INSERT INTO hcn_legacy_results VALUES('legacy caregiver can complete visit with notes alone',
+    (public.end_caregiver_visit(v_visit,'Legacy visit notes')).status='completed');
+
+  UPDATE public.caregiver_visits SET status='scheduled', actual_start=null, actual_end=null, visit_notes=null WHERE id=v_visit;
   INSERT INTO public.covered_patient_memberships(organization_id,patient_id,status)
     VALUES(v_org,v_patient,'active');
   v_deny:=false;

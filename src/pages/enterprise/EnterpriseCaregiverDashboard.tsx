@@ -19,7 +19,7 @@ import {
   LogOut, Users, Loader2, MessageSquare, Calendar, ClipboardList,
   ChevronRight, Menu, X, ShieldAlert, Clock, Building2,
   ClipboardCheck, FileText, UserCog, Settings as SettingsIcon, Send,
-  AlertTriangle, CheckCircle2, PlayCircle, StopCircle, Sparkles, Flag, Moon, Upload, ArrowLeft,
+  AlertTriangle, CheckCircle2, Sparkles, Flag, Moon, Upload, ArrowLeft,
 } from 'lucide-react';
 import {
   getMyCareTeamResult, getMyOrgSupervisorResult, getMyOrganizationsResult, getMyStaffPatientsResult, setStaffPatientLabel,
@@ -34,18 +34,17 @@ import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDelet
 import MFASettings from '@/components/MFASettings';
 import ActiveSessionsPanel from '@/components/ActiveSessionsPanel';
 import {
-  startCaregiverVisit, endCaregiverVisit,
   fileIncidentReport, uploadIncidentAttachment,
   reportScopeConcern,
   getMyVisitsResult, getPatientIncidentReportsResult, getPatientShiftHandoffsResult, getIncidentAttachmentsResult, getMyCredentialsResult,
   type CaregiverVisit, type IncidentReport, type CaregiverCredential, type IncidentSeverity,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import { acknowledgeHelpActivation } from '@/services/patientClinicalRecordService';
-import { PREVISIT_SECTIONS, acknowledgePrevisit } from '@/services/hcnCareOperationsService';
 import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
+import CaregiverPatientVisit from './CaregiverPatientVisit';
 import { selectCurrentOrNextVisit } from './selectCurrentOrNextVisit';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
 
@@ -99,15 +98,20 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 // authorized organization context (D01-INVARIANT-06) -- it is only ever
 // a REQUEST: the caller below still validates it against the user's own
 // getMyOrganizations() result before trusting it for anything.
-function parseEnterprisePath(root: string): { nav: NavItem; openPatient: string | null; orgParam: string | null } {
+function parseEnterprisePath(root: string): { nav: NavItem; openPatient: string | null; orgParam: string | null; visitId: string | null } {
   const rootSegments = root.split('/').filter(Boolean).length; // '/business' -> 1, '/Professional/Caregiver' -> 2
   const segments = window.location.pathname.split('/').filter(Boolean);
   const sub = segments[rootSegments];
   const sub2 = segments[rootSegments + 1];
-  const orgParam = new URLSearchParams(window.location.search).get('org');
-  if (sub === 'patients' && sub2) return { nav: 'patients', openPatient: sub2, orgParam };
-  if (sub && NAV_ITEMS.some((n) => n.key === sub)) return { nav: sub as NavItem, openPatient: null, orgParam };
-  return { nav: 'dashboard', openPatient: null, orgParam };
+  const params = new URLSearchParams(window.location.search);
+  const orgParam = params.get('org');
+  if (sub === 'patients' && sub2) {
+    const visitId = params.get('visit');
+    const nav = visitId ? (params.get('from') === 'visits' ? 'visits' : 'schedule') : 'patients';
+    return { nav, openPatient: sub2, orgParam, visitId };
+  }
+  if (sub && NAV_ITEMS.some((n) => n.key === sub)) return { nav: sub as NavItem, openPatient: null, orgParam, visitId: null };
+  return { nav: 'dashboard', openPatient: null, orgParam, visitId: null };
 }
 
 const SELECTED_ORG_STORAGE_KEY = 'enterprise_selected_org';
@@ -160,6 +164,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   const mobileNavCloseButtonRef = useRef<HTMLButtonElement>(null);
   const mobileNavPanelRef = useRef<HTMLDivElement>(null);
   const [openPatient, setOpenPatient] = useState<string | null>(() => parseEnterprisePath(basePath).openPatient);
+  const [visitId, setVisitId] = useState<string | null>(() => parseEnterprisePath(basePath).visitId);
   // MMA-ENT-CAREGIVER-MASTER-003 D05 (P1): which record tab to land on
   // when openPatient is set from a destination-specific patient picker
   // (e.g. "Select a patient to record or review Shift Handoffs" should
@@ -174,12 +179,19 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   // selection exists, so a refresh or a shared/bookmarked link lands
   // back in the SAME organization context, not whichever org happens
   // to be picked first.
-  const navigateTo = useCallback((nextNav: NavItem, patientId: string | null = null, initialTab?: TabKey) => {
+  const navigateTo = useCallback((nextNav: NavItem, patientId: string | null = null, initialTab?: TabKey, nextVisitId?: string) => {
     const base = patientId ? `${basePath}/patients/${patientId}` : `${basePath}/${nextNav}`;
-    const path = orgId ? `${base}?org=${orgId}` : base;
+    const params = new URLSearchParams();
+    if (orgId) params.set('org', orgId);
+    if (patientId && nextVisitId) {
+      if (nextNav === 'visits') params.set('from', 'visits');
+      params.set('visit', nextVisitId);
+    }
+    const path = params.size ? `${base}?${params}` : base;
     if (window.location.pathname + window.location.search !== path) window.history.pushState({}, '', path);
     setNav(nextNav);
     setOpenPatient(patientId);
+    setVisitId(patientId ? nextVisitId ?? null : null);
     setOpenPatientInitialTab(patientId ? initialTab : undefined);
   }, [basePath, orgId]);
 
@@ -194,6 +206,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
     window.history.pushState({}, '', path);
     setNav('dashboard');
     setOpenPatient(null);
+    setVisitId(null);
     setOpenPatientInitialTab(undefined);
   }, [basePath]);
 
@@ -202,6 +215,8 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
       const parsed = parseEnterprisePath(basePath);
       setNav(parsed.nav);
       setOpenPatient(parsed.openPatient);
+      setVisitId(parsed.visitId);
+      setOpenPatientInitialTab(undefined);
       // A back/forward navigation that names a DIFFERENT, still-
       // authorized org must actually switch to it, not just change the
       // displayed URL while leaving stale data from the old org on
@@ -514,13 +529,16 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
               <EnterpriseStaffPatientView
                 organizationId={orgId} patientId={openPatient} onBack={() => navigateTo(nav)} staffRole="caregiver"
                 onReady={(patient) => (
-                  <EnterprisePatientRecordTabs patientId={openPatient} patientHeader={patient} staffRole="caregiver" orgId={orgId} onBack={() => navigateTo(nav)} initialTab={openPatientInitialTab} />
+                  <EnterprisePatientRecordTabs patientId={openPatient} patientHeader={patient} staffRole="caregiver"
+                    orgId={orgId} onBack={() => navigateTo(nav)} initialTab={openPatientInitialTab}
+                    headerAction={orgId && visitId && <CaregiverPatientVisit key={`${orgId}/${openPatient}/${visitId}`}
+                      organizationId={orgId} patientId={openPatient} visitId={visitId} />} />
                 )}
               />
             </div>
           ) : (
             <div className="max-w-6xl mx-auto space-y-5">
-              {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id)} onOpenInformation={(id) => navigateTo('patients', id, 'info')} onNavigate={navigateTo} onPatientRegistered={() => { void load(); }} />}
+              {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id)} onOpenInformation={(id) => navigateTo('patients', id, 'info')} onNavigate={navigateTo} onOpenVisit={visit => navigateTo('schedule', visit.patientId, 'info', visit.id)} onPatientRegistered={() => { void load(); }} />}
               {nav === 'patients' && (
                 <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)}
                   onOpenContacts={(id) => navigateTo('patients', id, 'contacts')}
@@ -530,8 +548,8 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
               {nav === 'records' && (
                 <PatientHealthRecordsView patients={patients} onOpenRecord={(id) => navigateTo('records', id, 'medical')} />
               )}
-              {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'info')} />}
-              {nav === 'visits' && <><ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'medical')} showAll /><VisitsListView orgId={orgId} /></>}
+              {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} onOpenVisit={visit => navigateTo('schedule', visit.patientId, 'info', visit.id)} />}
+              {nav === 'visits' && <ScheduleView orgId={orgId} patients={patients} onOpenVisit={visit => navigateTo('visits', visit.patientId, 'info', visit.id)} showAll />}
               {nav === 'tasks' && <TasksView patients={patients} />}
               {nav === 'communications' && <CommunicationsView patients={patients} />}
               {nav === 'notes' && (
@@ -636,7 +654,10 @@ interface AttentionItem {
 // Care communications] two-column layout. Every figure below comes
 // from the real queries this component already runs — nothing here is
 // a design-example placeholder value.
-function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNavigate, onPatientRegistered }: { patients: StaffPatient[]; orgId: string; onOpenPatient: (id: string) => void; onOpenInformation: (id: string) => void; onNavigate: (nav: NavItem) => void; onPatientRegistered: () => void }) {
+function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNavigate, onOpenVisit, onPatientRegistered }: {
+  patients: StaffPatient[]; orgId: string; onOpenPatient: (id: string) => void; onOpenInformation: (id: string) => void;
+  onNavigate: (nav: NavItem) => void; onOpenVisit: (visit: CaregiverVisit) => void; onPatientRegistered: () => void;
+}) {
   const { state } = useApp();
   const [dashboardSearch, setDashboardSearch] = useState('');
   const matchingPatients = dashboardSearch.trim()
@@ -879,7 +900,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
   }, [loadingExtra, loadError]);
 
   const unreadCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
-  const todayVisits = visits.filter((v) => v.scheduledStart && new Date(v.scheduledStart).toDateString() === new Date().toDateString());
+  const todayVisits = visits.filter(v => v.status === 'in_progress' || isToday(v.scheduledStart));
   const nextVisit = selectCurrentOrNextVisit(todayVisits);
   const nextVisitPatient = nextVisit ? patients.find((p) => p.patientId === nextVisit.patientId) : undefined;
   const needsAttentionCount = incidents.length + helpCount + unacknowledgedHandoffs + missingVisitNotes + unfinishedCareLists;
@@ -915,7 +936,10 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
             { label: 'Report an Incident', nav: 'alerts' as NavItem, Icon: ShieldAlert },
             { label: 'Secure Messages', nav: 'communications' as NavItem, Icon: MessageSquare },
           ]).map(({ label, nav, Icon }) => (
-            <button type="button" key={label} onClick={() => onNavigate(nav)}
+            <button type="button" key={label} onClick={() => {
+                if (nav === 'visits' && nextVisit) onOpenVisit(nextVisit);
+                else onNavigate(nav);
+              }}
               className="flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg px-3 py-3 text-left text-sm font-semibold text-ent-ink transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze"
               aria-label={`Open ${label}`}>
               <Icon className="h-5 w-5 shrink-0 text-ent-bronze" aria-hidden="true" />
@@ -1056,7 +1080,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
           <Card>
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-ent-ink">Current or next visit</h2>
-              {nextVisit && <span className="text-[11px] font-semibold text-ent-forest bg-ent-green-active px-2.5 py-1 rounded-full">Today</span>}
+              {nextVisit && isToday(nextVisit.scheduledStart) && <span className="text-[11px] font-semibold text-ent-forest bg-ent-green-active px-2.5 py-1 rounded-full">Today</span>}
             </div>
             {!nextVisit ? (
               <p className="text-sm text-ent-muted">No active or upcoming visit is currently scheduled for today.</p>
@@ -1085,7 +1109,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
                   {nextVisit.status === 'scheduled' && nextVisit.scheduledStart && new Date(nextVisit.scheduledStart).getTime() < Date.now() && (
                     <span className="inline-block mt-1 text-[11px] font-semibold text-gentle-coral bg-gentle-coral/10 px-2 py-0.5 rounded-full">Late — past scheduled start</span>
                   )}
-                  <button type="button" onClick={() => onNavigate('schedule')} className="text-xs font-semibold text-ent-forest hover:underline mt-2 inline-block">Open schedule →</button>
+                  <button type="button" onClick={() => onOpenVisit(nextVisit)} className="text-sm font-semibold text-ent-forest hover:underline mt-2 inline-block">Open patient visit →</button>
                 </div>
               </div>
             )}
@@ -1510,27 +1534,12 @@ function isToday(isoTimestamp: string | null): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
-function ScheduleView({ orgId, patients, onOpenPatient, showAll = false }: { orgId: string; patients: StaffPatient[]; onOpenPatient:(id:string)=>void; showAll?: boolean }) {
+function ScheduleView({ orgId, patients, onOpenVisit, showAll = false }: {
+  orgId: string; patients: StaffPatient[]; onOpenVisit: (visit: CaregiverVisit) => void; showAll?: boolean;
+}) {
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [reviewVisitId,setReviewVisitId]=useState<string|null>(null);
-  const [reviewSections,setReviewSections]=useState<string[]>([]);
   const [todayOnly, setTodayOnly] = useState(!showAll);
-  // APPROVED ENTERPRISE UI DIRECTIVE follow-up — CONFIRMED DEFECT
-  // (FUNC01-UI-COMPLETION, codex_master_9023_acceptance/browser_verify.mjs):
-  // end_caregiver_visit() has required non-empty visit notes since
-  // migration 076 (FUNC-01), but this "End" button never collected or
-  // sent any — every click failed with "Visit notes are required to
-  // complete this visit," making visit completion impossible from the
-  // real UI. Fixed by requiring an inline notes entry before the RPC
-  // call, rather than reverting the backend requirement.
-  const [endingVisitId, setEndingVisitId] = useState<string | null>(null);
-  const [endNotesDraft, setEndNotesDraft] = useState('');
-  // MMA-ENT-CAREGIVER-MASTER-005 D02-005: getMyVisits() discards its
-  // error and returns [] on any failure, which this view then rendered
-  // as an authoritative "No visits scheduled" — a Caregiver with real
-  // scheduled work had no way to tell that apart from a failed query.
   const [loadError, setScheduleLoadError] = useState<string | null>(null);
   const load = useCallback(async () => {
     const { data, error } = await getMyVisitsResult();
@@ -1539,44 +1548,14 @@ function ScheduleView({ orgId, patients, onOpenPatient, showAll = false }: { org
     setLoading(false);
   }, [orgId]);
   useEffect(() => { void load(); }, [load]);
-  const visibleVisits = todayOnly ? visits.filter((v) => isToday(v.scheduledStart)) : visits;
-
-
-  const startVisit = async (visitId: string) => {
-    if (!PREVISIT_SECTIONS.every(s=>reviewSections.includes(s.id))) {
-      toast.error('Review all five sections before acknowledging the visit.'); return;
-    }
-    setSaving(true);
-    try {
-      const attestation=await acknowledgePrevisit(visitId,reviewSections);
-      if(attestation.error){toast.error(attestation.error);return;}
-      const {error}=await startCaregiverVisit(visitId);
-      if(error){toast.error(error);return;}
-      toast.success('Arrival time recorded; visit is in progress.');
-      setReviewVisitId(null);setReviewSections([]);
-      await load();
-    }finally{setSaving(false);}
-  };
-
-  const completeVisit = async (visitId: string) => {
-    if (!endNotesDraft.trim()) { toast.error('Visit notes are required to complete this visit.'); return; }
-    setSaving(true);
-    try {
-      const { error } = await endCaregiverVisit(visitId, endNotesDraft.trim());
-      if (error) { toast.error(error); return; }
-      setEndingVisitId(null); setEndNotesDraft('');
-      await load();
-    } finally {
-      setSaving(false);
-    }
-  };
+  const visibleVisits = todayOnly ? visits.filter(v => v.status === 'in_progress' || isToday(v.scheduledStart)) : visits;
 
   return (
     <Card>
-      <div className="flex items-center gap-2"><Calendar className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">{showAll ? "Clock In / Out — My Assigned Visits" : "My Schedule"}</h2></div>
-      <p className="text-sm text-medium-gray">Visit times are assigned by your Director. Use this page to review your schedule, acknowledge patient updates before the visit, and record your actual arrival and departure times.</p>
+      <div className="flex items-center gap-2"><Calendar className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">{showAll ? 'Visits & Time Records' : 'My Schedule'}</h2></div>
+      <p className="text-sm text-medium-gray">Select a scheduled visit to open the patient profile.</p>
       <label className="flex items-center gap-2 text-xs font-semibold text-medium-gray">
-        <input type="checkbox" checked={todayOnly} onChange={(e) => setTodayOnly(e.target.checked)} /> Today only
+        <input type="checkbox" checked={todayOnly} onChange={(e) => setTodayOnly(e.target.checked)} /> Today and in-progress visits
       </label>
       {loadError && (
         <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
@@ -1604,7 +1583,7 @@ function ScheduleView({ orgId, patients, onOpenPatient, showAll = false }: { org
             return (
             <li key={v.id} className="flex items-start justify-between gap-3 p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-charcoal">{visitPatient?.preferredName || 'Patient'} — <span className="capitalize">{v.status.replace('_', ' ')}</span></p>
+                <p className="text-sm font-medium text-charcoal">{visitPatient?.preferredName || (visitPatient ? `${visitPatient.firstName} ${visitPatient.lastName}`.trim() : '') || 'Patient'} — <span className="capitalize">{v.status.replace('_', ' ')}</span></p>
                 <p className="text-xs text-medium-gray">
                   {v.scheduledStart ? new Date(v.scheduledStart).toLocaleString() : 'No time set'}
                   {v.scheduledEnd && <> – {new Date(v.scheduledEnd).toLocaleTimeString()}</>}
@@ -1612,100 +1591,14 @@ function ScheduleView({ orgId, patients, onOpenPatient, showAll = false }: { org
                 </p>
                 {facility && <p className="text-xs text-medium-gray">{facility}</p>}
                 {v.actualStart && <p className="text-xs font-semibold text-ent-forest">Clocked in: {new Date(v.actualStart).toLocaleString()}{v.actualEnd ? ' · Clocked out: ' + new Date(v.actualEnd).toLocaleString() : ''}</p>}
-                {v.status === 'scheduled' && reviewVisitId === v.id && (
-                  <section className="mt-3 space-y-3 rounded-xl border border-warm-bronze bg-white p-3" aria-label="Pre-visit acknowledgment">
-                    <h3 className="text-sm font-bold text-charcoal">Pre-Visit Review Required</h3>
-                    <p className="text-xs text-medium-gray">Open the assigned patient's record and review these sections before arriving. Updated notes or handoffs after review will require a fresh acknowledgment.</p>
-                    <button type="button" onClick={()=>onOpenPatient(v.patientId)} className="text-xs font-semibold text-warm-bronze underline">Open Patient Information</button>
-                    <div className="space-y-2">
-                      {PREVISIT_SECTIONS.map(section=>(
-                        <label className="flex items-start gap-2 text-sm text-charcoal" key={section.id}>
-                          <input type="checkbox" checked={reviewSections.includes(section.id)} onChange={e=>setReviewSections(prev=>e.target.checked?[...prev,section.id]:prev.filter(x=>x!==section.id))}/>
-                          {section.label}
-                        </label>
-                      ))}
-                    </div>
-                    <p className="text-xs text-medium-gray">Acknowledgment documents review only; it does not authorize medical decisions.</p>
-                    <div className="flex gap-2">
-                      <button type="button" disabled={saving||!PREVISIT_SECTIONS.every(section=>reviewSections.includes(section.id))}
-                        onClick={()=>{void startVisit(v.id);}} className="rounded-xl bg-warm-bronze px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
-                        {saving?'Processing…':'Acknowledge & Clock In'}
-                      </button>
-                      <button type="button" onClick={()=>{setReviewVisitId(null);setReviewSections([]);}} className="rounded-xl border border-soft-taupe px-3 py-2 text-xs">Cancel</button>
-                    </div>
-                  </section>
-                )}
-                {v.status === 'in_progress' && endingVisitId === v.id && (
-                  <div className="mt-2 space-y-1.5 w-full">
-                    <textarea
-                      value={endNotesDraft} onChange={(e) => setEndNotesDraft(e.target.value)} autoFocus
-                      placeholder="What care was provided, tasks completed, patient response, and any follow-up needed? (required to clock out)…"
-                      className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm"
-                      rows={2}
-                    />
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => { void completeVisit(v.id); }} disabled={saving || !endNotesDraft.trim()} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gentle-coral text-white text-xs font-semibold disabled:opacity-60">
-                        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />} Complete Visit
-                      </button>
-                      <button type="button" onClick={() => { setEndingVisitId(null); setEndNotesDraft(''); }} className="px-3 py-1.5 rounded-lg border border-soft-taupe text-charcoal text-xs font-semibold">Cancel</button>
-                    </div>
-                  </div>
-                )}
               </div>
-              {v.status === 'scheduled' && <button type="button" onClick={() => { setReviewVisitId(v.id);setReviewSections([]); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-soft-sage text-white text-xs font-semibold flex-shrink-0"><PlayCircle className="w-3.5 h-3.5" /> Review & Clock In</button>}
-              {v.status === 'in_progress' && endingVisitId !== v.id && (
-                <button type="button" onClick={() => { setEndingVisitId(v.id); setEndNotesDraft(''); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gentle-coral text-white text-xs font-semibold flex-shrink-0"><StopCircle className="w-3.5 h-3.5" /> Clock Out</button>
-              )}
+              <button type="button" onClick={() => onOpenVisit(v)}
+                className="min-h-11 shrink-0 rounded-xl bg-ent-forest px-3 py-2 text-sm font-semibold text-white">
+                {v.status === 'in_progress' ? 'Resume Visit' : v.status === 'completed' ? 'View Visit Log' : 'Open Visit'}
+              </button>
             </li>
             );
           })}
-        </ul>
-      )}
-    </Card>
-  );
-}
-
-function VisitsListView({ orgId }: { orgId: string }) {
-  const [visits, setVisits] = useState<CaregiverVisit[]>([]);
-  const [loading, setLoading] = useState(true);
-  // MMA-ENT-CAREGIVER-MASTER-005 D02-007: same defect as ScheduleView —
-  // getMyVisits() silently returns [] on failure, which rendered here as
-  // an authoritative "No visit history yet."
-  const [loadError, setVisitsLoadError] = useState<string | null>(null);
-  const load = useCallback(async () => {
-    const { data, error } = await getMyVisitsResult();
-    setVisits((data ?? []).filter(v => v.organizationId === orgId));
-    setVisitsLoadError(error);
-    setLoading(false);
-  }, [orgId]);
-  useEffect(() => { void load(); }, [load]);
-  return (
-    <Card>
-      <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Visits &amp; Time Records</h2></div>
-      {loadError && (
-        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-sm text-gentle-coral font-medium">Your visit history could not be loaded: {loadError}</p>
-          <button type="button" onClick={() => { setLoading(true); void load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
-        </div>
-      )}
-      {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : visits.length === 0 ? (
-        loadError ? (
-          <p className="text-sm text-medium-gray">Your visit history could not be confirmed right now.</p>
-        ) : (
-          <p className="text-sm text-medium-gray">No visit history yet.</p>
-        )
-      ) : (
-        <ul className="space-y-2">
-          {visits.map((v) => (
-            <li key={v.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
-              <p className="font-medium text-charcoal capitalize">{v.status.replace('_', ' ')}</p>
-              <p className="text-xs text-medium-gray">
-                {v.actualStart ? `Started ${new Date(v.actualStart).toLocaleString()}` : 'Not started'}
-                {v.actualEnd ? ` · Ended ${new Date(v.actualEnd).toLocaleString()}` : ''}
-              </p>
-              {v.visitNotes && <p className="text-xs text-charcoal mt-1">{v.visitNotes}</p>}
-            </li>
-          ))}
         </ul>
       )}
     </Card>
