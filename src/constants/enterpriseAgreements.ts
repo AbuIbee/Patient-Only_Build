@@ -1,15 +1,6 @@
-// HCN-ONBOARDING-PRODUCTION-001 Section 2 -- the complete, approved
-// agreement content for first-party in-app execution.
-//
-// BAA_SECTIONS below is the full, verbatim text of
-// src/pages/privacy/BusinessAssociateAgreement/BusinessAssociateAgreement.docx
-// (effective 2026-04-19), re-extracted directly from that file's own
-// document.xml and re-paragraphed for on-screen readability only --
-// no wording, term, or clause was added, removed, or altered. The
-// template version string here (HCN-BAA-2026-04-19) matches the
-// version the backend's own approved-template allowlist
-// (hcn_approved_agreement_template_version(), migration
-// 20261103000100) requires for this exact document.
+// The Haneen BAA keeps the approved April 19, 2026 terms with the
+// product name updated. The migration registers this new version
+// without rewriting any existing agreement.
 //
 // HCN-SAAS-1.0 -- the complete, owner-approved Haneen SaaS License
 // and Subscription Agreement, supplied directly by the owner
@@ -350,7 +341,7 @@ By electronically signing, Customer specifically acknowledges and accepts:
 Customer acknowledges that selecting the acceptance checkbox and completing the electronic-signature process constitutes an intentional electronic execution of this Agreement.
 `;
 
-export const BAA_TEMPLATE_VERSION = 'HCN-BAA-2026-04-19';
+export const BAA_TEMPLATE_VERSION = 'HCN-BAA-2026-04-19-HANEEN';
 
 export interface AgreementSection {
   heading: string;
@@ -379,7 +370,7 @@ function parseSaasLicenseSections(raw: string): AgreementSection[] {
 
 export const SAAS_LICENSE_SECTIONS: AgreementSection[] = parseSaasLicenseSections(SAAS_LICENSE_RAW_MARKDOWN);
 
-export const BAA_TITLE = 'My Memoria Ally Business Associate Agreement';
+export const BAA_TITLE = 'Haneen Care Network Business Associate Agreement';
 export const BAA_SUBTITLE = 'HIPAA-Compliant Data Processing Agreement — Effective Date: April 19, 2026 — Salahuddeen Enterprises LLC';
 
 export const BAA_SECTIONS: AgreementSection[] = [
@@ -387,7 +378,7 @@ export const BAA_SECTIONS: AgreementSection[] = [
     heading: 'Parties and Recitals',
     body: `THIS BUSINESS ASSOCIATE AGREEMENT ("Agreement") is entered into as of April 19, 2026, by and between Salahuddeen Enterprises LLC ("Business Associate") and the Covered Entity executing this Agreement ("Covered Entity"), each a "Party" and collectively the "Parties."
 
-WHEREAS, Business Associate provides care coordination technology services through the My Memoria Ally application;
+WHEREAS, Business Associate provides care coordination technology services through the Haneen Care Network application;
 WHEREAS, in the course of providing such services, Business Associate may create, receive, maintain, or transmit Protected Health Information (PHI) on behalf of Covered Entity;
 WHEREAS, the Health Insurance Portability and Accountability Act of 1996 (HIPAA), the Health Information Technology for Economic and Clinical Health Act (HITECH), and their implementing regulations require Covered Entity to enter into a Business Associate Agreement with Business Associate prior to the disclosure of PHI;
 
@@ -398,12 +389,12 @@ NOW THEREFORE, in consideration of the mutual promises set forth herein, the Par
     body: `Unless otherwise specified, all capitalized terms in this Agreement shall have the meanings given to them under HIPAA and its implementing regulations (45 CFR Parts 160 and 164).
 
 "Breach" means the acquisition, access, use, or disclosure of PHI in a manner not permitted by the HIPAA Privacy Rule (45 CFR §164.400 et seq.)
-"Business Associate" means Salahuddeen Enterprises LLC, the entity providing technology services through the My Memoria Ally application
+"Business Associate" means Salahuddeen Enterprises LLC, the entity providing technology services through the Haneen Care Network application
 "Covered Entity" means the healthcare provider, facility, or organization entering into this Agreement
 "Electronic Protected Health Information" or "ePHI" means PHI that is created, received, maintained, or transmitted in electronic form
 "HIPAA Rules" means the Privacy, Security, Breach Notification, and Enforcement Rules at 45 CFR Parts 160 and 164
 "Protected Health Information" or "PHI" has the meaning given under 45 CFR §160.103
-"Services" means the care coordination technology services provided through the My Memoria Ally application`,
+"Services" means the care coordination technology services provided through the Haneen Care Network application`,
   },
   {
     heading: '2. Obligations of Business Associate',

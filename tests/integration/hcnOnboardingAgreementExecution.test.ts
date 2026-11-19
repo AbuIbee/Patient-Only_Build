@@ -3,6 +3,7 @@
 //
 // Requires the local Docker Supabase stack. Run with `npm run test:integration`.
 import { afterAll, describe, expect, it } from 'vitest';
+import { BAA_TEMPLATE_VERSION } from '../../src/constants/enterpriseAgreements';
 import { authDeleteUser, authSignUp, login, rpc, sql } from './_runtime';
 
 const PW = 'AgreementExec9!';
@@ -66,15 +67,31 @@ describe('HCN-ONBOARDING-PRODUCTION-001 Sections 1-2 -- self-service first-party
   it('a fresh approved application can execute the Business Associate Agreement for real', async () => {
     const { applicant, appId, quoteId } = await freshApprovedApplication();
     const [status, contract] = (await rpc('self_service_execute_agreement', {
-      p_application_id: appId, p_contract_type: 'baa', p_signatory_name: 'Agreement Exec Applicant',
+      p_application_id: appId, p_contract_type: 'baa', p_presented_template_version: BAA_TEMPLATE_VERSION, p_signatory_name: 'Agreement Exec Applicant',
       p_signatory_title: 'Founder', p_consent_to_electronic_records: true, p_user_agent: 'vitest-integration',
     }, applicant.token)) as [number, { status: string; signatory_name: string; executed_at: string; template_version: string; quote_id: string }];
     expect(status).toBe(200);
     expect(contract.status).toBe('executed');
     expect(contract.signatory_name).toBe('Agreement Exec Applicant');
     expect(contract.executed_at).toBeTruthy();
-    expect(contract.template_version).toBe('HCN-BAA-2026-04-19');
+    expect(contract.template_version).toBe(BAA_TEMPLATE_VERSION);
     expect(contract.quote_id).toBe(quoteId);
+  });
+
+  it('rejects new BAA signatures from stale signing pages', async () => {
+    const { applicant, appId, quoteId } = await freshApprovedApplication();
+    const args = {
+      p_application_id: appId, p_contract_type: 'baa', p_signatory_name: 'Agreement Exec Applicant',
+      p_signatory_title: 'Founder', p_consent_to_electronic_records: true,
+    };
+    for (const version of [undefined, 'HCN-BAA-2026-04-19']) {
+      const [status, body] = await rpc('self_service_execute_agreement', {
+        ...args, p_presented_template_version: version,
+      }, applicant.token) as [number, { message?: string }];
+      expect(status).toBe(400);
+      expect(body.message).toMatch(/Reload and review it before signing/);
+    }
+    expect(sql(`SELECT count(*) FROM enterprise_contracts WHERE contract_type='baa' AND quote_id='${quoteId}';`)).toBe('0');
   });
 
   it('executes the registered Haneen SaaS License Agreement without activating before the BAA', async () => {
@@ -91,7 +108,7 @@ describe('HCN-ONBOARDING-PRODUCTION-001 Sections 1-2 -- self-service first-party
   it('cannot execute an agreement without affirmative consent', async () => {
     const { applicant, appId } = await freshApprovedApplication();
     const [status] = await rpc('self_service_execute_agreement', {
-      p_application_id: appId, p_contract_type: 'baa', p_signatory_name: 'Agreement Exec Applicant',
+      p_application_id: appId, p_contract_type: 'baa', p_presented_template_version: BAA_TEMPLATE_VERSION, p_signatory_name: 'Agreement Exec Applicant',
       p_signatory_title: 'Founder', p_consent_to_electronic_records: false, p_user_agent: 'vitest-integration',
     }, applicant.token);
     expect(status).toBeGreaterThanOrEqual(400);
@@ -100,7 +117,7 @@ describe('HCN-ONBOARDING-PRODUCTION-001 Sections 1-2 -- self-service first-party
   it('cannot execute an agreement with a blank typed name', async () => {
     const { applicant, appId } = await freshApprovedApplication();
     const [status] = await rpc('self_service_execute_agreement', {
-      p_application_id: appId, p_contract_type: 'baa', p_signatory_name: '   ',
+      p_application_id: appId, p_contract_type: 'baa', p_presented_template_version: BAA_TEMPLATE_VERSION, p_signatory_name: '   ',
       p_signatory_title: 'Founder', p_consent_to_electronic_records: true, p_user_agent: 'vitest-integration',
     }, applicant.token);
     expect(status).toBeGreaterThanOrEqual(400);
@@ -110,7 +127,7 @@ describe('HCN-ONBOARDING-PRODUCTION-001 Sections 1-2 -- self-service first-party
     const { appId } = await freshApprovedApplication();
     const outsider = await freshApplicant();
     const [status] = await rpc('self_service_execute_agreement', {
-      p_application_id: appId, p_contract_type: 'baa', p_signatory_name: 'Outsider',
+      p_application_id: appId, p_contract_type: 'baa', p_presented_template_version: BAA_TEMPLATE_VERSION, p_signatory_name: 'Outsider',
       p_signatory_title: null, p_consent_to_electronic_records: true, p_user_agent: 'vitest-integration',
     }, outsider.token);
     expect(status).toBeGreaterThanOrEqual(400);
@@ -119,11 +136,11 @@ describe('HCN-ONBOARDING-PRODUCTION-001 Sections 1-2 -- self-service first-party
   it('signing retries are idempotent -- a second identical call returns the same executed contract, not a duplicate', async () => {
     const { applicant, appId } = await freshApprovedApplication();
     const [, first] = (await rpc('self_service_execute_agreement', {
-      p_application_id: appId, p_contract_type: 'baa', p_signatory_name: 'Agreement Exec Applicant',
+      p_application_id: appId, p_contract_type: 'baa', p_presented_template_version: BAA_TEMPLATE_VERSION, p_signatory_name: 'Agreement Exec Applicant',
       p_signatory_title: 'Founder', p_consent_to_electronic_records: true, p_user_agent: 'vitest-integration',
     }, applicant.token)) as [number, { id: string }];
     const [status, second] = (await rpc('self_service_execute_agreement', {
-      p_application_id: appId, p_contract_type: 'baa', p_signatory_name: 'Agreement Exec Applicant (retry)',
+      p_application_id: appId, p_contract_type: 'baa', p_presented_template_version: BAA_TEMPLATE_VERSION, p_signatory_name: 'Agreement Exec Applicant (retry)',
       p_signatory_title: 'Founder', p_consent_to_electronic_records: true, p_user_agent: 'vitest-integration',
     }, applicant.token)) as [number, { id: string; signatory_name: string }];
     expect(status).toBe(200);
@@ -134,7 +151,7 @@ describe('HCN-ONBOARDING-PRODUCTION-001 Sections 1-2 -- self-service first-party
   it('Stripe billing authorization cannot begin until BOTH agreements are executed (BAA alone is not sufficient)', async () => {
     const { applicant, appId } = await freshApprovedApplication();
     await rpc('self_service_execute_agreement', {
-      p_application_id: appId, p_contract_type: 'baa', p_signatory_name: 'Agreement Exec Applicant',
+      p_application_id: appId, p_contract_type: 'baa', p_presented_template_version: BAA_TEMPLATE_VERSION, p_signatory_name: 'Agreement Exec Applicant',
       p_signatory_title: 'Founder', p_consent_to_electronic_records: true, p_user_agent: 'vitest-integration',
     }, applicant.token);
 
