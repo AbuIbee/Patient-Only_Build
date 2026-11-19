@@ -387,8 +387,9 @@ export default function ProfessionalOfficeResolver() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = async (scope: 'global' | 'local' = 'global') => {
+    const { error } = await supabase.auth.signOut({ scope });
+    if (error) { toast.error('Could not sign out. Please try again.'); return; }
     dispatch({ type: 'LOGOUT' });
     toast('You have been logged out');
   };
@@ -550,7 +551,7 @@ export default function ProfessionalOfficeResolver() {
       {effective === 'medical' && <ClinicalOfficeDashboard filterRole="medical_professional" basePath={officeBasePath} />}
       {effective === 'therapy' && <ClinicalOfficeDashboard filterRole="therapist" basePath={officeBasePath} />}
       {effective === 'patient' && patientOfficeSubjectId && <EnterprisePatientDashboard basePath={officeBasePath} subjectPatientId={patientOfficeSubjectId} />}
-      {effective === 'provider' && state.currentUser?.id && <ProviderInbox userId={state.currentUser.id} />}
+      {effective === 'provider' && state.currentUser?.id && <ProviderInbox userId={state.currentUser.id} onLogout={() => { void handleLogout('local'); }} />}
       {effective === 'billing' && billing && <DirectorSecondaryBillingOffice organizationId={billing.organizationId} />}
       {effective === 'owner' && state.currentUser?.id && <OrganizationOwnerOffice currentUserId={state.currentUser.id} />}
     </div>

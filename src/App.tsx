@@ -14,6 +14,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { safeSessionStorage } from '@/lib/safeSessionStorage';
+import { isProviderInboxPath, resumeProviderSession } from '@/lib/providerBrowserSession';
 import type { Database } from '@/types/supabase';
 import { cancelAllReminderNotifications } from '@/lib/reminderScheduler';
 import { selfHealMissingProfile } from '@/services/profileService';
@@ -204,9 +205,15 @@ function AppContent() {
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const { data: current } = await supabase.auth.getSession();
+        let session = current.session;
+        if (!session && isProviderInboxPath(window.location.pathname)) {
+          const remembered = await resumeProviderSession();
+          if (remembered) {
+            const { data } = await supabase.auth.setSession(remembered);
+            session = data.session;
+          }
+        }
 
         if (!session?.user) return;
 

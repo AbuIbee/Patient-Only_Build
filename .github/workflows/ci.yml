@@ -115,7 +115,7 @@ jobs:
           export VITE_SUPABASE_ANON_KEY='sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH'
           export VITE_STRIPE_PRICE_FULL_SUPPORT_MONTHLY='price_test'
           npm run build
-          npx vite preview --host 127.0.0.1 --port 5280 --strictPort > /tmp/hcn_vite.log 2>&1 &
+          MMA_PROVIDER_SESSION_TEST=1 npx vite preview --host 127.0.0.1 --port 5280 --strictPort > /tmp/hcn_vite.log 2>&1 &
           echo $! > /tmp/hcn_vite.pid
           npx wait-on http://127.0.0.1:5280
       - name: Run Clinical Coordination browser acceptance (fictional data)
