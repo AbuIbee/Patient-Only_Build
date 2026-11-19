@@ -138,8 +138,8 @@ test('a caregiver completes the selected visit inside the patient chart and the 
     await departure.fill(localDeparture);
     await expect.poll(() => Date.now()).toBeGreaterThan(departureMs);
     await submit.click();
-    await expect(visit.getByText(/^Checked out:/)).toBeVisible();
-    await expect(visit.getByText(/Meal eaten: Not done/)).toBeVisible();
+    await expect(visit).toContainText('Checked out:');
+    await expect(visit).toContainText('Meal eaten: Not done');
     expect(sql(`SELECT status FROM caregiver_visits WHERE id='${laterVisitId}';`)).toBe('scheduled');
 
     const director = await directorContext.newPage();
