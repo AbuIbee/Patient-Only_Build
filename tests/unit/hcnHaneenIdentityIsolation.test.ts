@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+import { BAA_SECTIONS, BAA_SUBTITLE, BAA_TEMPLATE_VERSION, BAA_TITLE } from '../../src/constants/enterpriseAgreements';
 
 const file = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 const legacyBrand = /My[ -]Memoria[ -]Ally|MymemoriaDayTime/i;
@@ -34,6 +36,17 @@ describe('Haneen customer-facing branding', () => {
     expect(html).toContain('<title>Haneen Care Network | Where Compassion Connects Care</title>');
     expect(html).toContain('type="image/svg+xml" href="/haneen-favicon.svg"');
     expect(file('vite.config.ts')).toContain('https://www.haneencarenetwork.com/sitemap.xml');
+  });
+
+  it('keeps the branded agreement display synchronized with the registered template', () => {
+    const directory = 'supabase/migrations';
+    const migration = readdirSync(directory).find(name => name.endsWith('_hcn_baa_branding_version.sql'));
+    expect(migration).toBeDefined();
+    const sql = file(`${directory}/${migration}`);
+    const expected = [BAA_TITLE, BAA_SUBTITLE, ...BAA_SECTIONS.map(({ heading, body }) => `${heading}\n${body}`)].join('\n\n');
+    expect(expected).not.toMatch(legacyBrand);
+    expect(sql).toContain(BAA_TEMPLATE_VERSION);
+    expect(sql.split('$hcn_baa$')[1].trim()).toBe(expected);
   });
 
   it('keeps enterprise sign-in and patient access routing', () => {
