@@ -424,10 +424,11 @@ export default function ProfessionalOfficeResolver() {
 
   // A self-service applicant can already own the auto-provisioned organization
   // while their Director membership is invited. The workspace entry must still
-  // show their agreements. Explicit office routes use their usual access rules.
+  // show their agreements/billing authorization. A direct Director route must
+  // resume that pending flow rather than falling back to the Owner workspace.
   if (
-    !requestedOffice &&
-    !manualSelection &&
+    ((!requestedOffice && !manualSelection) ||
+      (!director && (requestedOffice === 'admin' || manualSelection === 'admin'))) &&
     myApplication?.requestedOffice === 'director' &&
     myApplication.autoVerificationResult?.organization_auto_provisioned === true &&
     ['agreements_pending', 'approved', 'agreements_executed', 'payment_authorization_pending'].includes(myApplication.status)
