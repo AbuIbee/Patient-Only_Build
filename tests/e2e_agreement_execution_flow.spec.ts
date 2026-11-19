@@ -64,7 +64,7 @@ test.describe('Real-browser agreement execution (HCN-ONBOARDING-PRODUCTION-001)'
 
       // Starts already expanded (there is no existing contract yet) --
       // the full text is visible without needing to click anything.
-      await expect(page.getByText('My Memoria Ally Business Associate Agreement')).toBeVisible();
+      await expect(page.getByText('Haneen Care Network Business Associate Agreement')).toBeVisible();
       await expect(page.getByText(/Salahuddeen Enterprises LLC \("Business Associate"\)/)).toBeVisible();
 
       // HCN-SAAS-1.0: the complete, real agreement text is shown for
@@ -85,7 +85,7 @@ test.describe('Real-browser agreement execution (HCN-ONBOARDING-PRODUCTION-001)'
       await expect(page.getByText('Signed by Agreement E2E Applicant, Founder')).toBeVisible();
 
       const executed = sql(`SELECT status, signatory_name, template_version FROM enterprise_contracts WHERE quote_id='${quoteId}' AND contract_type='baa';`);
-      expect(executed).toBe('executed|Agreement E2E Applicant|HCN-BAA-2026-04-19');
+      expect(executed).toBe('executed|Agreement E2E Applicant|HCN-BAA-2026-04-19-HANEEN');
 
       // The application does NOT advance past 'approved' -- the SaaS
       // License Agreement is still blocked, correctly and honestly.

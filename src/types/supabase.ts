@@ -5177,6 +5177,7 @@ export interface Database {
           p_signatory_title: string | null
           p_consent_to_electronic_records: boolean
           p_user_agent?: string | null
+          p_presented_template_version?: string
         }
         Returns: Record<string, unknown>
       }
