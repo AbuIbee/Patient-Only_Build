@@ -98,8 +98,8 @@ beforeAll(async () => {
   // activate_enterprise_license_from_quote() will succeed once it
   // actually runs.
   sql(`
-    INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, currency, unit_amount_cents, billing_interval, status, created_by)
-    VALUES ('${quoteId}', '${emails.bilal}', 'usd', 3000000, 'year', 'active', '${ids.bilal}');
+    INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, currency, unit_amount_cents, billing_interval, status, stripe_subscription_id, created_by)
+    VALUES ('${quoteId}', '${emails.bilal}', 'usd', 3000000, 'year', 'active', 'SYNTHETIC-NOT-A-STRIPE-SUBSCRIPTION', '${ids.bilal}');
   `);
   for (const contractType of ['saas_license', 'baa'] as const) {
     const [, contract] = (await rpc('platform_owner_create_contract', {

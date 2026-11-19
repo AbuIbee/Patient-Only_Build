@@ -115,7 +115,7 @@ describe('MMA-PROF-ONBOARD-004 monthly billing component (migration 164)', () =>
     await rpc('create_enterprise_billing_account', { p_quote_id: quoteId, p_billing_contact_email: emails.bilal }, tok.bilal);
     await rpc('create_enterprise_monthly_billing_component', { p_quote_id: quoteId, p_billing_timezone: 'America/Chicago' }, tok.bilal);
 
-    sql(`UPDATE enterprise_billing_accounts SET status='active' WHERE quote_id='${quoteId}' AND billing_component='annual_license';`);
+    sql(`UPDATE enterprise_billing_accounts SET status='active',stripe_subscription_id='SYNTHETIC-NOT-A-STRIPE-SUBSCRIPTION' WHERE quote_id='${quoteId}' AND billing_component='annual_license';`);
     const orgId = sql(`INSERT INTO organizations (name, package_type, created_by) VALUES ('Monthly Gate Org ${stamp}', 'integrated_care', '${ids.bilal}') RETURNING id;`);
     sql(`UPDATE professional_applications SET status='approved', target_organization_id='${orgId}', platform_owner_approved_at=now() WHERE id='${appId}';`);
     sql(`INSERT INTO organization_licenses (organization_id, status) VALUES ('${orgId}', 'proposed');`);
@@ -126,7 +126,7 @@ describe('MMA-PROF-ONBOARD-004 monthly billing component (migration 164)', () =>
     // activation must still be blocked.
     let rejection = '';
     try { sql(`SELECT activate_enterprise_license_from_quote('${quoteId}');`); } catch (error) { rejection = String(error); }
-    expect(rejection).toContain('no confirmed recurring-payment authorization');
+    expect(rejection).toContain('confirmed processor outcomes for all chargeable components');
 
     // Now confirm the recurring authorization (as the webhook would) --
     // activation succeeds, and the license carries the disclosed anchor.

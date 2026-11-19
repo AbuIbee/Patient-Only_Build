@@ -137,6 +137,7 @@ describe('HCN-SAAS-1.0 with owner-authorized signing enabled', () => {
     }, applicant.token);
 
     const expectedHash = sql(`SELECT content_sha256 FROM hcn_agreement_templates WHERE contract_type='saas_license';`);
+    expect(expectedHash).toBe('ba5483418398f1209975a4eeeded6177a393de904df08d45a24fb11dae0a567f');
 
     const [status, contract] = (await rpc('self_service_execute_agreement', {
       p_application_id: appId, p_contract_type: 'saas_license', p_signatory_name: 'Saas Tpl Applicant',
@@ -150,8 +151,7 @@ describe('HCN-SAAS-1.0 with owner-authorized signing enabled', () => {
 
     const appStatus = sql(`SELECT status FROM professional_applications WHERE id='${appId}';`);
     expect(appStatus).toBe('agreements_executed');
-    // The owner-approved processor bypass activates the license but never
-    // invents payment confirmation or creates a Stripe subscription.
+    // Signing preserves the agreements without using the retired processor bypass.
     const deferred = sql(`SELECT provider_payment_confirmed FROM hcn_deferred_billing_activations WHERE application_id='${appId}';`);
     expect(deferred).toBe('');
     expect(sql(`SELECT l.status FROM organization_licenses l JOIN professional_applications p ON p.target_organization_id=l.organization_id WHERE p.id='${appId}';`)).toBe('proposed');

@@ -42,8 +42,8 @@ async function makeQuoteAndApplication(orgName: string, fee: number): Promise<{ 
 }
 function markPaid(quoteId: string, feeCents: number): void {
   sql(`
-    INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, currency, unit_amount_cents, billing_interval, status, created_by)
-    VALUES ('${quoteId}', 'billing@f04test.local', 'usd', ${feeCents}, 'year', 'active', '${ids.bilal}');
+    INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, currency, unit_amount_cents, billing_interval, status, stripe_subscription_id, created_by)
+    VALUES ('${quoteId}', 'billing@f04test.local', 'usd', ${feeCents}, 'year', 'active', 'SYNTHETIC-NOT-A-STRIPE-SUBSCRIPTION', '${ids.bilal}');
   `);
 }
 async function executeContract(quoteId: string, contractType: 'saas_license' | 'baa'): Promise<void> {

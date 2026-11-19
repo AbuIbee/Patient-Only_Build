@@ -100,8 +100,8 @@ describe('MMA-ENT-SALES-006 Phase I2 — enterprise notification center (migrati
     // saas_license and baa agreements, and activate -> notifies the
     // Director (license_activated).
     sql(`
-      INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, currency, unit_amount_cents, billing_interval, status, created_by)
-      VALUES ('${quote.id}', '${emails.bilal}', 'usd', 1000000, 'year', 'active', '${ids.bilal}');
+      INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, currency, unit_amount_cents, billing_interval, status, stripe_subscription_id, created_by)
+      VALUES ('${quote.id}', '${emails.bilal}', 'usd', 1000000, 'year', 'active', 'SYNTHETIC-NOT-A-STRIPE-SUBSCRIPTION', '${ids.bilal}');
     `);
     for (const contractType of ['saas_license', 'baa'] as const) {
       const [, contract] = (await rpc('platform_owner_create_contract', {

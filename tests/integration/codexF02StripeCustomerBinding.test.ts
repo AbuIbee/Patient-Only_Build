@@ -125,7 +125,7 @@ describe('CODEX F-02 FIX (migration 121) — resolve_enterprise_billing_customer
     sql(`UPDATE organization_memberships SET status='revoked' WHERE organization_id='${ORG_B}' AND user_id='${ids.directorB}';`);
     const [status] = await rpc('resolve_enterprise_billing_customer', { p_quote_id: quoteIdB2 }, tok.directorB);
     expect(status).toBe(400);
-    sql(`UPDATE organization_memberships SET status='active' WHERE organization_id='${ORG_B}' AND user_id='${ids.directorB}';`);
+    // Keep this expendable fixture revoked; do not bypass purchase activation to restore it.
   });
 
   it('an outsider with no application or amendment request anywhere cannot resolve any quote', async () => {

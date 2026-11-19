@@ -88,7 +88,10 @@ BEGIN
     END;
     INSERT INTO hcn_gate_evidence VALUES (license_state||' contact write denied',denied,true);
   END LOOP;
+  -- Privileged isolated fixture restoration; clear the prior Director JWT first.
+  PERFORM set_config('request.jwt.claim.sub','',true);
   UPDATE public.organization_licenses SET status='active' WHERE organization_id=org_id;
+  PERFORM set_config('request.jwt.claim.sub',director_id::text,true);
   UPDATE public.organization_memberships SET status='revoked' WHERE organization_id=org_id;
   INSERT INTO hcn_gate_evidence VALUES
     ('revoked director',public.is_org_director_for_patient(director_id,patient_id),false);

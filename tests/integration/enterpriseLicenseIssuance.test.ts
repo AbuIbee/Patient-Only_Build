@@ -91,12 +91,12 @@ async function executeRequiredContracts(quoteId: string, signatoryName: string):
 function markBillingAccountActive(quoteId: string, email: string, feeCents: number): string {
   const existing = sql(`SELECT id FROM enterprise_billing_accounts WHERE quote_id='${quoteId}';`);
   if (existing) {
-    sql(`UPDATE enterprise_billing_accounts SET status='active' WHERE id='${existing}';`);
+    sql(`UPDATE enterprise_billing_accounts SET status='active',stripe_subscription_id='SYNTHETIC-NOT-A-STRIPE-SUBSCRIPTION' WHERE id='${existing}';`);
     return existing;
   }
   return sql(`
-    INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, currency, unit_amount_cents, billing_interval, status, created_by)
-    VALUES ('${quoteId}', '${email}', 'usd', ${feeCents}, 'year', 'active', (SELECT applicant_user_id FROM professional_applications WHERE application_details->>'originatingQuoteId'='${quoteId}' LIMIT 1))
+    INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, currency, unit_amount_cents, billing_interval, status, stripe_subscription_id, created_by)
+    VALUES ('${quoteId}', '${email}', 'usd', ${feeCents}, 'year', 'active', 'SYNTHETIC-NOT-A-STRIPE-SUBSCRIPTION', (SELECT applicant_user_id FROM professional_applications WHERE application_details->>'originatingQuoteId'='${quoteId}' LIMIT 1))
     RETURNING id;
   `);
 }

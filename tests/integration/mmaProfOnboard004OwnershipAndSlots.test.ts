@@ -187,7 +187,7 @@ describe('MMA-PROF-ONBOARD-004 Organization Owner/Director separation and specia
       const orgId = sql(`INSERT INTO organizations (name, package_type, created_by) VALUES ('Concurrency Org ${stamp}-${i}', 'integrated_care', '${ids.director}') RETURNING id;`);
       sql(`UPDATE professional_applications SET target_organization_id='${orgId}' WHERE id='${appId}';`);
       sql(`INSERT INTO organization_licenses (organization_id, status) VALUES ('${orgId}', 'proposed');`);
-      sql(`INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, unit_amount_cents, billing_interval, status, created_by) VALUES ('${quoteId}', 'concurrency@local.test', 59900, 'year', 'active', '${ids.owner}');`);
+      sql(`INSERT INTO enterprise_billing_accounts (quote_id, billing_contact_email, unit_amount_cents, billing_interval, status, stripe_subscription_id, created_by) VALUES ('${quoteId}', 'concurrency@local.test', 59900, 'year', 'active', 'SYNTHETIC-NOT-A-STRIPE-SUBSCRIPTION', '${ids.owner}');`);
       // Pre-existing gap surfaced while verifying Issue #3 (unrelated to
       // P0-01/P0-02): migration 20261030013820 added a monthly-
       // authorization gate to activate_enterprise_license_from_quote()

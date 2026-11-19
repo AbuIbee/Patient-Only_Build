@@ -19,6 +19,7 @@ it('an active proxy sends under its own identity; recipient/add paths work; revo
  INSERT INTO staff_patient_assignments(organization_id,user_id,patient_id,org_role,is_active,assigned_by) VALUES('${org}','${caregiver.id}','${patient.id}','caregiver',true,'${director.id}');
  INSERT INTO patient_representatives(patient_id,organization_id,representative_user_id,legal_first_name,legal_last_name,contact_email,contact_phone,residential_address,relationship_to_patient,authorization_basis,verification_status,status,initiated_by)
  VALUES('${patient.id}','${org}','${proxy.id}','Proxy','Test','proxy@local.test','215-555-0100','1 Test Ave','daughter','fictional fixture','verified','active','${director.id}'),('${patient.id}','${org}','${pending.id}','Pending','Test','pending@local.test','215-555-0101','2 Test Ave','daughter','fictional fixture','pending_verification','pending_verification','${director.id}');`);
+ const [poolStatus,pool]=await rpc('get_patient_care_circle',{p_patient_id:patient.id},caregiver.token) as [number,Array<{user_id:string}>];expect(poolStatus).toBe(200);expect(pool.some(p=>p.user_id===proxy.id)).toBe(true);expect(pool.some(p=>p.user_id===pending.id)).toBe(false);
  const [createdStatus,created]=await rpc('create_conversation',{p_patient_id:patient.id,p_recipient_user_ids:[caregiver.id],p_subject:'Proxy-authored regression'},proxy.token) as [number,{id:string}];
  expect(createdStatus,JSON.stringify(created)).toBe(200);
  const [sentStatus,sent]=await rpc('send_message',{p_conversation_id:created.id,p_body:'Fictional proxy message with own actor',p_is_urgent:false,p_reply_to_message_id:null},proxy.token) as [number,{id:string;sender_id:string}];
@@ -34,5 +35,6 @@ it('an active proxy sends under its own identity; recipient/add paths work; revo
  sql(`UPDATE patient_representatives SET status='revoked',revoked_by='${director.id}',revoked_at=now(),revocation_reason='isolated regression' WHERE representative_user_id='${proxy.id}' AND patient_id='${patient.id}';`);
  expect((await http('GET',`/rest/v1/messages?conversation_id=eq.${created.id}&select=id`,undefined,proxy.token))).toEqual([200,[]]);
  expect((await rpc('send_message',{p_conversation_id:created.id,p_body:'Revoked denied',p_is_urgent:false,p_reply_to_message_id:null},proxy.token))[0]).toBeGreaterThanOrEqual(400);
+ const [,revokedPool]=await rpc('get_patient_care_circle',{p_patient_id:patient.id},caregiver.token) as [number,Array<{user_id:string}>];expect(revokedPool.some(p=>p.user_id===proxy.id)).toBe(false);
  // Disposable regression fixtures are retained for inspection, not production records.
 });
