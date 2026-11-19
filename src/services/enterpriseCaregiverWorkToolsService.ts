@@ -86,9 +86,12 @@ export async function startCaregiverVisit(
 }
 
 export async function endCaregiverVisit(
-  visitId: string, visitNotes?: string,
+  visitId: string, visitNotes?: string, actualEnd?: string,
 ): Promise<{ visit: CaregiverVisit | null; error: string | null }> {
-  const { data, error } = await supabase.rpc('end_caregiver_visit', { p_visit_id: visitId, p_visit_notes: visitNotes });
+  const args = actualEnd === undefined
+    ? { p_visit_id: visitId, p_visit_notes: visitNotes }
+    : { p_visit_id: visitId, p_visit_notes: visitNotes ?? '', p_actual_end: actualEnd };
+  const { data, error } = await supabase.rpc('end_caregiver_visit', args);
   if (error || !data) return { visit: null, error: errMsg(error, 'Could not end this visit.') };
   return { visit: mapVisit(data), error: null };
 }

@@ -78,7 +78,15 @@ BEGIN
   INSERT INTO hcn_ops_results VALUES('revoked caregiver cannot start with old receipt',v_deny);
   UPDATE public.staff_patient_assignments SET is_active=true
     WHERE organization_id=v_org AND patient_id=v_patient AND user_id=v_carer;
-  INSERT INTO hcn_ops_results VALUES('visit can start after review',
+  UPDATE public.caregiver_visits SET scheduled_start=now()+interval '30 minutes 1 second' WHERE id=v_visit;
+  v_deny:=false;
+  BEGIN PERFORM public.start_caregiver_visit(v_visit);
+  EXCEPTION WHEN invalid_parameter_value THEN v_deny:=true; END;
+  INSERT INTO hcn_ops_results VALUES('visit cannot start more than 30 minutes before schedule',v_deny AND EXISTS(
+    SELECT 1 FROM public.caregiver_visits WHERE id=v_visit AND status='scheduled' AND actual_start IS NULL));
+
+  UPDATE public.caregiver_visits SET scheduled_start=now()+interval '30 minutes' WHERE id=v_visit;
+  INSERT INTO hcn_ops_results VALUES('visit can start exactly 30 minutes before schedule after review',
     (public.start_caregiver_visit(v_visit)).status='in_progress');
 
   v_case:=public.hcn_submit_care_escalation(

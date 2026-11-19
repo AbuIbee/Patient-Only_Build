@@ -126,6 +126,17 @@ test('a caregiver completes the selected visit inside the patient chart and the 
     await visit.getByLabel('Meal eaten').selectOption('not_completed');
     await expect(submit).toBeDisabled();
     await visit.getByLabel('Visit notes (required)').fill('Patient declined lunch. Follow up at the next visit.');
+    await expect(submit).toBeDisabled();
+    const departure = visit.getByLabel(/Actual departure date and time/);
+    await expect(departure).toHaveValue('');
+    const departureMs = Number(sql(`SELECT ceil(extract(epoch FROM actual_start))::bigint * 1000
+      FROM caregiver_visits WHERE id='${visitId}';`));
+    const localDeparture = await page.evaluate(timestamp => {
+      const instant = new Date(timestamp);
+      return new Date(timestamp - instant.getTimezoneOffset() * 60_000).toISOString().slice(0, 19);
+    }, departureMs);
+    await departure.fill(localDeparture);
+    await expect.poll(() => Date.now()).toBeGreaterThan(departureMs);
     await submit.click();
     await expect(visit.getByText(/^Checked out:/)).toBeVisible();
     await expect(visit.getByText(/Meal eaten: Not done/)).toBeVisible();

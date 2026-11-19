@@ -13,6 +13,8 @@ type CheckoutItemId = (typeof CHECKOUT_ITEMS)[number]['id'];
 type Outcome = 'completed' | 'not_completed' | 'not_applicable';
 type CheckoutOutcomes = Partial<Record<CheckoutItemId, Outcome>>;
 
+const CHECK_IN_EARLY_MINUTES = 30;
+
 const actionClass = 'min-h-11 rounded-xl bg-ent-forest px-4 py-2 text-sm font-semibold text-white disabled:opacity-50';
 const secondaryClass = 'min-h-11 rounded-xl border border-ent-line px-4 py-2 text-sm font-semibold text-ent-ink disabled:opacity-50';
 
@@ -26,6 +28,7 @@ export default function CaregiverPatientVisit({ organizationId, patientId, visit
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [notes, setNotes] = useState('');
+  const [departure, setDeparture] = useState('');
   const [outcomes, setOutcomes] = useState<CheckoutOutcomes>({});
 
   useEffect(() => {
@@ -60,7 +63,12 @@ export default function CaregiverPatientVisit({ organizationId, patientId, visit
     }
   };
 
-  const canSubmit = notes.trim().length > 0 && CHECKOUT_ITEMS.every(item => outcomes[item.id]);
+  const checkInOpens = visit?.scheduledStart
+    ? new Date(Date.parse(visit.scheduledStart) - CHECK_IN_EARLY_MINUTES * 60_000)
+    : null;
+  const departureDate = new Date(departure);
+  const canSubmit = Number.isFinite(departureDate.getTime()) && notes.trim().length > 0
+    && CHECKOUT_ITEMS.every(item => outcomes[item.id]);
   const checkOut = async () => {
     if (!visit || visit.status !== 'in_progress' || !canSubmit || pending) return;
     setPending(true);
@@ -71,11 +79,12 @@ export default function CaregiverPatientVisit({ organizationId, patientId, visit
         const label = outcome === 'completed' ? item.complete : outcome === 'not_completed' ? 'Not done' : 'Not applicable';
         return `${item.label}: ${label}`;
       }).join('\n');
-      const result = await endCaregiverVisit(visit.id, `${notes.trim()}\n\nVisit checklist\n${checklist}`);
+      const result = await endCaregiverVisit(visit.id, `${notes.trim()}\n\nVisit checklist\n${checklist}`, departureDate.toISOString());
       if (!result.visit) { setError(result.error ?? 'Could not check out.'); return; }
       setVisit(result.visit);
       setCheckoutOpen(false);
       setNotes('');
+      setDeparture('');
       setOutcomes({});
     } catch {
       setError('Could not confirm checkout. Your entries are still here. Recheck the visit status if the save already went through.');
@@ -105,6 +114,7 @@ export default function CaregiverPatientVisit({ organizationId, patientId, visit
           {visit.status === 'scheduled' && (
             <div className="space-y-2">
               <p className="text-sm text-ent-text">Before checking in, review the patient’s recent updates, care plan, medications, contacts and handoff in this chart.</p>
+              {checkInOpens && <p className="text-sm text-ent-muted">Check-in opens {checkInOpens.toLocaleString()}.</p>}
               <button type="button" className={actionClass} disabled={pending} onClick={() => { void checkIn(); }}>
                 {pending ? 'Checking in…' : 'Confirm Review & Check In'}
               </button>
@@ -120,6 +130,15 @@ export default function CaregiverPatientVisit({ organizationId, patientId, visit
           )}
           {visit.status === 'in_progress' && checkoutOpen && (
             <form className="space-y-4" onSubmit={event => { event.preventDefault(); void checkOut(); }}>
+              <label className="block space-y-1 text-sm font-semibold text-ent-ink">
+                <span>Actual departure date and time (required)</span>
+                <input type="datetime-local" step="1" required disabled={pending} value={departure}
+                  onChange={event => setDeparture(event.target.value)}
+                  className="block min-h-11 w-full min-w-0 rounded-xl border border-ent-line bg-white px-3 py-2 font-normal" />
+                <span className="block font-normal text-ent-muted">
+                  Local time ({Intl.DateTimeFormat().resolvedOptions().timeZone})
+                </span>
+              </label>
               <fieldset disabled={pending} className="space-y-2">
                 <legend className="mb-1 font-semibold text-ent-ink">Visit checklist</legend>
                 {CHECKOUT_ITEMS.map(item => (
