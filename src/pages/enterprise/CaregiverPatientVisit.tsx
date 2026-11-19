@@ -132,7 +132,7 @@ export default function CaregiverPatientVisit({ organizationId, patientId, visit
             <form className="space-y-4" onSubmit={event => { event.preventDefault(); void checkOut(); }}>
               <label className="block space-y-1 text-sm font-semibold text-ent-ink">
                 <span>Actual departure date and time (required)</span>
-                <input type="datetime-local" step="1" required disabled={pending} value={departure}
+                <input type="datetime-local" step="60" required disabled={pending} value={departure}
                   onChange={event => setDeparture(event.target.value)}
                   className="block min-h-11 w-full min-w-0 rounded-xl border border-ent-line bg-white px-3 py-2 font-normal" />
                 <span className="block font-normal text-ent-muted">

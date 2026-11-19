@@ -96,6 +96,7 @@ test('a signed-in Medical Professional sees Clinical Reviews with the Clinical C
 
 test('a caregiver completes the selected visit inside the patient chart and the Director sees the log', async ({ page, browser }) => {
   test.skip(!ready, 'Requires an explicitly configured disposable stack + frontend target');
+  test.setTimeout(120_000);
   const ctx = await seedOrgWithStaff('visit');
   const directorContext = await browser.newContext();
   try {
@@ -129,14 +130,14 @@ test('a caregiver completes the selected visit inside the patient chart and the 
     await expect(submit).toBeDisabled();
     const departure = visit.getByLabel(/Actual departure date and time/);
     await expect(departure).toHaveValue('');
-    const departureMs = Number(sql(`SELECT ceil(extract(epoch FROM actual_start))::bigint * 1000
+    const departureMs = Number(sql(`SELECT ceil(extract(epoch FROM actual_start) / 60)::bigint * 60_000
       FROM caregiver_visits WHERE id='${visitId}';`));
     const localDeparture = await page.evaluate(timestamp => {
       const instant = new Date(timestamp);
-      return new Date(timestamp - instant.getTimezoneOffset() * 60_000).toISOString().slice(0, 19);
+      return new Date(timestamp - instant.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
     }, departureMs);
     await departure.fill(localDeparture);
-    await expect.poll(() => Date.now()).toBeGreaterThan(departureMs);
+    await expect.poll(() => Date.now(), { timeout: 65_000 }).toBeGreaterThan(departureMs);
     await submit.click();
     await expect(visit).toContainText('Checked out:');
     await expect(visit).toContainText('Meal eaten: Not done');
