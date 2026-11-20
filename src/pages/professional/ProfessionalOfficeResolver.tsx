@@ -33,6 +33,8 @@ import EnterprisePatientDashboard from '@/pages/patient/EnterprisePatientDashboa
 import PatientLayout from '@/pages/patient/PatientLayout';
 import { shouldRenderHaneenClassicPatientPortal } from '@/pages/patient/shouldRenderHaneenClassicPatientPortal';
 import ApplicationStatusPage from './ApplicationStatusPage';
+import { resolveProfessionalOffice, type ProfessionalOfficeKey } from './resolveProfessionalOffice';
+export type { ProfessionalOfficeKey } from './resolveProfessionalOffice';
 
 const inputCls = 'w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-ent-bronze border-ent-line bg-ent-panel';
 
@@ -135,22 +137,12 @@ function RedeemInvitationSection({ onApplicationStarted }: { onApplicationStarte
   );
 }
 
-export type ProfessionalOfficeKey = 'admin' | 'owner' | 'caregiver' | 'medical' | 'therapy' | 'patient' | 'provider' | 'billing';
-
 const OFFICE_SEGMENT: Record<ProfessionalOfficeKey, string> = {
   admin: 'Admin', owner: 'OrganizationOwner', caregiver: 'Caregiver', medical: 'Medical', therapy: 'Therapy', patient: 'Patient', provider: 'Provider', billing: 'Billing',
 };
 const OFFICE_LABEL: Record<ProfessionalOfficeKey, string> = {
   admin: 'Admin / Director', owner: 'Organization Owner', caregiver: 'Enterprise Caregiver', medical: 'Medical Professional', therapy: 'Therapist Professional', patient: 'Enterprise Patient', provider: 'Verified External Provider', billing: 'Billing Administrator',
 };
-// Priority order when no office is explicitly requested in the URL and
-// the signed-in user holds more than one — identical ordering to
-// EnterpriseDashboardRouter's own established priority (director >
-// therapist > medical > caregiver), with Enterprise patient appended
-// last since it is the newly-added fifth dimension and no existing
-// behavior ever ranked it.
-const PRIORITY_ORDER: ProfessionalOfficeKey[] = ['admin', 'owner', 'therapy', 'medical', 'caregiver', 'billing', 'provider', 'patient'];
-
 function parseRequestedOffice(): ProfessionalOfficeKey | null {
   const segments = window.location.pathname.split('/').filter(Boolean); // ['Professional', 'Admin', ...]
   const seg = (segments[1] || '').toLowerCase();
@@ -288,33 +280,6 @@ function LicenseRenewalRequiredState({ membership, onLogout }: { membership: Lic
           </div>
         )}
       </main>
-    </div>
-  );
-}
-
-function OfficeSelector({ offices, onSelect }: { offices: { key: ProfessionalOfficeKey; orgName: string }[]; onSelect: (key: ProfessionalOfficeKey) => void }) {
-  return (
-    <div className="min-h-screen bg-ent-bg flex items-center justify-center p-4">
-      <div className="max-w-md w-full space-y-4">
-        <div className="text-center">
-          <div className="w-12 h-12 rounded-xl bg-ent-green flex items-center justify-center mx-auto mb-3"><Sparkles className="w-6 h-6 text-ent-forest" /></div>
-          <h1 className="text-xl font-bold text-ent-ink">Choose your workspace</h1>
-          <p className="text-sm text-ent-muted mt-1">You have access to more than one office.</p>
-        </div>
-        <div className="space-y-2">
-          {offices.map((o) => (
-            <button
-              key={o.key} type="button" onClick={() => onSelect(o.key)}
-              className="w-full flex items-center justify-between gap-3 p-4 bg-ent-panel rounded-2xl border border-ent-line hover:shadow-sm transition-all text-left"
-            >
-              <div>
-                <p className="font-bold text-ent-ink">{OFFICE_LABEL[o.key]}</p>
-                <p className="text-xs text-ent-muted">{o.orgName}</p>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -521,15 +486,11 @@ export default function ProfessionalOfficeResolver() {
   // honored — "never grant access merely because a user selected or
   // entered a route." Falls through to the normal resolution below.
   const requestedIsAuthorized = requestedOffice !== null && availableOffices.some((o) => o.key === requestedOffice);
-  const manualIsAuthorized = manualSelection !== null && availableOffices.some((o) => o.key === manualSelection);
-
-  // No office explicitly requested AND the user holds more than one:
-  // let them choose, rather than silently defaulting to one.
-  if (!requestedIsAuthorized && !manualIsAuthorized && requestedOffice === null && availableOffices.length > 1) {
-    return <OfficeSelector offices={availableOffices} onSelect={navigateToOffice} />;
-  }
-
-  const effective: ProfessionalOfficeKey = requestedIsAuthorized ? requestedOffice! : manualIsAuthorized ? manualSelection! : availableOffices.find((o) => PRIORITY_ORDER.indexOf(o.key) === Math.min(...availableOffices.map((x) => PRIORITY_ORDER.indexOf(x.key))))!.key;
+  // No workspace-selection interstitial: after authorization succeeds,
+  // open the Director dashboard by default (or the highest-priority office
+  // the user actually holds). An explicit authorized office URL and an
+  // intentional in-app switch still take precedence.
+  const effective = resolveProfessionalOffice(availableOffices.map(o => o.key), requestedOffice, manualSelection)!;
 
   // Canonicalize the URL to the effective, authorized office so a
   // revoked or mistyped office segment never silently keeps rendering
