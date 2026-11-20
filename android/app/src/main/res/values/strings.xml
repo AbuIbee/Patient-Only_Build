@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">My Memoria Ally</string>
-    <string name="title_activity_main">My Memoria Ally</string>
+    <string name="app_name">Haneen Care Network</string>
+    <string name="title_activity_main">Haneen Care Network</string>
     <string name="package_name">com.memoriahelps.ap</string>
     <string name="custom_url_scheme">com.memoriahelps.ap</string>
 </resources>

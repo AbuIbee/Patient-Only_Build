@@ -31,11 +31,15 @@ function mapOrgVisit(r: {
   actual_start: string | null; actual_end: string | null; visit_notes: string | null; status: string; patients: unknown; profiles: unknown;
 }): OrgVisit {
   const patient = r.patients as unknown as { first_name: string; last_name: string; preferred_name: string | null } | null;
-  const caregiver = r.profiles as unknown as { first_name: string; last_name: string } | null;
+  const caregiver = r.profiles as { first_name: string | null; last_name: string | null } | null;
+  const caregiverName = [caregiver?.first_name, caregiver?.last_name]
+    .map(part => part?.trim())
+    .filter(part => part && !part.includes('@'))
+    .join(' ');
   return {
     id: r.id, patientId: r.patient_id,
     patientName: patient ? (patient.preferred_name || `${patient.first_name} ${patient.last_name}`) : 'Unknown patient',
-    caregiverId: r.caregiver_id, caregiverName: caregiver ? `${caregiver.first_name} ${caregiver.last_name}` : 'Unknown staff',
+    caregiverId: r.caregiver_id, caregiverName: caregiverName || 'Caregiver name unavailable',
     scheduledStart: r.scheduled_start, scheduledEnd: r.scheduled_end, actualStart: r.actual_start, actualEnd: r.actual_end,
     visitNotes: r.visit_notes,
     status: r.status as VisitStatus,

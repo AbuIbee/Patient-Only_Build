@@ -278,9 +278,7 @@ export default function SelfServiceApplicationFlow({ legalName, contactEmail, on
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 flex gap-2">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>
-            A monthly fee based on your organization's actual active-patient count begins the first day of the calendar month after
-            activation, using the schedule shown on our pricing page. Your initial recurring billing authorization is collected before
-            your license activates. No charge occurs until you complete this step.
+            Monthly pricing is based on your organization's active-patient count. Review the pricing schedule and complete a separate payment authorization before recurring charges can be collected.
           </span>
         </div>
 
@@ -318,15 +316,17 @@ export default function SelfServiceApplicationFlow({ legalName, contactEmail, on
         <CheckCircle2 className="w-12 h-12 text-ent-forest mx-auto" />
         <h2 className="text-lg font-bold text-ent-ink">Application verified — agreements next</h2>
         <p className="text-sm text-ent-text">
-          Your application (reference {result.applicationReference}) passed automated verification. Legal agreement execution and
-          payment authorization are the next steps before your license activates.
+          Your application (reference {result.applicationReference}) passed automated verification. Open your application to review and electronically sign the SaaS License Agreement and Business Associate Agreement.
         </p>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 text-left">
-          Electronic signature capture for your license and BAA agreement is not yet connected to a live provider in this
-          environment — this is a labeled, known dependency, not a skipped step. A Platform Owner will contact you to complete
-          agreement execution and initiate billing.
-        </div>
-        <p className="text-sm text-ent-muted">You can sign back in at any time to check your application status.</p>
+        {onSubmitted ? (
+          <button type="button" onClick={onSubmitted} className="inline-block px-5 py-2.5 rounded-xl bg-ent-bronze text-white font-semibold">
+            Continue to agreements
+          </button>
+        ) : (
+          <a href="/Professional" className="inline-block px-5 py-2.5 rounded-xl bg-ent-bronze text-white font-semibold">
+            Continue to agreements
+          </a>
+        )}
       </div>
     );
   }

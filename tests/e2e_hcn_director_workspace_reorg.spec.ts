@@ -51,6 +51,39 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
 
     const nav = page.getByRole('navigation', { name: 'ADMIN OFFICE navigation' });
     await expect(nav.getByRole('button', { name: 'Director Dashboard' })).toBeVisible({ timeout: 20000 });
+
+    const header = page.locator('header').first();
+    await expect(header.getByText(/E2E Director Navigation/)).toBeVisible();
+    await expect(header.getByRole('button', { name: 'Director’s Assistant' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Director quick actions' }).getByRole('button')).toHaveCount(5);
+    await expect(page.getByRole('button', { name: 'Open Assign Caregivers' })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'Recent caregiver attendance' })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'Operational metrics' }).getByRole('button')).toHaveCount(3);
+    await expect(page.getByRole('heading', { name: 'Needs Your Attention' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Recent Staff Activity' })).toBeVisible();
+    await expect(header.locator('img[src="/haneen-favicon.svg"]')).toHaveCount(0);
+    await expect(page.locator('footer img[src="/haneen-favicon.svg"]')).toHaveCount(1);
+
+    await header.getByRole('button', { name: 'Search organization patients' }).click();
+    const search = page.getByRole('dialog', { name: 'Search organization patients' });
+    await search.getByRole('searchbox').fill('Navigation Patient');
+    await expect(search.getByRole('button', { name: /E2E Navigation Patient.*Open Patient Information/ })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(search).toBeHidden();
+
+    await header.getByRole('button', { name: 'Director’s Assistant' }).click();
+    await expect(page.getByRole('dialog', { name: 'Director’s Assistant' }).getByRole('button', { name: 'Ask', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    const headerBox = await header.boundingBox();
+    const navBox = await nav.boundingBox();
+    expect(headerBox).not.toBeNull();
+    expect(navBox).not.toBeNull();
+    if (headerBox && navBox) {
+      expect(headerBox.x).toBe(0);
+      expect(headerBox.y + headerBox.height).toBeLessThan(navBox.y);
+    }
+
     // Clinical Coordination is a top-priority Organization destination.
     await nav.getByRole('button', { name: 'Clinical Coordination' }).click();
     await expect(page).toHaveURL(/\/Professional\/Admin\/clinical$/i);
@@ -59,12 +92,15 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     expect((await nav.locator('button').allTextContents()).map(t => t.trim())).toEqual([
       'Director Dashboard', 'Clinical Coordination', 'Staff Management', 'Patient Management', 'Employee Schedule',
       'Assignments and Coverage', 'Care Operations', 'Incidents and Escalations',
-      'Care Communications', 'Professional Applications & Approvals',
-      'Reports and Insights', 'Organization Settings',
+      'Care Communications', 'Reports and Insights',
+      'Professional Applications & Approvals', 'Organization Settings',
     ]);
     await expect(nav.getByRole('button', { name: 'Organization Overview' })).toHaveCount(0);
     await expect(nav.getByRole('button', { name: 'Licensing and Entitlements' })).toHaveCount(0);
     await expect(nav.getByRole('button', { name: 'Office Ownership' })).toHaveCount(0);
+
+    await nav.getByRole('button', { name: 'Professional Applications & Approvals' }).click();
+    await expect(page.getByText(/Review applications submitted to your organization/)).toBeVisible();
 
     await nav.getByRole('button', { name: 'Patient Management' }).click();
     await expect(page).toHaveURL(/\/Professional\/Admin\/patients$/i);
@@ -116,9 +152,17 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
 
     // Shared shell's mobile drawer must reflect the same regrouped navigation.
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByRole('button', { name: 'Open navigation' }).click();
-    await expect(page.getByRole('button', { name: 'Employee Schedule' })).toBeVisible();
-    await page.getByRole('button', { name: 'Employee Schedule' }).click();
+    await expect(header.getByRole('button', { name: 'Search organization patients' })).toBeVisible();
+    await expect(header.getByRole('button', { name: 'Director’s Assistant' })).toBeVisible();
+    const menuButton = header.getByRole('button', { name: 'Open navigation' });
+    await menuButton.click();
+    const menu = page.getByRole('dialog', { name: 'Director navigation' });
+    await expect(menu.getByRole('button', { name: 'Close navigation' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(menuButton).toBeFocused();
+    await menuButton.click();
+    await menu.getByRole('button', { name: 'Employee Schedule' }).click();
     await expect(page).toHaveURL(/\/Professional\/Admin\/scheduling$/i);
   } finally {
     await cleanup(ctx);

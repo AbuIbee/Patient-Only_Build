@@ -422,6 +422,19 @@ export default function ProfessionalOfficeResolver() {
     ...(ownedOrganizations.length ? [{ key: 'owner' as const, orgName: ownedOrganizations[0].organizationName }] : []),
   ];
 
+  // A self-service applicant can already own the auto-provisioned organization
+  // while their Director membership is invited. The workspace entry must still
+  // show their agreements. Explicit office routes use their usual access rules.
+  if (
+    !requestedOffice &&
+    !manualSelection &&
+    myApplication?.requestedOffice === 'director' &&
+    myApplication.autoVerificationResult?.organization_auto_provisioned === true &&
+    ['agreements_pending', 'approved', 'agreements_executed', 'payment_authorization_pending'].includes(myApplication.status)
+  ) {
+    return <ApplicationStatusPage application={myApplication} onRefresh={() => { void refresh(); }} />;
+  }
+
   if (availableOffices.length === 0) {
     // HCN organization license and office authentication
     // remediation, 2026-10-31 (P0-05). Takes priority over every
@@ -542,12 +555,51 @@ export default function ProfessionalOfficeResolver() {
 
   const switcher = <OfficeSwitcherBar offices={availableOffices} selected={effective} onSelect={navigateToOffice} />;
   const officeBasePath = `/Professional/${OFFICE_SEGMENT[effective]}`;
+  const useWorkspaceSwitcher = import.meta.env.VITE_ENTERPRISE_SITE === 'true' && (effective === 'admin' || effective === 'caregiver');
+  const directorOfficeLinks = useWorkspaceSwitcher && effective === 'admin' && availableOffices.length > 1 ? (
+    <section aria-label="Switch office" className="space-y-2 border-t border-ent-line pt-4">
+      <h2 className="font-semibold text-ent-ink">Switch office</h2>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {availableOffices.map(office => (
+          <li key={office.key}>
+            {office.key === effective ? (
+              <p aria-current="page" className="rounded-xl border border-ent-line bg-ent-pale px-3 py-2.5 text-sm font-semibold text-ent-ink">
+                Director <span className="ml-1 text-xs font-normal text-ent-muted">Current office</span>
+              </p>
+            ) : (
+              <button type="button" onClick={() => navigateToOffice(office.key)}
+                className="block w-full rounded-xl border border-ent-line bg-ent-bg px-3 py-2.5 text-left text-sm font-semibold text-ent-ink hover:bg-ent-pale">
+                {OFFICE_LABEL[office.key]}
+                {office.orgName && <span className="block text-xs font-normal text-ent-muted">{office.orgName}</span>}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  ) : undefined;
+  const caregiverSwitcher = useWorkspaceSwitcher && effective === 'caregiver' && availableOffices.length > 1 ? (
+    <select aria-label="Switch office" className="hcn-office-role-switcher" value={effective}
+      onChange={event => {
+        const selected = availableOffices.find(office => office.key === event.target.value);
+        if (selected) navigateToOffice(selected.key);
+      }}>
+      {availableOffices.map(office => (
+        <option key={office.key} value={office.key}>
+          {office.key === 'admin' ? 'Director' : OFFICE_LABEL[office.key]}
+        </option>
+      ))}
+    </select>
+  ) : undefined;
 
   return (
     <div>
-      {switcher}
-      {effective === 'admin' && director && <OrganizationDirectorDashboard organizationId={director.organizationId} basePath={officeBasePath} />}
-      {effective === 'caregiver' && <EnterpriseCaregiverDashboard basePath={officeBasePath} />}
+      {!useWorkspaceSwitcher && switcher}
+      {effective === 'admin' && director && (
+        <OrganizationDirectorDashboard organizationId={director.organizationId}
+          basePath={officeBasePath} officeLinks={directorOfficeLinks} />
+      )}
+      {effective === 'caregiver' && <EnterpriseCaregiverDashboard basePath={officeBasePath} officeSwitcher={caregiverSwitcher} />}
       {effective === 'medical' && <ClinicalOfficeDashboard filterRole="medical_professional" basePath={officeBasePath} />}
       {effective === 'therapy' && <ClinicalOfficeDashboard filterRole="therapist" basePath={officeBasePath} />}
       {effective === 'patient' && patientOfficeSubjectId && <EnterprisePatientDashboard basePath={officeBasePath} subjectPatientId={patientOfficeSubjectId} />}

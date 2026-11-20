@@ -65,19 +65,26 @@ test('Owner independently approves caregiver office; patient scoped, then revoke
       ' AND patient_id='+q(patient)+' AND user_id='+q(users[1])+
       " AND org_role='caregiver' AND is_active=true;")).toBe('1');
     await directorPage.reload();
-    const caregiver=directorPage.getByRole('button',{name:/Enterprise Caregiver/});
-    await expect(caregiver).toBeVisible({timeout:25000});
+    await navAfterApproval.getByRole('button', { name: 'Organization Settings' }).click();
+    const officeLinks = directorPage.getByRole('region', { name: 'Switch office' });
+    const caregiver = officeLinks.getByRole('button', { name: /Enterprise Caregiver/ });
+    await expect(directorPage.locator('header').getByRole('combobox', { name: 'Switch office' })).toHaveCount(0);
+    await expect(caregiver).toBeVisible({ timeout: 25_000 });
     await caregiver.click();
     await expect(directorPage).toHaveURL(/\/Professional\/Caregiver\/(?:dashboard)?$/i);
-    // The patient also appears inside the AI assistant's hidden select option.
-    // Assert the actual Caregiver patient card is visible.
-    await expect(directorPage.getByRole('button', { name: /SP Synthetic Office Patient/ })).toBeVisible({timeout:25000});
+    const caregiverNav = directorPage.getByRole('navigation', { name: 'Enterprise navigation' });
+    await caregiverNav.getByRole('button', { name: 'My Patients', exact: true }).click();
+    await expect(directorPage.getByRole('heading', { name: 'Assigned Patient Calendar' })).toBeVisible();
+    await directorPage.getByRole('button', { name: /SP Synthetic Office Patient/ }).click();
+    await expect(directorPage.getByRole('heading', { name: 'Synthetic Office Patient', exact: true })).toBeVisible({ timeout: 25000 });
 
     ownerPage.once('dialog',d=>d.accept('Synthetic test complete; revoke caregiver office now'));
     await review.getByRole('button',{name:'Revoke office access'}).click();
     await expect(review.getByText(/Office access inactive or revoked/)).toBeVisible({timeout:15000});
     await directorPage.reload();
-    await expect(directorPage.getByRole('button',{name:/Enterprise Caregiver/})).toHaveCount(0);
+    await expect(navAfterApproval.getByRole('button', { name: 'Organization Settings' })).toBeVisible();
+    await navAfterApproval.getByRole('button', { name: 'Organization Settings' }).click();
+    await expect(officeLinks.getByRole('button', { name: /Enterprise Caregiver/ })).toHaveCount(0);
     expect(sql("SELECT org_role FROM organization_memberships WHERE organization_id="+q(org)+
       " AND user_id="+q(users[1])+";")).toBe('director');
   }finally{

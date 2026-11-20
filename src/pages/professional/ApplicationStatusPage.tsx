@@ -164,19 +164,6 @@ export default function ApplicationStatusPage({ application, onRefresh }: { appl
     );
   }
 
-  // These are distinct server-owned lifecycle states. Do not tell an applicant
-  // that agreements remain unsigned after execution, or that payment is due
-  // when the backend has already moved to a later state.
-  // HCN-ONBOARDING-PRODUCTION-001 Section 1/2 -- this used to be an
-  // informational dead end ("Agreement signing is not yet available in
-  // this workspace") with no actionable next step. Now renders the
-  // real first-party signing flow (AgreementExecutionFlow): the
-  // Business Associate Agreement executes for real; the Haneen SaaS
-  // License Agreement shows an honest BLOCKED state (no approved
-  // template exists yet) rather than a fake signing form. onRefresh
-  // re-fetches the application, which will reflect the server's own
-  // status advance to 'agreements_executed' once (if) both agreements
-  // are executed.
   if (application.status === 'agreements_pending') {
     return (
       <Shell showSignInAction>
@@ -184,7 +171,7 @@ export default function ApplicationStatusPage({ application, onRefresh }: { appl
           <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-2">
             <Clock className="w-10 h-10 text-ent-forest mx-auto" />
             <h1 className="text-lg font-bold text-ent-ink">Application verified — agreements pending</h1>
-            <p className="text-sm text-ent-text">Your application passed automated verification. Both agreements below must be executed before billing authorization can begin.</p>
+            <p className="text-sm text-ent-text">Your application passed automated verification. Review and electronically sign both agreements to continue with your application.</p>
           </div>
           <AgreementExecutionFlow application={application} onRefresh={onRefresh} />
         </div>
@@ -192,16 +179,6 @@ export default function ApplicationStatusPage({ application, onRefresh }: { appl
     );
   }
 
-  // CONFIRMED GAP (found while implementing automatic self-service
-  // organization provisioning, 2026-10-31): 'approved' had no branch
-  // here at all and fell through to the bare generic fallback below --
-  // true both for this new auto-provisioned path and for the
-  // pre-existing Platform-Owner-approval path. From the applicant's own
-  // point of view 'approved' and 'agreements_pending' require the
-  // identical next action (none -- agreement signing is not yet
-  // available in this workspace for either path), so the same
-  // informative content applies; the only real difference is that an
-  // organization now exists, which this copy says honestly.
   if (application.status === 'approved') {
     return (
       <Shell showSignInAction>
@@ -209,7 +186,7 @@ export default function ApplicationStatusPage({ application, onRefresh }: { appl
           <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-6 sm:p-7 text-center space-y-2">
             <Clock className="w-10 h-10 text-ent-forest mx-auto" />
             <h1 className="text-lg font-bold text-ent-ink">Application approved — agreements pending</h1>
-            <p className="text-sm text-ent-text">Your application was verified and your organization has been created. Both agreements below must be executed before billing authorization can begin.</p>
+            <p className="text-sm text-ent-text">Your application was verified and your organization has been created. Review and electronically sign both agreements to continue with your application.</p>
           </div>
           <AgreementExecutionFlow application={application} onRefresh={onRefresh} />
         </div>
