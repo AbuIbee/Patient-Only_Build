@@ -542,29 +542,29 @@ export default function ProfessionalOfficeResolver() {
 
   const switcher = <OfficeSwitcherBar offices={availableOffices} selected={effective} onSelect={navigateToOffice} />;
   const officeBasePath = `/Professional/${OFFICE_SEGMENT[effective]}`;
-  const showDirectorSwitcherInHeader = effective === 'admin' && import.meta.env.VITE_ENTERPRISE_SITE === 'true';
+  const useWorkspaceSwitcher = import.meta.env.VITE_ENTERPRISE_SITE === 'true' && (effective === 'admin' || effective === 'caregiver');
+  const workspaceSwitcher = useWorkspaceSwitcher && availableOffices.length > 1 ? (
+    <select aria-label="Switch office" className="hcn-office-role-switcher" value={effective}
+      onChange={event => {
+        const selected = availableOffices.find(office => office.key === event.target.value);
+        if (selected) navigateToOffice(selected.key);
+      }}>
+      {availableOffices.map(office => (
+        <option key={office.key} value={office.key}>
+          {office.key === 'admin' ? 'Director' : OFFICE_LABEL[office.key]}
+        </option>
+      ))}
+    </select>
+  ) : undefined;
 
   return (
     <div>
-      {!showDirectorSwitcherInHeader && switcher}
+      {!useWorkspaceSwitcher && switcher}
       {effective === 'admin' && director && (
-        <OrganizationDirectorDashboard
-          organizationId={director.organizationId}
-          basePath={officeBasePath}
-          officeSwitcher={showDirectorSwitcherInHeader && availableOffices.length > 1 ? (
-            <select aria-label="Switch office" className="hcn-director-office-switcher" value={effective}
-              onChange={event => {
-                const selected = availableOffices.find(office => office.key === event.target.value);
-                if (selected) navigateToOffice(selected.key);
-              }}>
-              {availableOffices.map(office => (
-                <option key={office.key} value={office.key}>{office.key === 'admin' ? 'Director' : OFFICE_LABEL[office.key]}</option>
-              ))}
-            </select>
-          ) : undefined}
-        />
+        <OrganizationDirectorDashboard organizationId={director.organizationId}
+          basePath={officeBasePath} officeSwitcher={workspaceSwitcher} />
       )}
-      {effective === 'caregiver' && <EnterpriseCaregiverDashboard basePath={officeBasePath} />}
+      {effective === 'caregiver' && <EnterpriseCaregiverDashboard basePath={officeBasePath} officeSwitcher={workspaceSwitcher} />}
       {effective === 'medical' && <ClinicalOfficeDashboard filterRole="medical_professional" basePath={officeBasePath} />}
       {effective === 'therapy' && <ClinicalOfficeDashboard filterRole="therapist" basePath={officeBasePath} />}
       {effective === 'patient' && patientOfficeSubjectId && <EnterprisePatientDashboard basePath={officeBasePath} subjectPatientId={patientOfficeSubjectId} />}

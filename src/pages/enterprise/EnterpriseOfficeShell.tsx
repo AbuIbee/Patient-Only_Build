@@ -7,16 +7,8 @@
 // office-agnostic component so the Medical Professional and Therapist
 // Professional offices do not duplicate ~400 lines of shell JSX each.
 //
-// Deliberately NOT retrofitted onto EnterpriseCaregiverDashboard.tsx in
-// this pass — that component is large, already shipped, and already
-// independently browser-verified; forcing an in-place refactor onto it
-// risks a regression in already-working, owner-reviewed functionality
-// for no functional gain. It remains a natural candidate for a later,
-// dedicated, low-risk refactor once this shell has proven itself across
-// the two new offices. Flagged here rather than done silently.
-//
-// The shell is a pure, controlled presentational component: it owns no
-// data-fetching and no routing state. Each office component supplies
+// The shell owns presentation and drawer state. Offices own their data
+// and routing. Each office component supplies
 // `activeNav`/`onNavigate`, its own nav groups, and its own main
 // content — matching "OfficeDashboardLayout" responsibility boundaries.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -42,8 +34,12 @@ export interface EnterpriseOfficeShellProps<K extends string> {
   roleLabel: string;
   fullName: string;
   initials: string;
+  workspaceTheme?: boolean;
   headerTools?: ReactNode;
   officeSwitcher?: ReactNode;
+  organizationSwitcher?: ReactNode;
+  navLabel?: string;
+  showNotifications?: boolean;
   navItems: OfficeNavItem<K>[];
   navGroups: OfficeNavGroup<K>[];
   activeNav: K;
@@ -53,23 +49,29 @@ export interface EnterpriseOfficeShellProps<K extends string> {
 }
 
 export function EnterpriseOfficeShell<K extends string>({
-  officeBadge, orgLabel, roleLabel, fullName, initials, headerTools, officeSwitcher,
+  officeBadge, orgLabel, roleLabel, fullName, initials, workspaceTheme = false, headerTools, officeSwitcher, organizationSwitcher, navLabel, showNotifications = true,
   navItems, navGroups, activeNav, onNavigate, onLogout, children,
 }: EnterpriseOfficeShellProps<K>) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isHaneenSite = import.meta.env.VITE_ENTERPRISE_SITE === 'true';
-  const styledWorkspace = isHaneenSite && Boolean(headerTools);
+  const styledWorkspace = isHaneenSite && workspaceTheme;
+  const accessibleDrawer = styledWorkspace || roleLabel === 'Caregiver';
   const menuTrigger = useRef<HTMLButtonElement>(null);
   const closeMenu = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (mobileNavOpen && styledWorkspace) closeMenu.current?.focus();
-  }, [mobileNavOpen, styledWorkspace]);
+    if (!mobileNavOpen || !accessibleDrawer) return;
+    const trigger = menuTrigger.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeMenu.current?.focus();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      trigger?.focus();
+    };
+  }, [mobileNavOpen, accessibleDrawer]);
 
-  const closeMobileNav = () => {
-    setMobileNavOpen(false);
-    if (styledWorkspace) menuTrigger.current?.focus();
-  };
+  const closeMobileNav = () => setMobileNavOpen(false);
 
   const renderNavButton = (itemKey: K, onClick: () => void, mobile: boolean) => {
     const item = navItems.find((n) => n.key === itemKey);
@@ -91,11 +93,56 @@ export function EnterpriseOfficeShell<K extends string>({
     );
   };
 
+  const header = (
+    <header className="hcn-office-header bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
+      <div className="hcn-office-brand flex items-center gap-3 min-w-0">
+        <button ref={menuTrigger} type="button" aria-expanded={accessibleDrawer ? mobileNavOpen : undefined} onClick={() => setMobileNavOpen(true)} aria-label="Open navigation" className="lg:hidden p-1.5 -ml-1.5 text-ent-ink flex-shrink-0">
+          <Menu className="w-5 h-5" />
+        </button>
+        {styledWorkspace ? (
+          <>
+            <span className="hcn-office-org-symbol" aria-hidden="true"><Building2 size={27} /></span>
+            <div className="min-w-0">
+              {organizationSwitcher ?? <span className="hcn-office-org-name">{orgLabel}</span>}
+              <span className="hcn-office-org-caption">Licensed Organization · {roleLabel} Office</span>
+            </div>
+          </>
+        ) : (
+          <div className="text-[12.5px] sm:text-[13px] font-semibold truncate">
+            {organizationSwitcher ?? <span className="text-ent-ink">{orgLabel}</span>}
+            <span className="text-ent-muted"> / {roleLabel} Workspace</span>
+          </div>
+        )}
+      </div>
+      {styledWorkspace && <div className="hcn-office-header-tools">{headerTools}</div>}
+      <div className="hcn-office-header-account flex items-center gap-3 flex-shrink-0">
+        {showNotifications && <NotificationBell />}
+        {styledWorkspace ? (
+          <>
+            <span className="hcn-office-avatar" title={fullName} aria-hidden="true">{initials}</span>
+            {officeSwitcher ?? <span className="hidden sm:inline text-sm font-semibold">{roleLabel}</span>}
+            <button type="button" onClick={onLogout} aria-label="Logout" className="hcn-office-header-logout">
+              <LogOut size={19} aria-hidden="true" />
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="hidden sm:block w-8 h-8 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-[11px]" aria-hidden="true">{initials}</div>
+            <button type="button" onClick={onLogout} aria-label="Logout" className="lg:hidden p-1.5 text-ent-muted hover:text-ent-ink">
+              <LogOut className="w-5 h-5" />
+            </button>
+          </>
+        )}
+      </div>
+    </header>
+  );
+
   return (
-    <div className={`min-h-screen bg-ent-bg flex ${styledWorkspace ? 'hcn-director-workspace' : ''}`}>
+    <div className={`min-h-screen bg-ent-bg flex ${styledWorkspace ? 'hcn-office-workspace' : ''}`}>
+      {styledWorkspace && header}
       <aside className="hidden lg:flex lg:flex-col w-64 shrink-0 bg-ent-panel border-r border-ent-line sticky top-0 h-screen hcn-workspace-navigation">
         {styledWorkspace ? (
-          <div className="hcn-director-nav-title"><Building2 size={19} aria-hidden="true" />{roleLabel} Office</div>
+          <div className="hcn-office-nav-title"><Building2 size={19} aria-hidden="true" />{roleLabel} Office</div>
         ) : (
           <div className="flex items-center gap-2.5 px-4 pt-5 pb-4 border-b border-ent-line">
             <div className="w-10 h-10 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0">
@@ -107,7 +154,7 @@ export function EnterpriseOfficeShell<K extends string>({
             </div>
           </div>
         )}
-        <nav aria-label={`${officeBadge} navigation`} className="hcn-director-nav-list flex-1 overflow-y-auto px-2.5 py-2">
+        <nav aria-label={navLabel ?? `${officeBadge} navigation`} className="hcn-office-nav-list flex-1 overflow-y-auto px-2.5 py-2">
           {navGroups.map((group) => (
             <div key={group.label}>
               <div className="text-[9px] font-extrabold tracking-[0.16em] text-ent-muted uppercase px-2.5 pt-4 pb-1.5">{group.label}</div>
@@ -115,7 +162,7 @@ export function EnterpriseOfficeShell<K extends string>({
             </div>
           ))}
         </nav>
-        <div className="hcn-director-nav-account p-3 border-t border-ent-line flex items-center gap-2.5">
+        <div className="hcn-office-nav-account p-3 border-t border-ent-line flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0" aria-hidden="true">
             {initials}
           </div>
@@ -129,59 +176,19 @@ export function EnterpriseOfficeShell<K extends string>({
         </div>
       </aside>
 
-      <div className="hcn-director-shell-content flex-1 flex flex-col min-w-0">
-        <header className="hcn-director-header bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
-          <div className="hcn-director-brand flex items-center gap-3 min-w-0">
-            <button ref={menuTrigger} type="button" aria-expanded={styledWorkspace ? mobileNavOpen : undefined} onClick={() => setMobileNavOpen(true)} aria-label="Open navigation" className="lg:hidden p-1.5 -ml-1.5 text-ent-ink flex-shrink-0">
-              <Menu className="w-5 h-5" />
-            </button>
-            {styledWorkspace ? (
-              <>
-                <span className="hcn-director-org-symbol" aria-hidden="true"><Building2 size={27} /></span>
-                <div className="min-w-0">
-                  <span className="hcn-director-org-name">{orgLabel}</span>
-                  <span className="hcn-director-org-caption">Licensed Organization · {roleLabel} Office</span>
-                </div>
-              </>
-            ) : (
-              <div className="text-[12.5px] sm:text-[13px] font-semibold truncate">
-                <span className="text-ent-ink">{orgLabel}</span>
-                <span className="text-ent-muted"> / {roleLabel} Workspace</span>
-              </div>
-            )}
-          </div>
-          {styledWorkspace && <div className="hcn-director-header-tools">{headerTools}</div>}
-          <div className="hcn-director-header-account flex items-center gap-3 flex-shrink-0">
-            <NotificationBell />
-            {styledWorkspace ? (
-              <>
-                <span className="hcn-director-avatar" title={fullName} aria-hidden="true">{initials}</span>
-                {officeSwitcher ?? <span className="hidden sm:inline text-sm font-semibold">{roleLabel}</span>}
-                <button type="button" onClick={onLogout} aria-label="Logout" className="hcn-director-header-logout">
-                  <LogOut size={19} aria-hidden="true" />
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="hidden sm:block w-8 h-8 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-[11px]" aria-hidden="true">{initials}</div>
-                <button type="button" onClick={onLogout} aria-label="Logout" className="lg:hidden p-1.5 text-ent-muted hover:text-ent-ink">
-                  <LogOut className="w-5 h-5" />
-                </button>
-              </>
-            )}
-          </div>
-        </header>
+      <div className="hcn-office-shell-content flex-1 flex flex-col min-w-0">
+        {!styledWorkspace && header}
 
         {mobileNavOpen && (
           <div className="lg:hidden fixed inset-0 z-50 bg-black/40" onClick={closeMobileNav}>
             <div
-              className="hcn-director-drawer hcn-workspace-navigation bg-ent-panel w-72 max-w-[calc(100vw-2rem)] h-full p-2 overflow-y-auto"
-              role={styledWorkspace ? 'dialog' : undefined}
-              aria-label={styledWorkspace ? `${roleLabel} navigation` : undefined}
-              aria-modal={styledWorkspace ? true : undefined}
+              className="hcn-office-drawer hcn-workspace-navigation bg-ent-panel w-72 max-w-[calc(100vw-2rem)] h-full p-2 overflow-y-auto"
+              role={accessibleDrawer ? 'dialog' : undefined}
+              aria-label={accessibleDrawer ? `${roleLabel} navigation` : undefined}
+              aria-modal={accessibleDrawer ? true : undefined}
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(event) => {
-                if (!styledWorkspace) return;
+                if (!accessibleDrawer) return;
                 if (event.key === 'Escape') closeMobileNav();
                 if (event.key !== 'Tab') return;
                 const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>('button');
@@ -217,9 +224,9 @@ export function EnterpriseOfficeShell<K extends string>({
           </div>
         )}
 
-        <div className="hcn-director-body flex min-w-0 flex-1 flex-col">
-          <main className="hcn-director-main flex-1 overflow-y-auto p-4 sm:p-6 bg-ent-bg">
-            <div className="hcn-director-main-inner max-w-6xl mx-auto space-y-5">
+        <div className="hcn-office-body flex min-w-0 flex-1 flex-col">
+          <main className="hcn-office-main flex-1 overflow-y-auto p-4 sm:p-6 bg-ent-bg">
+            <div className="hcn-office-main-inner max-w-6xl mx-auto space-y-5">
               {!styledWorkspace && headerTools}
               {children}
             </div>
@@ -241,5 +248,5 @@ function WorkspaceFooter() {
 }
 
 export function OfficeCard({ children }: { children: React.ReactNode }) {
-  return <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">{children}</div>;
+  return <div className="hcn-office-card bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">{children}</div>;
 }

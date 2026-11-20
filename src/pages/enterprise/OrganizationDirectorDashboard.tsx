@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import {
   Building2, Users, UserPlus, Trash2, LayoutDashboard, UserCog,
   Loader2, CreditCard, ClipboardList, MessageSquare, Link2, Unlink, CalendarClock,
-  ClipboardCheck, ShieldAlert, BarChart3, Settings as SettingsIcon, ChevronRight, CheckCircle2, Stethoscope, Search, Sparkles,
+  ClipboardCheck, ShieldAlert, BarChart3, Settings as SettingsIcon, ChevronRight, CheckCircle2, Stethoscope,
 } from 'lucide-react';
 import {
   getMyOrganizations, getOrgMembers, getOrgLicense, getOrgCoveredPatients, closePatientCoverage,
@@ -47,8 +47,7 @@ import PatientInformation from '@/components/healthcare/PatientInformation';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
 import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
-import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
-import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import OfficeHeaderTools from './OfficeHeaderTools';
 import DirectorScheduleCalendar from './DirectorScheduleCalendar';
 import DirectorAttendancePanel, { DirectorRecentAttendance } from './DirectorAttendancePanel';
 import DirectorOfficeAccessPanel from './DirectorOfficeAccessPanel';
@@ -1134,65 +1133,6 @@ const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ADMINISTRATION', items: ['applications', 'reports', 'settings'] },
 ];
 
-function DirectorHeaderTools({ orgId, patients, onOpenPatient }: {
-  orgId: string;
-  patients: OrgCoveredPatient[];
-  onOpenPatient: (patientId: string) => void;
-}) {
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const term = query.trim().toLowerCase();
-  const matchingPatients = term ? patients.filter(patient =>
-    [patient.firstName, patient.lastName, patient.preferredName, patient.patientId]
-      .some(value => value?.toLowerCase().includes(term))
-  ) : [];
-
-  return (
-    <>
-      <Dialog open={searchOpen} onOpenChange={open => {
-        setSearchOpen(open);
-        if (!open) setQuery('');
-      }}>
-        <DialogTrigger className="hcn-director-tool hcn-director-search" aria-label="Search organization patients">
-          <Search size={17} aria-hidden="true" />
-          <span>Search patients</span>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogTitle>Search organization patients</DialogTitle>
-          <DialogDescription className="sr-only">Find a covered patient and open their information.</DialogDescription>
-          <input type="search" aria-label="Patient name or reference" value={query} onChange={event => setQuery(event.target.value)}
-            autoComplete="off" placeholder="Search patient name or reference…" className={inputCls} />
-          {term && (
-            <div role="region" aria-label="Matching covered patients" className="max-h-[50vh] overflow-y-auto space-y-2">
-              {matchingPatients.length ? matchingPatients.map(patient => (
-                <button type="button" key={patient.patientId} onClick={() => {
-                  onOpenPatient(patient.patientId);
-                  setSearchOpen(false);
-                  setQuery('');
-                }} className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
-                  <span className="min-w-0 break-words">{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span>
-                  <span className="text-sm font-semibold text-ent-forest">Open Patient Information →</span>
-                </button>
-              )) : <p className="text-sm text-ent-muted">No covered patient matches this search.</p>}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-      <Dialog>
-        <DialogTrigger className="hcn-director-tool" aria-label="Director’s Assistant">
-          <Sparkles size={17} aria-hidden="true" />
-          <span>Director’s Assistant</span>
-        </DialogTrigger>
-        <DialogContent className="max-h-[85dvh] overflow-y-auto">
-          <DialogTitle>Director’s Assistant</DialogTitle>
-          <DialogDescription className="sr-only">Ask about scheduling and care operations.</DialogDescription>
-          <HaneenAssistantPanel role="director" organizationId={orgId} showHeading={false} />
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
 function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
   members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
   visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
@@ -1207,8 +1147,8 @@ function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
   const recentIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').slice(0, 5);
 
   return (
-    <div className="hcn-director-dashboard space-y-5">
-      <div className="hcn-director-heading">
+    <div className="hcn-office-dashboard space-y-5">
+      <div className="hcn-office-heading">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-ent-ink">Director Dashboard</h1>
           <p className="text-sm text-ent-muted">Organization-wide oversight</p>
@@ -1218,9 +1158,9 @@ function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
         </time>
       </div>
 
-      <section aria-label="Director quick actions" className="hcn-director-card hcn-director-quick rounded-xl border border-ent-line bg-ent-panel p-4">
+      <section aria-label="Director quick actions" className="hcn-office-card hcn-office-quick rounded-xl border border-ent-line bg-ent-panel p-4">
         <h2 className="font-bold text-ent-ink">Director Quick Actions</h2>
-        <div className="hcn-director-action-grid">
+        <div className="hcn-office-action-grid">
           {([
             { label: 'Manage Patients', key: 'patients' as DirectorNavKey, icon: UserCog },
             { label: 'Staff & Credentials', key: 'staff' as DirectorNavKey, icon: Users },
@@ -1230,7 +1170,7 @@ function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
             { label: 'Care Communications', key: 'communications' as DirectorNavKey, icon: MessageSquare },
           ]).map((action) => (
             <button key={action.key} type="button" onClick={() => onNavigate(action.key)}
-              className="hcn-director-action"
+              className="hcn-office-action"
               aria-label={`Open ${action.label}`}>
               <action.icon size={23} aria-hidden="true" />
               <span>{action.label}</span>
@@ -1239,7 +1179,7 @@ function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
         </div>
       </section>
 
-      <section aria-label="Operational metrics" className="hcn-director-metrics">
+      <section aria-label="Operational metrics" className="hcn-office-metrics">
         <MetricCard label="Care Team Inventory" value={String(activeStaff + invitedStaff)} icon={Users}
           sub={`${activeStaff} active · ${invitedStaff} pending activation`} onClick={() => onNavigate('staff')} />
         <MetricCard label="Open Incidents" value={String(openIncidents)} icon={ShieldAlert}
@@ -1248,32 +1188,32 @@ function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
           sub="upcoming or in progress" onClick={() => onNavigate('scheduling')} />
       </section>
 
-      <div className="hcn-director-activity">
-        <section className="hcn-director-card hcn-director-activity-panel">
-          <div className="hcn-director-panel-header">
+      <div className="hcn-office-activity">
+        <section className="hcn-office-card hcn-office-activity-panel">
+          <div className="hcn-office-panel-header">
             <h2>Needs Your Attention</h2>
             <button type="button" onClick={() => onNavigate('incidents')}>View all incidents <ChevronRight size={15} aria-hidden="true" /></button>
           </div>
           {recentIncidents.length === 0 ? (
             <p className="text-sm text-ent-text">No unresolved incidents across your organization right now.</p>
           ) : (
-            <ul className="hcn-director-activity-list">
+            <ul className="hcn-office-activity-list">
               {recentIncidents.map(incident => (
                 <li key={incident.id}>
-                  <span className="hcn-director-row-icon hcn-director-row-incident"><ShieldAlert size={19} aria-hidden="true" /></span>
+                  <span className="hcn-office-row-icon hcn-office-row-incident"><ShieldAlert size={19} aria-hidden="true" /></span>
                   <div className="min-w-0">
                     <p className="font-semibold text-ent-ink capitalize">{incident.incidentType.replaceAll('_', ' ')} — {incident.patientName}</p>
                     <p className="text-xs text-ent-muted">{new Date(incident.occurredAt).toLocaleString()}</p>
                   </div>
-                  <span className="hcn-director-status">{incident.severity}</span>
+                  <span className="hcn-office-status">{incident.severity}</span>
                 </li>
               ))}
             </ul>
           )}
         </section>
 
-        <section className="hcn-director-card hcn-director-activity-panel">
-          <div className="hcn-director-panel-header">
+        <section className="hcn-office-card hcn-office-activity-panel">
+          <div className="hcn-office-panel-header">
             <h2>Recent Staff Activity</h2>
             <button type="button" onClick={() => onNavigate('operations')}>View care operations <ChevronRight size={15} aria-hidden="true" /></button>
           </div>
@@ -1282,10 +1222,10 @@ function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
           {recentHandoffs.length === 0 ? (
             <p className="text-sm text-ent-text">No shift handoffs recorded yet across your organization.</p>
           ) : (
-            <ul className="hcn-director-activity-list">
+            <ul className="hcn-office-activity-list">
               {recentHandoffs.map(handoff => (
                 <li key={handoff.id}>
-                  <span className="hcn-director-row-icon"><ClipboardCheck size={19} aria-hidden="true" /></span>
+                  <span className="hcn-office-row-icon"><ClipboardCheck size={19} aria-hidden="true" /></span>
                   <div className="min-w-0">
                     <p className="font-semibold text-ent-ink">{handoff.authorName} — {handoff.patientName}</p>
                     <p className="text-xs text-ent-muted line-clamp-2">{handoff.summary}</p>
@@ -1304,12 +1244,12 @@ function MetricCard({ label, value, sub, icon: Icon, onClick }: {
   label: string; value: string; sub: string; icon: OfficeNavItem<DirectorNavKey>['icon']; onClick: () => void;
 }) {
   return (
-    <button type="button" onClick={onClick} aria-label={`View ${label}: ${value}. ${sub}`} className="hcn-director-metric">
-      <span className="hcn-director-metric-icon"><Icon size={25} aria-hidden="true" /></span>
+    <button type="button" onClick={onClick} aria-label={`View ${label}: ${value}. ${sub}`} className="hcn-office-metric">
+      <span className="hcn-office-metric-icon"><Icon size={25} aria-hidden="true" /></span>
       <span className="min-w-0">
-        <span className="hcn-director-metric-label">{label}</span>
-        <span className="hcn-director-metric-count">{value}</span>
-        <span className="hcn-director-metric-detail">{sub}</span>
+        <span className="hcn-office-metric-label">{label}</span>
+        <span className="hcn-office-metric-count">{value}</span>
+        <span className="hcn-office-metric-detail">{sub}</span>
       </span>
     </button>
   );
@@ -1821,8 +1761,8 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
 
   return (
     <EnterpriseOfficeShell
-      officeBadge="ADMIN OFFICE" orgLabel={orgName || 'Organization'} roleLabel="Director" fullName={fullName} initials={initials}
-      headerTools={<DirectorHeaderTools key={organizationId} orgId={organizationId} patients={coveredPatients} onOpenPatient={openPatientInformation} />}
+      workspaceTheme officeBadge="ADMIN OFFICE" orgLabel={orgName || 'Organization'} roleLabel="Director" fullName={fullName} initials={initials}
+      headerTools={<OfficeHeaderTools role="director" key={organizationId} orgId={organizationId} patients={coveredPatients} onOpenPatient={openPatientInformation} />}
       officeSwitcher={officeSwitcher}
       navItems={DIRECTOR_NAV_ITEMS} navGroups={DIRECTOR_NAV_GROUPS}
       activeNav={nav === 'overview' || nav === 'licensing' || nav === 'ownership' ? 'settings' : nav}

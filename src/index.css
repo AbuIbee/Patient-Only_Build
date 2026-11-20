@@ -421,10 +421,10 @@ html.haneen-site :where(a, button, input, select, textarea):focus-visible {
   .hcn-director-report-print tr { break-inside: avoid; }
 }
 
-/* The Director Exact Navigation Mockup, scoped to the Director office. */
-html.haneen-site .hcn-director-workspace {
-  --director-header-height: 90px;
-  --director-sidebar-width: clamp(15rem, 20vw, 19.875rem);
+/* Shared Haneen Director and Caregiver workspace presentation. */
+html.haneen-site .hcn-office-workspace {
+  --office-header-height: 90px;
+  --office-sidebar-width: clamp(15rem, 20vw, 19.875rem);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
@@ -432,14 +432,14 @@ html.haneen-site .hcn-director-workspace {
   background: #f5f9fc;
 }
 
-.hcn-director-workspace .hcn-director-shell-content {
+.hcn-office-workspace .hcn-office-shell-content {
   display: contents;
 }
 
-.hcn-director-workspace .hcn-director-header {
+.hcn-office-workspace .hcn-office-header {
   grid-column: 1 / -1;
   grid-row: 1;
-  min-height: var(--director-header-height);
+  min-height: var(--office-header-height);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 1rem;
@@ -448,21 +448,21 @@ html.haneen-site .hcn-director-workspace {
   box-shadow: 0 2px 11px #1942610c;
 }
 
-.hcn-director-header .hcn-director-brand button {
+.hcn-office-header .hcn-office-brand button {
   min-width: 2.75rem;
   min-height: 2.75rem;
 }
 
-.hcn-director-org-symbol,
-.hcn-director-avatar,
-.hcn-director-metric-icon,
-.hcn-director-row-icon {
+.hcn-office-org-symbol,
+.hcn-office-avatar,
+.hcn-office-metric-icon,
+.hcn-office-row-icon {
   display: grid;
   place-items: center;
   flex: none;
 }
 
-.hcn-director-org-symbol {
+.hcn-office-org-symbol {
   width: 3.4375rem;
   height: 3.4375rem;
   border-radius: 0.875rem;
@@ -471,12 +471,12 @@ html.haneen-site .hcn-director-workspace {
   color: #2b668e;
 }
 
-.hcn-director-org-name,
-.hcn-director-org-caption {
+.hcn-office-org-name,
+.hcn-office-org-caption {
   display: block;
 }
 
-.hcn-director-org-name {
+.hcn-office-org-name {
   color: #102f4d;
   font-family: Georgia, serif;
   font-size: clamp(1.15rem, 2vw, 1.5625rem);
@@ -485,7 +485,7 @@ html.haneen-site .hcn-director-workspace {
   overflow-wrap: anywhere;
 }
 
-.hcn-director-org-caption {
+.hcn-office-org-caption {
   margin-top: 0.375rem;
   color: #416885;
   font-size: 0.6875rem;
@@ -494,16 +494,16 @@ html.haneen-site .hcn-director-workspace {
   font-weight: 700;
 }
 
-.hcn-director-header-tools,
-.hcn-director-header-account {
+.hcn-office-header-tools,
+.hcn-office-header-account {
   display: flex;
   align-items: center;
   gap: 0.625rem;
 }
 
-.hcn-director-tool,
-.hcn-director-office-switcher,
-.hcn-director-header-logout {
+.hcn-office-tool,
+.hcn-office-role-switcher,
+.hcn-office-header-logout {
   min-height: 2.75rem;
   padding: 0.5rem 0.75rem;
   border: 1px solid #cbdfea;
@@ -514,30 +514,30 @@ html.haneen-site .hcn-director-workspace {
   font-weight: 650;
 }
 
-.hcn-director-tool,
-.hcn-director-header-logout {
+.hcn-office-tool,
+.hcn-office-header-logout {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
 }
 
-.hcn-director-tool:hover,
-.hcn-director-header-logout:hover {
+.hcn-office-tool:hover,
+.hcn-office-header-logout:hover {
   background: #e7f3fc;
 }
 
-.hcn-director-search {
+.hcn-office-search {
   min-width: 10.5rem;
   justify-content: flex-start;
   background: #fcfeff;
 }
 
-.hcn-director-office-switcher {
+.hcn-office-role-switcher {
   max-width: 10.5rem;
 }
 
-.hcn-director-avatar {
+.hcn-office-avatar {
   width: 2.3125rem;
   height: 2.3125rem;
   border-radius: 50%;
@@ -547,13 +547,13 @@ html.haneen-site .hcn-director-workspace {
   font-weight: 700;
 }
 
-.hcn-director-workspace .hcn-workspace-navigation {
+.hcn-office-workspace .hcn-workspace-navigation {
   color: #fff;
   background: linear-gradient(155deg, #407c9f, #3c79a1 62%, #356f98);
   border-color: #356f98;
 }
 
-.hcn-director-nav-title {
+.hcn-office-nav-title {
   display: flex;
   align-items: center;
   gap: 0.6875rem;
@@ -564,55 +564,55 @@ html.haneen-site .hcn-director-workspace {
   font-weight: 700;
 }
 
-.hcn-director-workspace .hcn-director-nav-list {
+.hcn-office-workspace .hcn-office-nav-list {
   padding: 0 0.875rem;
 }
 
-.hcn-director-workspace .hcn-workspace-navigation :is(.text-ent-text, .text-ent-ink, .text-ent-muted) {
+.hcn-office-workspace .hcn-workspace-navigation :is(.text-ent-text, .text-ent-ink, .text-ent-muted) {
   color: #f8fcff;
 }
 
-.hcn-director-workspace .hcn-workspace-navigation .uppercase {
+.hcn-office-workspace .hcn-workspace-navigation .uppercase {
   color: #e5f4ff;
   font-size: 0.625rem;
 }
 
-.hcn-director-workspace .hcn-workspace-navigation button[aria-current="page"] {
+.hcn-office-workspace .hcn-workspace-navigation button[aria-current="page"] {
   background: #e9f6ff;
   color: #194b71;
 }
 
-.hcn-director-workspace .hcn-workspace-navigation button:not([aria-current="page"]):hover {
+.hcn-office-workspace .hcn-workspace-navigation button:not([aria-current="page"]):hover {
   background: #235779;
   color: #fff;
 }
 
-.hcn-director-workspace .hcn-workspace-navigation button:focus-visible {
+.hcn-office-workspace .hcn-workspace-navigation button:focus-visible {
   outline-color: #fff;
 }
 
-.hcn-director-workspace .hcn-director-nav-account,
-.hcn-director-drawer .border-t {
+.hcn-office-workspace .hcn-office-nav-account,
+.hcn-office-drawer .border-t {
   border-color: #e7f5ff50;
 }
 
-.hcn-director-workspace .hcn-director-body {
+.hcn-office-workspace .hcn-office-body {
   min-width: 0;
   grid-column: 1 / -1;
   grid-row: 2;
 }
 
-.hcn-director-workspace .hcn-director-main {
+.hcn-office-workspace .hcn-office-main {
   padding: clamp(1rem, 2vw, 1.875rem);
   background: radial-gradient(ellipse at top right, #e8f5fc, transparent 42%),
     linear-gradient(145deg, #f4faff, #f9fbfe 55%, #f5f9fc);
 }
 
-.hcn-director-workspace .hcn-director-main-inner {
+.hcn-office-workspace .hcn-office-main-inner {
   max-width: 92rem;
 }
 
-.hcn-director-heading {
+.hcn-office-heading {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -622,31 +622,31 @@ html.haneen-site .hcn-director-workspace {
   border-inline-start: 4px solid #c89728;
 }
 
-.hcn-director-heading h1 {
+.hcn-office-heading h1 {
   margin-bottom: 0.25rem;
   color: #0d2c4a;
   font: 700 clamp(1.6rem, 3vw, 2rem)/1.15 Georgia, serif;
   letter-spacing: -0.025em;
 }
 
-.hcn-director-heading time {
+.hcn-office-heading time {
   color: #486d83;
   font-size: 0.8125rem;
 }
 
-.hcn-director-card,
-.hcn-director-metric {
+.hcn-office-workspace .hcn-office-card,
+.hcn-office-metric {
   border: 1px solid #d9e7f0;
   border-radius: 0.6875rem;
   background: #fff;
   box-shadow: 0 4px 15px #244f710b;
 }
 
-.hcn-director-quick {
+.hcn-office-quick {
   padding: clamp(0.875rem, 1.5vw, 1.25rem);
 }
 
-.hcn-director-quick h2 {
+.hcn-office-quick h2 {
   margin-bottom: 0.875rem;
   color: #396a8a;
   font-size: 0.8125rem;
@@ -654,20 +654,20 @@ html.haneen-site .hcn-director-workspace {
   text-transform: uppercase;
 }
 
-.hcn-director-action-grid,
-.hcn-director-metrics,
-.hcn-director-activity {
+.hcn-office-action-grid,
+.hcn-office-metrics,
+.hcn-office-activity {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0.875rem;
 }
 
-.hcn-director-action-grid {
+.hcn-office-action-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5625rem;
 }
 
-.hcn-director-action {
+.hcn-office-action {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -685,18 +685,18 @@ html.haneen-site .hcn-director-workspace {
   background: #fdfefe;
 }
 
-.hcn-director-action svg {
+.hcn-office-action svg {
   color: #28799d;
   flex: none;
 }
 
-.hcn-director-action:hover,
-.hcn-director-metric:hover {
+.hcn-office-action:hover,
+.hcn-office-metric:hover {
   border-color: #699dbb;
   box-shadow: 0 4px 15px #244f711c;
 }
 
-.hcn-director-metric {
+.hcn-office-metric {
   --metric-accent: #79b5d6;
   --metric-icon-bg: #e3f2fb;
   --metric-icon-color: #21688f;
@@ -710,21 +710,21 @@ html.haneen-site .hcn-director-workspace {
   background: #f5fbff;
 }
 
-.hcn-director-metric:nth-child(2) {
+.hcn-office-metric:nth-child(2) {
   --metric-accent: #d8a745;
   --metric-icon-bg: #fff0d8;
   --metric-icon-color: #8a5e13;
   background: #fffaf2;
 }
 
-.hcn-director-metric:nth-child(3) {
+.hcn-office-metric:nth-child(3) {
   --metric-accent: #6ab5ac;
   --metric-icon-bg: #ddf2ee;
   --metric-icon-color: #247073;
   background: #f4fbf9;
 }
 
-.hcn-director-metric-icon {
+.hcn-office-metric-icon {
   width: clamp(2.25rem, 4vw, 3.5rem);
   height: clamp(2.25rem, 4vw, 3.5rem);
   border-radius: 0.875rem;
@@ -732,38 +732,38 @@ html.haneen-site .hcn-director-workspace {
   background: var(--metric-icon-bg);
 }
 
-.hcn-director-metric-label,
-.hcn-director-metric-count,
-.hcn-director-metric-detail {
+.hcn-office-metric-label,
+.hcn-office-metric-count,
+.hcn-office-metric-detail {
   display: block;
 }
 
-.hcn-director-metric-label {
+.hcn-office-metric-label {
   color: #354f63;
   font-size: 0.8125rem;
   font-weight: 700;
 }
 
-.hcn-director-metric-count {
+.hcn-office-metric-count {
   color: #153b5a;
   font: 700 2.125rem/1.1 Georgia, serif;
 }
 
-.hcn-director-metric-detail {
+.hcn-office-metric-detail {
   color: #486d83;
   font-size: 0.75rem;
 }
 
-.hcn-director-activity-panel {
+.hcn-office-activity-panel {
   min-width: 0;
   padding: 1rem clamp(0.875rem, 1.5vw, 1.25rem);
 }
 
-.hcn-director-activity-panel > * + * {
+.hcn-office-activity-panel > * + * {
   margin-top: 0.75rem;
 }
 
-.hcn-director-panel-header {
+.hcn-office-panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -773,14 +773,14 @@ html.haneen-site .hcn-director-workspace {
   border-bottom: 1px solid #e0eaf1;
 }
 
-.hcn-director-panel-header h2 {
+.hcn-office-panel-header h2 {
   padding-inline-start: 0.625rem;
   border-inline-start: 3px solid #d1a345;
   color: #143959;
   font: 700 1.25rem/1.2 Georgia, serif;
 }
 
-.hcn-director-panel-header button {
+.hcn-office-panel-header button {
   display: inline-flex;
   align-items: center;
   min-height: 2.75rem;
@@ -789,11 +789,11 @@ html.haneen-site .hcn-director-workspace {
   font-weight: 700;
 }
 
-.hcn-director-panel-header button:hover {
+.hcn-office-panel-header button:hover {
   text-decoration: underline;
 }
 
-.hcn-director-activity-list li {
+.hcn-office-activity-list li {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -803,11 +803,11 @@ html.haneen-site .hcn-director-workspace {
   font-size: 0.875rem;
 }
 
-.hcn-director-activity-list li + li {
+.hcn-office-activity-list li + li {
   border-top: 1px solid #e0eaf1;
 }
 
-.hcn-director-row-icon {
+.hcn-office-row-icon {
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 0.625rem;
@@ -815,12 +815,12 @@ html.haneen-site .hcn-director-workspace {
   color: #2a6383;
 }
 
-.hcn-director-row-incident {
+.hcn-office-row-incident {
   background: #fcf0f0;
   color: #a33f40;
 }
 
-.hcn-director-status {
+.hcn-office-status {
   margin-inline-start: auto;
   padding: 0.25rem 0.625rem;
   border-radius: 1rem;
@@ -831,7 +831,7 @@ html.haneen-site .hcn-director-workspace {
   text-transform: capitalize;
 }
 
-.hcn-director-workspace .hcn-workspace-footer {
+.hcn-office-workspace .hcn-workspace-footer {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -844,73 +844,114 @@ html.haneen-site .hcn-director-workspace {
 }
 
 @media (min-width: 40rem) {
-  .hcn-director-action-grid {
+  .hcn-office-action-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .hcn-director-metrics {
+  .hcn-office-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 64rem) {
-  html.haneen-site .hcn-director-workspace {
-    grid-template-columns: var(--director-sidebar-width) minmax(0, 1fr);
+  html.haneen-site .hcn-office-workspace {
+    grid-template-columns: var(--office-sidebar-width) minmax(0, 1fr);
   }
-  .hcn-director-workspace > aside {
+  .hcn-office-workspace > aside {
     grid-column: 1;
     grid-row: 2;
-    width: var(--director-sidebar-width);
-    height: calc(100dvh - var(--director-header-height));
-    top: var(--director-header-height);
+    width: var(--office-sidebar-width);
+    height: calc(100dvh - var(--office-header-height));
+    top: var(--office-header-height);
   }
-  .hcn-director-workspace .hcn-director-body {
+  .hcn-office-workspace .hcn-office-body {
     grid-column: 2;
   }
-  .hcn-director-activity {
+  .hcn-office-activity {
     grid-template-columns: minmax(0, 1.04fr) minmax(0, 1fr);
   }
 }
 
 @media (min-width: 75rem) {
-  .hcn-director-action-grid {
+  .hcn-office-action-grid {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 55rem) {
-  .hcn-director-workspace .hcn-director-header {
-    --director-header-height: 0px;
+  .hcn-office-workspace .hcn-office-header {
+    --office-header-height: 0px;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.5rem;
   }
-  .hcn-director-header-tools {
+  .hcn-office-header-tools {
     grid-row: 2;
     grid-column: 1 / -1;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
   }
-  .hcn-director-header-account {
+  .hcn-office-header-account {
     grid-row: 1;
     grid-column: 2;
   }
-  .hcn-director-search {
+  .hcn-office-search {
     min-width: 0;
   }
-  .hcn-director-office-switcher {
+  .hcn-office-role-switcher {
     max-width: 7.5rem;
   }
 }
 
 @media (max-width: 37rem) {
-  .hcn-director-org-symbol,
-  .hcn-director-avatar {
+  .hcn-office-org-symbol,
+  .hcn-office-avatar {
     display: none;
   }
-  .hcn-director-office-switcher {
+  .hcn-office-role-switcher {
     max-width: 4.5rem;
   }
-  .hcn-director-org-caption {
+  .hcn-office-org-caption {
     font-size: 0.625rem;
     letter-spacing: 0.04em;
+  }
+}
+
+.hcn-office-workspace .hcn-office-org-switcher {
+  min-height: 2.75rem;
+  border-color: #cbdfea;
+  color: #235273;
+  background: #fcfeff;
+}
+
+.hcn-caregiver-panel-title {
+  padding-inline-start: 0.625rem;
+  border-inline-start: 3px solid #d1a345;
+  color: #143959;
+  font: 700 1.25rem/1.2 Georgia, serif;
+}
+
+.hcn-caregiver-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hcn-caregiver-metrics .hcn-office-metric {
+  min-height: 5.75rem;
+  padding: 0.625rem;
+}
+
+@media (max-width: 63.99rem) {
+  .hcn-caregiver-metrics .hcn-office-metric-icon {
+    display: none;
+  }
+}
+
+@media (min-width: 56rem) {
+  .hcn-caregiver-metrics {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 64rem) and (max-width: 82rem) {
+  .hcn-caregiver-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
