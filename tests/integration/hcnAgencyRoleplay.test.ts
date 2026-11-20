@@ -181,6 +181,31 @@ it('rehearses a fictional agency in role order, with specialist handoffs after t
       expect.objectContaining({ member_id: therapist.id, specialty: 'therapist' }),
     ]));
     expect((await rpc('hcn_get_caregiver_patient_care_team', teamArgs, unassigned.token))[0]).toBe(403);
+    const taskId = randomUUID();
+    const createTask = { ...teamArgs, p_task_id: taskId, p_title: 'Offer water', p_description: 'Note whether accepted.' };
+    expect((await rpc('hcn_director_add_patient_care_task', createTask, caregiver.token))[0]).toBe(403);
+    expect((await rpc('hcn_director_add_patient_care_task', createTask, medical.token))[0]).toBe(403);
+    expect((await rpc('hcn_director_add_patient_care_task', { ...createTask, p_organization_id: randomUUID() }, director.token))[0]).toBe(403);
+    expect(await invoke(director, 'hcn_director_add_patient_care_task', createTask)).toBe(taskId);
+    expect(await invoke(director, 'hcn_director_add_patient_care_task', createTask)).toBe(taskId);
+    const taskPath = '/rest/v1/tasks?id=eq.' + taskId + '&select=id,title,status,status_updated_by';
+    for (const actor of [caregiver, medical, therapist]) {
+      expect(await http('GET', taskPath, undefined, actor.token)).toEqual([200, [{
+        id: taskId, title: 'Offer water', status: 'pending', status_updated_by: director.id,
+      }]]);
+    }
+    for (const actor of [unassigned, patient]) {
+      expect(await http('GET', taskPath, undefined, actor.token)).toEqual([200, []]);
+    }
+    expect(await http('PATCH', taskPath, { status: 'completed' }, medical.token)).toEqual([200, []]);
+    expect((await http('PATCH', taskPath, { title: 'Changed by caregiver' }, caregiver.token))[0]).toBe(403);
+    expect(await http('PATCH', taskPath, { status: 'completed' }, caregiver.token)).toEqual([200, [{
+      id: taskId, title: 'Offer water', status: 'completed', status_updated_by: caregiver.id,
+    }]]);
+    expect(await http('GET', taskPath, undefined, director.token)).toEqual([200, [{
+      id: taskId, title: 'Offer water', status: 'completed', status_updated_by: caregiver.id,
+    }]]);
+
     const clinical = await invoke<{ id: string }>(director, 'create_conversation', {
       p_patient_id: patient.id, p_recipient_user_ids: [medical.id, therapist.id, caregiver.id],
       p_subject: 'Fictional medical and therapy handoff ' + run,

@@ -172,7 +172,7 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         {tab === 'medical' && <MedicalTab patientId={patientId} staffRole={staffRole} orgId={orgId} />}
         {tab === 'contacts' && <HealthcareContacts patientId={patientId} />}
         {tab === 'medications' && <MedicationsTab patientId={patientId} />}
-        {tab === 'tasks' && <TasksTab patientId={patientId} />}
+        {tab === 'tasks' && <TasksTab patientId={patientId} orgId={orgId} staffRole={staffRole} />}
         {tab === 'ag' && <AGTab patientId={patientId} staffRole={staffRole} />}
         {tab === 'carePlan' && <CarePlanTab patientId={patientId} orgId={orgId} staffRole={staffRole} />}
         {tab === 'appointments' && <AppointmentsTab patientId={patientId} orgId={orgId} />}
@@ -687,20 +687,21 @@ function MedicationsTab({ patientId }: { patientId: string }) {
 // reuses the exact tasks table query/update shape already proven in
 // EnterpriseCaregiverDashboard.tsx's TasksView (H08/W02, migration 071),
 // scoped to this one open patient.
-interface TaskRow { id: string; title: string; status: TaskStatus; refusal_reason: string | null }
-function TasksTab({ patientId }: { patientId: string }) {
+interface TaskRow { id: string; title: string; description: string | null; organization_id: string | null; status: TaskStatus; refusal_reason: string | null }
+function TasksTab({ patientId, orgId, staffRole }: { patientId: string; orgId: string; staffRole: StaffRole }) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setTasksTabLoadError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    void supabase.from('tasks').select('id, title, status, refusal_reason').eq('patient_id', patientId).eq('is_active', true)
+    void supabase.from('tasks').select('id, title, description, organization_id, status, refusal_reason').eq('patient_id', patientId)
+      .or('organization_id.is.null,organization_id.eq.' + orgId).eq('is_active', true)
       .then(({ data, error }) => {
         setTasks((data ?? []) as TaskRow[]);
         setTasksTabLoadError(error ? (error.message || 'Could not load this patient’s care plan tasks.') : null);
         setLoading(false);
       });
-  }, [patientId]);
+  }, [orgId, patientId]);
   useEffect(() => { load(); }, [load]);
 
   // MMA-ENT-CAREGIVER-MASTER-003 D04 (P1): status_updated_by/at and
@@ -739,15 +740,16 @@ function TasksTab({ patientId }: { patientId: string }) {
             <li key={t.id} className="flex items-center justify-between gap-2 p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
               <div>
                 <p className="text-sm font-medium text-charcoal">{t.title}</p>
+                {t.description && <p className="whitespace-pre-wrap break-words text-sm text-ent-text">{t.description}</p>}
                 <p className="text-xs text-medium-gray">{statusLabel[t.status]}</p>
                 {t.refusal_reason && <p className="text-xs text-medium-gray italic">&quot;{t.refusal_reason}&quot;</p>}
               </div>
-              <div className="flex gap-1.5 flex-shrink-0">
+              {(!t.organization_id || staffRole === 'caregiver') && <div className="flex flex-wrap gap-1.5">
                 <button type="button" title="Completed" onClick={() => { void markStatus(t.id, 'completed'); }} className="px-2 py-1 rounded-lg bg-soft-sage/20 text-soft-sage text-xs font-semibold">Done</button>
                 <button type="button" title="Declined" onClick={() => { void markStatus(t.id, 'skipped'); }} className="px-2 py-1 rounded-lg bg-gentle-coral/20 text-gentle-coral text-xs font-semibold">Declined</button>
                 <button type="button" title="Not Applicable" onClick={() => { void markStatus(t.id, 'not_applicable'); }} className="px-2 py-1 rounded-lg bg-medium-gray/20 text-medium-gray text-xs font-bold">N/A</button>
                 <button type="button" title="Not Completed" onClick={() => { void markStatus(t.id, 'pending'); }} className="px-2 py-1 rounded-lg bg-warm-bronze/10 text-warm-bronze text-xs font-semibold">Not Completed</button>
-              </div>
+              </div>}
             </li>
           ))}
         </ul>

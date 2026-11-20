@@ -11,7 +11,7 @@ const frontendBase = process.env.MMA_E2E_FRONTEND_BASE;
 const ready = Boolean(frontendBase && process.env.MMA_TEST_API_BASE && process.env.MMA_TEST_DB_CONTAINER);
 const PW = 'E2eRoleViews9!';
 
-async function seedOrgWithStaff(label: string) {
+async function seedOrgWithStaff(label: string, clinicalRole: 'medical_professional' | 'therapist' = 'medical_professional') {
   const stamp = Date.now();
   const directorEmail = `e2e-roles-director-${stamp}-${label}@local.test`;
   const caregiverEmail = `e2e-roles-caregiver-${stamp}-${label}@local.test`;
@@ -26,7 +26,7 @@ async function seedOrgWithStaff(label: string) {
     INSERT INTO organization_licenses(organization_id,licensed_seats,covered_patient_capacity,annual_license_fee,status,license_number) VALUES('${orgId}',10,10,399,'active','E2E-LIC-${stamp}-${label}');
     INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${orgId}','${directorId}','director','active');
     INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${orgId}','${caregiverId}','caregiver','active');
-    INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${orgId}','${medicalId}','medical_professional','active');
+    INSERT INTO organization_memberships(organization_id,user_id,org_role,status) VALUES('${orgId}','${medicalId}','${clinicalRole}','active');
     INSERT INTO covered_patient_memberships(organization_id,patient_id,status,created_by) VALUES('${orgId}','${patientId}','active','${directorId}');
     INSERT INTO staff_patient_assignments(organization_id,user_id,patient_id,org_role,is_active,assigned_by) VALUES('${orgId}','${caregiverId}','${patientId}','caregiver',true,'${directorId}');
     INSERT INTO staff_patient_assignments(organization_id,user_id,patient_id,org_role,is_active,assigned_by) VALUES('${orgId}','${medicalId}','${patientId}','medical_professional',true,'${directorId}');
@@ -103,11 +103,12 @@ test('a signed-in Caregiver sees the read-only Clinical Coordination view, with 
   }
 });
 
-test('a signed-in Medical Professional sees Clinical Reviews with the Clinical Coordination panel, scoped to approval (not administrative creation)', async ({ page }) => {
+for (const [office, role] of [['Medical', 'medical_professional'], ['Therapy', 'therapist']] as const) {
+  test(`a signed-in ${office} professional sees Clinical Reviews without Director actions`, async ({ page }) => {
   test.skip(!ready, 'Requires an explicitly configured disposable stack + frontend target');
-  const ctx = await seedOrgWithStaff('medical');
+  const ctx = await seedOrgWithStaff(office.toLowerCase(), role);
   try {
-    await page.goto(`${frontendBase}/Professional`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${frontendBase}/Professional/${office}`, { waitUntil: 'domcontentloaded' });
     await page.getByPlaceholder('you@example.com').fill(ctx.medicalEmail);
     await page.getByPlaceholder('Your password').fill(PW);
     await page.getByRole('button', { name: /sign in/i }).click();
@@ -120,10 +121,11 @@ test('a signed-in Medical Professional sees Clinical Reviews with the Clinical C
     await cleanup(ctx.orgId, ctx.patientId, [ctx.directorId, ctx.caregiverId, ctx.medicalId]);
   }
 });
+}
 
 test('a caregiver completes the selected visit inside the patient chart and the Director sees the log', async ({ page, browser }) => {
   test.skip(!ready, 'Requires an explicitly configured disposable stack + frontend target');
-  test.setTimeout(120_000);
+  test.setTimeout(150_000);
   const ctx = await seedOrgWithStaff('visit');
   const directorContext = await browser.newContext();
   directorContext.setDefaultTimeout(20_000);
@@ -196,6 +198,27 @@ test('a caregiver completes the selected visit inside the patient chart and the 
     await director.keyboard.press('Escape');
     await expect(notes).toBeHidden();
     await expect(row).toBeFocused();
+
+    await director.getByRole('button', { name: 'Patient Management', exact: true }).click();
+    await director.getByRole('button', { name: 'Patient Information', exact: true }).click();
+    let taskPanel = director.getByRole('region', { name: 'Patient care tasks' });
+    await taskPanel.getByLabel('Task title').fill('Offer a glass of water');
+    await taskPanel.getByLabel('Instructions (optional)').fill('Record whether the patient accepted.');
+    await taskPanel.getByRole('button', { name: 'Add care task' }).click();
+    await expect(taskPanel.getByText('Care task added for assigned caregivers.')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Care Plans & Tasks', exact: true }).click();
+    const task = page.getByRole('listitem').filter({ hasText: 'Offer a glass of water' });
+    await expect(task).toContainText('Record whether the patient accepted.');
+    await task.getByRole('button', { name: 'Completed', exact: true }).click();
+    await expect(task.getByText('Completed', { exact: true })).toBeVisible();
+
+    await director.reload();
+    const patientManagement = director.getByRole('button', { name: 'Patient Management', exact: true });
+    await patientManagement.click();
+    await director.getByRole('button', { name: 'Patient Information', exact: true }).click();
+    taskPanel = director.getByRole('region', { name: 'Patient care tasks' });
+    await expect(taskPanel.getByRole('listitem').filter({ hasText: 'Offer a glass of water' })).toContainText('Completed');
   } finally {
     await directorContext.close().catch(() => {});
     await cleanup(ctx.orgId, ctx.patientId, [ctx.directorId, ctx.caregiverId, ctx.medicalId]);

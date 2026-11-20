@@ -44,6 +44,7 @@ import { regenerateActivationLink } from '@/services/caregiverRegistrationServic
 import CareConversations from '@/components/communications/CareConversations';
 import HealthcareContacts from '@/components/healthcare/HealthcareContacts';
 import PatientInformation from '@/components/healthcare/PatientInformation';
+import DirectorPatientCareTasks from './DirectorPatientCareTasks';
 import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGroup } from './EnterpriseOfficeShell';
 import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
@@ -844,6 +845,7 @@ function CoveredPatientsCard({ orgId, members, onChanged, initialInformationPati
           <button type="button" onClick={()=>setOpenInformationPatientId(null)} className="text-xs font-semibold text-ent-bronze hover:underline">
             Close Patient Information
           </button>
+          <DirectorPatientCareTasks key={orgId + '/' + openInformationPatientId} patientId={openInformationPatientId} orgId={orgId} />
           <PatientInformation patientId={openInformationPatientId} orgId={orgId}/>
         </div>
       )}

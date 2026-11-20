@@ -2375,6 +2375,7 @@ export interface Database {
         Row: {
           id: string
           patient_id: string
+          organization_id: string | null
           title: string
           description: string | null
           icon: string
@@ -2394,6 +2395,7 @@ export interface Database {
         Insert: {
           id?: string
           patient_id: string
+          organization_id?: string | null
           title: string
           description?: string | null
           icon?: string
@@ -2413,6 +2415,7 @@ export interface Database {
         Update: {
           id?: string
           patient_id?: string
+          organization_id?: string | null
           title?: string
           description?: string | null
           icon?: string
@@ -5497,6 +5500,10 @@ export interface Database {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      hcn_director_add_patient_care_task: {
+        Args: { p_organization_id: string; p_patient_id: string; p_task_id: string; p_title: string; p_description?: string }
+        Returns: string
       }
       hcn_get_caregiver_patient_care_team: {
         Args: { p_organization_id: string; p_patient_id: string }

@@ -394,7 +394,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business', o
           )}
           {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} onOpenVisit={visit => navigateTo('schedule', visit.patientId, 'overview', visit.id)} />}
           {nav === 'visits' && <ScheduleView orgId={orgId} patients={patients} onOpenVisit={visit => navigateTo('visits', visit.patientId, 'overview', visit.id)} completedOnly />}
-          {nav === 'tasks' && <TasksView patients={patients} />}
+          {nav === 'tasks' && <TasksView key={orgId} orgId={orgId} patients={patients} />}
           {nav === 'communications' && <CommunicationsView patients={patients} />}
           {nav === 'notes' && (
             <>
@@ -641,7 +641,7 @@ function DashboardView({ patients, orgId, onNavigate, onOpenVisit, onPatientRegi
       // already fully knowable from tasks.status='pending' alone.
       const missingNotesCount = myVisits.filter((v) => v.status === 'completed' && !v.visitNotes).length;
       const pendingTaskCounts = await Promise.all(patients.map(async (p) => {
-        const { count, error } = await supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('patient_id', p.patientId).eq('status', 'pending').eq('is_active', true);
+        const { count, error } = await supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('patient_id', p.patientId).or('organization_id.is.null,organization_id.eq.' + orgId).eq('status', 'pending').eq('is_active', true);
         if (error) { taskErrors.push(error.message); return 0; }
         return count ?? 0;
       }));
@@ -1427,7 +1427,7 @@ function ScheduleView({ orgId, patients, onOpenVisit, completedOnly = false }: {
 // representable status and is disclosed as a known gap rather than
 // silently mapped to one of the existing three.
 type TaskStatus = 'pending' | 'completed' | 'skipped' | 'not_applicable';
-interface TaskRow { id: string; patient_id: string; title: string; status: TaskStatus; refusal_reason: string | null }
+interface TaskRow { id: string; patient_id: string; title: string; description: string | null; status: TaskStatus; refusal_reason: string | null }
 
 // H08/W02/N04 — ROUND 6: all four locked statuses (Completed,
 // Declined [skipped], Not Completed [pending], Not Applicable) are now
@@ -1435,7 +1435,7 @@ interface TaskRow { id: string; patient_id: string; title: string; status: TaskS
 // constraint, which previously only allowed pending/completed/skipped).
 // A refusal reason is requested for skipped/not_applicable, matching
 // "documented patient refusal."
-function TasksView({ patients }: { patients: StaffPatient[] }) {
+function TasksView({ orgId, patients }: { orgId: string; patients: StaffPatient[] }) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   // MMA-ENT-CAREGIVER-MASTER-005 D02-006: this previously destructured
@@ -1445,13 +1445,14 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
   const [loadError, setTasksLoadError] = useState<string | null>(null);
   const load = useCallback(() => {
     if (patients.length === 0) { setTasks([]); setTasksLoadError(null); setLoading(false); return; }
-    void supabase.from('tasks').select('id, patient_id, title, status, refusal_reason').in('patient_id', patients.map((p) => p.patientId)).eq('is_active', true)
+    void supabase.from('tasks').select('id, patient_id, title, description, status, refusal_reason').in('patient_id', patients.map((p) => p.patientId))
+      .or('organization_id.is.null,organization_id.eq.' + orgId).eq('is_active', true)
       .then(({ data, error }) => {
         setTasks((data ?? []) as TaskRow[]);
         setTasksLoadError(error ? (error.message || 'Could not load your assigned tasks.') : null);
         setLoading(false);
       });
-  }, [patients]);
+  }, [orgId, patients]);
   useEffect(() => { load(); }, [load]);
 
   // MMA-ENT-CAREGIVER-MASTER-003 D04 (P1): completed_at/status_updated_by/
@@ -1482,7 +1483,7 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
   return (
     <Card>
       <div className="flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Care Plans &amp; Tasks</h2></div>
-      <p className="text-sm text-ent-muted">Active tasks already recorded in your assigned patients’ charts appear here. Record the outcome after providing care, and add a reason if the patient declined or the task did not apply. Open the patient’s chart to read their Care Plan.</p>
+      <p className="text-sm text-ent-muted">Tasks added for your assigned patients appear here. Record the outcome after providing care, and add a reason if the patient declined or the task did not apply. Open the patient’s chart to read their Care Plan.</p>
       {loadError && (
         <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Your care plan tasks could not be loaded: {loadError}</p>
@@ -1501,6 +1502,7 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
             <li key={t.id} className="flex items-center justify-between p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
               <div>
                 <p className="text-sm font-medium text-charcoal">{t.title}</p>
+                {t.description && <p className="whitespace-pre-wrap break-words text-sm text-ent-text">{t.description}</p>}
                 <p className="text-xs text-medium-gray">{patientNames.get(t.patient_id)} · {statusLabel[t.status]}</p>
                 {t.refusal_reason && <p className="text-xs text-medium-gray italic">&quot;{t.refusal_reason}&quot;</p>}
               </div>
@@ -2101,7 +2103,7 @@ function MyInvitationsCard() {
 // to be open. `patients` is this org's own already-filtered list
 // (EnterpriseCaregiverDashboard's own `patients`), so every count/list
 // below now reflects only this organization's patients.
-function MyActivityCard({ patients }: { patients: StaffPatient[] }) {
+function MyActivityCard({ orgId, patients }: { orgId: string; patients: StaffPatient[] }) {
   const { state } = useApp();
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [taskUpdates, setTaskUpdates] = useState<{ id: string; title: string; status: string; status_updated_at: string | null }[]>([]);
@@ -2120,20 +2122,21 @@ function MyActivityCard({ patients }: { patients: StaffPatient[] }) {
     if (!myId || patientIds.length === 0) { setVisits([]); setTaskUpdates([]); setNoteCount(0); setActivityLoadError(null); setLoading(false); return; }
     void Promise.all([
       getMyVisitsResult(),
-      supabase.from('tasks').select('id, title, status, status_updated_at').eq('status_updated_by', myId).in('patient_id', patientIds).order('status_updated_at', { ascending: false }).limit(20),
+      supabase.from('tasks').select('id, title, status, status_updated_at').eq('status_updated_by', myId).in('patient_id', patientIds)
+        .or('organization_id.is.null,organization_id.eq.' + orgId).order('status_updated_at', { ascending: false }).limit(20),
       supabase.from('patient_notes').select('id', { count: 'exact', head: true }).eq('author_id', myId).in('patient_id', patientIds),
     ]).then(([v, t, n]) => {
       const errors: string[] = [];
       if (v.error) errors.push(v.error);
       if (t.error) errors.push(t.error.message);
       if (n.error) errors.push(n.error.message);
-      setVisits((v.data ?? []).filter((visit) => patientIds.includes(visit.patientId)));
+      setVisits((v.data ?? []).filter(visit => visit.organizationId === orgId && patientIds.includes(visit.patientId)));
       setTaskUpdates((t.data ?? []) as typeof taskUpdates);
       setNoteCount(n.count ?? 0);
       setActivityLoadError(errors.length > 0 ? errors[0] : null);
       setLoading(false);
     });
-  }, [state.currentUser?.id, patients]);
+  }, [state.currentUser?.id, orgId, patients]);
   if (loading) return null;
   return (
     <Card>
@@ -2399,7 +2402,7 @@ function OrganizationView({ orgId, orgName, patients }: { orgId: string; orgName
         )}
       </Card>
       <MyInvitationsCard />
-      <MyActivityCard patients={patients} />
+      <MyActivityCard orgId={orgId} patients={patients} />
       <NotificationsCard />
       <AccessibilityCard />
     </>
