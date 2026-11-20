@@ -105,22 +105,22 @@ test('a signed-in Caregiver sees the read-only Clinical Coordination view, with 
 
 for (const [office, role] of [['Medical', 'medical_professional'], ['Therapy', 'therapist']] as const) {
   test(`a signed-in ${office} professional sees Clinical Reviews without Director actions`, async ({ page }) => {
-  test.skip(!ready, 'Requires an explicitly configured disposable stack + frontend target');
-  const ctx = await seedOrgWithStaff(office.toLowerCase(), role);
-  try {
-    await page.goto(`${frontendBase}/Professional/${office}`, { waitUntil: 'domcontentloaded' });
-    await page.getByPlaceholder('you@example.com').fill(ctx.medicalEmail);
-    await page.getByPlaceholder('Your password').fill(PW);
-    await page.getByRole('button', { name: /sign in/i }).click();
+    test.skip(!ready, 'Requires an explicitly configured disposable stack + frontend target');
+    const ctx = await seedOrgWithStaff(office.toLowerCase(), role);
+    try {
+      await page.goto(`${frontendBase}/Professional/${office}`, { waitUntil: 'domcontentloaded' });
+      await page.getByPlaceholder('you@example.com').fill(ctx.medicalEmail);
+      await page.getByPlaceholder('Your password').fill(PW);
+      await page.getByRole('button', { name: /sign in/i }).click();
 
-    await page.getByText('Clinical Reviews').click();
-    await expect(page.getByRole('heading', { name: 'Clinical Coordination' })).toBeVisible({ timeout: 20000 });
-    await expect(page.getByRole('button', { name: /add provider/i })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /^new request$/i })).toHaveCount(0);
-  } finally {
-    await cleanup(ctx.orgId, ctx.patientId, [ctx.directorId, ctx.caregiverId, ctx.medicalId]);
-  }
-});
+      await page.getByText('Clinical Reviews').click();
+      await expect(page.getByRole('heading', { name: 'Clinical Coordination' })).toBeVisible({ timeout: 20000 });
+      await expect(page.getByRole('button', { name: /add provider/i })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /^new request$/i })).toHaveCount(0);
+    } finally {
+      await cleanup(ctx.orgId, ctx.patientId, [ctx.directorId, ctx.caregiverId, ctx.medicalId]);
+    }
+  });
 }
 
 test('a caregiver completes the selected visit inside the patient chart and the Director sees the log', async ({ page, browser }) => {
@@ -211,7 +211,7 @@ test('a caregiver completes the selected visit inside the patient chart and the 
     const task = page.getByRole('listitem').filter({ hasText: 'Offer a glass of water' });
     await expect(task).toContainText('Record whether the patient accepted.');
     await task.getByRole('button', { name: 'Completed', exact: true }).click();
-    await expect(task.getByText('Completed', { exact: true })).toBeVisible();
+    await expect(task.getByText('E2E Roles Patient visit · Completed', { exact: true })).toBeVisible();
 
     await director.reload();
     const patientManagement = director.getByRole('button', { name: 'Patient Management', exact: true });
