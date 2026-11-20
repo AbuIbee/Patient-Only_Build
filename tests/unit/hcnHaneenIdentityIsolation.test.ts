@@ -17,7 +17,6 @@ describe('Haneen customer-facing branding', () => {
     'src/pages/common/LandingPage.tsx',
     'src/pages/common/LoginPage.tsx',
     'src/pages/common/ResetPasswordPage.tsx',
-    'src/pages/enterprise/EnterpriseCaregiverDashboard.tsx',
     'src/pages/enterprise/EnterpriseOfficeShell.tsx',
     'src/pages/enterprise/OrganizationBillingPage.tsx',
     'src/pages/enterprise/ResidentialTherapistDashboard.tsx',
@@ -29,6 +28,13 @@ describe('Haneen customer-facing branding', () => {
     const source = file(path);
     expect(source).toContain('Haneen Care Network');
     expect(source).not.toMatch(legacyBrand);
+  });
+
+  it('takes Caregiver branding from the shared workspace shell', () => {
+    const caregiver = file('src/pages/enterprise/EnterpriseCaregiverDashboard.tsx');
+    expect(caregiver).toContain('<EnterpriseOfficeShell');
+    expect(caregiver).not.toMatch(legacyBrand);
+    expect(file('src/pages/enterprise/EnterpriseOfficeShell.tsx')).toContain('Haneen Care Network');
   });
 
   it('provides the Haneen title and favicon before JavaScript loads', () => {
