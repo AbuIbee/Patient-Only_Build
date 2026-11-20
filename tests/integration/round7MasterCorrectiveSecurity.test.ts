@@ -190,6 +190,12 @@ describe('FUNC-01 — visit completion requires notes and a manually submitted d
     expect(noChecklistStatus).toBe(400);
     expect(noChecklist).toMatchObject({ message: 'Complete every required visit checklist item before checkout' });
 
+    const [nullItemStatus, nullItem] = await rpc('end_caregiver_visit', {
+      ...args, p_checklist: { ...args.p_checklist, medication: null },
+    }, tok.caregiverA);
+    expect(nullItemStatus).toBeGreaterThanOrEqual(400);
+    expect(nullItem).toMatchObject({ message: 'Complete every required visit checklist item before checkout' });
+
     const [partialChecklistStatus] = await rpc('end_caregiver_visit', {
       ...args, p_checklist: { medication: 'completed', meal: 'not_completed' },
     }, tok.caregiverA);

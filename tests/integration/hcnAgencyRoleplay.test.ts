@@ -122,16 +122,18 @@ it('rehearses a fictional agency in role order, with specialist handoffs after t
       caregiver, 'start_caregiver_visit', { p_visit_id: visit.id },
     );
     expect(checkedIn.status).toBe('in_progress');
-    const departure = new Date().toISOString();
+    const departure = checkedIn.actual_start;
     const visitNote = 'Fictional caregiver: visit completed and the patient update was reviewed. ' + run;
     await invoke(caregiver, 'end_caregiver_visit', {
       p_visit_id: visit.id, p_visit_notes: visitNote, p_actual_end: departure,
+      p_checklist: { medication: 'not_applicable', bloodPressure: 'not_applicable', meal: 'completed' },
     });
     const [visitStatus, visits] = await http('GET', '/rest/v1/caregiver_visits?id=eq.' + visit.id +
       '&select=status,actual_start,actual_end,visit_notes', undefined, director.token);
     expect(visitStatus).toBe(200);
     expect(visits).toEqual([{
-      status: 'completed', actual_start: checkedIn.actual_start, actual_end: expect.any(String), visit_notes: visitNote,
+      status: 'completed', actual_start: checkedIn.actual_start, actual_end: expect.any(String),
+      visit_notes: visitNote + '\n\nVisit checklist\nMedication taken: Not applicable\nBlood pressure checked: Not applicable\nMeal eaten: Eaten',
     }]);
     expect(Date.parse((visits as { actual_end: string }[])[0].actual_end)).toBe(Date.parse(departure));
 

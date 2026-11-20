@@ -119,9 +119,9 @@ BEGIN
   IF v_is_covered THEN
     IF pg_catalog.jsonb_typeof(p_checklist) IS DISTINCT FROM 'object'
       OR NOT (p_checklist ?& ARRAY['medication','bloodPressure','meal'])
-      OR p_checklist->>'medication' NOT IN ('completed','not_completed','not_applicable')
-      OR p_checklist->>'bloodPressure' NOT IN ('completed','not_completed','not_applicable')
-      OR p_checklist->>'meal' NOT IN ('completed','not_completed','not_applicable') THEN
+      OR COALESCE(p_checklist->>'medication', '') NOT IN ('completed','not_completed','not_applicable')
+      OR COALESCE(p_checklist->>'bloodPressure', '') NOT IN ('completed','not_completed','not_applicable')
+      OR COALESCE(p_checklist->>'meal', '') NOT IN ('completed','not_completed','not_applicable') THEN
       RAISE EXCEPTION 'Complete every required visit checklist item before checkout' USING ERRCODE='22023';
     END IF;
     v_saved_notes := v_saved_notes || E'\n\nVisit checklist\n'
