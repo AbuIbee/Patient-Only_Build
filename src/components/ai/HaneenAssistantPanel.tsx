@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {supabase} from '@/lib/supabase';
-import {ChevronDown,Sparkles,Loader2} from 'lucide-react';
+import {Sparkles,Loader2} from 'lucide-react';
 
 type AssistantRole='director'|'caregiver';
 type AssistantResult={
@@ -13,9 +13,9 @@ const prompts={
   caregiver:['Prepare my pre-visit care brief','Explain dizziness generally','What handoffs need review?'],
 };
 export default function HaneenAssistantPanel({
-  role,organizationId,patients=[],compact=false,
+  role,organizationId,patients=[],showHeading=true,
 }:{
-  role:AssistantRole;organizationId:string;patients?:{id:string;name:string}[];compact?:boolean;
+  role:AssistantRole;organizationId:string;patients?:{id:string;name:string}[];showHeading?:boolean;
 }) {
   const [patientId,setPatientId]=useState('');
   const [question,setQuestion]=useState('');
@@ -38,7 +38,12 @@ export default function HaneenAssistantPanel({
     finally{setBusy(false);}
   };
   const title=role==='director'?"Director's Assistant":'Caregiver Helper';
-  const controls = <>
+  return <section aria-label={title} className="rounded-2xl border border-ent-line bg-white p-4 space-y-3">
+    {showHeading && (
+        <h2 className="flex gap-2 items-center text-lg font-bold text-ent-ink">
+          <Sparkles className="w-5 h-5 text-ent-bronze" aria-hidden="true" />{title}
+        </h2>
+    )}
     <p className="text-sm text-ent-muted">Review role-scoped scheduling and care-operation summaries. Confirm details in the linked records before taking action.</p>
     {role==='caregiver'&&
       <label className="block text-sm font-semibold text-ent-ink">Assigned patient
@@ -74,27 +79,5 @@ export default function HaneenAssistantPanel({
       </div>
       <p className="text-xs text-ent-muted">Checked {new Date(result.generatedAt).toLocaleString()}. {result.notes}</p>
     </div>}
-  </>;
-
-  if (compact) {
-    return (
-      <details className="hcn-workspace-assistant rounded-xl border border-ent-line bg-white">
-        <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-semibold text-ent-ink">
-          <Sparkles className="h-4 w-4 shrink-0 text-ent-bronze" aria-hidden="true" />
-          {title}
-          <ChevronDown className="h-4 w-4 shrink-0 text-ent-muted" aria-hidden="true" />
-        </summary>
-        <div className="space-y-3 border-t border-ent-line p-4">{controls}</div>
-      </details>
-    );
-  }
-
-  return (
-    <section aria-label={title} className="rounded-2xl border border-ent-line bg-white p-4 space-y-3">
-      <h2 className="flex gap-2 items-center text-lg font-bold text-ent-ink">
-        <Sparkles className="w-5 h-5 text-ent-bronze" aria-hidden="true" />{title}
-      </h2>
-      {controls}
-    </section>
-  );
+  </section>;
 }

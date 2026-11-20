@@ -19,8 +19,8 @@
 // data-fetching and no routing state. Each office component supplies
 // `activeNav`/`onNavigate`, its own nav groups, and its own main
 // content — matching "OfficeDashboardLayout" responsibility boundaries.
-import { useState } from 'react';
-import { LogOut, Menu, Sparkles, X } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Building2, LogOut, Menu, Sparkles, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { NotificationBell } from '@/components/enterprise/NotificationBell';
 
@@ -42,7 +42,8 @@ export interface EnterpriseOfficeShellProps<K extends string> {
   roleLabel: string;
   fullName: string;
   initials: string;
-  workspaceTheme?: boolean;
+  headerTools?: ReactNode;
+  officeSwitcher?: ReactNode;
   navItems: OfficeNavItem<K>[];
   navGroups: OfficeNavGroup<K>[];
   activeNav: K;
@@ -52,12 +53,23 @@ export interface EnterpriseOfficeShellProps<K extends string> {
 }
 
 export function EnterpriseOfficeShell<K extends string>({
-  officeBadge, orgLabel, roleLabel, fullName, initials, workspaceTheme = false,
+  officeBadge, orgLabel, roleLabel, fullName, initials, headerTools, officeSwitcher,
   navItems, navGroups, activeNav, onNavigate, onLogout, children,
 }: EnterpriseOfficeShellProps<K>) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isHaneenSite = import.meta.env.VITE_ENTERPRISE_SITE === 'true';
-  const styledWorkspace = isHaneenSite && workspaceTheme;
+  const styledWorkspace = isHaneenSite && Boolean(headerTools);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
+  const closeMenu = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (mobileNavOpen && styledWorkspace) closeMenu.current?.focus();
+  }, [mobileNavOpen, styledWorkspace]);
+
+  const closeMobileNav = () => {
+    setMobileNavOpen(false);
+    if (styledWorkspace) menuTrigger.current?.focus();
+  };
 
   const renderNavButton = (itemKey: K, onClick: () => void, mobile: boolean) => {
     const item = navItems.find((n) => n.key === itemKey);
@@ -80,10 +92,10 @@ export function EnterpriseOfficeShell<K extends string>({
   };
 
   return (
-    <div className={`min-h-screen bg-ent-bg flex ${styledWorkspace ? 'hcn-workspace' : ''}`}>
+    <div className={`min-h-screen bg-ent-bg flex ${styledWorkspace ? 'hcn-director-workspace' : ''}`}>
       <aside className="hidden lg:flex lg:flex-col w-64 shrink-0 bg-ent-panel border-r border-ent-line sticky top-0 h-screen hcn-workspace-navigation">
         {styledWorkspace ? (
-          <div className="hcn-workspace-navigation-title border-b border-ent-line">{roleLabel} Workspace</div>
+          <div className="hcn-director-nav-title"><Building2 size={19} aria-hidden="true" />{roleLabel} Office</div>
         ) : (
           <div className="flex items-center gap-2.5 px-4 pt-5 pb-4 border-b border-ent-line">
             <div className="w-10 h-10 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0">
@@ -95,7 +107,7 @@ export function EnterpriseOfficeShell<K extends string>({
             </div>
           </div>
         )}
-        <nav aria-label={`${officeBadge} navigation`} className="flex-1 overflow-y-auto px-2.5 py-2">
+        <nav aria-label={`${officeBadge} navigation`} className="hcn-director-nav-list flex-1 overflow-y-auto px-2.5 py-2">
           {navGroups.map((group) => (
             <div key={group.label}>
               <div className="text-[9px] font-extrabold tracking-[0.16em] text-ent-muted uppercase px-2.5 pt-4 pb-1.5">{group.label}</div>
@@ -103,7 +115,7 @@ export function EnterpriseOfficeShell<K extends string>({
             </div>
           ))}
         </nav>
-        <div className="p-3 border-t border-ent-line flex items-center gap-2.5">
+        <div className="hcn-director-nav-account p-3 border-t border-ent-line flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0" aria-hidden="true">
             {initials}
           </div>
@@ -117,29 +129,68 @@ export function EnterpriseOfficeShell<K extends string>({
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="hcn-workspace-header bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
-          <div className="flex items-center gap-3 min-w-0">
-            <button type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation" className="lg:hidden p-1.5 -ml-1.5 text-ent-ink flex-shrink-0">
+      <div className="hcn-director-shell-content flex-1 flex flex-col min-w-0">
+        <header className="hcn-director-header bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
+          <div className="hcn-director-brand flex items-center gap-3 min-w-0">
+            <button ref={menuTrigger} type="button" aria-expanded={styledWorkspace ? mobileNavOpen : undefined} onClick={() => setMobileNavOpen(true)} aria-label="Open navigation" className="lg:hidden p-1.5 -ml-1.5 text-ent-ink flex-shrink-0">
               <Menu className="w-5 h-5" />
             </button>
-            <div className="text-[12.5px] sm:text-[13px] font-semibold truncate">
-              <span className="text-ent-ink">{orgLabel}</span>
-              <span className="text-ent-muted"> / {roleLabel} Workspace</span>
-            </div>
+            {styledWorkspace ? (
+              <>
+                <span className="hcn-director-org-symbol" aria-hidden="true"><Building2 size={27} /></span>
+                <div className="min-w-0">
+                  <span className="hcn-director-org-name">{orgLabel}</span>
+                  <span className="hcn-director-org-caption">Licensed Organization · {roleLabel} Office</span>
+                </div>
+              </>
+            ) : (
+              <div className="text-[12.5px] sm:text-[13px] font-semibold truncate">
+                <span className="text-ent-ink">{orgLabel}</span>
+                <span className="text-ent-muted"> / {roleLabel} Workspace</span>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-3 flex-shrink-0">
+          {styledWorkspace && <div className="hcn-director-header-tools">{headerTools}</div>}
+          <div className="hcn-director-header-account flex items-center gap-3 flex-shrink-0">
             <NotificationBell />
-            <div className="hidden sm:block w-8 h-8 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-[11px]" aria-hidden="true">{initials}</div>
-            <button type="button" onClick={onLogout} aria-label="Logout" className="lg:hidden p-1.5 text-ent-muted hover:text-ent-ink">
-              <LogOut className="w-5 h-5" />
-            </button>
+            {styledWorkspace ? (
+              <>
+                <span className="hcn-director-avatar" title={fullName} aria-hidden="true">{initials}</span>
+                {officeSwitcher ?? <span className="hidden sm:inline text-sm font-semibold">{roleLabel}</span>}
+                <button type="button" onClick={onLogout} aria-label="Logout" className="hcn-director-header-logout">
+                  <LogOut size={19} aria-hidden="true" />
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="hidden sm:block w-8 h-8 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-[11px]" aria-hidden="true">{initials}</div>
+                <button type="button" onClick={onLogout} aria-label="Logout" className="lg:hidden p-1.5 text-ent-muted hover:text-ent-ink">
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </>
+            )}
           </div>
         </header>
 
         {mobileNavOpen && (
-          <div className="lg:hidden fixed inset-0 z-50 bg-black/40" onClick={() => setMobileNavOpen(false)}>
-            <div className="hcn-workspace-navigation bg-ent-panel w-72 h-full p-2 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="lg:hidden fixed inset-0 z-50 bg-black/40" onClick={closeMobileNav}>
+            <div
+              className="hcn-director-drawer hcn-workspace-navigation bg-ent-panel w-72 max-w-[calc(100vw-2rem)] h-full p-2 overflow-y-auto"
+              role={styledWorkspace ? 'dialog' : undefined}
+              aria-label={styledWorkspace ? `${roleLabel} navigation` : undefined}
+              aria-modal={styledWorkspace ? true : undefined}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(event) => {
+                if (!styledWorkspace) return;
+                if (event.key === 'Escape') closeMobileNav();
+                if (event.key !== 'Tab') return;
+                const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>('button');
+                const boundary = event.shiftKey ? buttons[0] : buttons[buttons.length - 1];
+                if (document.activeElement !== boundary) return;
+                event.preventDefault();
+                (event.shiftKey ? buttons[buttons.length - 1] : buttons[0])?.focus();
+              }}
+            >
               <div className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2 min-w-0">
                   {!styledWorkspace && (
@@ -147,12 +198,12 @@ export function EnterpriseOfficeShell<K extends string>({
                   )}
                   <span className="font-semibold text-ent-ink text-sm truncate">{orgLabel}</span>
                 </div>
-                <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X className="w-5 h-5 text-ent-muted" /></button>
+                <button ref={closeMenu} type="button" onClick={closeMobileNav} aria-label="Close navigation"><X className="w-5 h-5 text-ent-muted" /></button>
               </div>
               {navGroups.map((group) => (
                 <div key={group.label}>
                   <div className="text-[9px] font-extrabold tracking-[0.16em] text-ent-muted uppercase px-3 pt-4 pb-1.5">{group.label}</div>
-                  {group.items.map((itemKey) => renderNavButton(itemKey, () => { onNavigate(itemKey); setMobileNavOpen(false); }, true))}
+                  {group.items.map((itemKey) => renderNavButton(itemKey, () => { onNavigate(itemKey); closeMobileNav(); }, true))}
                 </div>
               ))}
               <div className="mt-2 pt-2 border-t border-ent-line px-3 py-2 flex items-center gap-2.5">
@@ -166,16 +217,21 @@ export function EnterpriseOfficeShell<K extends string>({
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-ent-bg">
-          <div className="max-w-6xl mx-auto space-y-5">{children}</div>
-        </main>
-        {styledWorkspace && <WorkspaceFooter />}
+        <div className="hcn-director-body flex min-w-0 flex-1 flex-col">
+          <main className="hcn-director-main flex-1 overflow-y-auto p-4 sm:p-6 bg-ent-bg">
+            <div className="hcn-director-main-inner max-w-6xl mx-auto space-y-5">
+              {!styledWorkspace && headerTools}
+              {children}
+            </div>
+          </main>
+          {styledWorkspace && <WorkspaceFooter />}
+        </div>
       </div>
     </div>
   );
 }
 
-export function WorkspaceFooter() {
+function WorkspaceFooter() {
   return (
     <footer className="hcn-workspace-footer">
       <img src="/haneen-favicon.svg" alt="" width={22} height={22} />

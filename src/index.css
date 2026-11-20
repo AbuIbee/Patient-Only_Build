@@ -400,130 +400,6 @@ html.haneen-site :where(a, button, input, select, textarea):focus-visible {
   outline-offset: 3px;
 }
 
-/* Director and Caregiver workspace presentation on the Haneen site. */
-html.haneen-site .hcn-workspace {
-  --ent-bg: #f2f7fb;
-  --ent-line: #c6d7e3;
-  --ent-bronze: #8c5e0b;
-  --workspace-sidebar: #77a9ce;
-  --workspace-sidebar-line: #5f8caf;
-  --workspace-navy: #102e4a;
-}
-
-.hcn-workspace .hcn-workspace-navigation {
-  background: var(--workspace-sidebar);
-  border-color: var(--workspace-sidebar-line);
-  color: var(--workspace-navy);
-}
-
-.hcn-workspace-navigation-title {
-  padding: 1.25rem 1rem 1rem;
-  font-size: 1rem;
-  font-weight: 720;
-}
-
-.hcn-workspace .hcn-workspace-navigation :is(.text-ent-muted, .text-ent-text, .text-ent-ink) {
-  color: var(--workspace-navy);
-}
-
-.hcn-workspace .hcn-workspace-navigation :is(.border-b, .border-t) {
-  border-color: var(--workspace-sidebar-line);
-}
-
-.hcn-workspace .hcn-workspace-navigation button[aria-current="page"] {
-  background: var(--workspace-navy);
-  color: #fff;
-}
-
-.hcn-workspace .hcn-workspace-navigation button:not([aria-current="page"]):hover {
-  background: #d5e7f3;
-}
-
-.hcn-workspace .hcn-workspace-header {
-  min-height: 3.75rem;
-}
-
-.hcn-workspace .hcn-workspace-header span.text-ent-ink {
-  font-size: 0.9375rem;
-}
-
-.hcn-workspace-heading {
-  letter-spacing: -0.03em;
-  font-size: clamp(1.65rem, 3vw, 2.15rem);
-  line-height: 1.2;
-}
-
-.hcn-workspace .hcn-workspace-actions {
-  padding: clamp(1rem, 2.5vw, 1.5rem);
-  border-top: 3px solid var(--ent-forest);
-  box-shadow: 0 3px 12px #102e4a0a;
-}
-
-.hcn-workspace-actions h2 {
-  font-size: 1.125rem;
-}
-
-.hcn-workspace .hcn-workspace-action {
-  background: #f7fbfe;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-
-.hcn-workspace .hcn-workspace-action:hover {
-  background: #e5f2fa;
-  border-color: var(--ent-forest);
-}
-
-.hcn-workspace-tools {
-  display: grid;
-  gap: 0.75rem;
-  align-items: start;
-}
-
-.hcn-workspace-tools > * {
-  min-width: 0;
-}
-
-.hcn-workspace-tools [type="search"] {
-  background: #f7fbfe;
-  border-color: #9ab3c6;
-}
-
-.hcn-workspace-assistant > summary {
-  min-height: 2.75rem;
-  list-style: none;
-}
-
-.hcn-workspace-assistant > summary::-webkit-details-marker {
-  display: none;
-}
-
-.hcn-workspace-assistant > summary > svg:last-child {
-  margin-inline-start: auto;
-}
-
-.hcn-workspace-assistant[open] > summary > svg:last-child {
-  transform: rotate(180deg);
-}
-
-.hcn-workspace-footer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 1rem;
-  border-top: 1px solid var(--ent-line);
-  font-size: 0.8125rem;
-  color: var(--ent-text);
-  background: var(--ent-panel);
-}
-
-@media (min-width: 48rem) {
-  .hcn-workspace-tools {
-    grid-template-columns: minmax(0, 1fr) minmax(15rem, 28%);
-  }
-}
-
 /* Print only the Director's authorized report. Navigation, toolbars and assistant panels stay off paper. */
 @media print {
   body:has(.hcn-director-report-print) * { visibility: hidden !important; }
@@ -543,4 +419,498 @@ html.haneen-site .hcn-workspace {
   .hcn-director-report-print .print\\:hidden { display: none !important; }
   .hcn-director-report-print table { width: 100%; border-collapse: collapse; }
   .hcn-director-report-print tr { break-inside: avoid; }
+}
+
+/* The Director Exact Navigation Mockup, scoped to the Director office. */
+html.haneen-site .hcn-director-workspace {
+  --director-header-height: 90px;
+  --director-sidebar-width: clamp(15rem, 20vw, 19.875rem);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  color: #102f4d;
+  background: #f5f9fc;
+}
+
+.hcn-director-workspace .hcn-director-shell-content {
+  display: contents;
+}
+
+.hcn-director-workspace .hcn-director-header {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-height: var(--director-header-height);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 1rem;
+  padding: 0.75rem clamp(1rem, 2vw, 1.875rem);
+  border-color: #dce8f1;
+  box-shadow: 0 2px 11px #1942610c;
+}
+
+.hcn-director-header .hcn-director-brand button {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
+
+.hcn-director-org-symbol,
+.hcn-director-avatar,
+.hcn-director-metric-icon,
+.hcn-director-row-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.hcn-director-org-symbol {
+  width: 3.4375rem;
+  height: 3.4375rem;
+  border-radius: 0.875rem;
+  border: 1px solid #d0e5f2;
+  background: #eff8fe;
+  color: #2b668e;
+}
+
+.hcn-director-org-name,
+.hcn-director-org-caption {
+  display: block;
+}
+
+.hcn-director-org-name {
+  color: #102f4d;
+  font-family: Georgia, serif;
+  font-size: clamp(1.15rem, 2vw, 1.5625rem);
+  font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.hcn-director-org-caption {
+  margin-top: 0.375rem;
+  color: #416885;
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.hcn-director-header-tools,
+.hcn-director-header-account {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.hcn-director-tool,
+.hcn-director-office-switcher,
+.hcn-director-header-logout {
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #cbdfea;
+  border-radius: 0.5625rem;
+  background: #f5faff;
+  color: #235273;
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.hcn-director-tool,
+.hcn-director-header-logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.hcn-director-tool:hover,
+.hcn-director-header-logout:hover {
+  background: #e7f3fc;
+}
+
+.hcn-director-search {
+  min-width: 10.5rem;
+  justify-content: flex-start;
+  background: #fcfeff;
+}
+
+.hcn-director-office-switcher {
+  max-width: 10.5rem;
+}
+
+.hcn-director-avatar {
+  width: 2.3125rem;
+  height: 2.3125rem;
+  border-radius: 50%;
+  color: white;
+  background: #295f86;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.hcn-director-workspace .hcn-workspace-navigation {
+  color: #fff;
+  background: linear-gradient(155deg, #407c9f, #3c79a1 62%, #356f98);
+  border-color: #356f98;
+}
+
+.hcn-director-nav-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6875rem;
+  margin: 1rem 0.9rem 0.3125rem;
+  padding: 0.25rem 0.625rem 0.875rem;
+  border-bottom: 1px solid #e7f5ff50;
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.hcn-director-workspace .hcn-director-nav-list {
+  padding: 0 0.875rem;
+}
+
+.hcn-director-workspace .hcn-workspace-navigation :is(.text-ent-text, .text-ent-ink, .text-ent-muted) {
+  color: #f8fcff;
+}
+
+.hcn-director-workspace .hcn-workspace-navigation .uppercase {
+  color: #e5f4ff;
+  font-size: 0.625rem;
+}
+
+.hcn-director-workspace .hcn-workspace-navigation button[aria-current="page"] {
+  background: #e9f6ff;
+  color: #194b71;
+}
+
+.hcn-director-workspace .hcn-workspace-navigation button:not([aria-current="page"]):hover {
+  background: #235779;
+  color: #fff;
+}
+
+.hcn-director-workspace .hcn-workspace-navigation button:focus-visible {
+  outline-color: #fff;
+}
+
+.hcn-director-workspace .hcn-director-nav-account,
+.hcn-director-drawer .border-t {
+  border-color: #e7f5ff50;
+}
+
+.hcn-director-workspace .hcn-director-body {
+  min-width: 0;
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.hcn-director-workspace .hcn-director-main {
+  padding: clamp(1rem, 2vw, 1.875rem);
+  background: radial-gradient(ellipse at top right, #e8f5fc, transparent 42%),
+    linear-gradient(145deg, #f4faff, #f9fbfe 55%, #f5f9fc);
+}
+
+.hcn-director-workspace .hcn-director-main-inner {
+  max-width: 92rem;
+}
+
+.hcn-director-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-inline-start: 0.875rem;
+  border-inline-start: 4px solid #c89728;
+}
+
+.hcn-director-heading h1 {
+  margin-bottom: 0.25rem;
+  color: #0d2c4a;
+  font: 700 clamp(1.6rem, 3vw, 2rem)/1.15 Georgia, serif;
+  letter-spacing: -0.025em;
+}
+
+.hcn-director-heading time {
+  color: #486d83;
+  font-size: 0.8125rem;
+}
+
+.hcn-director-card,
+.hcn-director-metric {
+  border: 1px solid #d9e7f0;
+  border-radius: 0.6875rem;
+  background: #fff;
+  box-shadow: 0 4px 15px #244f710b;
+}
+
+.hcn-director-quick {
+  padding: clamp(0.875rem, 1.5vw, 1.25rem);
+}
+
+.hcn-director-quick h2 {
+  margin-bottom: 0.875rem;
+  color: #396a8a;
+  font-size: 0.8125rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.hcn-director-action-grid,
+.hcn-director-metrics,
+.hcn-director-activity {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.875rem;
+}
+
+.hcn-director-action-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5625rem;
+}
+
+.hcn-director-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 5rem;
+  padding: 0.5rem 0.25rem;
+  border: 1px solid #d6e6f1;
+  border-radius: 0.5rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  line-height: 1.25;
+  font-weight: 700;
+  color: #244d6d;
+  background: #fdfefe;
+}
+
+.hcn-director-action svg {
+  color: #28799d;
+  flex: none;
+}
+
+.hcn-director-action:hover,
+.hcn-director-metric:hover {
+  border-color: #699dbb;
+  box-shadow: 0 4px 15px #244f711c;
+}
+
+.hcn-director-metric {
+  --metric-accent: #79b5d6;
+  --metric-icon-bg: #e3f2fb;
+  --metric-icon-color: #21688f;
+  display: flex;
+  align-items: center;
+  gap: clamp(0.6rem, 1vw, 1.0625rem);
+  min-height: 7.0625rem;
+  padding: 0.875rem;
+  border-inline-start: 4px solid var(--metric-accent);
+  text-align: left;
+  background: #f5fbff;
+}
+
+.hcn-director-metric:nth-child(2) {
+  --metric-accent: #d8a745;
+  --metric-icon-bg: #fff0d8;
+  --metric-icon-color: #8a5e13;
+  background: #fffaf2;
+}
+
+.hcn-director-metric:nth-child(3) {
+  --metric-accent: #6ab5ac;
+  --metric-icon-bg: #ddf2ee;
+  --metric-icon-color: #247073;
+  background: #f4fbf9;
+}
+
+.hcn-director-metric-icon {
+  width: clamp(2.25rem, 4vw, 3.5rem);
+  height: clamp(2.25rem, 4vw, 3.5rem);
+  border-radius: 0.875rem;
+  color: var(--metric-icon-color);
+  background: var(--metric-icon-bg);
+}
+
+.hcn-director-metric-label,
+.hcn-director-metric-count,
+.hcn-director-metric-detail {
+  display: block;
+}
+
+.hcn-director-metric-label {
+  color: #354f63;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.hcn-director-metric-count {
+  color: #153b5a;
+  font: 700 2.125rem/1.1 Georgia, serif;
+}
+
+.hcn-director-metric-detail {
+  color: #486d83;
+  font-size: 0.75rem;
+}
+
+.hcn-director-activity-panel {
+  min-width: 0;
+  padding: 1rem clamp(0.875rem, 1.5vw, 1.25rem);
+}
+
+.hcn-director-activity-panel > * + * {
+  margin-top: 0.75rem;
+}
+
+.hcn-director-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  padding-bottom: 0.625rem;
+  border-bottom: 1px solid #e0eaf1;
+}
+
+.hcn-director-panel-header h2 {
+  padding-inline-start: 0.625rem;
+  border-inline-start: 3px solid #d1a345;
+  color: #143959;
+  font: 700 1.25rem/1.2 Georgia, serif;
+}
+
+.hcn-director-panel-header button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  color: #22638b;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.hcn-director-panel-header button:hover {
+  text-decoration: underline;
+}
+
+.hcn-director-activity-list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  min-height: 4rem;
+  padding-block: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.hcn-director-activity-list li + li {
+  border-top: 1px solid #e0eaf1;
+}
+
+.hcn-director-row-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.625rem;
+  background: #eaf6f9;
+  color: #2a6383;
+}
+
+.hcn-director-row-incident {
+  background: #fcf0f0;
+  color: #a33f40;
+}
+
+.hcn-director-status {
+  margin-inline-start: auto;
+  padding: 0.25rem 0.625rem;
+  border-radius: 1rem;
+  background: #fbecec;
+  color: #923b3e;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.hcn-director-workspace .hcn-workspace-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-top: 1px solid #d9e7ef;
+  color: #486d83;
+  background: #f5f9fc;
+  font-size: 0.8125rem;
+}
+
+@media (min-width: 40rem) {
+  .hcn-director-action-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .hcn-director-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 64rem) {
+  html.haneen-site .hcn-director-workspace {
+    grid-template-columns: var(--director-sidebar-width) minmax(0, 1fr);
+  }
+  .hcn-director-workspace > aside {
+    grid-column: 1;
+    grid-row: 2;
+    width: var(--director-sidebar-width);
+    height: calc(100dvh - var(--director-header-height));
+    top: var(--director-header-height);
+  }
+  .hcn-director-workspace .hcn-director-body {
+    grid-column: 2;
+  }
+  .hcn-director-activity {
+    grid-template-columns: minmax(0, 1.04fr) minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 75rem) {
+  .hcn-director-action-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 55rem) {
+  .hcn-director-workspace .hcn-director-header {
+    --director-header-height: 0px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem;
+  }
+  .hcn-director-header-tools {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .hcn-director-header-account {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  .hcn-director-search {
+    min-width: 0;
+  }
+  .hcn-director-office-switcher {
+    max-width: 7.5rem;
+  }
+}
+
+@media (max-width: 37rem) {
+  .hcn-director-org-symbol,
+  .hcn-director-avatar {
+    display: none;
+  }
+  .hcn-director-office-switcher {
+    max-width: 4.5rem;
+  }
+  .hcn-director-org-caption {
+    font-size: 0.625rem;
+    letter-spacing: 0.04em;
+  }
 }

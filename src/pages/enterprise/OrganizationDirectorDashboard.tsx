@@ -3,14 +3,14 @@
 // an ACTIVE director (server-verified by every RPC this page calls) —
 // "an organization director must have authority within their own
 // organization only," never a global admin.
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, type ReactNode } from 'react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
   Building2, Users, UserPlus, Trash2, LayoutDashboard, UserCog,
   Loader2, CreditCard, ClipboardList, MessageSquare, Link2, Unlink, CalendarClock,
-  ClipboardCheck, ShieldAlert, BarChart3, Settings as SettingsIcon, ChevronRight, CheckCircle2, Stethoscope,
+  ClipboardCheck, ShieldAlert, BarChart3, Settings as SettingsIcon, ChevronRight, CheckCircle2, Stethoscope, Search, Sparkles,
 } from 'lucide-react';
 import {
   getMyOrganizations, getOrgMembers, getOrgLicense, getOrgCoveredPatients, closePatientCoverage,
@@ -48,6 +48,7 @@ import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGr
 import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import DirectorScheduleCalendar from './DirectorScheduleCalendar';
 import DirectorAttendancePanel, { DirectorRecentAttendance } from './DirectorAttendancePanel';
 import DirectorOfficeAccessPanel from './DirectorOfficeAccessPanel';
@@ -1133,34 +1134,93 @@ const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ADMINISTRATION', items: ['applications', 'reports', 'settings'] },
 ];
 
-function DashboardHome({ orgId, members, visits, incidents, handoffs, patients, onOpenPatient, onNavigate }: {
-  orgId: string; members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
+function DirectorHeaderTools({ orgId, patients, onOpenPatient }: {
+  orgId: string;
+  patients: OrgCoveredPatient[];
+  onOpenPatient: (patientId: string) => void;
+}) {
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const term = query.trim().toLowerCase();
+  const matchingPatients = term ? patients.filter(patient =>
+    [patient.firstName, patient.lastName, patient.preferredName, patient.patientId]
+      .some(value => value?.toLowerCase().includes(term))
+  ) : [];
+
+  return (
+    <>
+      <Dialog open={searchOpen} onOpenChange={open => {
+        setSearchOpen(open);
+        if (!open) setQuery('');
+      }}>
+        <DialogTrigger className="hcn-director-tool hcn-director-search" aria-label="Search organization patients">
+          <Search size={17} aria-hidden="true" />
+          <span>Search patients</span>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogTitle>Search organization patients</DialogTitle>
+          <DialogDescription className="sr-only">Find a covered patient and open their information.</DialogDescription>
+          <input type="search" aria-label="Patient name or reference" value={query} onChange={event => setQuery(event.target.value)}
+            autoComplete="off" placeholder="Search patient name or reference…" className={inputCls} />
+          {term && (
+            <div role="region" aria-label="Matching covered patients" className="max-h-[50vh] overflow-y-auto space-y-2">
+              {matchingPatients.length ? matchingPatients.map(patient => (
+                <button type="button" key={patient.patientId} onClick={() => {
+                  onOpenPatient(patient.patientId);
+                  setSearchOpen(false);
+                  setQuery('');
+                }} className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
+                  <span className="min-w-0 break-words">{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span>
+                  <span className="text-sm font-semibold text-ent-forest">Open Patient Information →</span>
+                </button>
+              )) : <p className="text-sm text-ent-muted">No covered patient matches this search.</p>}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog>
+        <DialogTrigger className="hcn-director-tool" aria-label="Director’s Assistant">
+          <Sparkles size={17} aria-hidden="true" />
+          <span>Director’s Assistant</span>
+        </DialogTrigger>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto">
+          <DialogTitle>Director’s Assistant</DialogTitle>
+          <DialogDescription className="sr-only">Ask about scheduling and care operations.</DialogDescription>
+          <HaneenAssistantPanel role="director" organizationId={orgId} showHeading={false} />
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
+  members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
   visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
-  patients: OrgCoveredPatient[]; onOpenPatient: (patientId: string) => void;
   onNavigate: (key: DirectorNavKey) => void;
 }) {
-  const [dashboardSearch, setDashboardSearch] = useState('');
-  const matchingPatients = dashboardSearch.trim()
-    ? patients.filter(p => [p.firstName, p.lastName, p.preferredName, p.patientId].some(v => (v ?? '').toLowerCase().includes(dashboardSearch.trim().toLowerCase())))
-    : [];
   const activeStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'active').length;
   const invitedStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'invited').length;
   const openIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').length;
   const scheduledVisits = visits.filter((v) => v.status === 'scheduled' || v.status === 'in_progress').length;
+  const today = new Date();
   const recentHandoffs = handoffs.slice(0, 5);
   const recentIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').slice(0, 5);
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="hcn-workspace-heading text-xl sm:text-2xl font-bold text-ent-ink">Director Dashboard</h1>
+    <div className="hcn-director-dashboard space-y-5">
+      <div className="hcn-director-heading">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-ent-ink">Director Dashboard</h1>
+          <p className="text-sm text-ent-muted">Organization-wide oversight</p>
+        </div>
+        <time dateTime={`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`}>
+          {today.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+        </time>
       </div>
 
-      <section aria-label="Director quick actions" className="hcn-workspace-actions rounded-2xl border border-ent-line bg-ent-panel p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-bold text-ent-ink">Director Quick Actions</h2>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+      <section aria-label="Director quick actions" className="hcn-director-card hcn-director-quick rounded-xl border border-ent-line bg-ent-panel p-4">
+        <h2 className="font-bold text-ent-ink">Director Quick Actions</h2>
+        <div className="hcn-director-action-grid">
           {([
             { label: 'Manage Patients', key: 'patients' as DirectorNavKey, icon: UserCog },
             { label: 'Staff & Credentials', key: 'staff' as DirectorNavKey, icon: Users },
@@ -1170,97 +1230,86 @@ function DashboardHome({ orgId, members, visits, incidents, handoffs, patients, 
             { label: 'Care Communications', key: 'communications' as DirectorNavKey, icon: MessageSquare },
           ]).map((action) => (
             <button key={action.key} type="button" onClick={() => onNavigate(action.key)}
-              className="hcn-workspace-action flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg px-3 py-3 text-left text-sm font-semibold text-ent-ink transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze"
+              className="hcn-director-action"
               aria-label={`Open ${action.label}`}>
-              <action.icon className="h-5 w-5 shrink-0 text-ent-bronze" aria-hidden="true" />
+              <action.icon size={23} aria-hidden="true" />
               <span>{action.label}</span>
             </button>
           ))}
         </div>
       </section>
 
-      <div className="hcn-workspace-tools">
-        <section aria-label="Search organization patients" className="space-y-2 rounded-xl border border-ent-line bg-ent-panel p-4">
-          <label htmlFor="director-dashboard-search" className="block text-sm font-bold text-ent-ink">Search organization patients</label>
-          <input id="director-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
-            autoComplete="off" placeholder="Search patient name or reference…"
-            className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
-          {dashboardSearch.trim() && (
-            <div role="region" aria-label="Matching covered patients" className="space-y-2">
-              {matchingPatients.length ? matchingPatients.map(patient => (
-                <button type="button" key={patient.patientId} onClick={() => onOpenPatient(patient.patientId)}
-                  className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
-                  <span className="min-w-0 break-words">{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-sm font-semibold text-ent-forest">Open Patient Information →</span>
-                </button>
-              )) : <p className="text-sm text-ent-muted">No covered patient matches this search.</p>}
-            </div>
-          )}
-          <p className="text-xs text-ent-muted">Open a patient to search conditions, allergies, doctors and emergency contacts.</p>
-        </section>
-        <HaneenAssistantPanel role="director" organizationId={orgId} compact />
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <MetricCard label="Care Team Inventory" value={String(activeStaff+invitedStaff)}
+      <section aria-label="Operational metrics" className="hcn-director-metrics">
+        <MetricCard label="Care Team Inventory" value={String(activeStaff + invitedStaff)} icon={Users}
           sub={`${activeStaff} active · ${invitedStaff} pending activation`} onClick={() => onNavigate('staff')} />
-        <MetricCard label="Open Incidents" value={String(openIncidents)} sub="need review" onClick={() => onNavigate('incidents')} />
-        <MetricCard label="Scheduled Visits" value={String(scheduledVisits)} sub="upcoming or in progress" onClick={() => onNavigate('scheduling')} />
-      </div>
+        <MetricCard label="Open Incidents" value={String(openIncidents)} icon={ShieldAlert}
+          sub="need review" onClick={() => onNavigate('incidents')} />
+        <MetricCard label="Scheduled Visits" value={String(scheduledVisits)} icon={CalendarClock}
+          sub="upcoming or in progress" onClick={() => onNavigate('scheduling')} />
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <OfficeCard>
-          <div className="flex items-center justify-between">
-            <h2 className="font-bold text-ent-ink">Needs Your Attention</h2>
-            {recentIncidents.length > 0 && <span className="text-xs font-bold text-ent-rust">{recentIncidents.length}</span>}
+      <div className="hcn-director-activity">
+        <section className="hcn-director-card hcn-director-activity-panel">
+          <div className="hcn-director-panel-header">
+            <h2>Needs Your Attention</h2>
+            <button type="button" onClick={() => onNavigate('incidents')}>View all incidents <ChevronRight size={15} aria-hidden="true" /></button>
           </div>
           {recentIncidents.length === 0 ? (
             <p className="text-sm text-ent-text">No unresolved incidents across your organization right now.</p>
           ) : (
-            <ul className="space-y-2">
-              {recentIncidents.map((i) => (
-                <li key={i.id} className="p-2.5 bg-ent-bg rounded-xl border border-ent-line text-sm">
-                  <p className="font-semibold text-ent-ink capitalize">{i.incidentType.replace('_', ' ')} — {i.patientName}</p>
-                  <p className="text-xs text-ent-muted">{new Date(i.occurredAt).toLocaleString()} · {i.severity}</p>
+            <ul className="hcn-director-activity-list">
+              {recentIncidents.map(incident => (
+                <li key={incident.id}>
+                  <span className="hcn-director-row-icon hcn-director-row-incident"><ShieldAlert size={19} aria-hidden="true" /></span>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-ent-ink capitalize">{incident.incidentType.replaceAll('_', ' ')} — {incident.patientName}</p>
+                    <p className="text-xs text-ent-muted">{new Date(incident.occurredAt).toLocaleString()}</p>
+                  </div>
+                  <span className="hcn-director-status">{incident.severity}</span>
                 </li>
               ))}
             </ul>
           )}
-          <button type="button" onClick={() => onNavigate('incidents')} className="text-sm font-semibold text-ent-bronze hover:underline">View all incidents →</button>
-        </OfficeCard>
+        </section>
 
-        <OfficeCard>
-          <h2 className="font-bold text-ent-ink">Recent Staff Activity</h2>
+        <section className="hcn-director-card hcn-director-activity-panel">
+          <div className="hcn-director-panel-header">
+            <h2>Recent Staff Activity</h2>
+            <button type="button" onClick={() => onNavigate('operations')}>View care operations <ChevronRight size={15} aria-hidden="true" /></button>
+          </div>
           <DirectorRecentAttendance visits={visits} />
-          <h3 className="text-xs font-semibold text-ent-muted mt-2">Shift handoffs (separate)</h3>
+          <h3 className="text-sm font-semibold text-ent-ink">Shift handoffs</h3>
           {recentHandoffs.length === 0 ? (
             <p className="text-sm text-ent-text">No shift handoffs recorded yet across your organization.</p>
           ) : (
-            <ul className="space-y-2">
-              {recentHandoffs.map((h) => (
-                <li key={h.id} className="p-2.5 bg-ent-bg rounded-xl border border-ent-line text-sm">
-                  <p className="font-semibold text-ent-ink">{h.authorName} — {h.patientName}</p>
-                  <p className="text-xs text-ent-muted line-clamp-2">{h.summary}</p>
+            <ul className="hcn-director-activity-list">
+              {recentHandoffs.map(handoff => (
+                <li key={handoff.id}>
+                  <span className="hcn-director-row-icon"><ClipboardCheck size={19} aria-hidden="true" /></span>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-ent-ink">{handoff.authorName} — {handoff.patientName}</p>
+                    <p className="text-xs text-ent-muted line-clamp-2">{handoff.summary}</p>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
-          <button type="button" onClick={() => onNavigate('operations')} className="text-sm font-semibold text-ent-bronze hover:underline">View care operations →</button>
-        </OfficeCard>
+        </section>
       </div>
     </div>
   );
 }
 
-function MetricCard({ label, value, sub, onClick }: { label: string; value: string; sub: string; onClick: () => void }) {
+function MetricCard({ label, value, sub, icon: Icon, onClick }: {
+  label: string; value: string; sub: string; icon: OfficeNavItem<DirectorNavKey>['icon']; onClick: () => void;
+}) {
   return (
-    <button type="button" onClick={onClick}
-      aria-label={`View ${label}: ${value}. ${sub}`}
-      className="w-full rounded-2xl border border-ent-line bg-ent-panel p-4 text-left transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze">
-      <p className="text-xs font-semibold text-ent-muted capitalize">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-ent-ink capitalize">{value}</p>
-      <p className="text-[11px] text-ent-muted">{sub}</p>
-      <span className="mt-2 inline-flex items-center text-xs font-semibold text-ent-bronze">
-        View details <ChevronRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
+    <button type="button" onClick={onClick} aria-label={`View ${label}: ${value}. ${sub}`} className="hcn-director-metric">
+      <span className="hcn-director-metric-icon"><Icon size={25} aria-hidden="true" /></span>
+      <span className="min-w-0">
+        <span className="hcn-director-metric-label">{label}</span>
+        <span className="hcn-director-metric-count">{value}</span>
+        <span className="hcn-director-metric-detail">{sub}</span>
       </span>
     </button>
   );
@@ -1699,7 +1748,9 @@ const DIRECTOR_NAV_KEYS: DirectorNavKey[] = [
 // behavior unchanged — only an explicit basePath (passed by
 // ProfessionalOfficeResolver.tsx under /Professional/Admin) turns on
 // nested-route URL sync (P1 CORRECTIVE ORDER §7).
-export default function OrganizationDirectorDashboard({ organizationId, basePath = null }: { organizationId: string; basePath?: string | null }) {
+export default function OrganizationDirectorDashboard({ organizationId, basePath = null, officeSwitcher }: {
+  organizationId: string; basePath?: string | null; officeSwitcher?: ReactNode;
+}) {
   const { state, dispatch } = useApp();
   const [license, setLicense] = useState<OrgLicense | null>(null);
   const [members, setMembers] = useState<(OrgMembershipRow & { firstName: string; lastName: string; email: string })[]>([]);
@@ -1770,7 +1821,9 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
 
   return (
     <EnterpriseOfficeShell
-      workspaceTheme officeBadge="ADMIN OFFICE" orgLabel={orgName || 'Organization'} roleLabel="Director" fullName={fullName} initials={initials}
+      officeBadge="ADMIN OFFICE" orgLabel={orgName || 'Organization'} roleLabel="Director" fullName={fullName} initials={initials}
+      headerTools={<DirectorHeaderTools key={organizationId} orgId={organizationId} patients={coveredPatients} onOpenPatient={openPatientInformation} />}
+      officeSwitcher={officeSwitcher}
       navItems={DIRECTOR_NAV_ITEMS} navGroups={DIRECTOR_NAV_GROUPS}
       activeNav={nav === 'overview' || nav === 'licensing' || nav === 'ownership' ? 'settings' : nav}
       onNavigate={navigate}
@@ -1785,7 +1838,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : nav === 'dashboard' ? (
-        <DashboardHome orgId={organizationId} members={members} visits={visits} incidents={incidents} handoffs={handoffs} patients={coveredPatients} onOpenPatient={openPatientInformation} onNavigate={navigate} />
+        <DashboardHome members={members} visits={visits} incidents={incidents} handoffs={handoffs} onNavigate={navigate} />
       ) : nav === 'applications' ? (
         <ApplicationsReviewView organizationId={organizationId} />
       ) : nav === 'staff' ? (

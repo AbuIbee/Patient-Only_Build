@@ -45,7 +45,6 @@ import { PREVISIT_SECTIONS, acknowledgePrevisit } from '@/services/hcnCareOperat
 import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
-import { WorkspaceFooter } from './EnterpriseOfficeShell';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import { selectCurrentOrNextVisit } from './selectCurrentOrNextVisit';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
@@ -363,28 +362,22 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   const fullName = `${firstName} ${lastName}`.trim();
   const initials = (`${firstName[0] || ''}${lastName[0] || ''}` || 'U').toUpperCase();
 
-  const isHaneenSite = import.meta.env.VITE_ENTERPRISE_SITE === 'true';
-
   return (
-    <div className={`min-h-screen bg-ent-bg flex ${isHaneenSite ? 'hcn-workspace' : ''}`}>
+    <div className="min-h-screen bg-ent-bg flex">
       {/* Desktop sidebar — persistent, all 14 items grouped exactly as
           approved (WORKSPACE / CARE COLLABORATION / PROFESSIONAL TOOLS),
           never collapsed below entitlement (locked requirement: "still
           exposes every item without overflow or reduced entitlement"). */}
-      <aside className="hidden lg:flex lg:flex-col w-64 shrink-0 bg-ent-panel border-r border-ent-line sticky top-0 h-screen hcn-workspace-navigation">
-        {isHaneenSite ? (
-          <div className="hcn-workspace-navigation-title border-b border-ent-line">Caregiver Workspace</div>
-        ) : (
-          <div className="flex items-center gap-2.5 px-4 pt-5 pb-4 border-b border-ent-line">
-            <div className="w-10 h-10 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0">
-              <Sparkles className="w-5 h-5 text-ent-forest" />
-            </div>
-            <div className="min-w-0">
-              <div className="font-bold text-ent-ink text-sm leading-tight truncate">My Memoria Ally</div>
-              <div className="text-[10px] font-extrabold tracking-[0.14em] text-ent-bronze mt-0.5">ENTERPRISE CARE</div>
-            </div>
+      <aside className="hidden lg:flex lg:flex-col w-64 bg-ent-panel border-r border-ent-line sticky top-0 h-screen">
+        <div className="flex items-center gap-2.5 px-4 pt-5 pb-4 border-b border-ent-line">
+          <div className="w-10 h-10 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0">
+            <Sparkles className="w-5 h-5 text-ent-forest" />
           </div>
-        )}
+          <div className="min-w-0">
+            <div className="font-bold text-ent-ink text-sm leading-tight truncate">{import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'}</div>
+            <div className="text-[10px] font-extrabold tracking-[0.14em] text-ent-bronze mt-0.5">ENTERPRISE CARE</div>
+          </div>
+        </div>
         <nav aria-label="Enterprise navigation" className="flex-1 overflow-y-auto px-2.5 py-2">
           {NAV_GROUPS.map((group) => (
             <div key={group.label}>
@@ -425,7 +418,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header bar — org/workspace identification + signed-in identity, every viewport. */}
-        <header className="hcn-workspace-header bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
+        <header className="bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
           <div className="flex items-center gap-3 min-w-0">
             <button ref={mobileNavButtonRef} type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation" className="lg:hidden p-1.5 -ml-1.5 text-ent-ink flex-shrink-0">
               <Menu className="w-5 h-5" />
@@ -467,13 +460,11 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
           <div className="lg:hidden fixed inset-0 z-50 bg-black/40" onClick={() => setMobileNavOpen(false)}>
             <div
               ref={mobileNavPanelRef} role="dialog" aria-modal="true" aria-label="Navigation menu"
-              className="hcn-workspace-navigation bg-ent-panel w-72 h-full p-2 overflow-y-auto" onClick={(e) => e.stopPropagation()}
+              className="bg-ent-panel w-72 h-full p-2 overflow-y-auto" onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2 min-w-0">
-                  {!isHaneenSite && (
-                    <div className="w-8 h-8 rounded-lg bg-ent-green flex items-center justify-center flex-shrink-0"><Sparkles className="w-4 h-4 text-ent-forest" /></div>
-                  )}
+                  <div className="w-8 h-8 rounded-lg bg-ent-green flex items-center justify-center flex-shrink-0"><Sparkles className="w-4 h-4 text-ent-forest" /></div>
                   <span className="font-semibold text-ent-ink text-sm truncate">{hasOrganization ? orgName : 'No organization connected'}</span>
                 </div>
                 <button ref={mobileNavCloseButtonRef} type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X className="w-5 h-5 text-ent-muted" /></button>
@@ -558,7 +549,6 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
             </div>
           )}
         </main>
-        {isHaneenSite && <WorkspaceFooter />}
       </div>
     </div>
   );
@@ -905,14 +895,16 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <p className="text-[11px] font-bold tracking-[0.1em] text-ent-bronze">{dateLabel}</p>
-          <h1 className="hcn-workspace-heading text-2xl sm:text-[26px] font-bold text-ent-ink mt-0.5">Good {timeOfDay}, {state.currentUser?.firstName || 'Caregiver'}.</h1>
+          <h1 className="text-2xl sm:text-[26px] font-bold text-ent-ink mt-0.5">Good {timeOfDay}, {state.currentUser?.firstName || 'Caregiver'}.</h1>
+          <p className="text-sm text-ent-muted mt-1">Here&apos;s what needs your attention across your assigned patients.</p>
         </div>
         <RegistrationAction orgId={orgId} onChanged={onPatientRegistered} compact />
       </div>
 
-      <section aria-label="Caregiver quick actions" className="hcn-workspace-actions rounded-2xl border border-ent-line bg-ent-panel p-4">
+      <section aria-label="Caregiver quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="font-bold text-ent-ink">What do you need to do next?</h2>
+          <span className="text-[11px] text-ent-muted">Tap once to open your assigned workflow</span>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           {([
@@ -924,7 +916,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
             { label: 'Secure Messages', nav: 'communications' as NavItem, Icon: MessageSquare },
           ]).map(({ label, nav, Icon }) => (
             <button type="button" key={label} onClick={() => onNavigate(nav)}
-              className="hcn-workspace-action flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg px-3 py-3 text-left text-sm font-semibold text-ent-ink transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze"
+              className="flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg px-3 py-3 text-left text-sm font-semibold text-ent-ink transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze"
               aria-label={`Open ${label}`}>
               <Icon className="h-5 w-5 shrink-0 text-ent-bronze" aria-hidden="true" />
               <span>{label}</span>
@@ -937,65 +929,26 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
         </p>
       </section>
 
-      <div className="hcn-workspace-tools">
-        <section aria-label="Search assigned patients" className="space-y-2 rounded-xl border border-ent-line bg-ent-panel p-4">
-          <label htmlFor="caregiver-dashboard-search" className="block text-sm font-bold text-ent-ink">Search my assigned patients</label>
-          <input id="caregiver-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
-            placeholder="Search patient name or reference…" autoComplete="off"
-            className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
-          {dashboardSearch.trim() && (
-            <div role="region" aria-label="Matching assigned patients" className="space-y-2">
-              {matchingPatients.length ? matchingPatients.map(patient => (
-                <button type="button" key={patient.patientId} onClick={() => onOpenInformation(patient.patientId)}
-                  className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
-                  <span className="min-w-0 break-words">{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-sm font-semibold text-ent-forest">Open Patient Information →</span>
-                </button>
-              )) : <p className="text-sm text-ent-muted">No assigned patient matches this search.</p>}
-            </div>
-          )}
-          <p className="text-xs text-ent-muted">Select a patient to search their allergies, conditions, providers and care information.</p>
-        </section>
-        <HaneenAssistantPanel role="caregiver" organizationId={orgId} compact
-          patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
-      </div>
+      <HaneenAssistantPanel role="caregiver" organizationId={orgId}
+        patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
 
-      <Card>
-        <div className="flex items-center justify-between">
-          <h2 className="font-bold text-ent-ink">Current or next visit</h2>
-          {nextVisit && <span className="text-[11px] font-semibold text-ent-forest bg-ent-green-active px-2.5 py-1 rounded-full">Today</span>}
-        </div>
-        {!nextVisit ? (
-          <p className="text-sm text-ent-muted">No active or upcoming visit is currently scheduled for today.</p>
-        ) : (
-          <div className="flex items-start gap-3">
-            <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">
-              {nextVisitPatient ? patientInitials(nextVisitPatient.firstName, nextVisitPatient.lastName) : '?'}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-ent-ink text-sm">{nextVisitPatient?.preferredName || nextVisitPatient?.firstName || 'Patient'}</p>
-              <p className="text-xs text-ent-muted">{nextVisit.status === 'in_progress' ? 'In progress' : new Date(nextVisit.scheduledStart ?? '').toLocaleTimeString()}{nextVisit.scheduledEnd ? ` – ${new Date(nextVisit.scheduledEnd).toLocaleTimeString()}` : ''}</p>
-              {/* MMA-CODEX-011 011-10 (H07, P2): the locked requirement
-                  says "show late/change alerts" -- this card never
-                  showed either. "Late" is directly derivable (a
-                  still-'scheduled' visit whose start time has already
-                  passed) and added here. A genuine reschedule/"change"
-                  alert would need a dedicated audit of what the visit's
-                  time WAS before an edit -- caregiver_visits only
-                  stores the current scheduled_start/end, no prior
-                  value or a server-set "rescheduled" flag -- so that
-                  half is NOT fabricated from updated_at (which also
-                  changes on every ordinary status transition and would
-                  false-positive on every visit that starts/completes
-                  normally); it remains open, honestly, not silently
-                  claimed done. */}
-              {nextVisit.status === 'scheduled' && nextVisit.scheduledStart && new Date(nextVisit.scheduledStart).getTime() < Date.now() && (
-                <span className="inline-block mt-1 text-[11px] font-semibold text-gentle-coral bg-gentle-coral/10 px-2 py-0.5 rounded-full">Late — past scheduled start</span>
-              )}
-              <button type="button" onClick={() => onNavigate('schedule')} className="text-xs font-semibold text-ent-forest hover:underline mt-2 inline-block">Open schedule →</button>
-            </div>
+      <section aria-label="Search assigned patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
+        <label htmlFor="caregiver-dashboard-search" className="block text-sm font-bold text-ent-ink">Search my assigned patients</label>
+        <input id="caregiver-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
+          placeholder="Search patient name or reference…" autoComplete="off"
+          className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
+        {dashboardSearch.trim() && (
+          <div role="region" aria-label="Matching assigned patients" className="space-y-2">
+            {matchingPatients.length ? matchingPatients.map(patient => (
+              <button type="button" key={patient.patientId} onClick={() => onOpenInformation(patient.patientId)}
+                className="flex w-full items-center justify-between rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
+                <span>{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-xs text-ent-bronze">Open Patient Information →</span>
+              </button>
+            )) : <p className="text-sm text-ent-muted">No assigned patient matches this search.</p>}
           </div>
         )}
-      </Card>
+        <p className="text-xs text-ent-muted">Select a patient to search their allergies, conditions, providers and care information.</p>
+      </section>
 
       {/* H02 — the FIVE approved summary counts ("assigned patients,
           scheduled visits, unfinished tasks, unread messages, and
@@ -1035,8 +988,8 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
       </div>
 
       {/* Two-column layout per the approved design: [Needs your
-          attention, Your patients] on the left and Care communications
-          on the right. */}
+          attention, Your patients] on the left; [Next scheduled visit,
+          Care communications] on the right. */}
       <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5 items-start">
         <div className="space-y-5">
           <Card>
@@ -1100,6 +1053,44 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
         </div>
 
         <div className="space-y-5">
+          <Card>
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-ent-ink">Current or next visit</h2>
+              {nextVisit && <span className="text-[11px] font-semibold text-ent-forest bg-ent-green-active px-2.5 py-1 rounded-full">Today</span>}
+            </div>
+            {!nextVisit ? (
+              <p className="text-sm text-ent-muted">No active or upcoming visit is currently scheduled for today.</p>
+            ) : (
+              <div className="flex items-start gap-3">
+                <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">
+                  {nextVisitPatient ? patientInitials(nextVisitPatient.firstName, nextVisitPatient.lastName) : '?'}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-ent-ink text-sm">{nextVisitPatient?.preferredName || nextVisitPatient?.firstName || 'Patient'}</p>
+                  <p className="text-xs text-ent-muted">{nextVisit.status === 'in_progress' ? 'In progress' : new Date(nextVisit.scheduledStart ?? '').toLocaleTimeString()}{nextVisit.scheduledEnd ? ` – ${new Date(nextVisit.scheduledEnd).toLocaleTimeString()}` : ''}</p>
+                  {/* MMA-CODEX-011 011-10 (H07, P2): the locked requirement
+                      says "show late/change alerts" -- this card never
+                      showed either. "Late" is directly derivable (a
+                      still-'scheduled' visit whose start time has already
+                      passed) and added here. A genuine reschedule/"change"
+                      alert would need a dedicated audit of what the visit's
+                      time WAS before an edit -- caregiver_visits only
+                      stores the current scheduled_start/end, no prior
+                      value or a server-set "rescheduled" flag -- so that
+                      half is NOT fabricated from updated_at (which also
+                      changes on every ordinary status transition and would
+                      false-positive on every visit that starts/completes
+                      normally); it remains open, honestly, not silently
+                      claimed done. */}
+                  {nextVisit.status === 'scheduled' && nextVisit.scheduledStart && new Date(nextVisit.scheduledStart).getTime() < Date.now() && (
+                    <span className="inline-block mt-1 text-[11px] font-semibold text-gentle-coral bg-gentle-coral/10 px-2 py-0.5 rounded-full">Late — past scheduled start</span>
+                  )}
+                  <button type="button" onClick={() => onNavigate('schedule')} className="text-xs font-semibold text-ent-forest hover:underline mt-2 inline-block">Open schedule →</button>
+                </div>
+              </div>
+            )}
+          </Card>
+
           <Card>
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-ent-ink">Care communications</h2>
