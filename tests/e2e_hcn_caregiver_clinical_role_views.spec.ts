@@ -65,6 +65,28 @@ test('a signed-in Caregiver sees the read-only Clinical Coordination view, with 
     await page.getByPlaceholder('Your password').fill(PW);
     await page.getByRole('button', { name: /sign in/i }).click();
 
+    const header = page.locator('header').first();
+    await expect(header.getByText(/E2E Roles Org/)).toBeVisible({ timeout: 20000 });
+    await expect(header.getByRole('button', { name: 'Caregiver Helper' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Caregiver quick actions' }).getByRole('button')).toHaveCount(6);
+    await expect(page.getByRole('heading', { name: 'Current or next visit' })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Enterprise navigation' }).getByRole('button')).toHaveCount(14);
+
+    await header.getByRole('button', { name: 'Search assigned patients' }).click();
+    const search = page.getByRole('dialog', { name: 'Search assigned patients' });
+    await search.getByRole('searchbox').fill('Roles Patient');
+    await expect(search.getByRole('button', { name: /E2E Roles Patient caregiver.*Open Patient Information/ })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(search).toBeHidden();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const menuToggle = header.getByRole('button', { name: 'Open navigation' });
+    await menuToggle.click();
+    await page.getByRole('dialog', { name: 'Caregiver navigation' }).getByRole('button', { name: 'My Schedule' }).click();
+    await expect(page).toHaveURL(/\/Professional\/Caregiver\/schedule\?org=/i);
+    await expect(page.getByRole('heading', { name: 'My Schedule', exact: true })).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 800 });
+
     await page.getByText('My Care Team').click();
     await expect(page.getByText('Dr. E2E Roles')).toBeVisible({ timeout: 20000 });
     await expect(page.getByRole('button', { name: /add provider/i })).toHaveCount(0);

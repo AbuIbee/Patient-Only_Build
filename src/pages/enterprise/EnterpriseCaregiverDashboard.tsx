@@ -11,15 +11,15 @@
 // the caller's own active staff_patient_assignments/organization_memberships
 // rows (server-enforced RLS, not a client-side assumption) — no
 // placeholder counts, no fabricated sample patients.
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, type ReactNode } from 'react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
   LogOut, Users, Loader2, MessageSquare, Calendar, ClipboardList,
-  ChevronRight, Menu, X, ShieldAlert, Clock, Building2,
+  ChevronRight, X, ShieldAlert, Clock, Building2,
   ClipboardCheck, FileText, UserCog, Settings as SettingsIcon, Send,
-  AlertTriangle, CheckCircle2, PlayCircle, StopCircle, Sparkles, Flag, Moon, Upload, ArrowLeft,
+  AlertTriangle, CheckCircle2, PlayCircle, StopCircle, Flag, Moon, Upload, ArrowLeft,
 } from 'lucide-react';
 import {
   getMyCareTeamResult, getMyOrgSupervisorResult, getMyOrganizationsResult, getMyStaffPatientsResult, setStaffPatientLabel,
@@ -44,7 +44,8 @@ import { acknowledgeHelpActivation } from '@/services/patientClinicalRecordServi
 import { PREVISIT_SECTIONS, acknowledgePrevisit } from '@/services/hcnCareOperationsService';
 import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
-import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
+import { EnterpriseOfficeShell, OfficeCard as Card } from './EnterpriseOfficeShell';
+import OfficeHeaderTools from './OfficeHeaderTools';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
 import { selectCurrentOrNextVisit } from './selectCurrentOrNextVisit';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
@@ -125,7 +126,7 @@ function resolveOrgSelection(orgs: MyOrganization[], requestedId: string | null)
   return orgs[0].organizationId;
 }
 
-export default function EnterpriseCaregiverDashboard({ basePath = '/business' }: { basePath?: string } = {}) {
+export default function EnterpriseCaregiverDashboard({ basePath = '/business', officeSwitcher }: { basePath?: string; officeSwitcher?: ReactNode } = {}) {
   const { state, dispatch } = useApp();
   // MMA-ENT-CAREGIVER-MASTER-004, D01 (P1) — independent runtime audit
   // finding: "Alpha header, Alpha/Beta patient cards, no switcher." This
@@ -148,17 +149,6 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   const [loading, setLoading] = useState(true);
   const [workspaceLoadError, setWorkspaceLoadError] = useState<string | null>(null);
   const [nav, setNav] = useState<NavItem>(() => parseEnterprisePath(basePath).nav);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  // MMA-ENT-CAREGIVER-MASTER-003/004, D13 (P2) — independent runtime
-  // audit finding: the mobile nav drawer had no role=dialog/aria-modal,
-  // Escape did nothing, and focus was never moved into the drawer on
-  // open or restored to the trigger on close — reproduced at
-  // 320/375/768px. mobileNavButtonRef is the hamburger trigger (focus
-  // target on close); mobileNavCloseButtonRef/mobileNavPanelRef support
-  // focus-on-open and a Tab-key focus trap while the drawer is open.
-  const mobileNavButtonRef = useRef<HTMLButtonElement>(null);
-  const mobileNavCloseButtonRef = useRef<HTMLButtonElement>(null);
-  const mobileNavPanelRef = useRef<HTMLDivElement>(null);
   const [openPatient, setOpenPatient] = useState<string | null>(() => parseEnterprisePath(basePath).openPatient);
   // MMA-ENT-CAREGIVER-MASTER-003 D05 (P1): which record tab to land on
   // when openPatient is set from a destination-specific patient picker
@@ -272,47 +262,6 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
 
   useEffect(() => { void load(); }, [load]);
 
-  // D13: Escape closes the drawer, Tab is trapped within it while open,
-  // focus moves to the close button on open and back to the hamburger
-  // trigger on close, and background scroll is suspended — the
-  // standard accessible-dialog contract this drawer previously had
-  // none of.
-  useEffect(() => {
-    if (!mobileNavOpen) return;
-    const triggerButton = mobileNavButtonRef.current;
-    mobileNavCloseButtonRef.current?.focus();
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setMobileNavOpen(false);
-        return;
-      }
-      if (e.key === 'Tab' && mobileNavPanelRef.current) {
-        const focusable = mobileNavPanelRef.current.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
-        );
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = prevOverflow;
-      triggerButton?.focus();
-    };
-  }, [mobileNavOpen]);
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
     // D10 (Master-005 Part VI.13): supabase.auth.signOut() only clears
@@ -363,199 +312,77 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   const initials = (`${firstName[0] || ''}${lastName[0] || ''}` || 'U').toUpperCase();
 
   return (
-    <div className="min-h-screen bg-ent-bg flex">
-      {/* Desktop sidebar — persistent, all 14 items grouped exactly as
-          approved (WORKSPACE / CARE COLLABORATION / PROFESSIONAL TOOLS),
-          never collapsed below entitlement (locked requirement: "still
-          exposes every item without overflow or reduced entitlement"). */}
-      <aside className="hidden lg:flex lg:flex-col w-64 bg-ent-panel border-r border-ent-line sticky top-0 h-screen">
-        <div className="flex items-center gap-2.5 px-4 pt-5 pb-4 border-b border-ent-line">
-          <div className="w-10 h-10 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0">
-            <Sparkles className="w-5 h-5 text-ent-forest" />
-          </div>
-          <div className="min-w-0">
-            <div className="font-bold text-ent-ink text-sm leading-tight truncate">{import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'}</div>
-            <div className="text-[10px] font-extrabold tracking-[0.14em] text-ent-bronze mt-0.5">ENTERPRISE CARE</div>
-          </div>
-        </div>
-        <nav aria-label="Enterprise navigation" className="flex-1 overflow-y-auto px-2.5 py-2">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.label}>
-              <div className="text-[9px] font-extrabold tracking-[0.16em] text-ent-muted uppercase px-2.5 pt-4 pb-1.5">{group.label}</div>
-              {group.items.map((itemKey) => {
-                const item = NAV_ITEMS.find((n) => n.key === itemKey);
-                if (!item) return null;
-                const Icon = item.icon;
-                const isActive = nav === itemKey;
-                return (
-                  <button
-                    key={itemKey} type="button" aria-current={isActive ? 'page' : undefined}
-                    onClick={() => navigateTo(itemKey)}
-                    className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg text-left text-[12.5px] font-semibold transition-colors ${
-                      isActive ? 'bg-ent-green-active text-ent-forest' : 'text-ent-text hover:bg-ent-pale'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4 flex-shrink-0" /> {item.label}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-        <div className="p-3 border-t border-ent-line flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0" aria-hidden="true">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-xs font-semibold text-ent-ink truncate">{fullName}</div>
-            <div className="text-[11px] text-ent-muted truncate">Professional Caregiver</div>
-          </div>
-          <button type="button" onClick={() => { void handleLogout(); }} aria-label="Logout" className="p-1.5 text-ent-muted hover:text-ent-ink flex-shrink-0 rounded-lg hover:bg-ent-pale">
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-      </aside>
-
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header bar — org/workspace identification + signed-in identity, every viewport. */}
-        <header className="bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
-          <div className="flex items-center gap-3 min-w-0">
-            <button ref={mobileNavButtonRef} type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation" className="lg:hidden p-1.5 -ml-1.5 text-ent-ink flex-shrink-0">
-              <Menu className="w-5 h-5" />
-            </button>
-            {/* D01: an explicit organization switcher, shown only when
-                there is genuinely more than one authorized organization
-                to switch between (myOrgs is already scoped server-side
-                to this caregiver's own current memberships —
-                D01-INVARIANT-09, nothing unauthorized is ever listed
-                here). A single-organization caregiver sees the same
-                plain label as before; no behavior changes for them. */}
-            {hasOrganization && myOrgs.length > 1 ? (
-              <div className="min-w-0">
-                <label htmlFor="enterprise-org-switcher" className="sr-only">Switch organization</label>
-                <select
-                  id="enterprise-org-switcher" value={orgId ?? ''} onChange={(e) => switchOrg(e.target.value)}
-                  className="text-[12.5px] sm:text-[13px] font-semibold text-ent-ink bg-transparent border border-ent-line rounded-lg px-2 py-1 max-w-[55vw] sm:max-w-xs truncate"
-                >
-                  {myOrgs.map((o) => <option key={o.organizationId} value={o.organizationId}>{o.organizationName}</option>)}
-                </select>
-                <span className="text-ent-muted text-[12.5px] sm:text-[13px] font-semibold ml-1.5">/ Caregiver Workspace</span>
-              </div>
-            ) : (
-              <div className="text-[12.5px] sm:text-[13px] font-semibold truncate">
-                <span className="text-ent-ink">{hasOrganization ? orgName : 'No organization connected'}</span>
-                <span className="text-ent-muted"> / Caregiver Workspace</span>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <div className="hidden sm:block w-8 h-8 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-[11px]" aria-hidden="true">{initials}</div>
-            <button type="button" onClick={() => { void handleLogout(); }} aria-label="Logout" className="lg:hidden p-1.5 text-ent-muted hover:text-ent-ink">
-              <LogOut className="w-5 h-5" />
-            </button>
-          </div>
-        </header>
-
-        {mobileNavOpen && (
-          <div className="lg:hidden fixed inset-0 z-50 bg-black/40" onClick={() => setMobileNavOpen(false)}>
-            <div
-              ref={mobileNavPanelRef} role="dialog" aria-modal="true" aria-label="Navigation menu"
-              className="bg-ent-panel w-72 h-full p-2 overflow-y-auto" onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between p-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-ent-green flex items-center justify-center flex-shrink-0"><Sparkles className="w-4 h-4 text-ent-forest" /></div>
-                  <span className="font-semibold text-ent-ink text-sm truncate">{hasOrganization ? orgName : 'No organization connected'}</span>
-                </div>
-                <button ref={mobileNavCloseButtonRef} type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X className="w-5 h-5 text-ent-muted" /></button>
-              </div>
-              {NAV_GROUPS.map((group) => (
-                <div key={group.label}>
-                  <div className="text-[9px] font-extrabold tracking-[0.16em] text-ent-muted uppercase px-3 pt-4 pb-1.5">{group.label}</div>
-                  {group.items.map((itemKey) => {
-                    const item = NAV_ITEMS.find((n) => n.key === itemKey);
-                    if (!item) return null;
-                    const Icon = item.icon;
-                    const isActive = nav === itemKey;
-                    return (
-                      <button
-                        key={itemKey} type="button" aria-current={isActive ? 'page' : undefined}
-                        onClick={() => { navigateTo(itemKey); setMobileNavOpen(false); }}
-                        className={`w-full flex items-center gap-2.5 px-3 py-3 text-sm text-left rounded-lg font-semibold ${isActive ? 'bg-ent-green-active text-ent-forest' : 'text-ent-text'}`}
-                      >
-                        <Icon className="w-4 h-4 flex-shrink-0" /> {item.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-              <div className="mt-2 pt-2 border-t border-ent-line px-3 py-2 flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">{initials}</div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-ent-ink truncate">{fullName}</div>
-                  <div className="text-[11px] text-ent-muted truncate">Professional Caregiver</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-ent-bg">
-          {!hasOrganization ? (
-            <div className="max-w-6xl mx-auto space-y-5">
-              {workspaceLoadError ? (
-                <WorkspaceLoadErrorPanel error={workspaceLoadError} onRetry={() => { void load(); }} />
-              ) : (
-                <NoOrganizationPanel />
-              )}
-            </div>
-          ) : openPatient ? (
-            <div className="max-w-5xl mx-auto">
-              <EnterpriseStaffPatientView
-                organizationId={orgId} patientId={openPatient} onBack={() => navigateTo(nav)} staffRole="caregiver"
-                onReady={(patient) => (
-                  <EnterprisePatientRecordTabs patientId={openPatient} patientHeader={patient} staffRole="caregiver" orgId={orgId} onBack={() => navigateTo(nav)} initialTab={openPatientInitialTab} />
-                )}
-              />
-            </div>
+    <EnterpriseOfficeShell
+      workspaceTheme officeBadge="ENTERPRISE CARE" navLabel="Enterprise navigation"
+      orgLabel={orgName || 'No organization connected'} roleLabel="Caregiver" fullName={fullName} initials={initials}
+      navItems={NAV_ITEMS} navGroups={NAV_GROUPS} activeNav={nav} onNavigate={navigateTo}
+      showNotifications={false}
+      onLogout={() => { void handleLogout(); }}
+      officeSwitcher={officeSwitcher}
+      headerTools={orgId ? (
+        <OfficeHeaderTools role="caregiver" key={orgId} orgId={orgId} patients={patients}
+          onOpenPatient={id => navigateTo('patients', id, 'info')} />
+      ) : undefined}
+      organizationSwitcher={hasOrganization && myOrgs.length > 1 ? (
+        <select id="enterprise-org-switcher" aria-label="Switch organization" value={orgId ?? ''}
+          onChange={event => {
+            const nextOrg = myOrgs.find(org => org.organizationId === event.target.value);
+            if (nextOrg) switchOrg(nextOrg.organizationId);
+          }}
+          className="hcn-office-org-switcher min-w-0 max-w-full rounded-lg border border-ent-line bg-white px-2 py-1 text-sm font-semibold text-ent-ink">
+          {myOrgs.map(org => <option key={org.organizationId} value={org.organizationId}>{org.organizationName}</option>)}
+        </select>
+      ) : undefined}
+    >
+      {!hasOrganization ? (
+        <div className="space-y-5">
+          {workspaceLoadError ? (
+            <WorkspaceLoadErrorPanel error={workspaceLoadError} onRetry={() => { void load(); }} />
           ) : (
-            <div className="max-w-6xl mx-auto space-y-5">
-              {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id)} onOpenInformation={(id) => navigateTo('patients', id, 'info')} onNavigate={navigateTo} onPatientRegistered={() => { void load(); }} />}
-              {nav === 'patients' && (
-                <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)}
-                  onOpenContacts={(id) => navigateTo('patients', id, 'contacts')}
-                  onOpenInformation={(id) => navigateTo('patients', id, 'info')} orgId={orgId}
-                  onChanged={() => { void load(); }} />
-              )}
-              {nav === 'records' && (
-                <PatientHealthRecordsView patients={patients} onOpenRecord={(id) => navigateTo('records', id, 'medical')} />
-              )}
-              {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'info')} />}
-              {nav === 'visits' && <><ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'medical')} showAll /><VisitsListView orgId={orgId} /></>}
-              {nav === 'tasks' && <TasksView patients={patients} />}
-              {nav === 'communications' && <CommunicationsView patients={patients} />}
-              {nav === 'notes' && (
-                <>
-                  <MyDocumentationHistoryView />
-                  <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view or add Care Notes & Observations" />
-                </>
-              )}
-              {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id, 'handoffs')} title="Select a patient to record or review Shift Handoffs" />}
-              {nav === 'alerts' && <><CareEscalationPanel orgId={orgId} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><AlertsView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id, 'safety')} /></>}
-              {nav === 'careTeam' && <><CareTeamView orgId={orgId} patients={patients} /><ClinicalCoordinationPanel orgId={orgId} userId={state.currentUser?.id ?? ''} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/></>}
-              {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view their Documents" />}
-              {nav === 'organization' && <OrganizationView orgId={orgId} orgName={orgName} patients={patients} />}
-              {nav === 'settings' && <SettingsView userName={state.currentUser?.firstName} onLogout={handleLogout} />}
-            </div>
+            <NoOrganizationPanel />
           )}
-        </main>
-      </div>
-    </div>
+        </div>
+      ) : openPatient ? (
+        <div className="max-w-5xl mx-auto">
+          <EnterpriseStaffPatientView
+            organizationId={orgId} patientId={openPatient} onBack={() => navigateTo(nav)} staffRole="caregiver"
+            onReady={(patient) => (
+              <EnterprisePatientRecordTabs patientId={openPatient} patientHeader={patient} staffRole="caregiver" orgId={orgId} onBack={() => navigateTo(nav)} initialTab={openPatientInitialTab} />
+            )}
+          />
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id)} onNavigate={navigateTo} onPatientRegistered={() => { void load(); }} />}
+          {nav === 'patients' && (
+            <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)}
+              onOpenContacts={(id) => navigateTo('patients', id, 'contacts')}
+              onOpenInformation={(id) => navigateTo('patients', id, 'info')} orgId={orgId}
+              onChanged={() => { void load(); }} />
+          )}
+          {nav === 'records' && (
+            <PatientHealthRecordsView patients={patients} onOpenRecord={(id) => navigateTo('records', id, 'medical')} />
+          )}
+          {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'info')} />}
+          {nav === 'visits' && <><ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'medical')} showAll /><VisitsListView orgId={orgId} /></>}
+          {nav === 'tasks' && <TasksView patients={patients} />}
+          {nav === 'communications' && <CommunicationsView patients={patients} />}
+          {nav === 'notes' && (
+            <>
+              <MyDocumentationHistoryView />
+              <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view or add Care Notes & Observations" />
+            </>
+          )}
+          {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id, 'handoffs')} title="Select a patient to record or review Shift Handoffs" />}
+          {nav === 'alerts' && <><CareEscalationPanel orgId={orgId} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><AlertsView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id, 'safety')} /></>}
+          {nav === 'careTeam' && <><CareTeamView orgId={orgId} patients={patients} /><ClinicalCoordinationPanel orgId={orgId} userId={state.currentUser?.id ?? ''} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/></>}
+          {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view their Documents" />}
+          {nav === 'organization' && <OrganizationView orgId={orgId} orgName={orgName} patients={patients} />}
+          {nav === 'settings' && <SettingsView userName={state.currentUser?.firstName} onLogout={handleLogout} />}
+        </div>
+      )}
+    </EnterpriseOfficeShell>
   );
-}
-
-function Card({ children }: { children: React.ReactNode }) {
-  return <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">{children}</div>;
 }
 
 // P1 OWNER-VISIBLE DASHBOARD DELIVERY — presentation access is distinct
@@ -636,12 +463,8 @@ interface AttentionItem {
 // Care communications] two-column layout. Every figure below comes
 // from the real queries this component already runs — nothing here is
 // a design-example placeholder value.
-function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNavigate, onPatientRegistered }: { patients: StaffPatient[]; orgId: string; onOpenPatient: (id: string) => void; onOpenInformation: (id: string) => void; onNavigate: (nav: NavItem) => void; onPatientRegistered: () => void }) {
+function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onPatientRegistered }: { patients: StaffPatient[]; orgId: string; onOpenPatient: (id: string) => void; onNavigate: (nav: NavItem) => void; onPatientRegistered: () => void }) {
   const { state } = useApp();
-  const [dashboardSearch, setDashboardSearch] = useState('');
-  const matchingPatients = dashboardSearch.trim()
-    ? patients.filter((p) => [p.firstName, p.lastName, p.preferredName, p.patientId].some(v => (v ?? '').toLowerCase().includes(dashboardSearch.trim().toLowerCase())))
-    : [];
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
@@ -892,21 +715,17 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
   return (
     <>
       {/* Greeting + date + primary registration action. */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+      <div className="hcn-office-heading">
         <div>
           <p className="text-[11px] font-bold tracking-[0.1em] text-ent-bronze">{dateLabel}</p>
           <h1 className="text-2xl sm:text-[26px] font-bold text-ent-ink mt-0.5">Good {timeOfDay}, {state.currentUser?.firstName || 'Caregiver'}.</h1>
-          <p className="text-sm text-ent-muted mt-1">Here&apos;s what needs your attention across your assigned patients.</p>
         </div>
         <RegistrationAction orgId={orgId} onChanged={onPatientRegistered} compact />
       </div>
 
-      <section aria-label="Caregiver quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="font-bold text-ent-ink">What do you need to do next?</h2>
-          <span className="text-[11px] text-ent-muted">Tap once to open your assigned workflow</span>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <section aria-label="Caregiver quick actions" className="hcn-office-card hcn-office-quick p-4">
+        <h2 className="font-bold text-ent-ink">What do you need to do next?</h2>
+        <div className="hcn-office-action-grid">
           {([
             { label: "Today's Visits", nav: 'schedule' as NavItem, Icon: Calendar },
             { label: 'Clock In / Out', nav: 'visits' as NavItem, Icon: Clock },
@@ -916,9 +735,9 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
             { label: 'Secure Messages', nav: 'communications' as NavItem, Icon: MessageSquare },
           ]).map(({ label, nav, Icon }) => (
             <button type="button" key={label} onClick={() => onNavigate(nav)}
-              className="flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg px-3 py-3 text-left text-sm font-semibold text-ent-ink transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze"
+              className="hcn-office-action"
               aria-label={`Open ${label}`}>
-              <Icon className="h-5 w-5 shrink-0 text-ent-bronze" aria-hidden="true" />
+              <Icon size={23} aria-hidden="true" />
               <span>{label}</span>
             </button>
           ))}
@@ -929,26 +748,43 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
         </p>
       </section>
 
-      <HaneenAssistantPanel role="caregiver" organizationId={orgId}
-        patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
-
-      <section aria-label="Search assigned patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
-        <label htmlFor="caregiver-dashboard-search" className="block text-sm font-bold text-ent-ink">Search my assigned patients</label>
-        <input id="caregiver-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
-          placeholder="Search patient name or reference…" autoComplete="off"
-          className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
-        {dashboardSearch.trim() && (
-          <div role="region" aria-label="Matching assigned patients" className="space-y-2">
-            {matchingPatients.length ? matchingPatients.map(patient => (
-              <button type="button" key={patient.patientId} onClick={() => onOpenInformation(patient.patientId)}
-                className="flex w-full items-center justify-between rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
-                <span>{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-xs text-ent-bronze">Open Patient Information →</span>
-              </button>
-            )) : <p className="text-sm text-ent-muted">No assigned patient matches this search.</p>}
+      <Card>
+        <div className="flex items-center justify-between">
+          <h2 className="hcn-caregiver-panel-title">Current or next visit</h2>
+          {nextVisit && <span className="text-[11px] font-semibold text-ent-forest bg-ent-green-active px-2.5 py-1 rounded-full">Today</span>}
+        </div>
+        {!nextVisit ? (
+          <p className="text-sm text-ent-muted">No active or upcoming visit is currently scheduled for today.</p>
+        ) : (
+          <div className="flex items-start gap-3">
+            <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">
+              {nextVisitPatient ? patientInitials(nextVisitPatient.firstName, nextVisitPatient.lastName) : '?'}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-ent-ink text-sm">{nextVisitPatient?.preferredName || nextVisitPatient?.firstName || 'Patient'}</p>
+              <p className="text-xs text-ent-muted">{nextVisit.status === 'in_progress' ? 'In progress' : new Date(nextVisit.scheduledStart ?? '').toLocaleTimeString()}{nextVisit.scheduledEnd ? ` – ${new Date(nextVisit.scheduledEnd).toLocaleTimeString()}` : ''}</p>
+              {/* MMA-CODEX-011 011-10 (H07, P2): the locked requirement
+                  says "show late/change alerts" -- this card never
+                  showed either. "Late" is directly derivable (a
+                  still-'scheduled' visit whose start time has already
+                  passed) and added here. A genuine reschedule/"change"
+                  alert would need a dedicated audit of what the visit's
+                  time WAS before an edit -- caregiver_visits only
+                  stores the current scheduled_start/end, no prior
+                  value or a server-set "rescheduled" flag -- so that
+                  half is NOT fabricated from updated_at (which also
+                  changes on every ordinary status transition and would
+                  false-positive on every visit that starts/completes
+                  normally); it remains open, honestly, not silently
+                  claimed done. */}
+              {nextVisit.status === 'scheduled' && nextVisit.scheduledStart && new Date(nextVisit.scheduledStart).getTime() < Date.now() && (
+                <span className="inline-block mt-1 text-[11px] font-semibold text-gentle-coral bg-gentle-coral/10 px-2 py-0.5 rounded-full">Late — past scheduled start</span>
+              )}
+              <button type="button" onClick={() => onNavigate('schedule')} className="text-xs font-semibold text-ent-forest hover:underline mt-2 inline-block">Open schedule →</button>
+            </div>
           </div>
         )}
-        <p className="text-xs text-ent-muted">Select a patient to search their allergies, conditions, providers and care information.</p>
-      </section>
+      </Card>
 
       {/* H02 — the FIVE approved summary counts ("assigned patients,
           scheduled visits, unfinished tasks, unread messages, and
@@ -964,37 +800,37 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
           metric in the locked requirement) was missing entirely —
           previously only a per-patient-count variant of this existed,
           feeding a different panel further down this page. */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="hcn-office-metrics hcn-caregiver-metrics">
         {([
-          { label: 'Assigned patients', sub: 'active', value: patients.length, nav: 'patients' as NavItem, mayBePartial: false },
-          { label: 'Visits today', sub: 'scheduled', value: todayVisits.length, nav: 'schedule' as NavItem, mayBePartial: true },
-          { label: 'Unfinished tasks', sub: 'pending', value: totalUnfinishedTasks, nav: 'tasks' as NavItem, mayBePartial: true },
-          { label: 'Needs attention', sub: 'updates', value: needsAttentionCount, nav: 'alerts' as NavItem, mayBePartial: true },
-          { label: 'Unread messages', sub: 'care team', value: unreadCount, nav: 'communications' as NavItem, mayBePartial: true },
-        ]).map((m) => (
+          { label: 'Assigned patients', sub: 'active', value: patients.length, nav: 'patients' as NavItem, icon: Users, mayBePartial: false },
+          { label: 'Visits today', sub: 'scheduled', value: todayVisits.length, nav: 'schedule' as NavItem, icon: Calendar, mayBePartial: true },
+          { label: 'Unfinished tasks', sub: 'pending', value: totalUnfinishedTasks, nav: 'tasks' as NavItem, icon: ClipboardCheck, mayBePartial: true },
+          { label: 'Needs attention', sub: 'updates', value: needsAttentionCount, nav: 'alerts' as NavItem, icon: ShieldAlert, mayBePartial: true },
+          { label: 'Unread messages', sub: 'care team', value: unreadCount, nav: 'communications' as NavItem, icon: MessageSquare, mayBePartial: true },
+        ]).map(({ icon: Icon, ...m }) => (
           <button
             key={m.label} type="button" onClick={() => onNavigate(m.nav)}
-            className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-4 text-left hover:shadow-md hover:border-ent-forest/30 transition-all"
+            className="hcn-office-metric"
           >
-            <p className="text-[11px] font-semibold text-ent-text">{m.label}</p>
-            <p className="text-2xl font-bold text-ent-ink mt-1">
-              {loadingExtra ? <Loader2 className="w-5 h-5 animate-spin" /> : (
-                <>{m.value}{m.mayBePartial && loadError && <span className="text-sm font-semibold text-gentle-coral align-top" title="Some data failed to load — this count may be incomplete">*</span>}</>
-              )}
-            </p>
-            <p className="text-[11px] text-ent-muted">{m.sub}{m.mayBePartial && loadError ? ' · partial' : ''}</p>
+            <span className="hcn-office-metric-icon"><Icon size={22} aria-hidden="true" /></span>
+            <span className="min-w-0">
+              <span className="hcn-office-metric-label">{m.label}</span>
+              <span className="hcn-office-metric-count">
+                {loadingExtra ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                  <>{m.value}{m.mayBePartial && loadError && <span className="text-sm font-semibold text-gentle-coral align-top" title="Some data failed to load — this count may be incomplete">*</span>}</>
+                )}
+              </span>
+              <span className="hcn-office-metric-detail">{m.sub}{m.mayBePartial && loadError ? ' · partial' : ''}</span>
+            </span>
           </button>
         ))}
       </div>
 
-      {/* Two-column layout per the approved design: [Needs your
-          attention, Your patients] on the left; [Next scheduled visit,
-          Care communications] on the right. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5 items-start">
+      <div className="hcn-office-activity items-start">
         <div className="space-y-5">
           <Card>
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-ent-ink">Needs your attention</h2>
+              <h2 className="hcn-caregiver-panel-title">Needs your attention</h2>
               {attentionItems.length > 0 && <span className="text-[11px] font-semibold text-ent-bronze bg-ent-amber px-2.5 py-1 rounded-full">{attentionItems.length} item{attentionItems.length === 1 ? '' : 's'}</span>}
             </div>
             {!loadingExtra && attentionItems.length === 0 ? (
@@ -1026,7 +862,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
 
           <Card>
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-ent-ink">Your patients</h2>
+              <h2 className="hcn-caregiver-panel-title">Your patients</h2>
               <button type="button" onClick={() => onNavigate('patients')} className="text-xs font-semibold text-ent-forest hover:underline">View all patients →</button>
             </div>
             {patients.length === 0 ? (
@@ -1055,45 +891,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
         <div className="space-y-5">
           <Card>
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-ent-ink">Current or next visit</h2>
-              {nextVisit && <span className="text-[11px] font-semibold text-ent-forest bg-ent-green-active px-2.5 py-1 rounded-full">Today</span>}
-            </div>
-            {!nextVisit ? (
-              <p className="text-sm text-ent-muted">No active or upcoming visit is currently scheduled for today.</p>
-            ) : (
-              <div className="flex items-start gap-3">
-                <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">
-                  {nextVisitPatient ? patientInitials(nextVisitPatient.firstName, nextVisitPatient.lastName) : '?'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-ent-ink text-sm">{nextVisitPatient?.preferredName || nextVisitPatient?.firstName || 'Patient'}</p>
-                  <p className="text-xs text-ent-muted">{nextVisit.status === 'in_progress' ? 'In progress' : new Date(nextVisit.scheduledStart ?? '').toLocaleTimeString()}{nextVisit.scheduledEnd ? ` – ${new Date(nextVisit.scheduledEnd).toLocaleTimeString()}` : ''}</p>
-                  {/* MMA-CODEX-011 011-10 (H07, P2): the locked requirement
-                      says "show late/change alerts" -- this card never
-                      showed either. "Late" is directly derivable (a
-                      still-'scheduled' visit whose start time has already
-                      passed) and added here. A genuine reschedule/"change"
-                      alert would need a dedicated audit of what the visit's
-                      time WAS before an edit -- caregiver_visits only
-                      stores the current scheduled_start/end, no prior
-                      value or a server-set "rescheduled" flag -- so that
-                      half is NOT fabricated from updated_at (which also
-                      changes on every ordinary status transition and would
-                      false-positive on every visit that starts/completes
-                      normally); it remains open, honestly, not silently
-                      claimed done. */}
-                  {nextVisit.status === 'scheduled' && nextVisit.scheduledStart && new Date(nextVisit.scheduledStart).getTime() < Date.now() && (
-                    <span className="inline-block mt-1 text-[11px] font-semibold text-gentle-coral bg-gentle-coral/10 px-2 py-0.5 rounded-full">Late — past scheduled start</span>
-                  )}
-                  <button type="button" onClick={() => onNavigate('schedule')} className="text-xs font-semibold text-ent-forest hover:underline mt-2 inline-block">Open schedule →</button>
-                </div>
-              </div>
-            )}
-          </Card>
-
-          <Card>
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-ent-ink">Care communications</h2>
+              <h2 className="hcn-caregiver-panel-title">Care communications</h2>
             </div>
             {conversations.length === 0 ? (
               <p className="text-sm text-ent-muted">No conversations yet.</p>
