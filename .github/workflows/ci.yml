@@ -126,6 +126,7 @@ jobs:
           export MMA_E2E_API_BASE="$MMA_TEST_API_BASE"
           export MMA_E2E_DB_CONTAINER="$MMA_TEST_DB_CONTAINER"
           npx playwright test --project=chromium \
+            tests/e2e_self_service_onboarding_ui.spec.ts \
             tests/e2e_hcn_coordination_plan_ui.spec.ts \
             tests/e2e_hcn_director_clinical_coordination.spec.ts \
             tests/e2e_hcn_caregiver_clinical_role_views.spec.ts \

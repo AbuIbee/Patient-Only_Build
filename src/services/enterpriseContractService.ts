@@ -6,6 +6,7 @@
 // Platform Owner explicitly attested to via a real execution method
 // and evidence reference, per the RPC's own fail-closed validation.
 import { supabase } from '@/lib/supabase';
+import { BAA_TEMPLATE_VERSION } from '@/constants/enterpriseAgreements';
 
 export type ContractType = 'saas_license' | 'baa' | 'dpa';
 export type ContractStatus = 'draft' | 'presented' | 'executed' | 'void';
@@ -111,6 +112,7 @@ export async function selfServiceExecuteAgreement(
     p_application_id: applicationId, p_contract_type: contractType, p_signatory_name: signatoryName,
     p_signatory_title: signatoryTitle, p_consent_to_electronic_records: consentToElectronicRecords,
     p_user_agent: typeof navigator === 'undefined' ? null : navigator.userAgent,
+    p_presented_template_version: contractType === 'baa' ? BAA_TEMPLATE_VERSION : undefined,
   });
   if (error || !data) return { data: null, error: errMsg(error, 'Could not execute this agreement.') };
   return { data: mapContract(data as unknown as Record<string, unknown>), error: null };

@@ -36,6 +36,8 @@ async function seedOrgWithStaff(label: string) {
 
 async function cleanup(orgId: string, patientId: string, userIds: string[]) {
   sql(`
+    DELETE FROM hcn_previsit_acknowledgments WHERE organization_id = '${orgId}';
+    DELETE FROM caregiver_visits WHERE organization_id = '${orgId}';
     DELETE FROM hcn_patient_provider_associations WHERE organization_id = '${orgId}';
     DELETE FROM hcn_healthcare_providers WHERE organization_id = '${orgId}';
     DELETE FROM staff_patient_assignments WHERE organization_id = '${orgId}';
@@ -110,6 +112,70 @@ test('a signed-in Medical Professional sees Clinical Reviews with the Clinical C
     await expect(page.getByRole('button', { name: /add provider/i })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^new request$/i })).toHaveCount(0);
   } finally {
+    await cleanup(ctx.orgId, ctx.patientId, [ctx.directorId, ctx.caregiverId, ctx.medicalId]);
+  }
+});
+
+test('a caregiver completes the selected visit inside the patient chart and the Director sees the log', async ({ page, browser }) => {
+  test.skip(!ready, 'Requires an explicitly configured disposable stack + frontend target');
+  test.setTimeout(120_000);
+  const ctx = await seedOrgWithStaff('visit');
+  const directorContext = await browser.newContext();
+  try {
+    const visitId = sql(`INSERT INTO caregiver_visits(organization_id,patient_id,caregiver_id,scheduled_start,scheduled_end,status)
+      VALUES('${ctx.orgId}','${ctx.patientId}','${ctx.caregiverId}',now(),now()+interval '1 hour','scheduled') RETURNING id;`);
+    const laterVisitId = sql(`INSERT INTO caregiver_visits(organization_id,patient_id,caregiver_id,scheduled_start,scheduled_end,status)
+      VALUES('${ctx.orgId}','${ctx.patientId}','${ctx.caregiverId}',now()+interval '1 day',now()+interval '25 hours','scheduled') RETURNING id;`);
+
+    await page.goto(`${frontendBase}/Professional`, { waitUntil: 'domcontentloaded' });
+    await page.getByPlaceholder('you@example.com').fill(ctx.caregiverEmail);
+    await page.getByPlaceholder('Your password').fill(PW);
+    await page.getByRole('button', { name: /sign in/i }).click();
+    await page.getByRole('button', { name: "Open Today's Visits" }).click();
+    await page.getByRole('button', { name: 'Open Visit', exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/patients/${ctx.patientId}\\?.*visit=${visitId}$`));
+    await expect(page.getByRole('heading', { name: 'E2E Roles Patient visit' })).toBeVisible();
+
+    const visit = page.getByRole('region', { name: 'Patient visit' });
+    await visit.getByRole('button', { name: 'Confirm Review & Check In' }).click();
+    await expect(visit.getByText(/^Checked in:/)).toBeVisible();
+    await page.reload();
+    await expect(visit.getByText(/^Checked in:/)).toBeVisible();
+    await visit.getByRole('button', { name: 'Check Out', exact: true }).click();
+    const submit = visit.getByRole('button', { name: 'Submit & Check Out' });
+    await expect(submit).toBeDisabled();
+    await visit.getByLabel('Medication taken').selectOption('completed');
+    await visit.getByLabel('Blood pressure checked').selectOption('not_applicable');
+    await visit.getByLabel('Meal eaten').selectOption('not_completed');
+    await expect(submit).toBeDisabled();
+    await visit.getByLabel('Visit notes (required)').fill('Patient declined lunch. Follow up at the next visit.');
+    await expect(submit).toBeDisabled();
+    const departure = visit.getByLabel(/Actual departure date and time/);
+    await expect(departure).toHaveValue('');
+    const departureMs = Number(sql(`SELECT ceil(extract(epoch FROM actual_start) / 60)::bigint * 60_000
+      FROM caregiver_visits WHERE id='${visitId}';`));
+    const localDeparture = await page.evaluate(timestamp => {
+      const instant = new Date(timestamp);
+      return new Date(timestamp - instant.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    }, departureMs);
+    await departure.fill(localDeparture);
+    await expect.poll(() => Date.now(), { timeout: 65_000 }).toBeGreaterThan(departureMs);
+    await submit.click();
+    await expect(visit).toContainText('Checked out:');
+    await expect(visit).toContainText('Meal eaten: Not done');
+    expect(sql(`SELECT status FROM caregiver_visits WHERE id='${laterVisitId}';`)).toBe('scheduled');
+
+    const director = await directorContext.newPage();
+    await director.goto(`${frontendBase}/Professional`, { waitUntil: 'domcontentloaded' });
+    await director.getByPlaceholder('you@example.com').fill(ctx.directorEmail);
+    await director.getByPlaceholder('Your password').fill(PW);
+    await director.getByRole('button', { name: /sign in/i }).click();
+    await director.getByRole('button', { name: 'Care Operations', exact: true }).click();
+    const attendance = director.getByRole('region', { name: 'Director caregiver attendance' });
+    await expect(attendance.getByText(/Patient declined lunch/)).toBeVisible();
+    await expect(attendance.getByText(/Blood pressure checked: Not applicable/)).toBeVisible();
+  } finally {
+    await directorContext.close();
     await cleanup(ctx.orgId, ctx.patientId, [ctx.directorId, ctx.caregiverId, ctx.medicalId]);
   }
 });

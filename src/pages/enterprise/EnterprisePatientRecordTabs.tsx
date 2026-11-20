@@ -98,8 +98,8 @@ function SectionCard({ title, icon: Icon, children }: { title: string; icon: typ
   );
 }
 
-export default function EnterprisePatientRecordTabs({ patientId, patientHeader, staffRole, orgId, onBack, initialTab }: {
-  patientId: string; patientHeader: PatientHeader; staffRole: StaffRole; orgId: string; onBack: () => void; initialTab?: TabKey;
+export default function EnterprisePatientRecordTabs({ patientId, patientHeader, staffRole, orgId, onBack, initialTab, headerAction }: {
+  patientId: string; patientHeader: PatientHeader; staffRole: StaffRole; orgId: string; onBack: () => void; initialTab?: TabKey; headerAction?: React.ReactNode;
 }) {
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'info');
   const [tabSearch, setTabSearch] = useState('');
@@ -119,6 +119,8 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         <p className="text-sm text-medium-gray">{patientHeader.firstName} {patientHeader.lastName}</p>
         <CoverageBanner status={patientHeader.coverageStatus} />
       </div>
+
+      {headerAction}
 
       <section aria-label="Patient chart navigation" className="space-y-3">
         <label className="flex items-center gap-2 rounded-xl border border-soft-taupe bg-white px-3 py-2">

@@ -5177,6 +5177,7 @@ export interface Database {
           p_signatory_title: string | null
           p_consent_to_electronic_records: boolean
           p_user_agent?: string | null
+          p_presented_template_version?: string
         }
         Returns: Record<string, unknown>
       }
@@ -5575,7 +5576,9 @@ export interface Database {
         }
       }
       end_caregiver_visit: {
-        Args: { p_visit_id: string; p_visit_notes?: string }
+        Args:
+          | { p_visit_id: string; p_visit_notes?: string }
+          | { p_visit_id: string; p_visit_notes: string; p_actual_end: string }
         Returns: {
           actual_end: string | null
           actual_start: string | null

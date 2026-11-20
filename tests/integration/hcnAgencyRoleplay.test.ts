@@ -118,15 +118,22 @@ it('rehearses a fictional agency in role order, with specialist handoffs after t
       p_visit_id: visit.id, p_sections: ['patient_updates', 'care_plan', 'medications', 'healthcare_contacts', 'handoffs'],
       p_attestation: 'I reviewed the available records and understand that this acknowledgment does not authorize clinical decisions.',
     });
-    expect(await invoke(caregiver, 'start_caregiver_visit', { p_visit_id: visit.id })).toMatchObject({ status: 'in_progress' });
+    const checkedIn = await invoke<{ status: string; actual_start: string }>(
+      caregiver, 'start_caregiver_visit', { p_visit_id: visit.id },
+    );
+    expect(checkedIn.status).toBe('in_progress');
+    const departure = new Date().toISOString();
     const visitNote = 'Fictional caregiver: visit completed and the patient update was reviewed. ' + run;
-    await invoke(caregiver, 'end_caregiver_visit', { p_visit_id: visit.id, p_visit_notes: visitNote });
+    await invoke(caregiver, 'end_caregiver_visit', {
+      p_visit_id: visit.id, p_visit_notes: visitNote, p_actual_end: departure,
+    });
     const [visitStatus, visits] = await http('GET', '/rest/v1/caregiver_visits?id=eq.' + visit.id +
       '&select=status,actual_start,actual_end,visit_notes', undefined, director.token);
     expect(visitStatus).toBe(200);
     expect(visits).toEqual([{
-      status: 'completed', actual_start: expect.any(String), actual_end: expect.any(String), visit_notes: visitNote,
+      status: 'completed', actual_start: checkedIn.actual_start, actual_end: expect.any(String), visit_notes: visitNote,
     }]);
+    expect(Date.parse((visits as { actual_end: string }[])[0].actual_end)).toBe(Date.parse(departure));
 
     // The core assertions above must pass before specialists are added. A
     // disposable license/membership fixture models a completed tier change.

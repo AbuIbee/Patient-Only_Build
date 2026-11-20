@@ -77,4 +77,3 @@ export default function OfficeHeaderTools({ role, orgId, patients, onOpenPatient
     </>
   );
 }
-

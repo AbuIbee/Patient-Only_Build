@@ -422,6 +422,19 @@ export default function ProfessionalOfficeResolver() {
     ...(ownedOrganizations.length ? [{ key: 'owner' as const, orgName: ownedOrganizations[0].organizationName }] : []),
   ];
 
+  // A self-service applicant can already own the auto-provisioned organization
+  // while their Director membership is invited. The workspace entry must still
+  // show their agreements. Explicit office routes use their usual access rules.
+  if (
+    !requestedOffice &&
+    !manualSelection &&
+    myApplication?.requestedOffice === 'director' &&
+    myApplication.autoVerificationResult?.organization_auto_provisioned === true &&
+    ['agreements_pending', 'approved', 'agreements_executed', 'payment_authorization_pending'].includes(myApplication.status)
+  ) {
+    return <ApplicationStatusPage application={myApplication} onRefresh={() => { void refresh(); }} />;
+  }
+
   if (availableOffices.length === 0) {
     // HCN organization license and office authentication
     // remediation, 2026-10-31 (P0-05). Takes priority over every

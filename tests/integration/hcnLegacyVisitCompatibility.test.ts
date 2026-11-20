@@ -10,7 +10,7 @@ describe('Haneen previsit policy does not break older My Memoria visits',()=>{
    if(i<0)throw new Error('Unexpected visit compatibility output: '+line);
    return {name:line.slice(0,i),passed:line.slice(i+1)==='t'};
   });
-  expect(rows).toHaveLength(3);
+  expect(rows).toHaveLength(4);
   for(const row of rows)expect(row.passed,row.name).toBe(true);
  });
 });

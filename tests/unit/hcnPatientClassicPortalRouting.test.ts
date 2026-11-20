@@ -36,7 +36,7 @@ describe('HCN approved My Memoria Ally patient home routing', () => {
     expect(professionalResolver).toContain('return <PatientLayout />;');
     expect(professionalResolver).toContain('subjectPatientId={patientOfficeSubjectId}');
   });
-  it('preserves the original approved home, functional patient navigation and conditional Haneen branding', () => {
+  it('preserves the original approved home, functional patient navigation and Haneen branding', () => {
     const layout = readFileSync(resolve(process.cwd(), 'src/pages/patient/PatientLayout.tsx'), 'utf8');
     expect(layout).toContain("import PatientHome from './PatientHome'");
     expect(layout).toContain("label: 'How I Feel'");
@@ -46,7 +46,7 @@ describe('HCN approved My Memoria Ally patient home routing', () => {
     expect(layout).toContain("label: 'Family'");
     expect(layout).toContain("label: 'Documents'");
     expect(layout).toContain("'Haneen Care Network'");
-    expect(layout).toContain("'My Memoria Ally'");
+    expect(layout).not.toContain("'My Memoria Ally'");
     expect(layout).toContain('/haneen-favicon.svg');
     expect(layout).toContain('isEnterpriseCovered');
   });

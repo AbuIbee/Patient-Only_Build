@@ -12,7 +12,7 @@
 // `activeNav`/`onNavigate`, its own nav groups, and its own main
 // content — matching "OfficeDashboardLayout" responsibility boundaries.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Building2, LogOut, Menu, Sparkles, X } from 'lucide-react';
+import { Building2, LogOut, Menu, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { NotificationBell } from '@/components/enterprise/NotificationBell';
 
@@ -146,10 +146,10 @@ export function EnterpriseOfficeShell<K extends string>({
         ) : (
           <div className="flex items-center gap-2.5 px-4 pt-5 pb-4 border-b border-ent-line">
             <div className="w-10 h-10 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0">
-              {isHaneenSite ? <img src="/haneen-favicon.svg" alt="" className="w-9 h-9 rounded-lg" /> : <Sparkles className="w-5 h-5 text-ent-forest" />}
+              <img src="/haneen-favicon.svg" alt="" className="w-9 h-9 rounded-lg" />
             </div>
             <div className="min-w-0">
-              <div className="font-bold text-ent-ink text-sm leading-tight truncate">{isHaneenSite ? 'Haneen Care Network' : 'My Memoria Ally'}</div>
+              <div className="font-bold text-ent-ink text-sm leading-tight truncate">Haneen Care Network</div>
               <div className="text-[10px] font-extrabold tracking-[0.14em] text-ent-bronze mt-0.5">{officeBadge}</div>
             </div>
           </div>
@@ -201,7 +201,7 @@ export function EnterpriseOfficeShell<K extends string>({
               <div className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2 min-w-0">
                   {!styledWorkspace && (
-                    <div className="w-8 h-8 rounded-lg bg-ent-green flex items-center justify-center flex-shrink-0">{isHaneenSite ? <img src="/haneen-favicon.svg" alt="" className="w-8 h-8 rounded-lg" /> : <Sparkles className="w-4 h-4 text-ent-forest" />}</div>
+                    <div className="w-8 h-8 rounded-lg bg-ent-green flex items-center justify-center flex-shrink-0"><img src="/haneen-favicon.svg" alt="" className="w-8 h-8 rounded-lg" /></div>
                   )}
                   <span className="font-semibold text-ent-ink text-sm truncate">{orgLabel}</span>
                 </div>
