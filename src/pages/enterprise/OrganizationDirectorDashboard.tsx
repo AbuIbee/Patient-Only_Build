@@ -49,7 +49,7 @@ import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import OfficeHeaderTools from './OfficeHeaderTools';
 import DirectorScheduleCalendar from './DirectorScheduleCalendar';
-import DirectorAttendancePanel, { DirectorRecentAttendance } from './DirectorAttendancePanel';
+import DirectorAttendancePanel from './DirectorAttendancePanel';
 import DirectorOfficeAccessPanel from './DirectorOfficeAccessPanel';
 import DirectorReportBuilder from './DirectorReportBuilder';
 import { useOfficeUrlSync } from '../professional/useOfficeUrlSync';
@@ -1129,8 +1129,8 @@ const DIRECTOR_NAV_ITEMS: OfficeNavItem<DirectorNavKey>[] = [
 ];
 const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ORGANIZATION', items: ['dashboard', 'clinical', 'staff', 'patients', 'scheduling'] },
-  { label: 'CARE OPERATIONS', items: ['assignments', 'operations', 'incidents', 'communications'] },
-  { label: 'ADMINISTRATION', items: ['applications', 'reports', 'settings'] },
+  { label: 'CARE OPERATIONS', items: ['assignments', 'operations', 'incidents', 'communications', 'reports'] },
+  { label: 'ADMINISTRATION', items: ['applications', 'settings'] },
 ];
 
 function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
@@ -1160,11 +1160,10 @@ function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
 
       <section aria-label="Director quick actions" className="hcn-office-card hcn-office-quick rounded-xl border border-ent-line bg-ent-panel p-4">
         <h2 className="font-bold text-ent-ink">Director Quick Actions</h2>
-        <div className="hcn-office-action-grid">
+        <div className="hcn-office-action-grid hcn-director-action-grid">
           {([
             { label: 'Manage Patients', key: 'patients' as DirectorNavKey, icon: UserCog },
             { label: 'Staff & Credentials', key: 'staff' as DirectorNavKey, icon: Users },
-            { label: 'Assign Caregivers', key: 'assignments' as DirectorNavKey, icon: Link2 },
             { label: 'Schedule Visits', key: 'scheduling' as DirectorNavKey, icon: CalendarClock },
             { label: 'Review Incidents', key: 'incidents' as DirectorNavKey, icon: ShieldAlert },
             { label: 'Care Communications', key: 'communications' as DirectorNavKey, icon: MessageSquare },
@@ -1217,7 +1216,6 @@ function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
             <h2>Recent Staff Activity</h2>
             <button type="button" onClick={() => onNavigate('operations')}>View care operations <ChevronRight size={15} aria-hidden="true" /></button>
           </div>
-          <DirectorRecentAttendance visits={visits} />
           <h3 className="text-sm font-semibold text-ent-ink">Shift handoffs</h3>
           {recentHandoffs.length === 0 ? (
             <p className="text-sm text-ent-text">No shift handoffs recorded yet across your organization.</p>
@@ -1456,6 +1454,11 @@ function ApplicationsReviewView({ organizationId }: { organizationId: string }) 
   return (
     <OfficeCard>
       <h2 className="font-bold text-ent-ink">Professional Applications &amp; Approvals</h2>
+      <p className="text-sm text-ent-text">
+        Review applications submitted to your organization by caregivers, medical professionals, and therapists.
+        Open an application to review its documents and credentials, then approve it, request corrections, or decline it.
+        Use Staff Management to create an employee caregiver account directly.
+      </p>
       <div className="flex flex-wrap gap-2">
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name or email…" className={`${inputCls} flex-1 min-w-[180px]`} />
         <select value={officeFilter} onChange={(e) => setOfficeFilter(e.target.value)} className={inputCls + ' sm:w-56'}>
@@ -1606,7 +1609,7 @@ function OrganizationSettingsView({ orgName, packageType, onOpenBilling }: { org
 type DirectorSettingsTab = 'overview' | 'licensing' | 'settings' | 'ownership';
 
 function DirectorOrganizationSettingsPage({
-  orgId, orgName, packageType, members, coveredCount, license, initialTab, userId,
+  orgId, orgName, packageType, members, coveredCount, license, initialTab, userId, officeLinks,
 }: {
   orgId: string;
   userId: string;
@@ -1616,6 +1619,7 @@ function DirectorOrganizationSettingsPage({
   coveredCount: number;
   license: OrgLicense | null;
   initialTab: DirectorSettingsTab;
+  officeLinks?: ReactNode;
 }) {
   const [activeTab, setActiveTab] = useState<DirectorSettingsTab>(initialTab);
   const [billingOpen, setBillingOpen] = useState(false);
@@ -1646,6 +1650,7 @@ function DirectorOrganizationSettingsPage({
             </button>
           ))}
         </div>
+        {officeLinks}
       </OfficeCard>
       <div role="tabpanel" id={`organization-settings-panel-${activeTab}`}
         aria-labelledby={`organization-settings-tab-${activeTab}`}>
@@ -1688,8 +1693,8 @@ const DIRECTOR_NAV_KEYS: DirectorNavKey[] = [
 // behavior unchanged — only an explicit basePath (passed by
 // ProfessionalOfficeResolver.tsx under /Professional/Admin) turns on
 // nested-route URL sync (P1 CORRECTIVE ORDER §7).
-export default function OrganizationDirectorDashboard({ organizationId, basePath = null, officeSwitcher }: {
-  organizationId: string; basePath?: string | null; officeSwitcher?: ReactNode;
+export default function OrganizationDirectorDashboard({ organizationId, basePath = null, officeLinks }: {
+  organizationId: string; basePath?: string | null; officeLinks?: ReactNode;
 }) {
   const { state, dispatch } = useApp();
   const [license, setLicense] = useState<OrgLicense | null>(null);
@@ -1763,7 +1768,6 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
     <EnterpriseOfficeShell
       workspaceTheme officeBadge="ADMIN OFFICE" orgLabel={orgName || 'Organization'} roleLabel="Director" fullName={fullName} initials={initials}
       headerTools={<OfficeHeaderTools role="director" key={organizationId} orgId={organizationId} patients={coveredPatients} onOpenPatient={openPatientInformation} />}
-      officeSwitcher={officeSwitcher}
       navItems={DIRECTOR_NAV_ITEMS} navGroups={DIRECTOR_NAV_GROUPS}
       activeNav={nav === 'overview' || nav === 'licensing' || nav === 'ownership' ? 'settings' : nav}
       onNavigate={navigate}
@@ -1794,7 +1798,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
         <DirectorScheduleCalendar orgId={organizationId} patients={coveredPatients} members={members} onChanged={() => { void refresh(); }} />
       ) : nav === 'operations' ? (
         <div className="space-y-4">
-          <DirectorAttendancePanel organizationId={organizationId} />
+          <DirectorAttendancePanel key={organizationId} organizationId={organizationId} />
           <CareOperationsView handoffs={handoffs} loadError={loadError} />
         </div>
       ) : nav === 'incidents' ? (
@@ -1816,6 +1820,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
           members={members}
           coveredCount={coveredCount}
           license={license}
+          officeLinks={officeLinks}
         />
       ) : null}
     </EnterpriseOfficeShell>

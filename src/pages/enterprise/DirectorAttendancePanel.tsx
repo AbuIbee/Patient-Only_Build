@@ -1,29 +1,44 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { getOrgVisitsResult, type OrgVisit } from '@/services/organizationDirectorOpsService';
 
-/** This is attendance/visit-note visibility, NOT shift handoffs.
- * Backend RLS already restricts visit reads to the authorized Director.
- */
-export function DirectorRecentAttendance({ visits }: { visits: OrgVisit[] }) {
-  const recorded = visits.filter(v => v.actualStart || v.actualEnd)
-    .sort((a,b) => Date.parse(b.actualStart ?? b.actualEnd ?? '') - Date.parse(a.actualStart ?? a.actualEnd ?? ''))
-    .slice(0,5);
+function formatTime(value: string | null) {
+  return value ? new Date(value).toLocaleString() : 'Not recorded';
+}
+
+function AttendanceRow({ visit }: { visit: OrgVisit }) {
+  const status = visit.status === 'in_progress' ? 'Working now' : visit.status.replaceAll('_', ' ');
   return (
-    <section aria-label="Recent caregiver attendance" className="space-y-2">
-      <h3 className="font-semibold text-ent-ink">Recent caregiver attendance</h3>
-      {recorded.length === 0 ? <p className="text-sm text-ent-muted">No caregiver clock-ins recorded among these visits.</p> : (
-        <ul className="space-y-2">
-          {recorded.map(v=>(
-            <li key={v.id} className="rounded-lg border border-ent-line bg-ent-bg p-2 text-sm">
-              <p className="font-semibold">{v.caregiverName} — {v.patientName}</p>
-              <p className="text-xs text-ent-muted">In: {v.actualStart ? new Date(v.actualStart).toLocaleString() : 'Not recorded'}
-                {' · '} Out: {v.actualEnd ? new Date(v.actualEnd).toLocaleString() : 'Not recorded'}</p>
-              {v.visitNotes && <p className="text-xs line-clamp-2">Notes: {v.visitNotes}</p>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <li>
+      <Dialog>
+        <DialogTrigger className="group relative block w-full space-y-1 rounded-xl border border-ent-line bg-ent-bg p-3 pr-10 text-left hover:bg-ent-pale">
+          <span className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-semibold text-ent-ink">{visit.caregiverName} — {visit.patientName}</span>
+            <span className="text-xs capitalize text-ent-muted">{status}</span>
+          </span>
+          <span className="block text-xs text-ent-muted">
+            Scheduled: {formatTime(visit.scheduledStart)} – {formatTime(visit.scheduledEnd)}
+          </span>
+          <span className="block text-sm text-ent-text">
+            Clock in: {formatTime(visit.actualStart)} · Clock out: {formatTime(visit.actualEnd)}
+          </span>
+          <span className="block text-sm font-semibold text-ent-forest group-hover:underline">View visit notes</span>
+          <ChevronRight size={17} aria-hidden="true" className="absolute right-3 top-1/2 -translate-y-1/2 text-ent-forest" />
+        </DialogTrigger>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto">
+          <DialogTitle>Visit notes</DialogTitle>
+          <DialogDescription>{visit.caregiverName} — {visit.patientName}</DialogDescription>
+          <dl className="grid gap-2 text-sm sm:grid-cols-2">
+            <div><dt className="font-semibold text-ent-ink">Clock in</dt><dd>{formatTime(visit.actualStart)}</dd></div>
+            <div><dt className="font-semibold text-ent-ink">Clock out</dt><dd>{formatTime(visit.actualEnd)}</dd></div>
+          </dl>
+          <p className="whitespace-pre-wrap break-words rounded-lg bg-ent-bg p-3 text-sm text-ent-ink">
+            {visit.visitNotes?.trim() || 'No visit notes recorded.'}
+          </p>
+        </DialogContent>
+      </Dialog>
+    </li>
   );
 }
 
@@ -61,19 +76,7 @@ export default function DirectorAttendancePanel({ organizationId }: { organizati
       {error && <p role="alert" className="text-sm text-ent-rust">Could not confirm attendance: {error}</p>}
       {!loading && !error && sorted.length===0 && <p className="text-sm text-ent-muted">No recorded clock-ins or clock-outs among the most recent 150 visits.</p>}
       <ul aria-label="Caregiver attendance records" className="space-y-2">
-        {sorted.map(v=>(
-          <li key={v.id} className="p-3 bg-ent-bg rounded-xl border border-ent-line space-y-1">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-semibold text-sm text-ent-ink">{v.caregiverName} — {v.patientName}</span>
-              <span className="text-xs text-ent-muted">{v.actualStart&&!v.actualEnd?'Working now':v.status.replace(/_/g,' ')}</span>
-            </div>
-            <p className="text-xs text-ent-muted">Scheduled: {v.scheduledStart?new Date(v.scheduledStart).toLocaleString():'Not recorded'}
-              {' – '}{v.scheduledEnd?new Date(v.scheduledEnd).toLocaleString():'Not recorded'}</p>
-            <p className="text-sm text-ent-text">Clock in: {v.actualStart?new Date(v.actualStart).toLocaleString():'Not recorded'}
-              {' · '} Clock out: {v.actualEnd?new Date(v.actualEnd).toLocaleString():'Not recorded'}</p>
-            <p className="text-sm text-ent-ink whitespace-pre-wrap break-words">Visit notes: {v.visitNotes?.trim()||'No visit notes recorded.'}</p>
-          </li>
-        ))}
+        {sorted.map(visit => <AttendanceRow key={visit.id} visit={visit} />)}
       </ul>
     </section>
   );

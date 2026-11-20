@@ -556,7 +556,29 @@ export default function ProfessionalOfficeResolver() {
   const switcher = <OfficeSwitcherBar offices={availableOffices} selected={effective} onSelect={navigateToOffice} />;
   const officeBasePath = `/Professional/${OFFICE_SEGMENT[effective]}`;
   const useWorkspaceSwitcher = import.meta.env.VITE_ENTERPRISE_SITE === 'true' && (effective === 'admin' || effective === 'caregiver');
-  const workspaceSwitcher = useWorkspaceSwitcher && availableOffices.length > 1 ? (
+  const directorOfficeLinks = useWorkspaceSwitcher && effective === 'admin' && availableOffices.length > 1 ? (
+    <section aria-label="Switch office" className="space-y-2 border-t border-ent-line pt-4">
+      <h2 className="font-semibold text-ent-ink">Switch office</h2>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {availableOffices.map(office => (
+          <li key={office.key}>
+            {office.key === effective ? (
+              <p aria-current="page" className="rounded-xl border border-ent-line bg-ent-pale px-3 py-2.5 text-sm font-semibold text-ent-ink">
+                Director <span className="ml-1 text-xs font-normal text-ent-muted">Current office</span>
+              </p>
+            ) : (
+              <button type="button" onClick={() => navigateToOffice(office.key)}
+                className="block w-full rounded-xl border border-ent-line bg-ent-bg px-3 py-2.5 text-left text-sm font-semibold text-ent-ink hover:bg-ent-pale">
+                {OFFICE_LABEL[office.key]}
+                {office.orgName && <span className="block text-xs font-normal text-ent-muted">{office.orgName}</span>}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  ) : undefined;
+  const caregiverSwitcher = useWorkspaceSwitcher && effective === 'caregiver' && availableOffices.length > 1 ? (
     <select aria-label="Switch office" className="hcn-office-role-switcher" value={effective}
       onChange={event => {
         const selected = availableOffices.find(office => office.key === event.target.value);
@@ -575,9 +597,9 @@ export default function ProfessionalOfficeResolver() {
       {!useWorkspaceSwitcher && switcher}
       {effective === 'admin' && director && (
         <OrganizationDirectorDashboard organizationId={director.organizationId}
-          basePath={officeBasePath} officeSwitcher={workspaceSwitcher} />
+          basePath={officeBasePath} officeLinks={directorOfficeLinks} />
       )}
-      {effective === 'caregiver' && <EnterpriseCaregiverDashboard basePath={officeBasePath} officeSwitcher={workspaceSwitcher} />}
+      {effective === 'caregiver' && <EnterpriseCaregiverDashboard basePath={officeBasePath} officeSwitcher={caregiverSwitcher} />}
       {effective === 'medical' && <ClinicalOfficeDashboard filterRole="medical_professional" basePath={officeBasePath} />}
       {effective === 'therapy' && <ClinicalOfficeDashboard filterRole="therapist" basePath={officeBasePath} />}
       {effective === 'patient' && patientOfficeSubjectId && <EnterprisePatientDashboard basePath={officeBasePath} subjectPatientId={patientOfficeSubjectId} />}

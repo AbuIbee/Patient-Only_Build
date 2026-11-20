@@ -55,7 +55,9 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     const header = page.locator('header').first();
     await expect(header.getByText(/E2E Director Navigation/)).toBeVisible();
     await expect(header.getByRole('button', { name: 'Director’s Assistant' })).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Director quick actions' }).getByRole('button')).toHaveCount(6);
+    await expect(page.getByRole('region', { name: 'Director quick actions' }).getByRole('button')).toHaveCount(5);
+    await expect(page.getByRole('button', { name: 'Open Assign Caregivers' })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'Recent caregiver attendance' })).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'Operational metrics' }).getByRole('button')).toHaveCount(3);
     await expect(page.getByRole('heading', { name: 'Needs Your Attention' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Recent Staff Activity' })).toBeVisible();
@@ -90,12 +92,15 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     expect((await nav.locator('button').allTextContents()).map(t => t.trim())).toEqual([
       'Director Dashboard', 'Clinical Coordination', 'Staff Management', 'Patient Management', 'Employee Schedule',
       'Assignments and Coverage', 'Care Operations', 'Incidents and Escalations',
-      'Care Communications', 'Professional Applications & Approvals',
-      'Reports and Insights', 'Organization Settings',
+      'Care Communications', 'Reports and Insights',
+      'Professional Applications & Approvals', 'Organization Settings',
     ]);
     await expect(nav.getByRole('button', { name: 'Organization Overview' })).toHaveCount(0);
     await expect(nav.getByRole('button', { name: 'Licensing and Entitlements' })).toHaveCount(0);
     await expect(nav.getByRole('button', { name: 'Office Ownership' })).toHaveCount(0);
+
+    await nav.getByRole('button', { name: 'Professional Applications & Approvals' }).click();
+    await expect(page.getByText(/Review applications submitted to your organization/)).toBeVisible();
 
     await nav.getByRole('button', { name: 'Patient Management' }).click();
     await expect(page).toHaveURL(/\/Professional\/Admin\/patients$/i);

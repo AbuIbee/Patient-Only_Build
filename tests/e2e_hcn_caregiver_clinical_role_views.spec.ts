@@ -121,7 +121,9 @@ test('a caregiver completes the selected visit inside the patient chart and the 
   test.setTimeout(120_000);
   const ctx = await seedOrgWithStaff('visit');
   const directorContext = await browser.newContext();
+  directorContext.setDefaultTimeout(20_000);
   try {
+    sql(`UPDATE profiles SET first_name='Maya', last_name='Rivera' WHERE id='${ctx.caregiverId}';`);
     const visitId = sql(`INSERT INTO caregiver_visits(organization_id,patient_id,caregiver_id,scheduled_start,scheduled_end,status)
       VALUES('${ctx.orgId}','${ctx.patientId}','${ctx.caregiverId}',now(),now()+interval '1 hour','scheduled') RETURNING id;`);
     const laterVisitId = sql(`INSERT INTO caregiver_visits(organization_id,patient_id,caregiver_id,scheduled_start,scheduled_end,status)
@@ -166,16 +168,24 @@ test('a caregiver completes the selected visit inside the patient chart and the 
     expect(sql(`SELECT status FROM caregiver_visits WHERE id='${laterVisitId}';`)).toBe('scheduled');
 
     const director = await directorContext.newPage();
-    await director.goto(`${frontendBase}/Professional`, { waitUntil: 'domcontentloaded' });
+    await director.goto(`${frontendBase}/Professional/Admin`, { waitUntil: 'domcontentloaded' });
     await director.getByPlaceholder('you@example.com').fill(ctx.directorEmail);
     await director.getByPlaceholder('Your password').fill(PW);
     await director.getByRole('button', { name: /sign in/i }).click();
     await director.getByRole('button', { name: 'Care Operations', exact: true }).click();
     const attendance = director.getByRole('region', { name: 'Director caregiver attendance' });
-    await expect(attendance.getByText(/Patient declined lunch/)).toBeVisible();
-    await expect(attendance.getByText(/Blood pressure checked: Not applicable/)).toBeVisible();
+    const row = attendance.getByRole('button', { name: /Maya Rivera — E2E Roles Patient visit.*View visit notes/ });
+    await expect(row).toBeVisible();
+    await expect(row).not.toContainText(ctx.caregiverEmail);
+    await row.click();
+    const notes = director.getByRole('dialog', { name: 'Visit notes' });
+    await expect(notes).toContainText('Patient declined lunch');
+    await expect(notes).toContainText('Blood pressure checked: Not applicable');
+    await director.keyboard.press('Escape');
+    await expect(notes).toBeHidden();
+    await expect(row).toBeFocused();
   } finally {
-    await directorContext.close();
+    await directorContext.close().catch(() => {});
     await cleanup(ctx.orgId, ctx.patientId, [ctx.directorId, ctx.caregiverId, ctx.medicalId]);
   }
 });
