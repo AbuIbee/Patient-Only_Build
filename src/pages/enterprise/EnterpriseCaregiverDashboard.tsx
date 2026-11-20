@@ -45,6 +45,8 @@ import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import { EnterpriseOfficeShell, OfficeCard as Card } from './EnterpriseOfficeShell';
 import OfficeHeaderTools from './OfficeHeaderTools';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
+import CaregiverPatientCareTeam from './CaregiverPatientCareTeam';
+import CaregiverVisitCalendar from './CaregiverVisitCalendar';
 import CaregiverPatientVisit from './CaregiverPatientVisit';
 import { selectCurrentOrNextVisit } from './selectCurrentOrNextVisit';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
@@ -108,7 +110,8 @@ function parseEnterprisePath(root: string): { nav: NavItem; openPatient: string 
   const orgParam = params.get('org');
   if (sub === 'patients' && sub2) {
     const visitId = params.get('visit');
-    const nav = visitId ? (params.get('from') === 'visits' ? 'visits' : 'schedule') : 'patients';
+    const from = params.get('from');
+    const nav = !visitId || from === 'patients' ? 'patients' : from === 'visits' ? 'visits' : 'schedule';
     return { nav, openPatient: sub2, orgParam, visitId };
   }
   if (sub && NAV_ITEMS.some((n) => n.key === sub)) return { nav: sub as NavItem, openPatient: null, orgParam, visitId: null };
@@ -154,6 +157,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business', o
   const [workspaceLoadError, setWorkspaceLoadError] = useState<string | null>(null);
   const [nav, setNav] = useState<NavItem>(() => parseEnterprisePath(basePath).nav);
   const [openPatient, setOpenPatient] = useState<string | null>(() => parseEnterprisePath(basePath).openPatient);
+  const [calendarDay, setCalendarDay] = useState(() => new Date());
   const [visitId, setVisitId] = useState<string | null>(() => parseEnterprisePath(basePath).visitId);
   // MMA-ENT-CAREGIVER-MASTER-003 D05 (P1): which record tab to land on
   // when openPatient is set from a destination-specific patient picker
@@ -174,7 +178,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business', o
     const params = new URLSearchParams();
     if (orgId) params.set('org', orgId);
     if (patientId && nextVisitId) {
-      if (nextNav === 'visits') params.set('from', 'visits');
+      if (nextNav === 'visits' || nextNav === 'patients') params.set('from', nextNav);
       params.set('visit', nextVisitId);
     }
     const path = params.size ? `${base}?${params}` : base;
@@ -183,6 +187,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business', o
     setOpenPatient(patientId);
     setVisitId(patientId ? nextVisitId ?? null : null);
     setOpenPatientInitialTab(patientId ? initialTab : undefined);
+    if (patientId) window.scrollTo(0, 0);
   }, [basePath, orgId]);
 
   // D01-INVARIANT-04/10: switching organizations always returns to the
@@ -191,6 +196,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business', o
   // rendering on screen as if it belonged to the new one.
   const switchOrg = useCallback((newOrgId: string) => {
     setOrgId(newOrgId);
+    setCalendarDay(new Date());
     try { sessionStorage.setItem(SELECTED_ORG_STORAGE_KEY, newOrgId); } catch { /* best-effort */ }
     const path = `${basePath}/dashboard?org=${newOrgId}`;
     window.history.pushState({}, '', path);
@@ -363,7 +369,8 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business', o
             organizationId={orgId} patientId={openPatient} onBack={() => navigateTo(nav)} staffRole="caregiver"
             onReady={(patient) => (
               <EnterprisePatientRecordTabs patientId={openPatient} patientHeader={patient} staffRole="caregiver"
-              orgId={orgId} onBack={() => navigateTo(nav)} initialTab={openPatientInitialTab}
+              orgId={orgId} onBack={() => navigateTo(nav)} initialTab={openPatientInitialTab ?? (visitId ? 'overview' : undefined)}
+              visitNavigation={Boolean(visitId)}
               headerAction={visitId && <CaregiverPatientVisit key={`${orgId}/${openPatient}/${visitId}`}
                 organizationId={orgId} patientId={openPatient} visitId={visitId} />} />
             )}
@@ -371,18 +378,22 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business', o
         </div>
       ) : (
         <div className="space-y-5">
-          {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id)} onNavigate={navigateTo} onOpenVisit={visit => navigateTo('schedule', visit.patientId, 'info', visit.id)} onPatientRegistered={() => { void load(); }} />}
+          {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onNavigate={navigateTo} onOpenVisit={visit => navigateTo('schedule', visit.patientId, 'overview', visit.id)} onPatientRegistered={() => { void load(); }} />}
           {nav === 'patients' && (
-            <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)}
-              onOpenContacts={(id) => navigateTo('patients', id, 'contacts')}
-              onOpenInformation={(id) => navigateTo('patients', id, 'info')} orgId={orgId}
-              onChanged={() => { void load(); }} />
+            <>
+              <CaregiverVisitCalendar key={orgId} orgId={orgId} patients={patients} selectedDay={calendarDay} onSelectDay={setCalendarDay}
+                onOpenVisit={visit => navigateTo('patients', visit.patientId, 'overview', visit.id)} />
+              <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)}
+                onOpenContacts={(id) => navigateTo('patients', id, 'contacts')}
+                onOpenInformation={(id) => navigateTo('patients', id, 'info')} orgId={orgId}
+                onChanged={() => { void load(); }} />
+            </>
           )}
           {nav === 'records' && (
             <PatientHealthRecordsView patients={patients} onOpenRecord={(id) => navigateTo('records', id, 'medical')} />
           )}
-          {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} onOpenVisit={visit => navigateTo('schedule', visit.patientId, 'info', visit.id)} />}
-          {nav === 'visits' && <ScheduleView orgId={orgId} patients={patients} onOpenVisit={visit => navigateTo('visits', visit.patientId, 'info', visit.id)} showAll />}
+          {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} onOpenVisit={visit => navigateTo('schedule', visit.patientId, 'overview', visit.id)} />}
+          {nav === 'visits' && <ScheduleView orgId={orgId} patients={patients} onOpenVisit={visit => navigateTo('visits', visit.patientId, 'overview', visit.id)} completedOnly />}
           {nav === 'tasks' && <TasksView patients={patients} />}
           {nav === 'communications' && <CommunicationsView patients={patients} />}
           {nav === 'notes' && (
@@ -393,7 +404,7 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business', o
           )}
           {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id, 'handoffs')} title="Select a patient to record or review Shift Handoffs" />}
           {nav === 'alerts' && <><CareEscalationPanel orgId={orgId} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><AlertsView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id, 'safety')} /></>}
-          {nav === 'careTeam' && <><CareTeamView orgId={orgId} patients={patients} /><ClinicalCoordinationPanel orgId={orgId} userId={state.currentUser?.id ?? ''} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/></>}
+          {nav === 'careTeam' && <><CareTeamView orgId={orgId} patients={patients} /><CaregiverPatientCareTeam key={orgId} orgId={orgId} patients={patients} /><ClinicalCoordinationPanel orgId={orgId} userId={state.currentUser?.id ?? ''} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/></>}
           {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view their Documents" />}
           {nav === 'organization' && <OrganizationView orgId={orgId} orgName={orgName} patients={patients} />}
           {nav === 'settings' && <SettingsView userName={state.currentUser?.firstName} onLogout={handleLogout} />}
@@ -466,6 +477,7 @@ interface AttentionItem {
   detail: string;
   at: string;
   nav: NavItem;
+  help?: { eventId: string; patientId: string };
 }
 
 // H01 (identity), H02 (today's overview), H03 (alerts), H04 (inbox),
@@ -481,8 +493,8 @@ interface AttentionItem {
 // Care communications] two-column layout. Every figure below comes
 // from the real queries this component already runs — nothing here is
 // a design-example placeholder value.
-function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onOpenVisit, onPatientRegistered }: {
-  patients: StaffPatient[]; orgId: string; onOpenPatient: (id: string) => void; onNavigate: (nav: NavItem) => void;
+function DashboardView({ patients, orgId, onNavigate, onOpenVisit, onPatientRegistered }: {
+  patients: StaffPatient[]; orgId: string; onNavigate: (nav: NavItem, patientId?: string, initialTab?: TabKey) => void;
   onOpenVisit: (visit: CaregiverVisit) => void; onPatientRegistered: () => void;
 }) {
   const { state } = useApp();
@@ -505,6 +517,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onOpenVisit
   // this component.
   const [totalUnfinishedTasks, setTotalUnfinishedTasks] = useState(0);
   const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([]);
+  const [ackingHelp, setAckingHelp] = useState<string | null>(null);
   const [loadingExtra, setLoadingExtra] = useState(true);
   // MMA-ENT-CAREGIVER-MASTER-004, D02 (P1) — independent runtime audit
   // finding: "A database error must never appear as an empty patient
@@ -537,7 +550,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onOpenVisit
       if (convosResult.error) errors.push(convosResult.error);
       if (visitsResult.error) errors.push(visitsResult.error);
       const convos = convosResult.data ?? [];
-      const myVisits = visitsResult.data ?? [];
+      const myVisits = (visitsResult.data ?? []).filter(visit => visit.organizationId === orgId);
 
       const incidentResults = await Promise.all(patients.map((p) => getPatientIncidentReportsResult(p.patientId)));
       incidentResults.forEach((r) => { if (r.error) errors.push(r.error); });
@@ -658,7 +671,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onOpenVisit
         h.entries.filter((e) => e.acknowledgedCount === 0).map((e) => ({
           id: `help-${e.id}`, kind: 'help' as const, patientName: h.patient.preferredName || h.patient.firstName,
           title: 'HELP button activated', detail: e.phoneDialed ? `Call attempted to ${e.phoneDialed}.` : 'No caregiver phone number was reached.',
-          at: e.createdAt, nav: 'alerts' as NavItem,
+          at: e.createdAt, nav: 'alerts' as NavItem, help: { eventId: e.id, patientId: h.patient.patientId },
         })),
       );
       const incidentItems: AttentionItem[] = openIncidents.map((i) => ({
@@ -670,8 +683,11 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onOpenVisit
       const noteItems: AttentionItem[] = noteRows.slice(0, 5).map((n, idx) => ({
         id: `note-${idx}`, kind: 'note' as const, patientName: n.patientName, title: `Update from ${n.patientName}`, detail: n.note, at: n.at, nav: 'notes' as NavItem,
       }));
-      const combined = [...helpItems, ...incidentItems, ...noteItems].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
-      setAttentionItems(combined.slice(0, 6));
+      const newestFirst = (a: AttentionItem, b: AttentionItem) => Date.parse(b.at) - Date.parse(a.at);
+      setAttentionItems([
+        ...helpItems.sort(newestFirst),
+        ...[...incidentItems, ...noteItems].sort(newestFirst).slice(0, Math.max(0, 6 - helpItems.length)),
+      ]);
       // D02-INVARIANT-05: setLoadError BEFORE setLoadingExtra(false) —
       // the effect below that advances enterprise_last_sync is keyed on
       // loadingExtra transitioning to false, and must see a non-null
@@ -723,6 +739,18 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onOpenVisit
   }, [loadingExtra, loadError]);
 
   const unreadCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
+  const acknowledgeDashboardHelp = async (eventId: string) => {
+    setAckingHelp(eventId);
+    try {
+      const { error } = await acknowledgeHelpActivation(eventId);
+      if (error) { toast.error(error); return; }
+      setAttentionItems(items => items.filter(item => item.help?.eventId !== eventId));
+      setHelpCount(count => Math.max(0, count - 1));
+    } finally {
+      setAckingHelp(null);
+    }
+  };
+
   const todayVisits = visits.filter(v => v.status === 'in_progress' || isToday(v.scheduledStart));
   const nextVisit = selectCurrentOrNextVisit(todayVisits);
   const nextVisitPatient = nextVisit ? patients.find((p) => p.patientId === nextVisit.patientId) : undefined;
@@ -757,7 +785,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onOpenVisit
           ]).map(({ label, nav, Icon }) => (
             <button type="button" key={label} onClick={() => {
               if (nav === 'visits' && nextVisit) onOpenVisit(nextVisit);
-              else onNavigate(nav);
+              else onNavigate(nav === 'visits' ? 'schedule' : nav);
             }}
               className="hcn-office-action"
               aria-label={`Open ${label}`}>
@@ -863,17 +891,25 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onOpenVisit
               <ul className="space-y-2.5">
                 {attentionItems.map((item) => {
                   const Icon = item.kind === 'help' ? Flag : item.kind === 'incident' ? ShieldAlert : Moon;
-                  const tone = item.kind === 'note' ? 'bg-ent-amber border-ent-amber' : 'bg-gentle-coral/5 border-gentle-coral/30';
+                  const tone = item.help ? 'border-red-300 bg-red-50 border-l-4 border-l-red-700' : item.kind === 'note' ? 'bg-ent-amber border-ent-amber' : 'bg-gentle-coral/5 border-gentle-coral/30';
                   return (
                     <li key={item.id} className={`p-3 rounded-xl border ${tone}`}>
                       <div className="flex items-start gap-2">
                         <Icon className="w-4 h-4 text-ent-rust flex-shrink-0 mt-0.5" />
                         <div className="min-w-0 flex-1">
+                          {item.help && <p className="text-xs font-bold uppercase tracking-wide text-red-800">Help alert</p>}
                           <p className="text-sm font-semibold text-ent-ink">{item.title} · {item.patientName}</p>
                           <p className="text-xs text-ent-text mt-0.5">{item.detail}</p>
-                          <div className="flex items-center justify-between mt-1.5">
-                            <button type="button" onClick={() => onNavigate(item.nav)} className="text-xs font-semibold text-ent-forest hover:underline">Review →</button>
-                            <span className="text-[11px] text-ent-muted">{new Date(item.at).toLocaleString()}</span>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <button type="button" onClick={() => item.help ? onNavigate('patients', item.help.patientId, 'safety') : onNavigate(item.nav)}
+                              className="min-h-10 text-xs font-semibold text-ent-forest hover:underline">Review →</button>
+                            {item.help && (
+                              <button type="button" disabled={ackingHelp !== null} className="min-h-10 rounded-lg bg-red-800 px-3 text-xs font-semibold text-white disabled:opacity-60"
+                                onClick={() => { void acknowledgeDashboardHelp(item.help!.eventId); }}>
+                                {ackingHelp === item.help.eventId ? 'Acknowledging…' : 'Acknowledge'}
+                              </button>
+                            )}
+                            <span className="ml-auto text-[11px] text-ent-muted">{new Date(item.at).toLocaleString()}</span>
                           </div>
                         </div>
                       </div>
@@ -884,32 +920,6 @@ function DashboardView({ patients, orgId, onOpenPatient, onNavigate, onOpenVisit
             )}
           </Card>
 
-          <Card>
-            <div className="flex items-center justify-between">
-              <h2 className="hcn-caregiver-panel-title">Your patients</h2>
-              <button type="button" onClick={() => onNavigate('patients')} className="text-xs font-semibold text-ent-forest hover:underline">View all patients →</button>
-            </div>
-            {patients.length === 0 ? (
-              <p className="text-sm text-ent-muted">No patients are currently assigned to you. Your organization&apos;s director can assign you once a patient is covered.</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {patients.slice(0, 4).map((p) => {
-                  const legalName = `${p.firstName} ${p.lastName}`;
-                  const displayName = p.preferredName || legalName;
-                  return (
-                    <button key={p.patientId} type="button" onClick={() => onOpenPatient(p.patientId)} className="flex items-center gap-3 p-4 bg-ent-pale rounded-2xl border border-ent-line hover:shadow-md transition-all text-left">
-                      <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">{patientInitials(p.firstName, p.lastName)}</span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-semibold text-ent-ink truncate text-sm">{displayName}</span>
-                        {displayName !== legalName && <span className="block text-[11px] text-ent-muted truncate">{legalName}</span>}
-                      </span>
-                      <ChevronRight className="w-4 h-4 text-ent-muted flex-shrink-0" />
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
         </div>
 
         <div className="space-y-5">
@@ -1332,12 +1342,12 @@ function isToday(isoTimestamp: string | null): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
-function ScheduleView({ orgId, patients, onOpenVisit, showAll = false }: {
-  orgId: string; patients: StaffPatient[]; onOpenVisit: (visit: CaregiverVisit) => void; showAll?: boolean;
+function ScheduleView({ orgId, patients, onOpenVisit, completedOnly = false }: {
+  orgId: string; patients: StaffPatient[]; onOpenVisit: (visit: CaregiverVisit) => void; completedOnly?: boolean;
 }) {
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [todayOnly, setTodayOnly] = useState(!showAll);
+  const [todayOnly, setTodayOnly] = useState(true);
   const [loadError, setScheduleLoadError] = useState<string | null>(null);
   const load = useCallback(async () => {
     const { data, error } = await getMyVisitsResult();
@@ -1346,15 +1356,21 @@ function ScheduleView({ orgId, patients, onOpenVisit, showAll = false }: {
     setLoading(false);
   }, [orgId]);
   useEffect(() => { void load(); }, [load]);
-  const visibleVisits = todayOnly ? visits.filter(v => v.status === 'in_progress' || isToday(v.scheduledStart)) : visits;
+  const visibleVisits = completedOnly
+    ? visits.filter(visit => visit.status === 'completed' && visit.actualEnd)
+      .sort((a, b) => Date.parse(b.actualEnd!) - Date.parse(a.actualEnd!))
+    : visits.filter(visit => visit.status === 'in_progress' || (visit.status === 'scheduled' && (
+      isToday(visit.scheduledStart) || (!todayOnly && Date.parse(visit.scheduledStart ?? '') > Date.now())
+    ))).sort((a, b) => Number(b.status === 'in_progress') - Number(a.status === 'in_progress')
+      || Date.parse(a.scheduledStart ?? a.actualStart ?? '') - Date.parse(b.scheduledStart ?? b.actualStart ?? ''));
 
   return (
     <Card>
-      <div className="flex items-center gap-2"><Calendar className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">{showAll ? 'Visits & Time Records' : 'My Schedule'}</h2></div>
-      <p className="text-sm text-medium-gray">Select a scheduled visit to open the patient profile.</p>
-      <label className="flex items-center gap-2 text-xs font-semibold text-medium-gray">
+      <div className="flex items-center gap-2"><Calendar className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">{completedOnly ? 'Visits & Time Records' : 'My Schedule'}</h2></div>
+      <p className="text-sm text-medium-gray">{completedOnly ? 'Review your completed visits, recorded times, and submitted notes.' : 'Open a scheduled or in-progress visit to review the patient and record attendance.'}</p>
+      {!completedOnly && <label className="flex items-center gap-2 text-xs font-semibold text-medium-gray">
         <input type="checkbox" checked={todayOnly} onChange={(e) => setTodayOnly(e.target.checked)} /> Today and in-progress visits
-      </label>
+      </label>}
       {loadError && (
         <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Your schedule could not be loaded: {loadError}</p>
@@ -1365,7 +1381,7 @@ function ScheduleView({ orgId, patients, onOpenVisit, showAll = false }: {
         loadError ? (
           <p className="text-sm text-medium-gray">Your schedule could not be confirmed right now.</p>
         ) : (
-          <p className="text-sm text-medium-gray">{todayOnly ? 'No visits scheduled for today.' : 'No visits scheduled yet.'}</p>
+          <p className="text-sm text-medium-gray">{completedOnly ? 'No completed visits with recorded times yet.' : todayOnly ? 'No visits scheduled for today.' : 'No upcoming visits scheduled.'}</p>
         )
       ) : (
         <ul className="space-y-2">
@@ -1425,7 +1441,7 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
   // MMA-ENT-CAREGIVER-MASTER-005 D02-006: this previously destructured
   // only `{ data }`, so a failed task query (RLS denial, network error)
   // produced the same tasks=[] as a patient with a genuinely empty care
-  // plan, rendered here as "No assigned tasks found for your patients."
+  // plan, rendered here as "There are no active tasks recorded for your assigned patients. There is nothing to enter here."
   const [loadError, setTasksLoadError] = useState<string | null>(null);
   const load = useCallback(() => {
     if (patients.length === 0) { setTasks([]); setTasksLoadError(null); setLoading(false); return; }
@@ -1458,11 +1474,15 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status, refusal_reason: refusalReason } : t)));
   };
 
+  const patientNames = new Map(patients.map(patient => [
+    patient.patientId, patient.preferredName || (patient.firstName + ' ' + patient.lastName).trim(),
+  ]));
   const statusLabel: Record<TaskStatus, string> = { pending: 'Not Completed', completed: 'Completed', skipped: 'Declined', not_applicable: 'Not Applicable' };
 
   return (
     <Card>
       <div className="flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Care Plans &amp; Tasks</h2></div>
+      <p className="text-sm text-ent-muted">Active tasks already recorded in your assigned patients’ charts appear here. Record the outcome after providing care, and add a reason if the patient declined or the task did not apply. Open the patient’s chart to read their Care Plan.</p>
       {loadError && (
         <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Your care plan tasks could not be loaded: {loadError}</p>
@@ -1473,7 +1493,7 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
         loadError ? (
           <p className="text-sm text-medium-gray">Your care plan tasks could not be confirmed right now.</p>
         ) : (
-          <p className="text-sm text-medium-gray">No assigned tasks found for your patients.</p>
+          <p className="text-sm text-medium-gray">There are no active tasks recorded for your assigned patients. There is nothing to enter here.</p>
         )
       ) : (
         <ul className="space-y-2">
@@ -1481,7 +1501,7 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
             <li key={t.id} className="flex items-center justify-between p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
               <div>
                 <p className="text-sm font-medium text-charcoal">{t.title}</p>
-                <p className="text-xs text-medium-gray">{patients.find((p) => p.patientId === t.patient_id)?.preferredName} · {statusLabel[t.status]}</p>
+                <p className="text-xs text-medium-gray">{patientNames.get(t.patient_id)} · {statusLabel[t.status]}</p>
                 {t.refusal_reason && <p className="text-xs text-medium-gray italic">&quot;{t.refusal_reason}&quot;</p>}
               </div>
               <div className="flex gap-1.5">
@@ -1653,15 +1673,9 @@ function CommunicationsView({ patients }: { patients: StaffPatient[] }) {
   );
 }
 
-// H12/W07/N09 — file/view incidents across every assigned patient.
-// MMA-ENT-CAREGIVER-MASTER-003 D08 (P1): patientId added to both row
-// kinds (needed for the actionable "View" link below), and HELP rows
-// now carry acknowledgedCount so an unacknowledged HELP activation can
-// be acknowledged directly from this feed, not only from deep inside
-// the patient record's Safety tab.
-interface HelpAlertRow { kind: 'help'; id: string; patientId: string; patientName: string; occurredAt: string; detail: string; acknowledgedCount: number }
-interface IncidentAlertRow extends IncidentReport { kind: 'incident'; patientName: string; attachmentCount: number }
-type AlertRow = HelpAlertRow | IncidentAlertRow;
+// This list handles filed incidents. Patient HELP alerts live on the dashboard.
+interface IncidentAlertRow extends IncidentReport { patientName: string; attachmentCount: number }
+
 const SEVERITIES: IncidentSeverity[] = ['low', 'moderate', 'high', 'critical'];
 
 // A <input type="datetime-local"> value is always LOCAL wall-clock time
@@ -1759,7 +1773,7 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
   const myId = state.currentUser?.id ?? '';
   const draftKey = incidentDraftKey(myId, orgId);
   const authorizedIds = useMemo(() => new Set(patients.map((p) => p.patientId)), [patients]);
-  const [alerts, setAlerts] = useState<AlertRow[]>([]);
+  const [alerts, setAlerts] = useState<IncidentAlertRow[]>([]);
   const [loading, setLoading] = useState(true);
   const draft = myId ? loadIncidentDraft(draftKey, authorizedIds) : null;
   const [patientId, setPatientId] = useState(draft?.patientId ?? '');
@@ -1770,7 +1784,6 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
   const [description, setDescription] = useState(draft?.description ?? '');
   const [attachment, setAttachment] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
-  const [acking, setAcking] = useState<string | null>(null);
 
   // Persist on every change rather than only on unmount — a hard reload
   // (not just a nav switch) never runs a cleanup/unmount handler.
@@ -1782,14 +1795,6 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
     } catch { /* best-effort; draft recovery is a convenience, not a guarantee */ }
   }, [myId, draftKey, patientId, incidentType, severity, occurredAt, description]);
 
-  // MMA-ENT-CAREGIVER-MASTER-005 D02-010: this previously called the
-  // plain getPatientIncidentReports/getIncidentAttachments (both
-  // discard their error and return [] on failure) and destructured only
-  // `{ entries }` from getHelpActivationHistory, dropping its `error`
-  // entirely. A failed HELP-history or incident-report query therefore
-  // rendered as an authoritative "No alerts or incidents recorded" —
-  // exactly the defect this directive names: "A failed HELP query must
-  // never be presented as proof that no HELP event occurred."
   const [loadError, setAlertsLoadError] = useState<string | null>(null);
   const load = useCallback(async () => {
     setAlertsLoadError(null);
@@ -1799,20 +1804,9 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
     const incidentRows = await Promise.all(incidentResults.flatMap((r, idx) => (r.data ?? []).map(async (i): Promise<IncidentAlertRow> => {
       const attResult = await getIncidentAttachmentsResult(i.id);
       if (attResult.error) errors.push(attResult.error);
-      return { ...i, kind: 'incident', patientName: patients[idx].preferredName || patients[idx].firstName, attachmentCount: (attResult.data ?? []).length };
+      return { ...i, patientName: patients[idx].preferredName || patients[idx].firstName, attachmentCount: (attResult.data ?? []).length };
     })));
-    const helpRows = (await Promise.all(patients.map(async (p) => {
-      const { entries, error } = await getHelpActivationHistory(p.patientId);
-      if (error) errors.push(error);
-      return entries.map((e): HelpAlertRow => ({
-        kind: 'help', id: e.id, patientId: p.patientId, patientName: p.preferredName || p.firstName, occurredAt: e.createdAt,
-        detail: `HELP button activated${e.phoneDialed ? ` — attempted call to ${e.phoneDialed}` : ''} (${e.notificationStatus.replace('_', ' ')})`,
-        acknowledgedCount: e.acknowledgedCount,
-      }));
-    }))).flat();
-    const merged: AlertRow[] = [...incidentRows, ...helpRows];
-    merged.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
-    setAlerts(merged);
+    setAlerts(incidentRows.sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)));
     if (errors.length > 0) setAlertsLoadError(errors[0]);
     setLoading(false);
   }, [patients]);
@@ -1845,17 +1839,6 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
     if (error) { toast.error(error); return; }
     toast.success('Scope concern reported to your supervisor.');
     setDescription('');
-  };
-
-  const ackHelp = async (id: string) => {
-    setAcking(id);
-    try {
-      const { error } = await acknowledgeHelpActivation(id);
-      if (error) { toast.error(error); return; }
-      await load();
-    } finally {
-      setAcking(null);
-    }
   };
 
   return (
@@ -1897,7 +1880,7 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
       </div>
       {loadError && (
         <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-sm text-gentle-coral font-medium">Some alerts or incidents could not be loaded: {loadError}{alerts.length > 0 ? ' — the list below may be incomplete.' : ''}</p>
+          <p className="text-sm text-gentle-coral font-medium">Some incidents could not be loaded: {loadError}{alerts.length > 0 ? ' — the list below may be incomplete.' : ''}</p>
           <button type="button" onClick={() => { setLoading(true); void load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
         </div>
       )}
@@ -1905,25 +1888,11 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
         loadError ? (
           <p className="text-sm text-medium-gray">Nothing could be confirmed right now — this is not necessarily an empty history.</p>
         ) : (
-          <p className="text-sm text-medium-gray">No alerts or incidents recorded.</p>
+          <p className="text-sm text-medium-gray">No incidents recorded.</p>
         )
       ) : (
         <ul className="space-y-2">
-          {alerts.map((a) => a.kind === 'help' ? (
-            <li key={`help-${a.id}`} className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
-              <div className="flex items-start justify-between gap-2">
-                <button type="button" onClick={() => onOpenPatient(a.patientId)} className="text-left text-sm font-medium text-charcoal hover:underline">
-                  {a.patientName} — {a.detail}
-                </button>
-                {a.acknowledgedCount === 0 && (
-                  <button type="button" onClick={() => { void ackHelp(a.id); }} disabled={acking === a.id} className="flex-shrink-0 px-2 py-1 rounded-lg bg-warm-bronze hover:bg-deep-bronze text-white text-xs font-semibold disabled:opacity-60">
-                    {acking === a.id ? 'Acknowledging…' : 'Acknowledge'}
-                  </button>
-                )}
-              </div>
-              <p className="text-[11px] text-medium-gray mt-1">{new Date(a.occurredAt).toLocaleString()} · recorded in app only, not a verified emergency dispatch</p>
-            </li>
-          ) : (
+          {alerts.map((a) => (
             <li key={`incident-${a.id}`} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
               <button type="button" onClick={() => onOpenPatient(a.patientId)} className="text-left text-sm font-medium text-charcoal capitalize hover:underline">
                 {a.patientName} — {a.incidentType.replace('_', ' ')} ({a.severity})

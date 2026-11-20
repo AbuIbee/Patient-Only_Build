@@ -5498,6 +5498,16 @@ export interface Database {
           isSetofReturn: false
         }
       }
+      hcn_get_caregiver_patient_care_team: {
+        Args: { p_organization_id: string; p_patient_id: string }
+        Returns: {
+          member_id: string
+          display_name: string
+          specialty: string
+          practice_name: string | null
+          office_phone: string | null
+        }[]
+      }
       get_my_care_team: {
         Args: { p_org_id: string }
         Returns: {

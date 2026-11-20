@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 import { CheckCircle2, Clock, Loader2 } from 'lucide-react';
-import { endCaregiverVisit, getMyVisitsResult, startCaregiverVisit, type CaregiverVisit } from '@/services/enterpriseCaregiverWorkToolsService';
+import { endCaregiverVisit, getMyVisitsResult, getPatientShiftHandoffsResult, startCaregiverVisit, type CaregiverVisit } from '@/services/enterpriseCaregiverWorkToolsService';
 import { acknowledgePrevisit, PREVISIT_SECTIONS } from '@/services/hcnCareOperationsService';
 
 const CHECKOUT_ITEMS = [
@@ -176,6 +177,60 @@ export default function CaregiverPatientVisit({ organizationId, patientId, visit
           {(visit.status === 'missed' || visit.status === 'canceled') && <p className="text-sm text-ent-muted capitalize">{visit.status}</p>}
         </>
       )}
+      {visit && visit.status !== 'completed' && <RecentVisitUpdates organizationId={organizationId} patientId={patientId} visitId={visitId} />}
+    </section>
+  );
+}
+
+function RecentVisitUpdates({ organizationId, patientId, visitId }: {
+  organizationId: string; patientId: string; visitId: string;
+}) {
+  const [notes, setNotes] = useState<{ id: string; note: string; created_at: string }[]>([]);
+  const [lastVisit, setLastVisit] = useState<{ actual_end: string | null; visit_notes: string | null } | null>(null);
+  const [handoff, setHandoff] = useState<{ summary: string; createdAt: string } | null>(null);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+
+  useEffect(() => {
+    let current = true;
+    void Promise.all([
+      supabase.from('patient_notes').select('id, note, created_at').eq('patient_id', patientId)
+        .neq('note_type', 'care_partner_personal').order('created_at', { ascending: false }).limit(3),
+      getPatientShiftHandoffsResult(organizationId, patientId),
+      supabase.from('caregiver_visits').select('actual_end, visit_notes').eq('organization_id', organizationId)
+        .eq('patient_id', patientId).eq('status', 'completed').neq('id', visitId)
+        .not('actual_end', 'is', null).not('visit_notes', 'is', null)
+        .order('actual_end', { ascending: false }).limit(1),
+    ]).then(([noteResult, handoffResult, visitResult]) => {
+      if (!current) return;
+      setNotes(noteResult.data ?? []);
+      setHandoff(handoffResult.data?.[0] ?? null);
+      setLastVisit(visitResult.data?.[0] ?? null);
+      setLoadState(noteResult.error || handoffResult.error || visitResult.error ? 'error' : 'ready');
+    }).catch(() => { if (current) setLoadState('error'); });
+    return () => { current = false; };
+  }, [organizationId, patientId, visitId]);
+
+  return (
+    <section aria-label="Recent notes and handoff" className="space-y-2 border-t border-ent-line pt-3">
+      <h3 className="font-semibold text-ent-ink">Recent notes and handoff</h3>
+      {loadState === 'loading' && <p role="status" className="text-sm text-ent-muted">Loading recent notes and handoff…</p>}
+      {loadState === 'error' && <p role="alert" className="text-sm text-ent-rust">Some recent notes or handoffs could not be loaded. Refresh to try again.</p>}
+      {loadState === 'ready' && !notes.length && !handoff && !lastVisit && <p className="text-sm text-ent-muted">No recent notes or handoff have been recorded.</p>}
+      {handoff && <div className="rounded-xl bg-ent-pale p-3 text-sm text-ent-text">
+        <p className="font-semibold text-ent-ink">Latest shift handoff</p>
+        <p className="whitespace-pre-wrap break-words">{handoff.summary}</p>
+        <time dateTime={handoff.createdAt} className="text-xs text-ent-muted">{new Date(handoff.createdAt).toLocaleString()}</time>
+      </div>}
+      {notes.length > 0 && <ul className="space-y-2">
+        {notes.map(note => <li key={note.id} className="rounded-xl bg-ent-pale p-3 text-sm text-ent-text">
+          <p className="whitespace-pre-wrap break-words">{note.note}</p>
+          <time dateTime={note.created_at} className="text-xs text-ent-muted">{new Date(note.created_at).toLocaleString()}</time>
+        </li>)}
+      </ul>}
+      {lastVisit?.actual_end && <details className="rounded-xl bg-ent-pale p-3 text-sm text-ent-text">
+        <summary className="cursor-pointer font-semibold text-ent-ink">Latest completed visit notes · {new Date(lastVisit.actual_end).toLocaleDateString()}</summary>
+        <p className="mt-2 whitespace-pre-wrap break-words">{lastVisit.visit_notes}</p>
+      </details>}
     </section>
   );
 }

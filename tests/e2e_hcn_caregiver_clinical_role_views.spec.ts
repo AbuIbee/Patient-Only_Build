@@ -55,12 +55,17 @@ test('a signed-in Caregiver sees the read-only Clinical Coordination view, with 
   const ctx = await seedOrgWithStaff('caregiver');
   try {
     const directorTok = await login(ctx.directorEmail, PW);
-    await rpc('hcn_upsert_healthcare_provider', {
+    const [providerStatus, provider] = await rpc('hcn_upsert_healthcare_provider', {
       p_organization_id: ctx.orgId, p_provider_id: null, p_display_name: 'Dr. E2E Roles', p_professional_title: 'MD',
       p_specialty: 'medical_specialist', p_specialty_other_label: null, p_practice_name: null, p_office_phone: null,
       p_fax_number: null, p_secure_contact_email: `e2e-roles-provider-${Date.now()}@example-clinic.test`,
       p_office_address: null, p_professional_identifier: null, p_credentials: null,
     }, directorTok);
+    expect(providerStatus).toBe(200);
+    const [associationStatus] = await rpc('hcn_associate_provider_with_patient', {
+      p_patient_id: ctx.patientId, p_provider_id: (provider as { id: string }).id, p_relationship_note: null,
+    }, directorTok);
+    expect(associationStatus).toBe(200);
 
     await page.goto(`${frontendBase}/Professional`, { waitUntil: 'domcontentloaded' });
     await page.getByPlaceholder('you@example.com').fill(ctx.caregiverEmail);
@@ -90,7 +95,7 @@ test('a signed-in Caregiver sees the read-only Clinical Coordination view, with 
     await page.setViewportSize({ width: 1280, height: 800 });
 
     await page.getByText('My Care Team').click();
-    await expect(page.getByText('Dr. E2E Roles')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole('region', { name: 'Patient care team' }).getByText('Dr. E2E Roles')).toBeVisible({ timeout: 20000 });
     await expect(page.getByRole('button', { name: /add provider/i })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^new request$/i })).toHaveCount(0);
   } finally {
@@ -133,10 +138,14 @@ test('a caregiver completes the selected visit inside the patient chart and the 
     await page.getByPlaceholder('you@example.com').fill(ctx.caregiverEmail);
     await page.getByPlaceholder('Your password').fill(PW);
     await page.getByRole('button', { name: /sign in/i }).click();
-    await page.getByRole('button', { name: "Open Today's Visits" }).click();
-    await page.getByRole('button', { name: 'Open Visit', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Your patients', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: /Assigned patients/ }).click();
+    await expect(page.getByRole('heading', { name: 'Assigned Patient Calendar' })).toBeVisible();
+    await page.getByRole('button', { name: /, 1 visit$/ }).and(page.locator('[aria-current=date]')).click();
     await expect(page).toHaveURL(new RegExp(`/patients/${ctx.patientId}\\?.*visit=${visitId}$`));
     await expect(page.getByRole('heading', { name: 'E2E Roles Patient visit' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Recent notes and handoff' })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Visit chart shortcuts' }).getByRole('button', { name: 'Medications' })).toBeVisible();
 
     const visit = page.getByRole('region', { name: 'Patient visit' });
     await visit.getByRole('button', { name: 'Confirm Review & Check In' }).click();
@@ -166,6 +175,9 @@ test('a caregiver completes the selected visit inside the patient chart and the 
     await expect(visit).toContainText('Checked out:');
     await expect(visit).toContainText('Meal eaten: Not done');
     expect(sql(`SELECT status FROM caregiver_visits WHERE id='${laterVisitId}';`)).toBe('scheduled');
+    await page.getByRole('button', { name: 'Visits & Time Records', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'View Visit Log', exact: true })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Open Visit', exact: true })).toHaveCount(0);
 
     const director = await directorContext.newPage();
     await director.goto(`${frontendBase}/Professional/Admin`, { waitUntil: 'domcontentloaded' });

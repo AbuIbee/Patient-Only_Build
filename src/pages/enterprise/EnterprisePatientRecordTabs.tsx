@@ -98,8 +98,8 @@ function SectionCard({ title, icon: Icon, children }: { title: string; icon: typ
   );
 }
 
-export default function EnterprisePatientRecordTabs({ patientId, patientHeader, staffRole, orgId, onBack, initialTab, headerAction }: {
-  patientId: string; patientHeader: PatientHeader; staffRole: StaffRole; orgId: string; onBack: () => void; initialTab?: TabKey; headerAction?: React.ReactNode;
+export default function EnterprisePatientRecordTabs({ patientId, patientHeader, staffRole, orgId, onBack, initialTab, headerAction, visitNavigation }: {
+  patientId: string; patientHeader: PatientHeader; staffRole: StaffRole; orgId: string; onBack: () => void; initialTab?: TabKey; headerAction?: React.ReactNode; visitNavigation?: boolean;
 }) {
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'info');
   const [tabSearch, setTabSearch] = useState('');
@@ -121,6 +121,19 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
       </div>
 
       {headerAction}
+      {visitNavigation && (
+        <nav aria-label="Visit chart shortcuts" className="flex flex-wrap gap-2">
+          {([{ key: 'info', label: 'Patient Information' }, { key: 'medications', label: 'Medications' },
+            { key: 'carePlan', label: 'Care Plan' }, { key: 'tasks', label: 'Tasks' },
+            { key: 'contacts', label: 'Healthcare Contacts' }, { key: 'handoffs', label: 'Shift Handoffs' }] as const).map(link => (
+            <button key={link.key} type="button" onClick={() => {
+              setTab(link.key);
+              setTabSearch('');
+              document.getElementById('caregiver-visit-chart-section')?.focus();
+            }} className="min-h-11 rounded-lg border border-ent-line bg-white px-3 text-sm font-semibold text-ent-forest hover:bg-ent-pale">{link.label}</button>
+          ))}
+        </nav>
+      )}
 
       <section aria-label="Patient chart navigation" className="space-y-3">
         <label className="flex items-center gap-2 rounded-xl border border-soft-taupe bg-white px-3 py-2">
@@ -153,7 +166,7 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         </nav>
       </section>
 
-      <div className="space-y-4">
+      <div className="space-y-4" id={visitNavigation ? 'caregiver-visit-chart-section' : undefined} tabIndex={visitNavigation ? -1 : undefined}>
         {tab === 'info' && <PatientInformation patientId={patientId} orgId={orgId} />}
         {tab === 'overview' && <OverviewTab patientId={patientId} patientHeader={patientHeader} orgId={orgId} staffRole={staffRole} />}
         {tab === 'medical' && <MedicalTab patientId={patientId} staffRole={staffRole} orgId={orgId} />}
