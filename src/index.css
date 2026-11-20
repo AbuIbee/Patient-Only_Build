@@ -400,6 +400,130 @@ html.haneen-site :where(a, button, input, select, textarea):focus-visible {
   outline-offset: 3px;
 }
 
+/* Director and Caregiver workspace presentation on the Haneen site. */
+html.haneen-site .hcn-workspace {
+  --ent-bg: #f2f7fb;
+  --ent-line: #c6d7e3;
+  --ent-bronze: #8c5e0b;
+  --workspace-sidebar: #77a9ce;
+  --workspace-sidebar-line: #5f8caf;
+  --workspace-navy: #102e4a;
+}
+
+.hcn-workspace .hcn-workspace-navigation {
+  background: var(--workspace-sidebar);
+  border-color: var(--workspace-sidebar-line);
+  color: var(--workspace-navy);
+}
+
+.hcn-workspace-navigation-title {
+  padding: 1.25rem 1rem 1rem;
+  font-size: 1rem;
+  font-weight: 720;
+}
+
+.hcn-workspace .hcn-workspace-navigation :is(.text-ent-muted, .text-ent-text, .text-ent-ink) {
+  color: var(--workspace-navy);
+}
+
+.hcn-workspace .hcn-workspace-navigation :is(.border-b, .border-t) {
+  border-color: var(--workspace-sidebar-line);
+}
+
+.hcn-workspace .hcn-workspace-navigation button[aria-current="page"] {
+  background: var(--workspace-navy);
+  color: #fff;
+}
+
+.hcn-workspace .hcn-workspace-navigation button:not([aria-current="page"]):hover {
+  background: #d5e7f3;
+}
+
+.hcn-workspace .hcn-workspace-header {
+  min-height: 3.75rem;
+}
+
+.hcn-workspace .hcn-workspace-header span.text-ent-ink {
+  font-size: 0.9375rem;
+}
+
+.hcn-workspace-heading {
+  letter-spacing: -0.03em;
+  font-size: clamp(1.65rem, 3vw, 2.15rem);
+  line-height: 1.2;
+}
+
+.hcn-workspace .hcn-workspace-actions {
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  border-top: 3px solid var(--ent-forest);
+  box-shadow: 0 3px 12px #102e4a0a;
+}
+
+.hcn-workspace-actions h2 {
+  font-size: 1.125rem;
+}
+
+.hcn-workspace .hcn-workspace-action {
+  background: #f7fbfe;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.hcn-workspace .hcn-workspace-action:hover {
+  background: #e5f2fa;
+  border-color: var(--ent-forest);
+}
+
+.hcn-workspace-tools {
+  display: grid;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.hcn-workspace-tools > * {
+  min-width: 0;
+}
+
+.hcn-workspace-tools [type="search"] {
+  background: #f7fbfe;
+  border-color: #9ab3c6;
+}
+
+.hcn-workspace-assistant > summary {
+  min-height: 2.75rem;
+  list-style: none;
+}
+
+.hcn-workspace-assistant > summary::-webkit-details-marker {
+  display: none;
+}
+
+.hcn-workspace-assistant > summary > svg:last-child {
+  margin-inline-start: auto;
+}
+
+.hcn-workspace-assistant[open] > summary > svg:last-child {
+  transform: rotate(180deg);
+}
+
+.hcn-workspace-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-top: 1px solid var(--ent-line);
+  font-size: 0.8125rem;
+  color: var(--ent-text);
+  background: var(--ent-panel);
+}
+
+@media (min-width: 48rem) {
+  .hcn-workspace-tools {
+    grid-template-columns: minmax(0, 1fr) minmax(15rem, 28%);
+  }
+}
+
 /* Print only the Director's authorized report. Navigation, toolbars and assistant panels stay off paper. */
 @media print {
   body:has(.hcn-director-report-print) * { visibility: hidden !important; }

@@ -42,6 +42,7 @@ export interface EnterpriseOfficeShellProps<K extends string> {
   roleLabel: string;
   fullName: string;
   initials: string;
+  workspaceTheme?: boolean;
   navItems: OfficeNavItem<K>[];
   navGroups: OfficeNavGroup<K>[];
   activeNav: K;
@@ -51,11 +52,12 @@ export interface EnterpriseOfficeShellProps<K extends string> {
 }
 
 export function EnterpriseOfficeShell<K extends string>({
-  officeBadge, orgLabel, roleLabel, fullName, initials,
+  officeBadge, orgLabel, roleLabel, fullName, initials, workspaceTheme = false,
   navItems, navGroups, activeNav, onNavigate, onLogout, children,
 }: EnterpriseOfficeShellProps<K>) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isHaneenSite = import.meta.env.VITE_ENTERPRISE_SITE === 'true';
+  const styledWorkspace = isHaneenSite && workspaceTheme;
 
   const renderNavButton = (itemKey: K, onClick: () => void, mobile: boolean) => {
     const item = navItems.find((n) => n.key === itemKey);
@@ -78,17 +80,21 @@ export function EnterpriseOfficeShell<K extends string>({
   };
 
   return (
-    <div className="min-h-screen bg-ent-bg flex">
-      <aside className="hidden lg:flex lg:flex-col w-64 bg-ent-panel border-r border-ent-line sticky top-0 h-screen">
-        <div className="flex items-center gap-2.5 px-4 pt-5 pb-4 border-b border-ent-line">
-          <div className="w-10 h-10 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0">
-            {isHaneenSite ? <img src="/haneen-favicon.svg" alt="" className="w-9 h-9 rounded-lg" /> : <Sparkles className="w-5 h-5 text-ent-forest" />}
+    <div className={`min-h-screen bg-ent-bg flex ${styledWorkspace ? 'hcn-workspace' : ''}`}>
+      <aside className="hidden lg:flex lg:flex-col w-64 shrink-0 bg-ent-panel border-r border-ent-line sticky top-0 h-screen hcn-workspace-navigation">
+        {styledWorkspace ? (
+          <div className="hcn-workspace-navigation-title border-b border-ent-line">{roleLabel} Workspace</div>
+        ) : (
+          <div className="flex items-center gap-2.5 px-4 pt-5 pb-4 border-b border-ent-line">
+            <div className="w-10 h-10 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0">
+              {isHaneenSite ? <img src="/haneen-favicon.svg" alt="" className="w-9 h-9 rounded-lg" /> : <Sparkles className="w-5 h-5 text-ent-forest" />}
+            </div>
+            <div className="min-w-0">
+              <div className="font-bold text-ent-ink text-sm leading-tight truncate">{isHaneenSite ? 'Haneen Care Network' : 'My Memoria Ally'}</div>
+              <div className="text-[10px] font-extrabold tracking-[0.14em] text-ent-bronze mt-0.5">{officeBadge}</div>
+            </div>
           </div>
-          <div className="min-w-0">
-            <div className="font-bold text-ent-ink text-sm leading-tight truncate">{isHaneenSite ? 'Haneen Care Network' : 'My Memoria Ally'}</div>
-            <div className="text-[10px] font-extrabold tracking-[0.14em] text-ent-bronze mt-0.5">{officeBadge}</div>
-          </div>
-        </div>
+        )}
         <nav aria-label={`${officeBadge} navigation`} className="flex-1 overflow-y-auto px-2.5 py-2">
           {navGroups.map((group) => (
             <div key={group.label}>
@@ -112,7 +118,7 @@ export function EnterpriseOfficeShell<K extends string>({
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
+        <header className="hcn-workspace-header bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
           <div className="flex items-center gap-3 min-w-0">
             <button type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation" className="lg:hidden p-1.5 -ml-1.5 text-ent-ink flex-shrink-0">
               <Menu className="w-5 h-5" />
@@ -133,10 +139,12 @@ export function EnterpriseOfficeShell<K extends string>({
 
         {mobileNavOpen && (
           <div className="lg:hidden fixed inset-0 z-50 bg-black/40" onClick={() => setMobileNavOpen(false)}>
-            <div className="bg-ent-panel w-72 h-full p-2 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="hcn-workspace-navigation bg-ent-panel w-72 h-full p-2 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between p-3">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-ent-green flex items-center justify-center flex-shrink-0">{isHaneenSite ? <img src="/haneen-favicon.svg" alt="" className="w-8 h-8 rounded-lg" /> : <Sparkles className="w-4 h-4 text-ent-forest" />}</div>
+                  {!styledWorkspace && (
+                    <div className="w-8 h-8 rounded-lg bg-ent-green flex items-center justify-center flex-shrink-0">{isHaneenSite ? <img src="/haneen-favicon.svg" alt="" className="w-8 h-8 rounded-lg" /> : <Sparkles className="w-4 h-4 text-ent-forest" />}</div>
+                  )}
                   <span className="font-semibold text-ent-ink text-sm truncate">{orgLabel}</span>
                 </div>
                 <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X className="w-5 h-5 text-ent-muted" /></button>
@@ -161,8 +169,18 @@ export function EnterpriseOfficeShell<K extends string>({
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-ent-bg">
           <div className="max-w-6xl mx-auto space-y-5">{children}</div>
         </main>
+        {styledWorkspace && <WorkspaceFooter />}
       </div>
     </div>
+  );
+}
+
+export function WorkspaceFooter() {
+  return (
+    <footer className="hcn-workspace-footer">
+      <img src="/haneen-favicon.svg" alt="" width={22} height={22} />
+      <span>© {new Date().getFullYear()} Haneen Care Network</span>
+    </footer>
   );
 }
 

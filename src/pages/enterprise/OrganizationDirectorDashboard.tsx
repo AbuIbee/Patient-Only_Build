@@ -1133,8 +1133,8 @@ const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ADMINISTRATION', items: ['applications', 'reports', 'settings'] },
 ];
 
-function DashboardHome({ orgId, orgName, members, visits, incidents, handoffs, patients, onOpenPatient, onNavigate }: {
-  orgId: string; orgName: string; members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
+function DashboardHome({ orgId, members, visits, incidents, handoffs, patients, onOpenPatient, onNavigate }: {
+  orgId: string; members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
   visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
   patients: OrgCoveredPatient[]; onOpenPatient: (patientId: string) => void;
   onNavigate: (key: DirectorNavKey) => void;
@@ -1153,14 +1153,12 @@ function DashboardHome({ orgId, orgName, members, visits, incidents, handoffs, p
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl sm:text-2xl font-bold text-ent-ink">Director Dashboard</h1>
-        <p className="text-sm text-ent-muted mt-0.5">Organization-wide oversight for {orgName || 'your organization'}.</p>
+        <h1 className="hcn-workspace-heading text-xl sm:text-2xl font-bold text-ent-ink">Director Dashboard</h1>
       </div>
 
-      <section aria-label="Director quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
+      <section aria-label="Director quick actions" className="hcn-workspace-actions rounded-2xl border border-ent-line bg-ent-panel p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-bold text-ent-ink">Director Quick Actions</h2>
-          <span className="text-xs text-ent-muted">Open the workflow directly, without using the sidebar</span>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
           {([
@@ -1172,7 +1170,7 @@ function DashboardHome({ orgId, orgName, members, visits, incidents, handoffs, p
             { label: 'Care Communications', key: 'communications' as DirectorNavKey, icon: MessageSquare },
           ]).map((action) => (
             <button key={action.key} type="button" onClick={() => onNavigate(action.key)}
-              className="flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg px-3 py-3 text-left text-sm font-semibold text-ent-ink transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze"
+              className="hcn-workspace-action flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg px-3 py-3 text-left text-sm font-semibold text-ent-ink transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze"
               aria-label={`Open ${action.label}`}>
               <action.icon className="h-5 w-5 shrink-0 text-ent-bronze" aria-hidden="true" />
               <span>{action.label}</span>
@@ -1181,25 +1179,26 @@ function DashboardHome({ orgId, orgName, members, visits, incidents, handoffs, p
         </div>
       </section>
 
-      <HaneenAssistantPanel role="director" organizationId={orgId}/>
-
-      <section aria-label="Search organization patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
-        <label htmlFor="director-dashboard-search" className="block text-sm font-bold text-ent-ink">Search organization patients</label>
-        <input id="director-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
-          autoComplete="off" placeholder="Search patient name or reference…"
-          className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
-        {dashboardSearch.trim() && (
-          <div role="region" aria-label="Matching covered patients" className="space-y-2">
-            {matchingPatients.length ? matchingPatients.map(patient => (
-              <button type="button" key={patient.patientId} onClick={() => onOpenPatient(patient.patientId)}
-                className="flex w-full items-center justify-between rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
-                <span>{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-xs text-ent-bronze">Open Patient Information →</span>
-              </button>
-            )) : <p className="text-sm text-ent-muted">No covered patient matches this search.</p>}
-          </div>
-        )}
-        <p className="text-xs text-ent-muted">Open a patient to search conditions, allergies, doctors and emergency contacts.</p>
-      </section>
+      <div className="hcn-workspace-tools">
+        <section aria-label="Search organization patients" className="space-y-2 rounded-xl border border-ent-line bg-ent-panel p-4">
+          <label htmlFor="director-dashboard-search" className="block text-sm font-bold text-ent-ink">Search organization patients</label>
+          <input id="director-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
+            autoComplete="off" placeholder="Search patient name or reference…"
+            className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
+          {dashboardSearch.trim() && (
+            <div role="region" aria-label="Matching covered patients" className="space-y-2">
+              {matchingPatients.length ? matchingPatients.map(patient => (
+                <button type="button" key={patient.patientId} onClick={() => onOpenPatient(patient.patientId)}
+                  className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
+                  <span className="min-w-0 break-words">{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-sm font-semibold text-ent-forest">Open Patient Information →</span>
+                </button>
+              )) : <p className="text-sm text-ent-muted">No covered patient matches this search.</p>}
+            </div>
+          )}
+          <p className="text-xs text-ent-muted">Open a patient to search conditions, allergies, doctors and emergency contacts.</p>
+        </section>
+        <HaneenAssistantPanel role="director" organizationId={orgId} compact />
+      </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <MetricCard label="Care Team Inventory" value={String(activeStaff+invitedStaff)}
@@ -1771,7 +1770,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
 
   return (
     <EnterpriseOfficeShell
-      officeBadge="ADMIN OFFICE" orgLabel={orgName || 'Organization'} roleLabel="Director" fullName={fullName} initials={initials}
+      workspaceTheme officeBadge="ADMIN OFFICE" orgLabel={orgName || 'Organization'} roleLabel="Director" fullName={fullName} initials={initials}
       navItems={DIRECTOR_NAV_ITEMS} navGroups={DIRECTOR_NAV_GROUPS}
       activeNav={nav === 'overview' || nav === 'licensing' || nav === 'ownership' ? 'settings' : nav}
       onNavigate={navigate}
@@ -1786,7 +1785,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : nav === 'dashboard' ? (
-        <DashboardHome orgId={organizationId} orgName={orgName} members={members} visits={visits} incidents={incidents} handoffs={handoffs} patients={coveredPatients} onOpenPatient={openPatientInformation} onNavigate={navigate} />
+        <DashboardHome orgId={organizationId} members={members} visits={visits} incidents={incidents} handoffs={handoffs} patients={coveredPatients} onOpenPatient={openPatientInformation} onNavigate={navigate} />
       ) : nav === 'applications' ? (
         <ApplicationsReviewView organizationId={organizationId} />
       ) : nav === 'staff' ? (
