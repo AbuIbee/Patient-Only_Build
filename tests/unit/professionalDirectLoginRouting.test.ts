@@ -8,6 +8,18 @@ describe('Professional login direct-to-dashboard routing', () => {
     expect(resolveProfessionalOffice(['admin', 'provider', 'owner'], null, null)).toBe('admin');
   });
 
+  it('opens the Organization Owner dashboard for an owner-only account without a Director membership', () => {
+    expect(resolveProfessionalOffice(['owner'], null, null)).toBe('owner');
+  });
+
+  it('opens the Director dashboard for a separate Director-only account', () => {
+    expect(resolveProfessionalOffice(['admin'], null, null)).toBe('admin');
+  });
+
+  it('keeps the Organization Owner default when that user is also an external provider but not Director', () => {
+    expect(resolveProfessionalOffice(['provider', 'owner'], null, null)).toBe('owner');
+  });
+
   it('preserves explicit authorized provider deep links instead of overriding them with Director', () => {
     expect(resolveProfessionalOffice(['admin', 'provider', 'owner'], 'provider', null)).toBe('provider');
   });
