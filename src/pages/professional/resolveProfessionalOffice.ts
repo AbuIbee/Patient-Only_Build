@@ -1,9 +1,11 @@
 // The professional entry route chooses an authorized office immediately.
 // Never infer permissions from the route or from a previously selected role.
+// Organizational ownership outranks Director only if the server confirms it;
+// the route never creates any Director/Owner entitlement.
 export type ProfessionalOfficeKey = 'admin' | 'owner' | 'caregiver' | 'medical' | 'therapy' | 'patient' | 'provider' | 'billing';
 
 const PRIORITY_ORDER: readonly ProfessionalOfficeKey[] = [
-  'admin', 'owner', 'therapy', 'medical', 'caregiver', 'billing', 'provider', 'patient',
+  'owner', 'admin', 'therapy', 'medical', 'caregiver', 'billing', 'provider', 'patient',
 ];
 
 export function resolveProfessionalOffice(
