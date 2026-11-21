@@ -4,8 +4,16 @@ import { resolve } from 'node:path';
 import { resolveProfessionalOffice } from '../../src/pages/professional/resolveProfessionalOffice';
 
 describe('Professional login direct-to-dashboard routing', () => {
-  it('opens Director dashboard immediately when account also has owner and provider roles', () => {
-    expect(resolveProfessionalOffice(['admin', 'provider', 'owner'], null, null)).toBe('admin');
+  it('opens Organization Owner when account has Owner, Director and Provider roles', () => {
+    expect(resolveProfessionalOffice(['admin', 'provider', 'owner'], null, null)).toBe('owner');
+  });
+
+  it('opens Director when account has no Owner entitlement even if other roles exist', () => {
+    expect(resolveProfessionalOffice(['provider', 'admin'], null, null)).toBe('admin');
+  });
+
+  it('respects a deliberate, explicitly authorized Director deep link for a user who is also Owner', () => {
+    expect(resolveProfessionalOffice(['admin', 'owner'], 'admin', null)).toBe('admin');
   });
 
   it('opens the Organization Owner dashboard for an owner-only account without a Director membership', () => {
