@@ -283,8 +283,9 @@ export default function DirectorCommandCenter({ orgId, members, patients, comman
         <Clock3 size={18} className="text-ent-muted" aria-hidden="true" />
         <label htmlFor="hcn-office-timezone" className="text-sm font-semibold text-ent-ink">Office operational time zone</label>
         <select id="hcn-office-timezone" className="rounded-lg border border-ent-line bg-white px-2 py-2 text-sm"
-          value={timeZone ?? ''} onChange={e => setOfficeTimeZone(e.target.value)}>
+          value={timeZone ?? ''} disabled={timeZoneSource === 'organization'} onChange={e => setOfficeTimeZone(e.target.value)}>
           <option value="">Select your office time zone</option>
+          {timeZone && !PERMITTED_ZONES.has(timeZone) && <option value={timeZone}>{timeZone} (organization configured)</option>}
           {ZONES.map(zone => <option key={zone.value} value={zone.value}>{zone.label} ({zone.value})</option>)}
         </select>
         <span className="text-xs text-ent-muted">
@@ -294,7 +295,8 @@ export default function DirectorCommandCenter({ orgId, members, patients, comman
         </span>
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Panel title="Live Caregiver Status" count={snapshot?.activeVisits.data?.length ?? null}
+        <Panel title="Live Caregiver Status" count={snapshot?.activeVisits.data
+            ? new Set(snapshot.activeVisits.data.map(v => v.caregiver_id)).size : null}
           countSuffix="currently checked in" loading={loading && !snapshot} error={activeError} empty="No caregivers are currently checked in."
           rows={liveRows} onNavigate={onNavigate} />
         <Panel id="hcn-today-visit-exceptions" title="Today's Visit Exceptions"
