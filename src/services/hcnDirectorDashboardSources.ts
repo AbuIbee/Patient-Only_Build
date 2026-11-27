@@ -16,6 +16,10 @@ export type CoordinationTaskRow = {
 export type CareEscalationRow = {
   id: string; patient_id: string; status: string; urgency: string; created_at: string;
 };
+export type IncidentRow = {
+  id: string; patient_id: string; incident_type: string; severity: string; occurred_at: string;
+  resolution_status: string;
+};
 export type UrgentConversationRow = {
   id: string; conversation_id: string; created_at: string; sender_id: string; subject: string;
   read_at: string | null; acknowledged_at: string | null;
@@ -34,6 +38,7 @@ export type DashboardSources = {
   clinicalRequests: Result<ClinicalRequestRow[]>;
   coordinationTasks: Result<CoordinationTaskRow[]>;
   escalations: Result<CareEscalationRow[]>;
+  incidents: Result<IncidentRow[]>;
   urgentConversations: Result<UrgentConversationRow[]>;
   refreshedAt: number;
 };
@@ -119,7 +124,7 @@ export async function loadDirectorDashboardSources(
   const end = new Date(now + 3 * 86400000).toISOString();
   const [
     visitsResult, activeVisits, assignments, credentials, clinicalRequests,
-    coordinationTasks, escalations, urgentConversations,
+    coordinationTasks, escalations, incidents, urgentConversations,
   ] = await Promise.all([
     getOrgVisitsWindow(orgId, start, end),
     readOrgRows<ActiveVisitRow>('caregiver_visits',
@@ -135,6 +140,8 @@ export async function loadDirectorDashboardSources(
       'id,patient_id,title,status,due_at,assigned_user_id', orgId),
     readOrgRows<CareEscalationRow>('hcn_care_escalations',
       'id,patient_id,status,urgency,created_at', orgId),
+    readOrgRows<IncidentRow>('incident_reports',
+      'id,patient_id,incident_type,severity,occurred_at,resolution_status', orgId),
     readUrgentConversations(coveredPatientIds, now),
   ]);
   const visits: Result<OrgVisit[]> = {
@@ -148,7 +155,7 @@ export async function loadDirectorDashboardSources(
     ? { data: null, error: visits.error } : await readAcknowledgments(orgId, ackEligible);
   return {
     visits, activeVisits, assignments, credentials, acknowledgments,
-    clinicalRequests, coordinationTasks, escalations, urgentConversations,
+    clinicalRequests, coordinationTasks, escalations, incidents, urgentConversations,
     refreshedAt: now,
   };
 }
