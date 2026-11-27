@@ -93,7 +93,12 @@ export default {
 
       const { data, error } = await client.auth.refreshSession({ refresh_token: refreshToken });
       if (error || !data.session) {
-        if (isAuthRetryableFetchError(error) || (error?.status && error.status >= 500)) return reply(503, null);
+        // Capture the numeric status before the retryable-error type predicate.
+        // Otherwise TypeScript's narrowed branch can infer 'never' for error
+        // on the right side of ||, which fails Vercel's function compilation.
+        const responseStatus = error?.status;
+        if (isAuthRetryableFetchError(error) ||
+            (typeof responseStatus === 'number' && responseStatus >= 500)) return reply(503, null);
         return reply(401, null, clearCookie);
       }
 
