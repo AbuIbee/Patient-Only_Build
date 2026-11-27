@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CalendarClock, ChevronRight, ClipboardCheck, Clock3, RefreshCw, ShieldAlert, Users } from 'lucide-react';
+import { ChevronRight, Clock3, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import type { OrgVisit } from '@/services/organizationDirectorOpsService';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { OrgCoveredPatient, OrgMembershipRow } from '@/services/organizationService';
 import {
   type DashboardSources, loadDirectorDashboardSources,
@@ -92,7 +92,7 @@ export function useDirectorCommandCenter(
     setTimeZone(null);
     setTimeZoneSource(null);
     void (async () => {
-      const { data, error } = await supabase.from('organization_licenses')
+      const { data, error } = await (supabase as unknown as SupabaseClient).from('organization_licenses')
         .select('monthly_billing_timezone').eq('organization_id', orgId).maybeSingle();
       if (canceled) return;
       if (!error && data?.monthly_billing_timezone) {
