@@ -27,7 +27,7 @@ import {
 } from '@/services/professionalApplicationService';
 import {
   getOrgVisitsResult, getOrgIncidentReportsResult, getOrgShiftHandoffsResult, resolveOrgIncidentReport,
-  type OrgVisit, type OrgIncidentReport, type OrgShiftHandoff, type IncidentResolutionStatus,
+  type OrgIncidentReport, type OrgShiftHandoff, type IncidentResolutionStatus,
 } from '@/services/organizationDirectorOpsService';
 import {
   getMyOrganizationOriginatingQuoteId, getMyEnterpriseBillingStatus, startEnterpriseCheckout, openEnterpriseBillingPortal,
@@ -1136,10 +1136,10 @@ const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ADMINISTRATION', items: ['applications', 'settings'] },
 ];
 
-function DashboardHome({ organizationId, coveredPatients, members, visits, incidents, handoffs, onNavigate }: {
+function DashboardHome({ organizationId, coveredPatients, members, incidents, handoffs, onNavigate }: {
   organizationId: string; coveredPatients: OrgCoveredPatient[];
   members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
-  visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
+  incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
   onNavigate: (key: DirectorNavKey) => void;
 }) {
   const command = useDirectorCommandCenter(organizationId, coveredPatients.map(patient => patient.patientId), members);
@@ -1714,7 +1714,6 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   const [coveredCount, setCoveredCount] = useState(0);
   const [coveredPatients, setCoveredPatients] = useState<OrgCoveredPatient[]>([]);
   const [selectedInformationPatientId, setSelectedInformationPatientId] = useState<string | null>(null);
-  const [visits, setVisits] = useState<OrgVisit[]>([]);
   const [incidents, setIncidents] = useState<OrgIncidentReport[]>([]);
   const [handoffs, setHandoffs] = useState<OrgShiftHandoff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1747,7 +1746,6 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       setPackageType(org?.packageType ?? 'integrated_care');
       setCoveredCount(covered.filter((r) => r.status === 'active').length);
       setCoveredPatients(covered.filter((r) => r.status === 'active'));
-      setVisits(v.data ?? []);
       setIncidents(inc.data ?? []);
       setHandoffs(hoffs.data ?? []);
       const errors = [v.error, inc.error, hoffs.error].filter((e): e is string => !!e);
@@ -1793,7 +1791,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : nav === 'dashboard' ? (
         <DashboardHome organizationId={organizationId} coveredPatients={coveredPatients}
-          members={members} visits={visits} incidents={incidents} handoffs={handoffs} onNavigate={navigate} />
+          members={members} incidents={incidents} handoffs={handoffs} onNavigate={navigate} />
       ) : nav === 'applications' ? (
         <ApplicationsReviewView organizationId={organizationId} />
       ) : nav === 'staff' ? (
