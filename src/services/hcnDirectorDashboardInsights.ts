@@ -65,8 +65,11 @@ export function getCoverageRisks(
 
 export function getMissingVisitNotes(visits: readonly OrgVisit[], now: number): OrgVisit[] {
   const from = now - 7 * 24 * 60 * 60_000;
-  return visits.filter(v => v.status === 'completed' && !v.visitNotes?.trim() &&
-    v.actualEnd && Date.parse(v.actualEnd) >= from && Date.parse(v.actualEnd) <= now);
+  return visits.filter(v => {
+    const completedAt = Date.parse(v.actualEnd ?? v.scheduledEnd ?? v.scheduledStart ?? '');
+    return v.status === 'completed' && !v.visitNotes?.trim() &&
+      Number.isFinite(completedAt) && completedAt >= from && completedAt <= now;
+  });
 }
 
 export function getReadinessFindings(
