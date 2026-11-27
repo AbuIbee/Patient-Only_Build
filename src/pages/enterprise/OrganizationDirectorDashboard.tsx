@@ -49,6 +49,7 @@ import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGr
 import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import OfficeHeaderTools from './OfficeHeaderTools';
+import DirectorCommandCenter, { useDirectorCommandCenter } from './DirectorCommandCenter';
 import DirectorScheduleCalendar from './DirectorScheduleCalendar';
 import DirectorAttendancePanel from './DirectorAttendancePanel';
 import DirectorOfficeAccessPanel from './DirectorOfficeAccessPanel';
@@ -1135,15 +1136,16 @@ const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ADMINISTRATION', items: ['applications', 'settings'] },
 ];
 
-function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
+function DashboardHome({ organizationId, coveredPatients, members, visits, incidents, handoffs, onNavigate }: {
+  organizationId: string; coveredPatients: OrgCoveredPatient[];
   members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
   visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
   onNavigate: (key: DirectorNavKey) => void;
 }) {
+  const command = useDirectorCommandCenter(organizationId, coveredPatients.map(patient => patient.patientId), members);
   const activeStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'active').length;
   const invitedStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'invited').length;
   const openIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').length;
-  const scheduledVisits = visits.filter((v) => v.status === 'scheduled' || v.status === 'in_progress').length;
   const today = new Date();
   const recentHandoffs = handoffs.slice(0, 5);
   const recentIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').slice(0, 5);
@@ -1185,8 +1187,10 @@ function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
           sub={`${activeStaff} active · ${invitedStaff} pending activation`} onClick={() => onNavigate('staff')} />
         <MetricCard label="Open Incidents" value={String(openIncidents)} icon={ShieldAlert}
           sub="need review" onClick={() => onNavigate('incidents')} />
-        <MetricCard label="Scheduled Visits" value={String(scheduledVisits)} icon={CalendarClock}
-          sub="upcoming or in progress" onClick={() => onNavigate('scheduling')} />
+        <MetricCard label="Today's Coverage Exceptions"
+          value={command.visitExceptions ? String(command.visitExceptions.length) : '—'} icon={CalendarClock}
+          sub={command.timeZone ? 'late check-ins · missed visits · overdue checkouts' : 'select office time zone below'}
+          onClick={() => document.getElementById('hcn-today-visit-exceptions')?.scrollIntoView({ behavior: 'smooth', block: 'center' })} />
       </section>
 
       <div className="hcn-office-activity">
@@ -1236,6 +1240,10 @@ function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
           )}
         </section>
       </div>
+
+      {/* Preserve every existing home webpart above; all approved extensions appear beneath. */}
+      <DirectorCommandCenter orgId={organizationId} members={members} patients={coveredPatients}
+        command={command} onNavigate={onNavigate} />
     </div>
   );
 }
@@ -1784,7 +1792,8 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : nav === 'dashboard' ? (
-        <DashboardHome members={members} visits={visits} incidents={incidents} handoffs={handoffs} onNavigate={navigate} />
+        <DashboardHome organizationId={organizationId} coveredPatients={coveredPatients}
+          members={members} visits={visits} incidents={incidents} handoffs={handoffs} onNavigate={navigate} />
       ) : nav === 'applications' ? (
         <ApplicationsReviewView organizationId={organizationId} />
       ) : nav === 'staff' ? (
