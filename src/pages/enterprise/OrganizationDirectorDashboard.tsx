@@ -1188,8 +1188,8 @@ function DashboardHome({ organizationId, coveredPatients, members, visits, incid
         <MetricCard label="Open Incidents" value={String(openIncidents)} icon={ShieldAlert}
           sub="need review" onClick={() => onNavigate('incidents')} />
         <MetricCard label="Today's Coverage Exceptions"
-          value={command.visitExceptions ? String(command.visitExceptions.length) : '—'} icon={CalendarClock}
-          sub={command.timeZone ? 'late check-ins · missed visits · overdue checkouts' : 'select office time zone below'}
+          value={command.snapshot?.visits.error || command.topError ? 'Error' : command.visitExceptions ? String(command.visitExceptions.length) : '—'} icon={CalendarClock}
+          sub={command.snapshot?.visits.error || command.topError ? 'Unable to verify today’s visits — retry below' : command.timeZone ? 'late check-ins · missed visits · overdue checkouts' : 'select office time zone below'}
           onClick={() => document.getElementById('hcn-today-visit-exceptions')?.scrollIntoView({ behavior: 'smooth', block: 'center' })} />
       </section>
 
