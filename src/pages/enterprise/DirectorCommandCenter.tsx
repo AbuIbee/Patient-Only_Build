@@ -37,16 +37,16 @@ function describePerson(person: Person | undefined): string {
   return person ? ((person.firstName + ' ' + person.lastName).trim() || 'Caregiver name unavailable')
     : 'Caregiver no longer in active roster';
 }
-function Panel({ title, count, loading, error, empty, rows, onNavigate, id }: {
+function Panel({ title, count, loading, error, empty, rows, onNavigate, id, countSuffix = 'requiring attention' }: {
   title: string; count: number | null; loading: boolean; error: string | null;
-  empty: string; rows: Row[]; onNavigate: (route: DirectorCommandRoute) => void; id?: string;
+  empty: string; rows: Row[]; onNavigate: (route: DirectorCommandRoute) => void; id?: string; countSuffix?: string;
 }) {
   return (
     <section id={id} className={CARD} aria-label={title}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-bold text-ent-ink">{title}</h3>
         <span className="text-xs font-semibold text-ent-muted">
-          {loading ? 'Loading…' : error ? 'Unavailable' : count === null ? 'Not configured' : count + ' requiring attention'}
+          {loading ? 'Loading…' : error ? 'Unavailable' : count === null ? 'Not configured' : count + ' ' + countSuffix}
         </span>
       </div>
       {error ? <p role="alert" className="text-sm text-ent-rust">Unable to verify: {error}</p>
@@ -101,7 +101,9 @@ export function useDirectorCommandCenter(
         catch { /* Invalid organization timezone requires explicit selection below. */ }
       }
       // An explicit local choice is never represented as authoritative server configuration.
-      const saved = window.localStorage.getItem('hcn-director-office-time-zone:' + orgId);
+      let saved: string | null = null;
+      try { saved = window.localStorage.getItem('hcn-director-office-time-zone:' + orgId); }
+      catch { /* Private browser mode can disable local storage. */ }
       if (saved && PERMITTED_ZONES.has(saved)) { setTimeZone(saved); setTimeZoneSource('device'); }
     })();
     return () => { canceled = true; };
@@ -144,7 +146,8 @@ export function useDirectorCommandCenter(
 
   const setOfficeTimeZone = (zone: string) => {
     if (!PERMITTED_ZONES.has(zone)) return;
-    window.localStorage.setItem('hcn-director-office-time-zone:' + orgId, zone);
+    try { window.localStorage.setItem('hcn-director-office-time-zone:' + orgId, zone); }
+    catch { /* Keep explicit choice for this mounted view even without storage. */ }
     setTimeZone(zone);
     setTimeZoneSource('device');
   };
@@ -243,15 +246,24 @@ export default function DirectorCommandCenter({ orgId, members, patients, comman
       date: Date.parse(e.created_at),
     })),
   ].sort((a, b) => (b.date ?? 0) - (a.date ?? 0));
+  const incidentRows: Row[] = (snapshot?.incidents.data ?? [])
+    .filter(i => i.resolution_status !== 'resolved')
+    .map(i => ({
+      id: 'incident:' + i.id, title: i.incident_type.replaceAll('_', ' ') + ' incident',
+      detail: (patientById.get(i.patient_id) || 'Patient') + ' · ' + i.severity + ' · ' + textDate(i.occurred_at),
+      route: 'incidents', urgent: i.severity === 'critical' || i.severity === 'high',
+      date: Date.parse(i.occurred_at),
+    }));
   const actionRows: Row[] = [
     ...urgentRows,
+    ...incidentRows,
     ...exceptionRows,
     ...coverageRows,
     ...clinicalRows.filter(row => row.urgent),
     ...documentationRows,
     ...readinessRows.filter(row => row.urgent),
   ].sort((a, b) => Number(!!b.urgent) - Number(!!a.urgent));
-  const actionError = urgentError || visitError || coverageError || clinicalError || readinessError;
+  const actionError = urgentError || snapshot?.incidents.error || visitError || coverageError || clinicalError || readinessError;
 
   return (
     <section className="space-y-4 pt-3" aria-label="Director operational command center" data-organization-id={orgId}>
@@ -282,36 +294,36 @@ export default function DirectorCommandCenter({ orgId, members, patients, comman
         </span>
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Panel title="1. Live Caregiver Status" count={snapshot?.activeVisits.data?.length ?? null}
-          loading={loading && !snapshot} error={activeError} empty="No caregivers are currently checked in."
+        <Panel title="Live Caregiver Status" count={snapshot?.activeVisits.data?.length ?? null}
+          countSuffix="currently checked in" loading={loading && !snapshot} error={activeError} empty="No caregivers are currently checked in."
           rows={liveRows} onNavigate={onNavigate} />
-        <Panel id="hcn-today-visit-exceptions" title="2. Today's Visit Exceptions"
+        <Panel id="hcn-today-visit-exceptions" title="Today's Visit Exceptions"
           count={timeZone && !visitError && visitExceptions ? visitExceptions.length : null}
           loading={loading && !snapshot} error={visitError}
           empty={timeZone ? 'No late check-ins, missed visits, or overdue checkouts for today.'
             : 'Select the office time zone above before showing a count.'}
           rows={timeZone ? exceptionRows : []} onNavigate={onNavigate} />
-        <Panel title="3. Coverage at Risk — Next 48 Hours" count={coverage ? coverage.length : null}
+        <Panel title="Coverage at Risk — Next 48 Hours" count={coverage ? coverage.length : null}
           loading={loading && !snapshot} error={coverageError}
           empty="No scheduled visits have a detected inactive caregiver or missing active patient assignment. Unscheduled care demand is not represented by visit records."
           rows={coverageRows} onNavigate={onNavigate} />
-        <Panel title="4. Director Action Queue" count={!actionError && snapshot ? actionRows.length : null}
+        <Panel title="Director Action Queue" count={!actionError && snapshot ? actionRows.length : null}
           loading={loading && !snapshot} error={actionError}
           empty="No verified urgent exceptions or outstanding items in the monitored sources."
           rows={actionRows} onNavigate={onNavigate} />
-        <Panel title="7. Clinical Coordination Follow-Ups" count={clinicalError ? null : clinicalRows.length}
+        <Panel title="Clinical Coordination Follow-Ups" count={clinicalError ? null : clinicalRows.length}
           loading={loading && !snapshot} error={clinicalError}
           empty="No outstanding external requests or near-due coordination tasks."
           rows={clinicalRows} onNavigate={onNavigate} />
-        <Panel title="8. Visit Documentation Review (Past 7 Days)"
+        <Panel title="Visit Documentation Review (Past 7 Days)"
           count={missingNotes ? missingNotes.length : null} loading={loading && !snapshot}
           error={docsError} empty="No completed visits are missing their required note field in the last seven days."
           rows={documentationRows} onNavigate={onNavigate} />
-        <Panel title="9. Staff Readiness & Credentials" count={readiness ? readiness.length : null}
+        <Panel title="Staff Readiness & Credentials" count={readiness ? readiness.length : null}
           loading={loading && !snapshot} error={readinessError}
           empty="No pending staff activations, due/expired credentials, or missing recorded acknowledgments for upcoming 30-minute visits."
           rows={readinessRows} onNavigate={onNavigate} />
-        <Panel title="10. Urgent Communications & Help Escalations"
+        <Panel title="Urgent Communications & Help Escalations"
           count={urgentError ? null : urgentRows.length}
           loading={loading && !snapshot} error={urgentError}
           empty="No unacknowledged urgent conversation messages accessible to you or unresolved priority/urgent care escalations."
