@@ -67,7 +67,8 @@ describe('HCN Director exception-first dashboard', () => {
   it('identifies completed visits missing notes, not ordinary scheduled visits', () => {
     const completed = visit('missing', '2026-11-27T14:00:00Z', 'completed', { actualEnd: '2026-11-27T15:00:00Z' });
     const documented = visit('documented', '2026-11-27T14:00:00Z', 'completed', { actualEnd: '2026-11-27T15:00:00Z', visitNotes: 'Patient ate lunch.' });
-    expect(getMissingVisitNotes([completed, documented, visit('future', '2026-11-27T18:00:00Z', 'scheduled')], NOW).map(v => v.id)).toEqual(['missing']);
+    const brokenCheckout = visit('broken', '2026-11-27T13:00:00Z', 'completed', { actualEnd: null });
+    expect(getMissingVisitNotes([completed, documented, brokenCheckout, visit('future', '2026-11-27T18:00:00Z', 'scheduled')], NOW).map(v => v.id)).toEqual(['missing', 'broken']);
   });
 
   it('flags pending staff, expiring credentials and near-start missing previsit acknowledgments', () => {
