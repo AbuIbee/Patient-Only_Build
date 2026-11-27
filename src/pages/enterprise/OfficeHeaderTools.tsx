@@ -20,7 +20,7 @@ export default function OfficeHeaderTools({ role, orgId, patients, onOpenPatient
   const [query, setQuery] = useState('');
   const caregiver = role === 'caregiver';
   const searchLabel = caregiver ? 'Search assigned patients' : 'Search organization patients';
-  const assistantLabel = caregiver ? 'Caregiver Helper' : 'Director’s Assistant';
+  const assistantLabel = caregiver ? 'Caregiver Helper' : 'Director’s AI Assistant';
   const term = query.trim().toLowerCase();
   const matchingPatients = term ? patients.filter(patient =>
     [patient.firstName, patient.lastName, patient.preferredName, patient.patientId]
