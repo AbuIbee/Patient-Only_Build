@@ -90,9 +90,9 @@ describe('HCN Director exception-first dashboard', () => {
     expect(source).toContain("label=\"Today's Coverage Exceptions\"");
     expect(source).not.toContain('label="Scheduled Visits"');
     for (const heading of [
-      '1. Live Caregiver Status', "2. Today's Visit Exceptions", '3. Coverage at Risk',
-      '4. Director Action Queue', '7. Clinical Coordination Follow-Ups',
-      '8. Visit Documentation Review', '9. Staff Readiness', '10. Urgent Communications',
+      'Live Caregiver Status', "Today's Visit Exceptions", 'Coverage at Risk',
+      'Director Action Queue', 'Clinical Coordination Follow-Ups',
+      'Visit Documentation Review', 'Staff Readiness', 'Urgent Communications',
     ]) expect(panel).toContain(heading);
   });
 
