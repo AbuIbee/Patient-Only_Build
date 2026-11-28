@@ -146,6 +146,25 @@ describe('HCN Director exception-first dashboard', () => {
     expect(items.every(item => item.route && item.title)).toBe(true);
   });
 
+  it('opens the Coverage Exceptions KPI in operational visit triage, not a second homepage webpart', () => {
+    const dashboard = readFileSync(resolve(process.cwd(), 'src/pages/enterprise/OrganizationDirectorDashboard.tsx'), 'utf8');
+    const attendance = readFileSync(resolve(process.cwd(), 'src/pages/enterprise/DirectorAttendancePanel.tsx'), 'utf8');
+
+    expect(dashboard).toContain('onClick={onOpenVisitExceptions}');
+    expect(dashboard).toContain("setAttendanceView('exceptions')");
+    expect(dashboard).toContain("setNav('operations')");
+    expect(dashboard).toContain('initialView={attendanceView}');
+    expect(dashboard).toContain("onOpenSchedule={() => navigate('scheduling')}");
+    expect(dashboard).not.toContain("document.getElementById('hcn-needs-attention')?.scrollIntoView");
+
+    expect(attendance).toContain("view === 'exceptions'");
+    expect(attendance).toContain("getOrgVisitsWindow(");
+    expect(attendance).toContain("getVisitExceptions(visits, localZone(), now)");
+    expect(attendance).toContain('Open Employee Schedule');
+    expect(attendance).toContain('No verified late arrivals, missed visits or overdue checkouts today.');
+    expect(attendance).not.toContain("visits.filter(v => v.actualStart || v.actualEnd).filter");
+  });
+
   it('reads real RLS-scoped organization visits and fails closed on data truncation', () => {
     const service = readFileSync(resolve(process.cwd(), 'src/services/hcnDirectorDashboardSources.ts'), 'utf8');
     expect(service).toContain('getOrgVisitsWindow(orgId, start, end)');
