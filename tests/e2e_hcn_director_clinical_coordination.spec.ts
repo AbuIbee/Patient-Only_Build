@@ -175,6 +175,28 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
     await expect(page.getByText(/accepted/i).last()).toBeVisible({timeout:15000});
     const accepted=sql("SELECT review_status FROM hcn_clinical_documents WHERE patient_id='" + ctx.patientId + "' ORDER BY created_at DESC LIMIT 1;");
     expect(accepted).toBe('accepted');
+    // The queue must include documents even when no request links them.
+    const standaloneId = sql("INSERT INTO hcn_clinical_documents (organization_id,patient_id,category,classification,original_filename,mime_type,file_size_bytes,storage_path,review_status) VALUES ('"+ctx.orgId+"','"+ctx.patientId+"','other_clinical_attachment','general_care_coordination','synthetic-standalone.pdf','application/pdf',1,'"+ctx.orgId+"/synthetic-standalone.pdf','received_unreviewed') RETURNING id;");
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await workspace.getByRole('button', { name: 'Review & Approvals', exact: true }).click();
+    const queue = page.getByRole('region', { name: 'Document review and clinical approvals' });
+    await queue.getByRole('button', { name: 'Administrative review', exact: true }).click();
+    const standalone = queue.getByRole('listitem').filter({ hasText: 'synthetic-standalone.pdf' });
+    await expect(standalone).toBeVisible({ timeout: 15000 });
+    await standalone.getByRole('button', { name: 'Forward for clinical review', exact: true }).click();
+    await expect(standalone).toHaveCount(0);
+    await queue.getByRole('button', { name: 'Clinical approval', exact: true }).click();
+    await expect(standalone).toBeVisible();
+    await expect(standalone.getByRole('button', { name: /clinically approve/i })).toHaveCount(0);
+    expect(sql("SELECT review_status FROM hcn_clinical_documents WHERE id='"+standaloneId+"';")).toBe('forwarded_for_clinical_review');
+    // Check the actual workspace for horizontal overflow at supported widths.
+    for (const width of [1440, 768, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(queue).toBeVisible();
+      const bounds = await queue.evaluate(el => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+      expect(bounds.scroll, 'Review queue overflow at '+width+'px').toBeLessThanOrEqual(bounds.client + 1);
+    }
+
 
   } finally {
     await cleanup(ctx.orgId, ctx.patientId, ctx.directorId);
