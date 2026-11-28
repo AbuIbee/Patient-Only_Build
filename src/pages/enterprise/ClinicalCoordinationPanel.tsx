@@ -60,6 +60,9 @@ export default function ClinicalCoordinationPanel({
   const [requestFilter, setRequestFilter] = useState<'all' | 'overdue' | 'review' | 'approval'>('all');
   const [pendingAccountsOnly, setPendingAccountsOnly] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [associationOpen, setAssociationOpen] = useState(false);
+  const [associationProvider, setAssociationProvider] = useState('');
+  const [associationPatient, setAssociationPatient] = useState('');
   const guideExpanded = guidePreference?.key === guideKey ? guidePreference.expanded : true;
   useEffect(() => {
     if (role !== 'director') return;
@@ -71,6 +74,9 @@ export default function ClinicalCoordinationPanel({
     setRequestFilter('all');
     setPendingAccountsOnly(false);
     setHelpOpen(false);
+    setAssociationOpen(false);
+    setAssociationProvider('');
+    setAssociationPatient('');
   }, [guideKey, role]);
   const toggleGuide = () => {
     const expanded = !guideExpanded;
@@ -129,6 +135,7 @@ export default function ClinicalCoordinationPanel({
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [p, r] = await Promise.all([getProviders(orgId), getClinicalRequests(orgId)]);
       if (p.error) setError(p.error); else setProviders(p.data ?? []);
@@ -140,11 +147,11 @@ export default function ClinicalCoordinationPanel({
         try { setProviderAccounts(await listOrgProviderAccounts(orgId)); }
         catch (e) { setError(e instanceof Error ? e.message : 'Provider account status could not load'); }
         const rep = await getClinicalCoordinationReport(orgId);
-        if (!rep.error) setReport(rep.data);
+        if (!rep.error) setReport(rep.data); else { setReport(null); setError(rep.error); }
         const metrics = await getCoordinationTaskMetrics(orgId);
-        if (!metrics.error) setTaskMetrics(metrics.data);
+        if (!metrics.error) setTaskMetrics(metrics.data); else { setTaskMetrics(null); setError(metrics.error); }
         const performance = await getClinicalProviderPerformance(orgId);
-        if (!performance.error) setProviderMetrics(performance.data ?? []);
+        if (!performance.error) setProviderMetrics(performance.data ?? []); else { setProviderMetrics([]); setError(performance.error); }
       }
     } finally {
       setLoading(false);
@@ -480,6 +487,7 @@ export default function ClinicalCoordinationPanel({
       toast.success('Clinically approved.');
       setReviewNotes('');
       if (selectedRequestId) await openRequest(selectedRequestId);
+      await refresh();
     } finally { setBusy(false); }
   };
 
@@ -546,26 +554,29 @@ export default function ClinicalCoordinationPanel({
               <div className="flex flex-wrap gap-2">
                 <button type="button" className="rounded-lg border border-ent-line px-3 py-2 text-xs" onClick={() => {
                   if (guideStep === 0) setShowNewProvider(true);
+                  if (guideStep === 1) { setAssociationOpen(true); setAssociationProvider(''); setAssociationPatient(''); }
                   if (guideStep === 2) setShowNewRequest(true);
-                  goToSection(guideSteps[guideStep].target);
+                  if (guideStep === 4) chooseTab('reviews'); else goToSection(guideSteps[guideStep].target);
                 }}>Go to this step</button>
                 <button type="button" className="rounded-lg border border-ent-line px-3 py-2 text-xs" onClick={() => setGuideStep((guideStep + 1) % guideSteps.length)}>{guideStep === 5 ? 'Start again' : 'Next step'}</button>
               </div>
             </div>
             <details className="text-sm"><summary className="cursor-pointer font-semibold">View a real-world example</summary><p className="mt-2">A caregiver reports dizziness after a medication change. Follow urgent escalation protocols when applicable. Locate the physician, confirm the patient relationship, send a clarification request, review the response with authorized clinical staff, and track approved follow-up instructions.</p></details>
           </div>}
-          {helpOpen && <div id="hcn-clinical-help" className="rounded-lg bg-white p-3 space-y-2">
+          {helpOpen && <aside id="hcn-clinical-help" aria-label="Clinical Coordination Help" className="fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto border-l border-ent-line bg-white p-5 shadow-xl space-y-3"><button type="button" className="rounded-lg border border-ent-line px-3 py-2 text-xs" onClick={() => setHelpOpen(false)}>Close help</button>
             <h4 className="font-semibold text-sm">Clinical Coordination Help</h4>
             {[
               ['Does a provider need a staff license?', 'External providers may use the secure request workflow without a regular Haneen staff license.'],
               ['What does Account not claimed mean?', 'The directory contact has not activated a provider account. Registration and access authorization are separate.'],
               ['Do I verify a provider every time?', 'Account verification is distinct from individual secure request access, which may expire or be revoked.'],
+              ['Can a provider work with multiple patients?', 'Yes. Manage each patient’s care relationship in the directory.'],
+              ['When should I close a clinical request?', 'After all required documentation, review, approval and follow-up have been satisfied, use the applicable existing request workflow.'],
               ['Can I send documents?', 'Upload documents to the request and use the authorized sharing action. Internal uploads are not automatically shared externally.'],
               ['Who can approve clinical decisions?', 'Administrative review is distinct from approval by an appropriately authorized clinical professional.'],
               ['What if a response is overdue?', 'Review the deadline and request activity and follow your organization’s follow-up or escalation procedure.'],
             ].map(([question, answer]) => <details key={question} className="border-b border-ent-line pb-2 text-sm"><summary className="cursor-pointer font-medium">{question}</summary><p className="mt-1 text-ent-muted">{answer}</p></details>)}
             <p className="text-xs font-semibold text-ent-rust">For urgent medical concerns, follow emergency and clinical escalation protocols. Do not wait for an electronic response.</p>
-          </div>}
+          </aside>}
         </div>
       )}
       {error && <p role="alert" className="text-sm text-ent-rust">Could not load clinical coordination data: {error}</p>}
@@ -575,7 +586,7 @@ export default function ClinicalCoordinationPanel({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {[
             ['Add a healthcare provider', 'Register a physician, therapist or specialist.', () => { chooseTab('directory'); setShowNewProvider(true); }],
-            ['Associate a patient', 'Connect a patient to their healthcare provider.', () => chooseTab('directory')],
+            ['Associate a patient', 'Connect a patient to their healthcare provider.', () => { chooseTab('directory'); setAssociationOpen(true); setAssociationProvider(''); setAssociationPatient(''); }],
             ['Create clinical request', 'Request records, guidance or clarification.', () => { chooseTab('requests'); setShowNewRequest(true); }],
             ['Provider conversations', 'Read responses and communicate securely.', () => chooseTab('conversations')],
           ].map(([title, detail, action]) => <button key={String(title)} type="button" onClick={action as () => void} className="rounded-xl border border-ent-line bg-white p-3 text-left hover:bg-ent-pale"><span className="block font-semibold text-sm">{String(title)}</span><span className="block text-xs text-ent-muted mt-1">{String(detail)}</span></button>)}
@@ -595,11 +606,11 @@ export default function ClinicalCoordinationPanel({
       {role === 'director' && taskMetrics && (
         <div aria-label="Coordination task metrics" className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           {[
-            ['Open tasks', taskMetrics.activeTasks],
-            ['Blocked', taskMetrics.blockedTasks],
-            ['Overdue tasks', taskMetrics.overdueTasks],
-            ['Awaiting task review', taskMetrics.reviewPending],
-            ['Caregiver acknowledgements due', taskMetrics.unacknowledgedInstructions],
+            ['Pending care coordination tasks', taskMetrics.activeTasks],
+            ['Tasks unable to proceed', taskMetrics.blockedTasks],
+            ['Tasks past their deadline', taskMetrics.overdueTasks],
+            ['Completed tasks requiring review', taskMetrics.reviewPending],
+            ['Caregivers awaiting confirmation', taskMetrics.unacknowledgedInstructions],
           ].map(([label, value]) => (
             <div key={String(label)} className="rounded-lg border border-ent-line p-2 text-center">
               <div className="text-lg font-bold text-ent-ink">{value}</div>
@@ -612,19 +623,19 @@ export default function ClinicalCoordinationPanel({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="rounded-lg border border-ent-line p-2 text-center">
             <div className="text-lg font-bold text-ent-ink">{report.requestsOverdue}</div>
-            <div className="text-[11px] text-ent-muted">Overdue requests</div>
+            <div className="text-[11px] text-ent-muted">Provider responses overdue</div>
           </div>
           <div className="rounded-lg border border-ent-line p-2 text-center">
             <div className="text-lg font-bold text-ent-ink">{report.documentsPendingAdministrativeReview}</div>
-            <div className="text-[11px] text-ent-muted">Docs awaiting review</div>
+            <div className="text-[11px] text-ent-muted">Documents awaiting review</div>
           </div>
           <div className="rounded-lg border border-ent-line p-2 text-center">
             <div className="text-lg font-bold text-ent-ink">{report.documentsPendingClinicalApproval}</div>
-            <div className="text-[11px] text-ent-muted">Awaiting clinical approval</div>
+            <div className="text-[11px] text-ent-muted">Clinical approvals required</div>
           </div>
           <div className="rounded-lg border border-ent-line p-2 text-center">
             <div className="text-lg font-bold text-ent-ink">{report.activeCoordinationPlans}</div>
-            <div className="text-[11px] text-ent-muted">Active coordination plans</div>
+            <div className="text-[11px] text-ent-muted">Active patient coordination plans</div>
           </div>
         </div>
       )}
@@ -637,7 +648,7 @@ export default function ClinicalCoordinationPanel({
             <table className="w-full text-xs text-left">
               <thead><tr className="border-b border-ent-line">
                 <th className="p-2">Provider</th><th className="p-2">Total</th><th className="p-2">Pending</th>
-                <th className="p-2">Overdue</th><th className="p-2">Responded</th><th className="p-2">Avg. response</th>
+                <th className="p-2">Overdue</th><th className="p-2">Requests with provider responses</th><th className="p-2">Average first response time</th>
               </tr></thead>
               <tbody>{providerMetrics.map((p) => (
                 <tr key={p.providerId} className="border-b border-ent-line/40">
@@ -663,6 +674,14 @@ export default function ClinicalCoordinationPanel({
           )}
         </div>
         {role === 'director' && <p className="text-xs text-ent-muted">Register each healthcare professional once. Manage patient associations when care relationships change. Review account identity before granting access.</p>}
+        {role === 'director' && associationOpen && <div className="rounded-lg border border-ent-line bg-ent-pale p-3 space-y-2" aria-label="Associate a patient">
+          <div className="flex items-center justify-between gap-2"><h4 className="font-semibold text-sm">Associate a patient</h4><button type="button" className="text-xs underline" onClick={() => setAssociationOpen(false)}>Close association form</button></div>
+          <p className="text-xs text-ent-muted">Confirm the provider has an appropriate care relationship with this patient. Association alone does not grant access.</p>
+          <label className="block text-sm">Healthcare provider<select className="block w-full rounded-lg border border-ent-line p-2" value={associationProvider} onChange={e => setAssociationProvider(e.target.value)}><option value="">Select provider…</option>{providers.filter(p => p.isActive).map(p => <option key={p.id} value={p.id}>{p.displayName}</option>)}</select></label>
+          <label className="block text-sm">Patient<select className="block w-full rounded-lg border border-ent-line p-2" value={associationPatient} onChange={e => setAssociationPatient(e.target.value)}><option value="">Select patient…</option>{patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+          {!providers.some(p => p.isActive) && <p className="text-xs text-ent-muted">Add an active healthcare provider first.</p>}
+          <button type="button" disabled={busy || !associationProvider || !associationPatient} className="rounded-lg bg-ent-bronze px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" onClick={() => { void associate(associationProvider, associationPatient); }}>Save association</button>
+        </div>}
         {pendingAccountsOnly && <button type="button" className="text-xs underline" onClick={() => setPendingAccountsOnly(false)}>Show all providers</button>}
         {showNewProvider && role === 'director' && (
           <div className="rounded-lg bg-ent-pale p-3 space-y-2">
@@ -698,15 +717,15 @@ export default function ClinicalCoordinationPanel({
         <input aria-label="Search healthcare directory" className="w-full rounded-lg border border-ent-line p-2 text-sm"
           placeholder="Search by provider, specialty or practice"
           value={providerSearch} onChange={(e) => setProviderSearch(e.target.value)} />
-        {loading ? <p role="status" className="text-sm">Loading…</p> : providers.length === 0 ? <p className="text-sm text-ent-muted">No providers in the directory yet.</p> : (
+        {loading ? <p role="status" className="text-sm">Loading…</p> : providers.length === 0 ? <p className="text-sm text-ent-muted">No providers in the directory yet. Add your first physician, therapist or specialist to begin.</p> : (
           <ul className="space-y-1">
             {providers.filter((p) => (!pendingAccountsOnly || providerAccounts.some(a => a.provider_id === p.id && a.status === 'pending')) && [p.displayName, p.practiceName, p.specialty].some((value) =>
               (value ?? '').toLowerCase().includes(providerSearch.toLowerCase().trim())
             )).map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-sm border-b border-ent-line/50 pb-2">
+              <li key={p.id} className={role === 'director' ? 'flex flex-wrap items-center justify-between gap-3 text-sm rounded-xl border border-ent-line p-3' : 'flex flex-wrap items-center justify-between gap-2 text-sm border-b border-ent-line/50 pb-2'}>
                 <div className="min-w-0">
                   <span>{p.displayName} <span className="text-ent-muted">({PROVIDER_SPECIALTIES.find((s) => s.value === p.specialty)?.label ?? p.specialty})</span></span>
-                  {role === 'director' && <p className="text-xs text-ent-muted mt-1">Account: {providerAccounts.find(a=>a.provider_id===p.id)?.status ?? 'Not claimed'}</p>}
+                  {role === 'director' && <p className="text-xs text-ent-muted mt-1">{(() => { const status = providerAccounts.find(a=>a.provider_id===p.id)?.status; return status === 'pending' ? 'Account verification pending' : status ? 'Account: ' + status : 'Provider has not activated account'; })()}</p>}
                   {role === 'director' && (
                     <p className="text-xs text-ent-muted mt-1 whitespace-normal break-words"
                       aria-label={`Associated patients for ${p.displayName}`}>
@@ -717,7 +736,7 @@ export default function ClinicalCoordinationPanel({
                         const linked = patients.filter((patient) =>
                           providerAssociations.some((association) =>
                             association.providerId === p.id && association.patientId === patient.id));
-                        return linked.length ? linked.map((patient) => patient.name).join(', ') : 'None';
+                        return linked.length ? linked.map((patient) => patient.name).join(', ') : 'No associated patients. Associate a patient to begin.';
                       })()}
                     </p>
                   )}
@@ -899,7 +918,7 @@ export default function ClinicalCoordinationPanel({
             </div>
           )}
 
-          <div className="flex items-end gap-2">
+          <div className={role === 'director' ? 'flex flex-wrap items-end gap-2' : 'flex items-end gap-2'}>
             <select className="rounded-lg border border-ent-line p-2 text-sm" value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)}>
               {DOCUMENT_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
