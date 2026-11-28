@@ -243,7 +243,9 @@ export function buildAttentionRows(
       });
     }
   }
-  return rows.sort((a, b) => a.severity - b.severity || b.occurredAt - a.occurredAt || a.id.localeCompare(b.id));
+  return rows.sort((a, b) =>
+    (a.category === 'assistance' ? -1 : a.severity) - (b.category === 'assistance' ? -1 : b.severity) ||
+    b.occurredAt - a.occurredAt || a.id.localeCompare(b.id));
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- Shared deterministic data helper/hook, no mutable component state exported.
@@ -255,6 +257,9 @@ export function useDirectorCommandCenter(orgId: string, patientIds: readonly str
   const [timeZone, setTimeZone] = useState(deviceTimeZone);
   const [now, setNow] = useState(Date.now);
   const [filter, setAttentionFilter] = useState<AttentionCategory>('all');
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const refreshAfterAction = () => setRefreshNonce(n => n + 1);
+  useEffect(() => { setAttentionFilter('all'); }, [orgId]);
   const snapshot = received?.orgId === orgId ? received.snapshot : null;
 
   useEffect(() => {
@@ -279,7 +284,6 @@ export function useDirectorCommandCenter(orgId: string, patientIds: readonly str
       }
     };
     setLoading(true);
-    setAttentionFilter('all');
     void refresh();
     // Fetch while visible. On focus or return from another tab, refresh immediately.
     const interval = window.setInterval(() => {
@@ -296,7 +300,7 @@ export function useDirectorCommandCenter(orgId: string, patientIds: readonly str
       document.removeEventListener('visibilitychange', onReturn);
       window.removeEventListener('focus', onReturn);
     };
-  }, [orgId, patientKey]);
+  }, [orgId, patientKey, refreshNonce]);
 
   const visitExceptions = useMemo(
     () => snapshot?.visits.data ? getVisitExceptions(snapshot.visits.data, timeZone, now) : null,
@@ -304,12 +308,12 @@ export function useDirectorCommandCenter(orgId: string, patientIds: readonly str
   );
 
   return { snapshot, loading, topError, timeZone, now, visitExceptions,
-    attentionFilter: filter, setAttentionFilter };
+    attentionFilter: filter, setAttentionFilter, refreshAfterAction };
 }
 
 export type DirectorCommandState = ReturnType<typeof useDirectorCommandCenter>;
 
-const ERROR_SOURCES: { label: string; key: keyof Omit<DashboardSources, 'refreshedAt'> }[] = [
+const ERROR_SOURCES: { label: string; key: keyof Omit<DashboardSources, 'refreshedAt' | 'safety'> }[] = [
   { label: 'visits', key: 'visits' },
   { label: 'current check-ins', key: 'activeVisits' },
   { label: 'assignments', key: 'assignments' },
@@ -323,7 +327,16 @@ const ERROR_SOURCES: { label: string; key: keyof Omit<DashboardSources, 'refresh
 ];
 
 function sourceErrors(snapshot: DashboardSources | null): string[] {
-  return snapshot ? ERROR_SOURCES.filter(item => Boolean(snapshot[item.key].error)).map(item => item.label) : [];
+  if (!snapshot) return [];
+  const standard = ERROR_SOURCES.filter(item => Boolean(snapshot[item.key].error)).map(item => item.label);
+  const safety = snapshot.safety;
+  if (!safety) return [...standard,'new safety alerts are unavailable'];
+  return [
+    ...standard,
+    ...(safety.assistance.error ? ['caregiver assistance'] : []),
+    ...(safety.requiredCare.error ? ['required care coverage'] : []),
+    ...(safety.handoffReceipts.error ? ['incoming handoff acknowledgments'] : []),
+  ];
 }
 
 export function DirectorNeedsAttention({ command, members, patients, onNavigate, onOpenVisitExceptions }: {
