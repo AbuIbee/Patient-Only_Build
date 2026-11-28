@@ -252,9 +252,10 @@ function sourceErrors(snapshot: DashboardSources | null): string[] {
   return snapshot ? ERROR_SOURCES.filter(item => Boolean(snapshot[item.key].error)).map(item => item.label) : [];
 }
 
-export function DirectorNeedsAttention({ command, members, patients, onNavigate }: {
+export function DirectorNeedsAttention({ command, members, patients, onNavigate, onOpenVisitExceptions }: {
   command: DirectorCommandState; members: Person[]; patients: OrgCoveredPatient[];
   onNavigate: (route: DirectorCommandRoute) => void;
+  onOpenVisitExceptions: () => void;
 }) {
   const { snapshot, topError, timeZone, now, loading, attentionFilter, setAttentionFilter } = command;
   const [visibleCount, setVisibleCount] = useState(7);
@@ -289,7 +290,7 @@ export function DirectorNeedsAttention({ command, members, patients, onNavigate 
         </p>
         : <ul className="hcn-office-activity-list">
           {shown.slice(0, visibleCount).map(row => <li key={row.id}>
-            <button type="button" onClick={() => onNavigate(row.route)}
+            <button type="button" onClick={() => row.category === 'visits' ? onOpenVisitExceptions() : onNavigate(row.route)}
               className="flex min-w-0 w-full items-start gap-3 text-left rounded-lg hover:bg-ent-bg focus-visible:outline-2 focus-visible:outline-ent-bronze"
               aria-label={row.title + '. ' + row.detail + '. Open ' + row.route}>
               <span className="hcn-office-row-icon hcn-office-row-incident"><ChevronRight size={16} aria-hidden="true"/></span>
