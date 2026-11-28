@@ -67,8 +67,9 @@ describe('HCN five Director safety capabilities',()=>{
     expect(getUnscheduledCareRequirements([slot],[full],[{...staff[0],status:'invited'}],assigned,NOW)).toHaveLength(1);
     expect(getUnscheduledCareRequirements([slot],[full],staff,assigned,NOW)).toHaveLength(0);
     const firstHalf=visit('one','2026-11-28T16:00:00Z','2026-11-28T16:30:00Z');
-    const secondHalf=visit('two','2026-11-28T16:30:00Z','2026-11-28T17:00:00Z');
-    expect(getUnscheduledCareRequirements([slot],[firstHalf,secondHalf],staff,assigned,NOW)).toHaveLength(0);
+    const secondHalf=visit('two','2026-11-28T16:30:00Z','2026-11-28T17:00:00Z',{caregiverId:'care-b'});
+    const bothAssigned=[...assigned,{user_id:'care-b',patient_id:'patient-a',org_role:'caregiver',is_active:true}];
+    expect(getUnscheduledCareRequirements([slot],[firstHalf,secondHalf],staff,bothAssigned,NOW)).toHaveLength(0);
     const gap=visit('gap','2026-11-28T16:31:00Z','2026-11-28T17:00:00Z');
     expect(getUnscheduledCareRequirements([slot],[firstHalf,gap],staff,assigned,NOW)).toHaveLength(1);
   });
