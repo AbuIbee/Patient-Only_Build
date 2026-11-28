@@ -49,7 +49,7 @@ import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGr
 import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import OfficeHeaderTools from './OfficeHeaderTools';
-import DirectorCommandCenter, { useDirectorCommandCenter } from './DirectorCommandCenter';
+import DirectorCommandCenter, { DirectorNeedsAttention, useDirectorCommandCenter } from './DirectorCommandCenter';
 import DirectorScheduleCalendar from './DirectorScheduleCalendar';
 import DirectorAttendancePanel from './DirectorAttendancePanel';
 import DirectorOfficeAccessPanel from './DirectorOfficeAccessPanel';
@@ -1148,7 +1148,6 @@ function DashboardHome({ organizationId, coveredPatients, members, incidents, ha
   const openIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').length;
   const today = new Date();
   const recentHandoffs = handoffs.slice(0, 5);
-  const recentIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').slice(0, 5);
 
   return (
     <div className="hcn-office-dashboard space-y-5">
@@ -1189,32 +1188,17 @@ function DashboardHome({ organizationId, coveredPatients, members, incidents, ha
           sub="need review" onClick={() => onNavigate('incidents')} />
         <MetricCard label="Today's Coverage Exceptions"
           value={command.snapshot?.visits.error || command.topError ? 'Error' : command.visitExceptions ? String(command.visitExceptions.length) : '—'} icon={CalendarClock}
-          sub={command.snapshot?.visits.error || command.topError ? 'Unable to verify today’s visits — retry below' : command.timeZone ? 'late check-ins · missed visits · overdue checkouts' : 'select office time zone below'}
-          onClick={() => document.getElementById('hcn-today-visit-exceptions')?.scrollIntoView({ behavior: 'smooth', block: 'center' })} />
+          sub={command.snapshot?.visits.error || command.topError ? 'Unable to verify today’s visits' : 'late check-ins · missed visits · overdue checkouts'}
+          onClick={() => { command.setAttentionFilter('visits'); document.getElementById('hcn-needs-attention')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} />
       </section>
 
       <div className="hcn-office-activity">
-        <section className="hcn-office-card hcn-office-activity-panel">
+        <section id="hcn-needs-attention" className="hcn-office-card hcn-office-activity-panel">
           <div className="hcn-office-panel-header">
             <h2>Needs Your Attention</h2>
-            <button type="button" onClick={() => onNavigate('incidents')}>View all incidents <ChevronRight size={15} aria-hidden="true" /></button>
           </div>
-          {recentIncidents.length === 0 ? (
-            <p className="text-sm text-ent-text">No unresolved incidents across your organization right now.</p>
-          ) : (
-            <ul className="hcn-office-activity-list">
-              {recentIncidents.map(incident => (
-                <li key={incident.id}>
-                  <span className="hcn-office-row-icon hcn-office-row-incident"><ShieldAlert size={19} aria-hidden="true" /></span>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-ent-ink capitalize">{incident.incidentType.replaceAll('_', ' ')} — {incident.patientName}</p>
-                    <p className="text-xs text-ent-muted">{new Date(incident.occurredAt).toLocaleString()}</p>
-                  </div>
-                  <span className="hcn-office-status">{incident.severity}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+          <DirectorNeedsAttention command={command} members={members} patients={coveredPatients}
+            onNavigate={onNavigate} />
         </section>
 
         <section className="hcn-office-card hcn-office-activity-panel">
@@ -1241,8 +1225,8 @@ function DashboardHome({ organizationId, coveredPatients, members, incidents, ha
         </section>
       </div>
 
-      {/* Preserve every existing home webpart above; all approved extensions appear beneath. */}
-      <DirectorCommandCenter orgId={organizationId} members={members} patients={coveredPatients}
+      {/* Keep the original webpart order. Only unique operational snapshots appear below. */}
+      <DirectorCommandCenter members={members} patients={coveredPatients}
         command={command} onNavigate={onNavigate} />
     </div>
   );
