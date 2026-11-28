@@ -73,6 +73,29 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
 
     await expect(page.getByRole('heading', { name: 'Clinical Coordination' })).toBeVisible({ timeout: 15000 });
 
+    // Guide acceptance: real Director session; no mocked navigation or persistence.
+    const guide = page.locator('#hcn-clinical-guide');
+    await expect(guide).toBeVisible();
+    await expect(guide.getByRole('button', { name: /^\d\. / })).toHaveCount(6);
+    await guide.getByRole('button', { name: /^5\. Review/ }).click();
+    await expect(guide).toContainText('Director role alone does not confer clinical approval authority');
+    await page.getByRole('button', { name: 'Collapse guide' }).click();
+    await expect(guide).toHaveCount(0);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const navAfterReload = page.getByRole('navigation', { name: 'ADMIN OFFICE navigation' });
+    await expect(navAfterReload.getByRole('button', { name: 'Clinical Coordination' })).toBeVisible({ timeout: 20000 });
+    await navAfterReload.getByRole('button', { name: 'Clinical Coordination' }).click();
+    await expect(page.getByRole('button', { name: 'Expand guide' })).toBeVisible();
+    await page.getByRole('button', { name: 'Expand guide' }).click();
+    await expect(guide).toBeVisible();
+    await page.getByRole('button', { name: 'Help & instructions' }).click();
+    await expect(page.locator('#hcn-clinical-help')).toContainText('Do not wait for an electronic response');
+    await page.getByRole('button', { name: 'Help & instructions' }).click();
+    await guide.getByRole('button', { name: /^1\. Add/ }).click();
+    await guide.getByRole('button', { name: 'Go to this step' }).click();
+    await expect(page.getByPlaceholder('Provider or practice name')).toBeVisible();
+    await page.getByRole('button', { name: 'Close form' }).click();
+
     // Add a provider through the real form.
     await page.getByRole('button', { name: /add provider/i }).click();
     await page.getByPlaceholder('Provider or practice name').fill('Dr. E2E Director Flow');
