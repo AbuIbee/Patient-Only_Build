@@ -57,6 +57,7 @@ export default function ClinicalCoordinationPanel({
   const [guidePreference, setGuidePreference] = useState<{ key: string; expanded: boolean } | null>(null);
   const [guideStep, setGuideStep] = useState(0);
   const [workspaceTab, setWorkspaceTab] = useState('directory');
+  const [reviewRequestIds, setReviewRequestIds] = useState<{ review: string[]; approval: string[] } | null>(null);
   const [requestFilter, setRequestFilter] = useState<'all' | 'overdue' | 'review' | 'approval'>('all');
   const [pendingAccountsOnly, setPendingAccountsOnly] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -146,6 +147,15 @@ export default function ClinicalCoordinationPanel({
         setProviderAssociations(associations.data ?? []);
         try { setProviderAccounts(await listOrgProviderAccounts(orgId)); }
         catch (e) { setError(e instanceof Error ? e.message : 'Provider account status could not load'); }
+        setReviewRequestIds(null);
+        if (!r.error) {
+          const requestDocuments = await Promise.all((r.data ?? []).map(async request => ({ id: request.id, result: await getDocumentsForRequest(request.id) })));
+          if (requestDocuments.some(entry => entry.result.error)) setError('Some request document queues could not be loaded.');
+          else setReviewRequestIds({
+            review: requestDocuments.filter(entry => entry.result.data?.some(item => item.document.reviewStatus === 'received_unreviewed')).map(entry => entry.id),
+            approval: requestDocuments.filter(entry => entry.result.data?.some(item => item.document.reviewStatus === 'forwarded_for_clinical_review')).map(entry => entry.id),
+          });
+        }
         const rep = await getClinicalCoordinationReport(orgId);
         if (!rep.error) setReport(rep.data); else { setReport(null); setError(rep.error); }
         const metrics = await getCoordinationTaskMetrics(orgId);
@@ -201,6 +211,7 @@ export default function ClinicalCoordinationPanel({
       setShowNewPlan(false);
       setPlanForm({ title: '', description: '' });
       await refreshPlans(planPatientId);
+      if (role === 'director') await refresh();
     } finally { setBusy(false); }
   };
 
@@ -248,6 +259,7 @@ export default function ClinicalCoordinationPanel({
       if (r.error) { toast.error(r.error); return; }
       toast.success('Coordination plan closed.');
       await refreshPlans(planPatientId);
+      if (role === 'director') await refresh();
     } finally { setBusy(false); }
   };
 
@@ -434,6 +446,7 @@ export default function ClinicalCoordinationPanel({
       setUploadFile(null);
       if (uploadInputRef.current) uploadInputRef.current.value = '';
       await openRequest(selectedRequest.id);
+      if (role === 'director') await refresh();
     } finally { setBusy(false); }
   };
 
@@ -464,6 +477,7 @@ export default function ClinicalCoordinationPanel({
       toast.success('Review recorded.');
       setReviewNotes('');
       if (selectedRequestId) await openRequest(selectedRequestId);
+      if (role === 'director') await refresh();
     } finally { setBusy(false); }
   };
 
@@ -520,9 +534,9 @@ export default function ClinicalCoordinationPanel({
     { count: report?.documentsPendingClinicalApproval ?? 0, title: 'Clinical approvals required', detail: 'Coordinate review by an authorized clinical professional.', action: () => { chooseTab('reviews'); setRequestFilter('approval'); } },
   ];
   const shownRequests = requests.filter(r => requestFilter === 'all' ||
-    (requestFilter === 'review' && r.status === 'pending_review') ||
-    (requestFilter === 'approval' && r.status === 'pending_clinical_approval') ||
-    (requestFilter === 'overdue' && r.status === 'sent' && !!r.deadlineAt && new Date(r.deadlineAt).getTime() < Date.now()));
+    (requestFilter === 'review' && !!reviewRequestIds?.review.includes(r.id)) ||
+    (requestFilter === 'approval' && !!reviewRequestIds?.approval.includes(r.id)) ||
+    (requestFilter === 'overdue' && ['sent', 'response_received'].includes(r.status) && !!r.deadlineAt && new Date(r.deadlineAt).getTime() <= Date.now()));
   const showRequestList = role !== 'director' || ['requests', 'reviews', 'history'].includes(workspaceTab);
   return (
     <section aria-label="Clinical Coordination" className="rounded-2xl border border-ent-line bg-white p-4 space-y-4">
@@ -784,6 +798,7 @@ export default function ClinicalCoordinationPanel({
           )}
         </div>
         {role === 'director' && <p className="text-xs text-ent-muted">{workspaceTab === 'reviews' ? 'Select a request to review documents and coordinate clinical approval.' : workspaceTab === 'history' ? 'Select a request to view its clinical activity summary.' : 'Create a draft, attach supporting documents securely, then send and track the response.'}</p>}
+        {(requestFilter === 'review' || requestFilter === 'approval') && <p className="text-xs text-ent-muted">{reviewRequestIds === null ? 'Document queues are loading or unavailable.' : 'This list contains matching request-linked documents. Organization totals can also include documents not attached to a request.'}</p>}
         {requestFilter !== 'all' && <button type="button" className="text-xs underline" onClick={() => setRequestFilter('all')}>Show all requests</button>}
         {showNewRequest && role === 'director' && (
           <div className="rounded-lg bg-ent-pale p-3 space-y-2">
@@ -1030,7 +1045,7 @@ export default function ClinicalCoordinationPanel({
 
             <CoordinationTasksPanel planId={selectedPlan.id} patientId={selectedPlan.patientId}
               userId={userId} role={role} active={selectedPlan.status === 'active'}
-              planParticipants={planParticipants} />
+              planParticipants={planParticipants} onMutation={role === 'director' ? refresh : undefined} />
 
             <div>
               <h5 className="text-xs font-semibold text-ent-muted mb-1">Shared timeline</h5>
