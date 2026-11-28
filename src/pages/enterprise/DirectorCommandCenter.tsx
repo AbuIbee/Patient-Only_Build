@@ -469,12 +469,14 @@ export default function DirectorCommandCenter({ members, patients, command, onNa
   const visits = snapshot?.visits.data ?? [];
   const assigned = snapshot?.assignments.data;
   const risks = assigned && snapshot?.visits.data ? getCoverageRisks(visits, roster, assigned, now) : null;
+  const unscheduled = assigned && snapshot?.visits.data && snapshot.safety?.requiredCare.data
+    ? getUnscheduledCareRequirements(snapshot.safety.requiredCare.data, visits, roster, assigned, now) : null;
   const upcoming = snapshot?.visits.data?.filter(v => v.status === 'scheduled' && v.scheduledStart &&
     Date.parse(v.scheduledStart) >= now && Date.parse(v.scheduledStart) <= now + 48 * 60 * 60_000) ?? [];
   const live = snapshot?.activeVisits.data ?? [];
   const checkedIn = new Set(live.map(v => v.caregiver_id)).size;
   const liveError = topError || snapshot?.activeVisits.error;
-  const coverageError = topError || snapshot?.visits.error || snapshot?.assignments.error;
+  const coverageError = topError || snapshot?.visits.error || snapshot?.assignments.error || snapshot?.safety?.requiredCare.error;
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" aria-label="Live staffing and upcoming coverage">
       <section className="rounded-xl border border-ent-line bg-ent-panel p-4 sm:p-5 space-y-3" aria-label="Live Caregiver Status">
@@ -515,7 +517,8 @@ export default function DirectorCommandCenter({ members, patients, command, onNa
                 <div><p className={'text-lg font-bold ' + (risks?.length ? 'text-ent-rust' : 'text-ent-ink')}>{risks?.length ?? '—'}</p>
                   <p className="text-xs text-ent-muted">Assignment risks</p></div>
               </div>
-              <p className="text-xs text-ent-muted">Risk detection covers existing scheduled visits and active staff assignments. It cannot identify care never entered into the schedule.</p>
+              <p className="text-sm text-ent-ink"><strong>{unscheduled?.length ?? '—'}</strong> required-care slots have no verified complete visit scheduled.</p>
+              <p className="text-xs text-ent-muted">Required-care gaps are based on Director-recorded care requirements. Unrecorded care needs cannot be inferred.</p>
               <button type="button" onClick={() => onNavigate('scheduling')}
                 className="text-sm font-semibold text-ent-ink hover:underline">
                 Open Employee Schedule <ChevronRight size={15} className="inline" aria-hidden="true"/>
