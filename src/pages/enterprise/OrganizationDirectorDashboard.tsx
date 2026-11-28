@@ -1142,7 +1142,7 @@ function DashboardHome({ organizationId, coveredPatients, members, incidents, ha
   incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
   onNavigate: (key: DirectorNavKey) => void;
 }) {
-  const command = useDirectorCommandCenter(organizationId, coveredPatients.map(patient => patient.patientId), members);
+  const command = useDirectorCommandCenter(organizationId, coveredPatients.map(patient => patient.patientId));
   const activeStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'active').length;
   const invitedStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'invited').length;
   const openIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').length;
