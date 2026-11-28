@@ -184,16 +184,26 @@ export function getUnscheduledCareRequirements(
     const end = Date.parse(slot.ends_at);
     if (slot.status !== 'required' || !Number.isFinite(start) || !Number.isFinite(end) ||
         end <= now || start > until || end <= start) return [];
-    const covered = visits.some(visit => {
+    // A required window may be covered by sequential *different* eligible
+    // caregivers. Merge valid scheduled intervals and reject any gap.
+    const windows = visits.flatMap(visit => {
       if (visit.patientId !== slot.patient_id ||
-          !['scheduled', 'in_progress', 'completed'].includes(visit.status)) return false;
+          !['scheduled', 'in_progress', 'completed'].includes(visit.status) ||
+          !validStaff.has(visit.caregiverId) ||
+          !validAssignments.has(visit.caregiverId + ':' + visit.patientId)) return [];
       const visitStart = Date.parse(visit.scheduledStart ?? '');
       const visitEnd = Date.parse(visit.scheduledEnd ?? '');
       return Number.isFinite(visitStart) && Number.isFinite(visitEnd) &&
-        visitStart <= start && visitEnd >= end &&
-        validStaff.has(visit.caregiverId) &&
-        validAssignments.has(visit.caregiverId + ':' + visit.patientId);
-    });
+        visitEnd > start && visitStart < end
+        ? [{ start: Math.max(start, visitStart), end: Math.min(end, visitEnd) }] : [];
+    }).sort((a,b) => a.start - b.start || a.end - b.end);
+    let cursor = start;
+    for (const window of windows) {
+      if (window.start > cursor) break;
+      cursor = Math.max(cursor, window.end);
+      if (cursor >= end) break;
+    }
+    const covered = cursor >= end;
     return covered ? [] : [{
       slot, reason: 'No valid scheduled visit covers the required time window' as const,
     }];
