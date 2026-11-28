@@ -110,23 +110,53 @@ it('rehearses a fictional agency in role order, with specialist handoffs after t
     const now = Date.now();
     const visit = await invoke<{ id: string }>(director, 'hcn_director_schedule_assigned_visit', {
       p_org_id: org, p_patient_id: patient.id, p_caregiver_id: caregiver.id,
-      p_scheduled_start: new Date(now).toISOString(), p_scheduled_end: new Date(now + 3_600_000).toISOString(),
+      p_scheduled_start: new Date(now).toISOString(), p_scheduled_end: new Date(now + 5 * 60_000).toISOString(),
     });
     const [beforeReview] = await rpc('start_caregiver_visit', { p_visit_id: visit.id }, caregiver.token);
     expect(beforeReview).toBeGreaterThanOrEqual(400);
-    await invoke(caregiver, 'hcn_acknowledge_previsit', {
-      p_visit_id: visit.id, p_sections: ['patient_updates', 'care_plan', 'medications', 'healthcare_contacts', 'handoffs'],
-      p_attestation: 'I reviewed the available records and understand that this acknowledgment does not authorize clinical decisions.',
+    const parallelVisit = await invoke<{ id: string }>(director, 'hcn_director_schedule_assigned_visit', {
+      p_org_id: org, p_patient_id: patient.id, p_caregiver_id: caregiver.id,
+      p_scheduled_start: new Date(now + 5 * 60_000).toISOString(), p_scheduled_end: new Date(now + 65 * 60_000).toISOString(),
     });
-    expect(await invoke(caregiver, 'start_caregiver_visit', { p_visit_id: visit.id })).toMatchObject({ status: 'in_progress' });
+    for (const candidate of [visit, parallelVisit]) {
+      await invoke(caregiver, 'hcn_acknowledge_previsit', {
+        p_visit_id: candidate.id, p_sections: ['patient_updates', 'care_plan', 'medications', 'healthcare_contacts', 'handoffs'],
+        p_attestation: 'I reviewed the available records and understand that this acknowledgment does not authorize clinical decisions.',
+      });
+    }
+    const outcomes = await Promise.all([visit, parallelVisit].map(candidate =>
+      rpc('start_caregiver_visit', { p_visit_id: candidate.id }, caregiver.token)));
+    const winningIndex = outcomes.findIndex(([status]) => status === 200);
+    expect(outcomes.filter(([status]) => status === 200)).toHaveLength(1);
+    const [blockedStatus, blocked] = outcomes[1 - winningIndex];
+    expect(blockedStatus).toBe(400);
+    expect(blocked).toMatchObject({ message: 'You are already checked in with Synthetic Roleplay. Check out from Synthetic Roleplay first.' });
+    const checkedIn = outcomes[winningIndex][1] as { status: string; actual_start: string; id: string };
+    expect(checkedIn.status).toBe('in_progress');
+    const departure = checkedIn.actual_start;
     const visitNote = 'Fictional caregiver: visit completed and the patient update was reviewed. ' + run;
-    await invoke(caregiver, 'end_caregiver_visit', { p_visit_id: visit.id, p_visit_notes: visitNote });
-    const [visitStatus, visits] = await http('GET', '/rest/v1/caregiver_visits?id=eq.' + visit.id +
+    await invoke(caregiver, 'end_caregiver_visit', {
+      p_visit_id: checkedIn.id, p_visit_notes: visitNote, p_actual_end: departure,
+      p_checklist: { medication: 'not_applicable', bloodPressure: 'not_applicable', meal: 'completed' },
+    });
+    const [visitStatus, visits] = await http('GET', '/rest/v1/caregiver_visits?id=eq.' + checkedIn.id +
       '&select=status,actual_start,actual_end,visit_notes', undefined, director.token);
     expect(visitStatus).toBe(200);
     expect(visits).toEqual([{
-      status: 'completed', actual_start: expect.any(String), actual_end: expect.any(String), visit_notes: visitNote,
+      status: 'completed', actual_start: checkedIn.actual_start, actual_end: expect.any(String),
+      visit_notes: visitNote + '\n\nVisit checklist\nMedication taken: Not applicable\nBlood pressure checked: Not applicable\nMeal eaten: Eaten',
     }]);
+    expect(Date.parse((visits as { actual_end: string }[])[0].actual_end)).toBe(Date.parse(departure));
+
+    const nextVisit = winningIndex === 0 ? parallelVisit : visit;
+    const nextCheckin = await invoke<{ status: string; actual_start: string }>(
+      caregiver, 'start_caregiver_visit', { p_visit_id: nextVisit.id },
+    );
+    expect(nextCheckin.status).toBe('in_progress');
+    await invoke(caregiver, 'end_caregiver_visit', {
+      p_visit_id: nextVisit.id, p_visit_notes: 'Fictional next visit finished.', p_actual_end: nextCheckin.actual_start,
+      p_checklist: { medication: 'not_applicable', bloodPressure: 'not_applicable', meal: 'not_applicable' },
+    });
 
     // The core assertions above must pass before specialists are added. A
     // disposable license/membership fixture models a completed tier change.
@@ -145,6 +175,37 @@ it('rehearses a fictional agency in role order, with specialist handoffs after t
     await invoke(director, 'assign_staff_to_patient', {
       p_org_id: org, p_user_id: therapist.id, p_patient_id: patient.id, p_org_role: 'therapist',
     });
+    const teamArgs = { p_organization_id: org, p_patient_id: patient.id };
+    expect(await invoke(caregiver, 'hcn_get_caregiver_patient_care_team', teamArgs)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ member_id: medical.id, specialty: 'medical_professional' }),
+      expect.objectContaining({ member_id: therapist.id, specialty: 'therapist' }),
+    ]));
+    expect((await rpc('hcn_get_caregiver_patient_care_team', teamArgs, unassigned.token))[0]).toBe(403);
+    const taskId = randomUUID();
+    const createTask = { ...teamArgs, p_task_id: taskId, p_title: 'Offer water', p_description: 'Note whether accepted.' };
+    expect((await rpc('hcn_director_add_patient_care_task', createTask, caregiver.token))[0]).toBe(403);
+    expect((await rpc('hcn_director_add_patient_care_task', createTask, medical.token))[0]).toBe(403);
+    expect((await rpc('hcn_director_add_patient_care_task', { ...createTask, p_organization_id: randomUUID() }, director.token))[0]).toBe(403);
+    expect(await invoke(director, 'hcn_director_add_patient_care_task', createTask)).toBe(taskId);
+    expect(await invoke(director, 'hcn_director_add_patient_care_task', createTask)).toBe(taskId);
+    const taskPath = '/rest/v1/tasks?id=eq.' + taskId + '&select=id,title,status,status_updated_by';
+    for (const actor of [caregiver, medical, therapist]) {
+      expect(await http('GET', taskPath, undefined, actor.token)).toEqual([200, [{
+        id: taskId, title: 'Offer water', status: 'pending', status_updated_by: director.id,
+      }]]);
+    }
+    for (const actor of [unassigned, patient]) {
+      expect(await http('GET', taskPath, undefined, actor.token)).toEqual([200, []]);
+    }
+    expect(await http('PATCH', taskPath, { status: 'completed' }, medical.token)).toEqual([200, []]);
+    expect((await http('PATCH', taskPath, { title: 'Changed by caregiver' }, caregiver.token))[0]).toBe(403);
+    expect(await http('PATCH', taskPath, { status: 'completed' }, caregiver.token)).toEqual([200, [{
+      id: taskId, title: 'Offer water', status: 'completed', status_updated_by: caregiver.id,
+    }]]);
+    expect(await http('GET', taskPath, undefined, director.token)).toEqual([200, [{
+      id: taskId, title: 'Offer water', status: 'completed', status_updated_by: caregiver.id,
+    }]]);
+
     const clinical = await invoke<{ id: string }>(director, 'create_conversation', {
       p_patient_id: patient.id, p_recipient_user_ids: [medical.id, therapist.id, caregiver.id],
       p_subject: 'Fictional medical and therapy handoff ' + run,

@@ -155,23 +155,69 @@ describe('SEC-02 — revoked staff cannot amend notes or start/end visits for a 
     expect(resumedStartStatus).toBe(200);
 
     sql(`UPDATE public.staff_patient_assignments SET is_active=false WHERE user_id='${ids.caregiverA}' AND patient_id='${ids.patientA}';`);
-    const [endStatus] = await rpc('end_caregiver_visit', { p_visit_id: visitId, p_visit_notes: 'end after revocation' }, tok.caregiverA);
+    const [endStatus] = await rpc('end_caregiver_visit', {
+      p_visit_id: visitId, p_visit_notes: 'end after revocation',
+      p_actual_end: sql(`SELECT actual_start::text FROM public.caregiver_visits WHERE id='${visitId}';`),
+    }, tok.caregiverA);
     // Before migration 076: this was 200 (DEFECT-VISIT-END-AFTER-REVOCATION).
     expect(endStatus).toBeGreaterThanOrEqual(400);
     sql(`UPDATE public.staff_patient_assignments SET is_active=true WHERE user_id='${ids.caregiverA}' AND patient_id='${ids.patientA}';`);
   }, 20000);
 });
 
-describe('FUNC-01 — a visit cannot be completed without real visit notes', () => {
-  it('rejects empty/whitespace-only notes and accepts real ones', async () => {
+describe('FUNC-01 — visit completion requires notes and a manually submitted departure', () => {
+  it('rejects missing or invalid inputs and records the authorized caregiver’s exact departure time', async () => {
     const visitId = sql(
       `SELECT id FROM public.caregiver_visits WHERE patient_id='${ids.patientA}' AND caregiver_id='${ids.caregiverA}' AND status='in_progress' LIMIT 1;`,
     );
-    const [emptyStatus] = await rpc('end_caregiver_visit', { p_visit_id: visitId, p_visit_notes: '   ' }, tok.caregiverA);
-    // Before migration 076: visit_notes could be NULL and the visit still completed (DEFECT-VISIT-NOTES-NOT-REQUIRED).
-    expect(emptyStatus).toBeGreaterThanOrEqual(400);
-    const [realStatus] = await rpc('end_caregiver_visit', { p_visit_id: visitId, p_visit_notes: 'Real visit notes recorded' }, tok.caregiverA);
+    const actualStart = sql(`SELECT actual_start::text FROM public.caregiver_visits WHERE id='${visitId}';`);
+    const args = {
+      p_visit_id: visitId, p_visit_notes: 'Real visit notes recorded', p_actual_end: actualStart,
+      p_checklist: { medication: 'completed', bloodPressure: 'not_applicable', meal: 'not_completed' },
+    };
+
+    const [emptyNotesStatus] = await rpc('end_caregiver_visit', { ...args, p_visit_notes: '   ' }, tok.caregiverA);
+    expect(emptyNotesStatus).toBeGreaterThanOrEqual(400);
+    const [noDepartureStatus, noDeparture] = await rpc('end_caregiver_visit', {
+      p_visit_id: visitId, p_visit_notes: args.p_visit_notes,
+    }, tok.caregiverA);
+    expect(noDepartureStatus).toBe(400);
+    expect(noDeparture).toMatchObject({ message: 'Enter the actual departure date and time to check out' });
+
+    const [noChecklistStatus, noChecklist] = await rpc('end_caregiver_visit', {
+      p_visit_id: visitId, p_visit_notes: args.p_visit_notes, p_actual_end: actualStart, p_checklist: null,
+    }, tok.caregiverA);
+    expect(noChecklistStatus).toBe(400);
+    expect(noChecklist).toMatchObject({ message: 'Complete every required visit checklist item before checkout' });
+
+    const [nullItemStatus, nullItem] = await rpc('end_caregiver_visit', {
+      ...args, p_checklist: { ...args.p_checklist, medication: null },
+    }, tok.caregiverA);
+    expect(nullItemStatus).toBeGreaterThanOrEqual(400);
+    expect(nullItem).toMatchObject({ message: 'Complete every required visit checklist item before checkout' });
+
+    const [partialChecklistStatus] = await rpc('end_caregiver_visit', {
+      ...args, p_checklist: { medication: 'completed', meal: 'not_completed' },
+    }, tok.caregiverA);
+    expect(partialChecklistStatus).toBe(400);
+
+    for (const departure of [
+      sql(`SELECT (actual_start - interval '1 second')::text FROM public.caregiver_visits WHERE id='${visitId}';`),
+      sql("SELECT (now() + interval '1 hour')::text;"),
+      'infinity',
+    ]) {
+      const [status] = await rpc('end_caregiver_visit', { ...args, p_actual_end: departure }, tok.caregiverA);
+      expect(status).toBe(400);
+    }
+    const [directorStatus] = await rpc('end_caregiver_visit', args, tok.directorA);
+    expect(directorStatus).toBe(403);
+    expect(sql(`SELECT status FROM public.caregiver_visits WHERE id='${visitId}' AND actual_end IS NULL;`)).toBe('in_progress');
+
+    const [realStatus] = await rpc('end_caregiver_visit', args, tok.caregiverA);
     expect(realStatus).toBe(200);
+    expect(sql(`SELECT status FROM public.caregiver_visits WHERE id='${visitId}' AND actual_end=actual_start;`)).toBe('completed');
+    const [retryStatus] = await rpc('end_caregiver_visit', args, tok.caregiverA);
+    expect(retryStatus).toBe(400);
   });
 });
 

@@ -11,15 +11,15 @@
 // the caller's own active staff_patient_assignments/organization_memberships
 // rows (server-enforced RLS, not a client-side assumption) — no
 // placeholder counts, no fabricated sample patients.
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, type ReactNode } from 'react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import {
   LogOut, Users, Loader2, MessageSquare, Calendar, ClipboardList,
-  ChevronRight, Menu, X, ShieldAlert, Clock, Building2,
+  ChevronRight, X, ShieldAlert, Clock, Building2,
   ClipboardCheck, FileText, UserCog, Settings as SettingsIcon, Send,
-  AlertTriangle, CheckCircle2, PlayCircle, StopCircle, Sparkles, Flag, Moon, Upload, ArrowLeft,
+  AlertTriangle, CheckCircle2, Flag, Moon, Upload, ArrowLeft,
 } from 'lucide-react';
 import {
   getMyCareTeamResult, getMyOrgSupervisorResult, getMyOrganizationsResult, getMyStaffPatientsResult, setStaffPatientLabel,
@@ -34,18 +34,20 @@ import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDelet
 import MFASettings from '@/components/MFASettings';
 import ActiveSessionsPanel from '@/components/ActiveSessionsPanel';
 import {
-  startCaregiverVisit, endCaregiverVisit,
   fileIncidentReport, uploadIncidentAttachment,
   reportScopeConcern,
   getMyVisitsResult, getPatientIncidentReportsResult, getPatientShiftHandoffsResult, getIncidentAttachmentsResult, getMyCredentialsResult,
   type CaregiverVisit, type IncidentReport, type CaregiverCredential, type IncidentSeverity,
 } from '@/services/enterpriseCaregiverWorkToolsService';
 import { acknowledgeHelpActivation } from '@/services/patientClinicalRecordService';
-import { PREVISIT_SECTIONS, acknowledgePrevisit } from '@/services/hcnCareOperationsService';
 import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
-import HaneenAssistantPanel from '@/components/ai/HaneenAssistantPanel';
+import { EnterpriseOfficeShell, OfficeCard as Card } from './EnterpriseOfficeShell';
+import OfficeHeaderTools from './OfficeHeaderTools';
 import EnterpriseStaffPatientView from './EnterpriseStaffPatientView';
+import CaregiverPatientCareTeam from './CaregiverPatientCareTeam';
+import CaregiverVisitCalendar from './CaregiverVisitCalendar';
+import CaregiverPatientVisit from './CaregiverPatientVisit';
 import { selectCurrentOrNextVisit } from './selectCurrentOrNextVisit';
 import EnterprisePatientRecordTabs, { type TabKey } from './EnterprisePatientRecordTabs';
 
@@ -99,15 +101,21 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 // authorized organization context (D01-INVARIANT-06) -- it is only ever
 // a REQUEST: the caller below still validates it against the user's own
 // getMyOrganizations() result before trusting it for anything.
-function parseEnterprisePath(root: string): { nav: NavItem; openPatient: string | null; orgParam: string | null } {
+function parseEnterprisePath(root: string): { nav: NavItem; openPatient: string | null; orgParam: string | null; visitId: string | null } {
   const rootSegments = root.split('/').filter(Boolean).length; // '/business' -> 1, '/Professional/Caregiver' -> 2
   const segments = window.location.pathname.split('/').filter(Boolean);
   const sub = segments[rootSegments];
   const sub2 = segments[rootSegments + 1];
-  const orgParam = new URLSearchParams(window.location.search).get('org');
-  if (sub === 'patients' && sub2) return { nav: 'patients', openPatient: sub2, orgParam };
-  if (sub && NAV_ITEMS.some((n) => n.key === sub)) return { nav: sub as NavItem, openPatient: null, orgParam };
-  return { nav: 'dashboard', openPatient: null, orgParam };
+  const params = new URLSearchParams(window.location.search);
+  const orgParam = params.get('org');
+  if (sub === 'patients' && sub2) {
+    const visitId = params.get('visit');
+    const from = params.get('from');
+    const nav = !visitId || from === 'patients' ? 'patients' : from === 'visits' ? 'visits' : 'schedule';
+    return { nav, openPatient: sub2, orgParam, visitId };
+  }
+  if (sub && NAV_ITEMS.some((n) => n.key === sub)) return { nav: sub as NavItem, openPatient: null, orgParam, visitId: null };
+  return { nav: 'dashboard', openPatient: null, orgParam, visitId: null };
 }
 
 const SELECTED_ORG_STORAGE_KEY = 'enterprise_selected_org';
@@ -125,7 +133,7 @@ function resolveOrgSelection(orgs: MyOrganization[], requestedId: string | null)
   return orgs[0].organizationId;
 }
 
-export default function EnterpriseCaregiverDashboard({ basePath = '/business' }: { basePath?: string } = {}) {
+export default function EnterpriseCaregiverDashboard({ basePath = '/business', officeSwitcher }: { basePath?: string; officeSwitcher?: ReactNode } = {}) {
   const { state, dispatch } = useApp();
   // MMA-ENT-CAREGIVER-MASTER-004, D01 (P1) — independent runtime audit
   // finding: "Alpha header, Alpha/Beta patient cards, no switcher." This
@@ -148,18 +156,9 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   const [loading, setLoading] = useState(true);
   const [workspaceLoadError, setWorkspaceLoadError] = useState<string | null>(null);
   const [nav, setNav] = useState<NavItem>(() => parseEnterprisePath(basePath).nav);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  // MMA-ENT-CAREGIVER-MASTER-003/004, D13 (P2) — independent runtime
-  // audit finding: the mobile nav drawer had no role=dialog/aria-modal,
-  // Escape did nothing, and focus was never moved into the drawer on
-  // open or restored to the trigger on close — reproduced at
-  // 320/375/768px. mobileNavButtonRef is the hamburger trigger (focus
-  // target on close); mobileNavCloseButtonRef/mobileNavPanelRef support
-  // focus-on-open and a Tab-key focus trap while the drawer is open.
-  const mobileNavButtonRef = useRef<HTMLButtonElement>(null);
-  const mobileNavCloseButtonRef = useRef<HTMLButtonElement>(null);
-  const mobileNavPanelRef = useRef<HTMLDivElement>(null);
   const [openPatient, setOpenPatient] = useState<string | null>(() => parseEnterprisePath(basePath).openPatient);
+  const [calendarDay, setCalendarDay] = useState(() => new Date());
+  const [visitId, setVisitId] = useState<string | null>(() => parseEnterprisePath(basePath).visitId);
   // MMA-ENT-CAREGIVER-MASTER-003 D05 (P1): which record tab to land on
   // when openPatient is set from a destination-specific patient picker
   // (e.g. "Select a patient to record or review Shift Handoffs" should
@@ -174,13 +173,21 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   // selection exists, so a refresh or a shared/bookmarked link lands
   // back in the SAME organization context, not whichever org happens
   // to be picked first.
-  const navigateTo = useCallback((nextNav: NavItem, patientId: string | null = null, initialTab?: TabKey) => {
+  const navigateTo = useCallback((nextNav: NavItem, patientId: string | null = null, initialTab?: TabKey, nextVisitId?: string) => {
     const base = patientId ? `${basePath}/patients/${patientId}` : `${basePath}/${nextNav}`;
-    const path = orgId ? `${base}?org=${orgId}` : base;
+    const params = new URLSearchParams();
+    if (orgId) params.set('org', orgId);
+    if (patientId && nextVisitId) {
+      if (nextNav === 'visits' || nextNav === 'patients') params.set('from', nextNav);
+      params.set('visit', nextVisitId);
+    }
+    const path = params.size ? `${base}?${params}` : base;
     if (window.location.pathname + window.location.search !== path) window.history.pushState({}, '', path);
     setNav(nextNav);
     setOpenPatient(patientId);
+    setVisitId(patientId ? nextVisitId ?? null : null);
     setOpenPatientInitialTab(patientId ? initialTab : undefined);
+    if (patientId) window.scrollTo(0, 0);
   }, [basePath, orgId]);
 
   // D01-INVARIANT-04/10: switching organizations always returns to the
@@ -189,11 +196,13 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   // rendering on screen as if it belonged to the new one.
   const switchOrg = useCallback((newOrgId: string) => {
     setOrgId(newOrgId);
+    setCalendarDay(new Date());
     try { sessionStorage.setItem(SELECTED_ORG_STORAGE_KEY, newOrgId); } catch { /* best-effort */ }
     const path = `${basePath}/dashboard?org=${newOrgId}`;
     window.history.pushState({}, '', path);
     setNav('dashboard');
     setOpenPatient(null);
+    setVisitId(null);
     setOpenPatientInitialTab(undefined);
   }, [basePath]);
 
@@ -202,6 +211,8 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
       const parsed = parseEnterprisePath(basePath);
       setNav(parsed.nav);
       setOpenPatient(parsed.openPatient);
+      setVisitId(parsed.visitId);
+      setOpenPatientInitialTab(undefined);
       // A back/forward navigation that names a DIFFERENT, still-
       // authorized org must actually switch to it, not just change the
       // displayed URL while leaving stale data from the old org on
@@ -272,47 +283,6 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
 
   useEffect(() => { void load(); }, [load]);
 
-  // D13: Escape closes the drawer, Tab is trapped within it while open,
-  // focus moves to the close button on open and back to the hamburger
-  // trigger on close, and background scroll is suspended — the
-  // standard accessible-dialog contract this drawer previously had
-  // none of.
-  useEffect(() => {
-    if (!mobileNavOpen) return;
-    const triggerButton = mobileNavButtonRef.current;
-    mobileNavCloseButtonRef.current?.focus();
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setMobileNavOpen(false);
-        return;
-      }
-      if (e.key === 'Tab' && mobileNavPanelRef.current) {
-        const focusable = mobileNavPanelRef.current.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])',
-        );
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = prevOverflow;
-      triggerButton?.focus();
-    };
-  }, [mobileNavOpen]);
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
     // D10 (Master-005 Part VI.13): supabase.auth.signOut() only clears
@@ -363,199 +333,85 @@ export default function EnterpriseCaregiverDashboard({ basePath = '/business' }:
   const initials = (`${firstName[0] || ''}${lastName[0] || ''}` || 'U').toUpperCase();
 
   return (
-    <div className="min-h-screen bg-ent-bg flex">
-      {/* Desktop sidebar — persistent, all 14 items grouped exactly as
-          approved (WORKSPACE / CARE COLLABORATION / PROFESSIONAL TOOLS),
-          never collapsed below entitlement (locked requirement: "still
-          exposes every item without overflow or reduced entitlement"). */}
-      <aside className="hidden lg:flex lg:flex-col w-64 bg-ent-panel border-r border-ent-line sticky top-0 h-screen">
-        <div className="flex items-center gap-2.5 px-4 pt-5 pb-4 border-b border-ent-line">
-          <div className="w-10 h-10 rounded-xl bg-ent-green flex items-center justify-center flex-shrink-0">
-            <Sparkles className="w-5 h-5 text-ent-forest" />
-          </div>
-          <div className="min-w-0">
-            <div className="font-bold text-ent-ink text-sm leading-tight truncate">{import.meta.env.VITE_ENTERPRISE_SITE === 'true' ? 'Haneen Care Network' : 'My Memoria Ally'}</div>
-            <div className="text-[10px] font-extrabold tracking-[0.14em] text-ent-bronze mt-0.5">ENTERPRISE CARE</div>
-          </div>
-        </div>
-        <nav aria-label="Enterprise navigation" className="flex-1 overflow-y-auto px-2.5 py-2">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.label}>
-              <div className="text-[9px] font-extrabold tracking-[0.16em] text-ent-muted uppercase px-2.5 pt-4 pb-1.5">{group.label}</div>
-              {group.items.map((itemKey) => {
-                const item = NAV_ITEMS.find((n) => n.key === itemKey);
-                if (!item) return null;
-                const Icon = item.icon;
-                const isActive = nav === itemKey;
-                return (
-                  <button
-                    key={itemKey} type="button" aria-current={isActive ? 'page' : undefined}
-                    onClick={() => navigateTo(itemKey)}
-                    className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg text-left text-[12.5px] font-semibold transition-colors ${
-                      isActive ? 'bg-ent-green-active text-ent-forest' : 'text-ent-text hover:bg-ent-pale'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4 flex-shrink-0" /> {item.label}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-        <div className="p-3 border-t border-ent-line flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0" aria-hidden="true">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-xs font-semibold text-ent-ink truncate">{fullName}</div>
-            <div className="text-[11px] text-ent-muted truncate">Professional Caregiver</div>
-          </div>
-          <button type="button" onClick={() => { void handleLogout(); }} aria-label="Logout" className="p-1.5 text-ent-muted hover:text-ent-ink flex-shrink-0 rounded-lg hover:bg-ent-pale">
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-      </aside>
-
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header bar — org/workspace identification + signed-in identity, every viewport. */}
-        <header className="bg-ent-panel border-b border-ent-line px-4 sm:px-6 py-3 flex items-center justify-between gap-3 sticky top-0 z-30">
-          <div className="flex items-center gap-3 min-w-0">
-            <button ref={mobileNavButtonRef} type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation" className="lg:hidden p-1.5 -ml-1.5 text-ent-ink flex-shrink-0">
-              <Menu className="w-5 h-5" />
-            </button>
-            {/* D01: an explicit organization switcher, shown only when
-                there is genuinely more than one authorized organization
-                to switch between (myOrgs is already scoped server-side
-                to this caregiver's own current memberships —
-                D01-INVARIANT-09, nothing unauthorized is ever listed
-                here). A single-organization caregiver sees the same
-                plain label as before; no behavior changes for them. */}
-            {hasOrganization && myOrgs.length > 1 ? (
-              <div className="min-w-0">
-                <label htmlFor="enterprise-org-switcher" className="sr-only">Switch organization</label>
-                <select
-                  id="enterprise-org-switcher" value={orgId ?? ''} onChange={(e) => switchOrg(e.target.value)}
-                  className="text-[12.5px] sm:text-[13px] font-semibold text-ent-ink bg-transparent border border-ent-line rounded-lg px-2 py-1 max-w-[55vw] sm:max-w-xs truncate"
-                >
-                  {myOrgs.map((o) => <option key={o.organizationId} value={o.organizationId}>{o.organizationName}</option>)}
-                </select>
-                <span className="text-ent-muted text-[12.5px] sm:text-[13px] font-semibold ml-1.5">/ Caregiver Workspace</span>
-              </div>
-            ) : (
-              <div className="text-[12.5px] sm:text-[13px] font-semibold truncate">
-                <span className="text-ent-ink">{hasOrganization ? orgName : 'No organization connected'}</span>
-                <span className="text-ent-muted"> / Caregiver Workspace</span>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <div className="hidden sm:block w-8 h-8 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-[11px]" aria-hidden="true">{initials}</div>
-            <button type="button" onClick={() => { void handleLogout(); }} aria-label="Logout" className="lg:hidden p-1.5 text-ent-muted hover:text-ent-ink">
-              <LogOut className="w-5 h-5" />
-            </button>
-          </div>
-        </header>
-
-        {mobileNavOpen && (
-          <div className="lg:hidden fixed inset-0 z-50 bg-black/40" onClick={() => setMobileNavOpen(false)}>
-            <div
-              ref={mobileNavPanelRef} role="dialog" aria-modal="true" aria-label="Navigation menu"
-              className="bg-ent-panel w-72 h-full p-2 overflow-y-auto" onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between p-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-ent-green flex items-center justify-center flex-shrink-0"><Sparkles className="w-4 h-4 text-ent-forest" /></div>
-                  <span className="font-semibold text-ent-ink text-sm truncate">{hasOrganization ? orgName : 'No organization connected'}</span>
-                </div>
-                <button ref={mobileNavCloseButtonRef} type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X className="w-5 h-5 text-ent-muted" /></button>
-              </div>
-              {NAV_GROUPS.map((group) => (
-                <div key={group.label}>
-                  <div className="text-[9px] font-extrabold tracking-[0.16em] text-ent-muted uppercase px-3 pt-4 pb-1.5">{group.label}</div>
-                  {group.items.map((itemKey) => {
-                    const item = NAV_ITEMS.find((n) => n.key === itemKey);
-                    if (!item) return null;
-                    const Icon = item.icon;
-                    const isActive = nav === itemKey;
-                    return (
-                      <button
-                        key={itemKey} type="button" aria-current={isActive ? 'page' : undefined}
-                        onClick={() => { navigateTo(itemKey); setMobileNavOpen(false); }}
-                        className={`w-full flex items-center gap-2.5 px-3 py-3 text-sm text-left rounded-lg font-semibold ${isActive ? 'bg-ent-green-active text-ent-forest' : 'text-ent-text'}`}
-                      >
-                        <Icon className="w-4 h-4 flex-shrink-0" /> {item.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-              <div className="mt-2 pt-2 border-t border-ent-line px-3 py-2 flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">{initials}</div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-ent-ink truncate">{fullName}</div>
-                  <div className="text-[11px] text-ent-muted truncate">Professional Caregiver</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 bg-ent-bg">
-          {!hasOrganization ? (
-            <div className="max-w-6xl mx-auto space-y-5">
-              {workspaceLoadError ? (
-                <WorkspaceLoadErrorPanel error={workspaceLoadError} onRetry={() => { void load(); }} />
-              ) : (
-                <NoOrganizationPanel />
-              )}
-            </div>
-          ) : openPatient ? (
-            <div className="max-w-5xl mx-auto">
-              <EnterpriseStaffPatientView
-                organizationId={orgId} patientId={openPatient} onBack={() => navigateTo(nav)} staffRole="caregiver"
-                onReady={(patient) => (
-                  <EnterprisePatientRecordTabs patientId={openPatient} patientHeader={patient} staffRole="caregiver" orgId={orgId} onBack={() => navigateTo(nav)} initialTab={openPatientInitialTab} />
-                )}
-              />
-            </div>
+    <EnterpriseOfficeShell
+      workspaceTheme officeBadge="ENTERPRISE CARE" navLabel="Enterprise navigation"
+      orgLabel={orgName || 'No organization connected'} roleLabel="Caregiver" fullName={fullName} initials={initials}
+      navItems={NAV_ITEMS} navGroups={NAV_GROUPS} activeNav={nav} onNavigate={navigateTo}
+      showNotifications={false}
+      onLogout={() => { void handleLogout(); }}
+      officeSwitcher={officeSwitcher}
+      headerTools={orgId ? (
+        <OfficeHeaderTools role="caregiver" key={orgId} orgId={orgId} patients={patients}
+          onOpenPatient={id => navigateTo('patients', id, 'info')} />
+      ) : undefined}
+      organizationSwitcher={hasOrganization && myOrgs.length > 1 ? (
+        <select id="enterprise-org-switcher" aria-label="Switch organization" value={orgId ?? ''}
+          onChange={event => {
+            const nextOrg = myOrgs.find(org => org.organizationId === event.target.value);
+            if (nextOrg) switchOrg(nextOrg.organizationId);
+          }}
+          className="hcn-office-org-switcher min-w-0 max-w-full rounded-lg border border-ent-line bg-white px-2 py-1 text-sm font-semibold text-ent-ink">
+          {myOrgs.map(org => <option key={org.organizationId} value={org.organizationId}>{org.organizationName}</option>)}
+        </select>
+      ) : undefined}
+    >
+      {!hasOrganization ? (
+        <div className="space-y-5">
+          {workspaceLoadError ? (
+            <WorkspaceLoadErrorPanel error={workspaceLoadError} onRetry={() => { void load(); }} />
           ) : (
-            <div className="max-w-6xl mx-auto space-y-5">
-              {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id)} onOpenInformation={(id) => navigateTo('patients', id, 'info')} onNavigate={navigateTo} onPatientRegistered={() => { void load(); }} />}
-              {nav === 'patients' && (
-                <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)}
-                  onOpenContacts={(id) => navigateTo('patients', id, 'contacts')}
-                  onOpenInformation={(id) => navigateTo('patients', id, 'info')} orgId={orgId}
-                  onChanged={() => { void load(); }} />
-              )}
-              {nav === 'records' && (
-                <PatientHealthRecordsView patients={patients} onOpenRecord={(id) => navigateTo('records', id, 'medical')} />
-              )}
-              {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'info')} />}
-              {nav === 'visits' && <><ScheduleView orgId={orgId} patients={patients} onOpenPatient={(id)=>navigateTo('patients',id,'medical')} showAll /><VisitsListView orgId={orgId} /></>}
-              {nav === 'tasks' && <TasksView patients={patients} />}
-              {nav === 'communications' && <CommunicationsView patients={patients} />}
-              {nav === 'notes' && (
-                <>
-                  <MyDocumentationHistoryView />
-                  <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view or add Care Notes & Observations" />
-                </>
-              )}
-              {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id, 'handoffs')} title="Select a patient to record or review Shift Handoffs" />}
-              {nav === 'alerts' && <><CareEscalationPanel orgId={orgId} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><AlertsView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id, 'safety')} /></>}
-              {nav === 'careTeam' && <><CareTeamView orgId={orgId} patients={patients} /><ClinicalCoordinationPanel orgId={orgId} userId={state.currentUser?.id ?? ''} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/></>}
-              {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view their Documents" />}
-              {nav === 'organization' && <OrganizationView orgId={orgId} orgName={orgName} patients={patients} />}
-              {nav === 'settings' && <SettingsView userName={state.currentUser?.firstName} onLogout={handleLogout} />}
-            </div>
+            <NoOrganizationPanel />
           )}
-        </main>
-      </div>
-    </div>
+        </div>
+      ) : openPatient ? (
+        <div className="max-w-5xl mx-auto">
+          <EnterpriseStaffPatientView
+            organizationId={orgId} patientId={openPatient} onBack={() => navigateTo(nav)} staffRole="caregiver"
+            onReady={(patient) => (
+              <EnterprisePatientRecordTabs patientId={openPatient} patientHeader={patient} staffRole="caregiver"
+              orgId={orgId} onBack={() => navigateTo(nav)} initialTab={openPatientInitialTab ?? (visitId ? 'overview' : undefined)}
+              visitNavigation={Boolean(visitId)}
+              headerAction={visitId && <CaregiverPatientVisit key={`${orgId}/${openPatient}/${visitId}`}
+                organizationId={orgId} patientId={openPatient} visitId={visitId} />} />
+            )}
+          />
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {nav === 'dashboard' && <DashboardView patients={patients} orgId={orgId} onNavigate={navigateTo} onOpenVisit={visit => navigateTo('schedule', visit.patientId, 'overview', visit.id)} onPatientRegistered={() => { void load(); }} />}
+          {nav === 'patients' && (
+            <>
+              <CaregiverVisitCalendar key={orgId} orgId={orgId} patients={patients} selectedDay={calendarDay} onSelectDay={setCalendarDay}
+                onOpenVisit={visit => navigateTo('patients', visit.patientId, 'overview', visit.id)} />
+              <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)}
+                onOpenContacts={(id) => navigateTo('patients', id, 'contacts')}
+                onOpenInformation={(id) => navigateTo('patients', id, 'info')} orgId={orgId}
+                onChanged={() => { void load(); }} />
+            </>
+          )}
+          {nav === 'records' && (
+            <PatientHealthRecordsView patients={patients} onOpenRecord={(id) => navigateTo('records', id, 'medical')} />
+          )}
+          {nav === 'schedule' && <ScheduleView orgId={orgId} patients={patients} onOpenVisit={visit => navigateTo('schedule', visit.patientId, 'overview', visit.id)} />}
+          {nav === 'visits' && <ScheduleView orgId={orgId} patients={patients} onOpenVisit={visit => navigateTo('visits', visit.patientId, 'overview', visit.id)} completedOnly />}
+          {nav === 'tasks' && <TasksView key={orgId} orgId={orgId} patients={patients} />}
+          {nav === 'communications' && <CommunicationsView patients={patients} />}
+          {nav === 'notes' && (
+            <>
+              <MyDocumentationHistoryView />
+              <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view or add Care Notes & Observations" />
+            </>
+          )}
+          {nav === 'handoffs' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id, 'handoffs')} title="Select a patient to record or review Shift Handoffs" />}
+          {nav === 'alerts' && <><CareEscalationPanel orgId={orgId} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/><AlertsView patients={patients} orgId={orgId} onOpenPatient={(id) => navigateTo('patients', id, 'safety')} /></>}
+          {nav === 'careTeam' && <><CareTeamView orgId={orgId} patients={patients} /><CaregiverPatientCareTeam key={orgId} orgId={orgId} patients={patients} /><ClinicalCoordinationPanel orgId={orgId} userId={state.currentUser?.id ?? ''} role="caregiver" patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/></>}
+          {nav === 'documents' && <PatientsListView patients={patients} onOpenPatient={(id) => navigateTo('patients', id)} title="Select a patient to view their Documents" />}
+          {nav === 'organization' && <OrganizationView orgId={orgId} orgName={orgName} patients={patients} />}
+          {nav === 'settings' && <SettingsView userName={state.currentUser?.firstName} onLogout={handleLogout} />}
+        </div>
+      )}
+    </EnterpriseOfficeShell>
   );
-}
-
-function Card({ children }: { children: React.ReactNode }) {
-  return <div className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-5 sm:p-6 space-y-3">{children}</div>;
 }
 
 // P1 OWNER-VISIBLE DASHBOARD DELIVERY — presentation access is distinct
@@ -621,6 +477,7 @@ interface AttentionItem {
   detail: string;
   at: string;
   nav: NavItem;
+  help?: { eventId: string; patientId: string };
 }
 
 // H01 (identity), H02 (today's overview), H03 (alerts), H04 (inbox),
@@ -636,12 +493,11 @@ interface AttentionItem {
 // Care communications] two-column layout. Every figure below comes
 // from the real queries this component already runs — nothing here is
 // a design-example placeholder value.
-function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNavigate, onPatientRegistered }: { patients: StaffPatient[]; orgId: string; onOpenPatient: (id: string) => void; onOpenInformation: (id: string) => void; onNavigate: (nav: NavItem) => void; onPatientRegistered: () => void }) {
+function DashboardView({ patients, orgId, onNavigate, onOpenVisit, onPatientRegistered }: {
+  patients: StaffPatient[]; orgId: string; onNavigate: (nav: NavItem, patientId?: string, initialTab?: TabKey) => void;
+  onOpenVisit: (visit: CaregiverVisit) => void; onPatientRegistered: () => void;
+}) {
   const { state } = useApp();
-  const [dashboardSearch, setDashboardSearch] = useState('');
-  const matchingPatients = dashboardSearch.trim()
-    ? patients.filter((p) => [p.firstName, p.lastName, p.preferredName, p.patientId].some(v => (v ?? '').toLowerCase().includes(dashboardSearch.trim().toLowerCase())))
-    : [];
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
@@ -661,6 +517,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
   // this component.
   const [totalUnfinishedTasks, setTotalUnfinishedTasks] = useState(0);
   const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([]);
+  const [ackingHelp, setAckingHelp] = useState<string | null>(null);
   const [loadingExtra, setLoadingExtra] = useState(true);
   // MMA-ENT-CAREGIVER-MASTER-004, D02 (P1) — independent runtime audit
   // finding: "A database error must never appear as an empty patient
@@ -693,7 +550,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
       if (convosResult.error) errors.push(convosResult.error);
       if (visitsResult.error) errors.push(visitsResult.error);
       const convos = convosResult.data ?? [];
-      const myVisits = visitsResult.data ?? [];
+      const myVisits = (visitsResult.data ?? []).filter(visit => visit.organizationId === orgId);
 
       const incidentResults = await Promise.all(patients.map((p) => getPatientIncidentReportsResult(p.patientId)));
       incidentResults.forEach((r) => { if (r.error) errors.push(r.error); });
@@ -784,7 +641,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
       // already fully knowable from tasks.status='pending' alone.
       const missingNotesCount = myVisits.filter((v) => v.status === 'completed' && !v.visitNotes).length;
       const pendingTaskCounts = await Promise.all(patients.map(async (p) => {
-        const { count, error } = await supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('patient_id', p.patientId).eq('status', 'pending').eq('is_active', true);
+        const { count, error } = await supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('patient_id', p.patientId).or('organization_id.is.null,organization_id.eq.' + orgId).eq('status', 'pending').eq('is_active', true);
         if (error) { taskErrors.push(error.message); return 0; }
         return count ?? 0;
       }));
@@ -814,7 +671,7 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
         h.entries.filter((e) => e.acknowledgedCount === 0).map((e) => ({
           id: `help-${e.id}`, kind: 'help' as const, patientName: h.patient.preferredName || h.patient.firstName,
           title: 'HELP button activated', detail: e.phoneDialed ? `Call attempted to ${e.phoneDialed}.` : 'No caregiver phone number was reached.',
-          at: e.createdAt, nav: 'alerts' as NavItem,
+          at: e.createdAt, nav: 'alerts' as NavItem, help: { eventId: e.id, patientId: h.patient.patientId },
         })),
       );
       const incidentItems: AttentionItem[] = openIncidents.map((i) => ({
@@ -826,8 +683,11 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
       const noteItems: AttentionItem[] = noteRows.slice(0, 5).map((n, idx) => ({
         id: `note-${idx}`, kind: 'note' as const, patientName: n.patientName, title: `Update from ${n.patientName}`, detail: n.note, at: n.at, nav: 'notes' as NavItem,
       }));
-      const combined = [...helpItems, ...incidentItems, ...noteItems].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
-      setAttentionItems(combined.slice(0, 6));
+      const newestFirst = (a: AttentionItem, b: AttentionItem) => Date.parse(b.at) - Date.parse(a.at);
+      setAttentionItems([
+        ...helpItems.sort(newestFirst),
+        ...[...incidentItems, ...noteItems].sort(newestFirst).slice(0, Math.max(0, 6 - helpItems.length)),
+      ]);
       // D02-INVARIANT-05: setLoadError BEFORE setLoadingExtra(false) —
       // the effect below that advances enterprise_last_sync is keyed on
       // loadingExtra transitioning to false, and must see a non-null
@@ -879,7 +739,19 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
   }, [loadingExtra, loadError]);
 
   const unreadCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
-  const todayVisits = visits.filter((v) => v.scheduledStart && new Date(v.scheduledStart).toDateString() === new Date().toDateString());
+  const acknowledgeDashboardHelp = async (eventId: string) => {
+    setAckingHelp(eventId);
+    try {
+      const { error } = await acknowledgeHelpActivation(eventId);
+      if (error) { toast.error(error); return; }
+      setAttentionItems(items => items.filter(item => item.help?.eventId !== eventId));
+      setHelpCount(count => Math.max(0, count - 1));
+    } finally {
+      setAckingHelp(null);
+    }
+  };
+
+  const todayVisits = visits.filter(v => v.status === 'in_progress' || isToday(v.scheduledStart));
   const nextVisit = selectCurrentOrNextVisit(todayVisits);
   const nextVisitPatient = nextVisit ? patients.find((p) => p.patientId === nextVisit.patientId) : undefined;
   const needsAttentionCount = incidents.length + helpCount + unacknowledgedHandoffs + missingVisitNotes + unfinishedCareLists;
@@ -892,21 +764,17 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
   return (
     <>
       {/* Greeting + date + primary registration action. */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+      <div className="hcn-office-heading">
         <div>
           <p className="text-[11px] font-bold tracking-[0.1em] text-ent-bronze">{dateLabel}</p>
           <h1 className="text-2xl sm:text-[26px] font-bold text-ent-ink mt-0.5">Good {timeOfDay}, {state.currentUser?.firstName || 'Caregiver'}.</h1>
-          <p className="text-sm text-ent-muted mt-1">Here&apos;s what needs your attention across your assigned patients.</p>
         </div>
         <RegistrationAction orgId={orgId} onChanged={onPatientRegistered} compact />
       </div>
 
-      <section aria-label="Caregiver quick actions" className="rounded-2xl border border-ent-line bg-ent-panel p-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="font-bold text-ent-ink">What do you need to do next?</h2>
-          <span className="text-[11px] text-ent-muted">Tap once to open your assigned workflow</span>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <section aria-label="Caregiver quick actions" className="hcn-office-card hcn-office-quick p-4">
+        <h2 className="font-bold text-ent-ink">What do you need to do next?</h2>
+        <div className="hcn-office-action-grid">
           {([
             { label: "Today's Visits", nav: 'schedule' as NavItem, Icon: Calendar },
             { label: 'Clock In / Out', nav: 'visits' as NavItem, Icon: Clock },
@@ -915,10 +783,13 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
             { label: 'Report an Incident', nav: 'alerts' as NavItem, Icon: ShieldAlert },
             { label: 'Secure Messages', nav: 'communications' as NavItem, Icon: MessageSquare },
           ]).map(({ label, nav, Icon }) => (
-            <button type="button" key={label} onClick={() => onNavigate(nav)}
-              className="flex min-h-14 items-center gap-2 rounded-xl border border-ent-line bg-ent-bg px-3 py-3 text-left text-sm font-semibold text-ent-ink transition-colors hover:border-ent-bronze hover:bg-ent-pale focus-visible:outline focus-visible:outline-2 focus-visible:outline-ent-bronze"
+            <button type="button" key={label} onClick={() => {
+              if (nav === 'visits' && nextVisit) onOpenVisit(nextVisit);
+              else onNavigate(nav === 'visits' ? 'schedule' : nav);
+            }}
+              className="hcn-office-action"
               aria-label={`Open ${label}`}>
-              <Icon className="h-5 w-5 shrink-0 text-ent-bronze" aria-hidden="true" />
+              <Icon size={23} aria-hidden="true" />
               <span>{label}</span>
             </button>
           ))}
@@ -929,26 +800,43 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
         </p>
       </section>
 
-      <HaneenAssistantPanel role="caregiver" organizationId={orgId}
-        patients={patients.map(p=>({id:p.patientId,name:p.preferredName||`${p.firstName} ${p.lastName}`}))}/>
-
-      <section aria-label="Search assigned patients" className="space-y-2 rounded-2xl border border-ent-line bg-ent-panel p-4">
-        <label htmlFor="caregiver-dashboard-search" className="block text-sm font-bold text-ent-ink">Search my assigned patients</label>
-        <input id="caregiver-dashboard-search" type="search" value={dashboardSearch} onChange={e => setDashboardSearch(e.target.value)}
-          placeholder="Search patient name or reference…" autoComplete="off"
-          className="w-full rounded-xl border border-ent-line bg-white px-3 py-3 text-sm text-ent-ink" />
-        {dashboardSearch.trim() && (
-          <div role="region" aria-label="Matching assigned patients" className="space-y-2">
-            {matchingPatients.length ? matchingPatients.map(patient => (
-              <button type="button" key={patient.patientId} onClick={() => onOpenInformation(patient.patientId)}
-                className="flex w-full items-center justify-between rounded-xl border border-ent-line p-3 text-left text-sm hover:bg-ent-pale">
-                <span>{patient.preferredName || `${patient.firstName} ${patient.lastName}`}</span><span className="text-xs text-ent-bronze">Open Patient Information →</span>
-              </button>
-            )) : <p className="text-sm text-ent-muted">No assigned patient matches this search.</p>}
+      <Card>
+        <div className="flex items-center justify-between">
+          <h2 className="hcn-caregiver-panel-title">Current or next visit</h2>
+          {nextVisit && isToday(nextVisit.scheduledStart) && <span className="text-[11px] font-semibold text-ent-forest bg-ent-green-active px-2.5 py-1 rounded-full">Today</span>}
+        </div>
+        {!nextVisit ? (
+          <p className="text-sm text-ent-muted">No active or upcoming visit is currently scheduled for today.</p>
+        ) : (
+          <div className="flex items-start gap-3">
+            <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">
+              {nextVisitPatient ? patientInitials(nextVisitPatient.firstName, nextVisitPatient.lastName) : '?'}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-ent-ink text-sm">{nextVisitPatient?.preferredName || nextVisitPatient?.firstName || 'Patient'}</p>
+              <p className="text-xs text-ent-muted">{nextVisit.status === 'in_progress' ? 'In progress' : new Date(nextVisit.scheduledStart ?? '').toLocaleTimeString()}{nextVisit.scheduledEnd ? ` – ${new Date(nextVisit.scheduledEnd).toLocaleTimeString()}` : ''}</p>
+              {/* MMA-CODEX-011 011-10 (H07, P2): the locked requirement
+                  says "show late/change alerts" -- this card never
+                  showed either. "Late" is directly derivable (a
+                  still-'scheduled' visit whose start time has already
+                  passed) and added here. A genuine reschedule/"change"
+                  alert would need a dedicated audit of what the visit's
+                  time WAS before an edit -- caregiver_visits only
+                  stores the current scheduled_start/end, no prior
+                  value or a server-set "rescheduled" flag -- so that
+                  half is NOT fabricated from updated_at (which also
+                  changes on every ordinary status transition and would
+                  false-positive on every visit that starts/completes
+                  normally); it remains open, honestly, not silently
+                  claimed done. */}
+              {nextVisit.status === 'scheduled' && nextVisit.scheduledStart && new Date(nextVisit.scheduledStart).getTime() < Date.now() && (
+                <span className="inline-block mt-1 text-[11px] font-semibold text-gentle-coral bg-gentle-coral/10 px-2 py-0.5 rounded-full">Late — past scheduled start</span>
+              )}
+              <button type="button" onClick={() => onOpenVisit(nextVisit)} className="text-sm font-semibold text-ent-forest hover:underline mt-2 inline-block">Open patient visit →</button>
+            </div>
           </div>
         )}
-        <p className="text-xs text-ent-muted">Select a patient to search their allergies, conditions, providers and care information.</p>
-      </section>
+      </Card>
 
       {/* H02 — the FIVE approved summary counts ("assigned patients,
           scheduled visits, unfinished tasks, unread messages, and
@@ -964,37 +852,37 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
           metric in the locked requirement) was missing entirely —
           previously only a per-patient-count variant of this existed,
           feeding a different panel further down this page. */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="hcn-office-metrics hcn-caregiver-metrics">
         {([
-          { label: 'Assigned patients', sub: 'active', value: patients.length, nav: 'patients' as NavItem, mayBePartial: false },
-          { label: 'Visits today', sub: 'scheduled', value: todayVisits.length, nav: 'schedule' as NavItem, mayBePartial: true },
-          { label: 'Unfinished tasks', sub: 'pending', value: totalUnfinishedTasks, nav: 'tasks' as NavItem, mayBePartial: true },
-          { label: 'Needs attention', sub: 'updates', value: needsAttentionCount, nav: 'alerts' as NavItem, mayBePartial: true },
-          { label: 'Unread messages', sub: 'care team', value: unreadCount, nav: 'communications' as NavItem, mayBePartial: true },
-        ]).map((m) => (
+          { label: 'Assigned patients', sub: 'active', value: patients.length, nav: 'patients' as NavItem, icon: Users, mayBePartial: false },
+          { label: 'Visits today', sub: 'scheduled', value: todayVisits.length, nav: 'schedule' as NavItem, icon: Calendar, mayBePartial: true },
+          { label: 'Unfinished tasks', sub: 'pending', value: totalUnfinishedTasks, nav: 'tasks' as NavItem, icon: ClipboardCheck, mayBePartial: true },
+          { label: 'Needs attention', sub: 'updates', value: needsAttentionCount, nav: 'alerts' as NavItem, icon: ShieldAlert, mayBePartial: true },
+          { label: 'Unread messages', sub: 'care team', value: unreadCount, nav: 'communications' as NavItem, icon: MessageSquare, mayBePartial: true },
+        ]).map(({ icon: Icon, ...m }) => (
           <button
             key={m.label} type="button" onClick={() => onNavigate(m.nav)}
-            className="bg-ent-panel rounded-2xl shadow-sm border border-ent-line p-4 text-left hover:shadow-md hover:border-ent-forest/30 transition-all"
+            className="hcn-office-metric"
           >
-            <p className="text-[11px] font-semibold text-ent-text">{m.label}</p>
-            <p className="text-2xl font-bold text-ent-ink mt-1">
-              {loadingExtra ? <Loader2 className="w-5 h-5 animate-spin" /> : (
-                <>{m.value}{m.mayBePartial && loadError && <span className="text-sm font-semibold text-gentle-coral align-top" title="Some data failed to load — this count may be incomplete">*</span>}</>
-              )}
-            </p>
-            <p className="text-[11px] text-ent-muted">{m.sub}{m.mayBePartial && loadError ? ' · partial' : ''}</p>
+            <span className="hcn-office-metric-icon"><Icon size={22} aria-hidden="true" /></span>
+            <span className="min-w-0">
+              <span className="hcn-office-metric-label">{m.label}</span>
+              <span className="hcn-office-metric-count">
+                {loadingExtra ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                  <>{m.value}{m.mayBePartial && loadError && <span className="text-sm font-semibold text-gentle-coral align-top" title="Some data failed to load — this count may be incomplete">*</span>}</>
+                )}
+              </span>
+              <span className="hcn-office-metric-detail">{m.sub}{m.mayBePartial && loadError ? ' · partial' : ''}</span>
+            </span>
           </button>
         ))}
       </div>
 
-      {/* Two-column layout per the approved design: [Needs your
-          attention, Your patients] on the left; [Next scheduled visit,
-          Care communications] on the right. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5 items-start">
+      <div className="hcn-office-activity items-start">
         <div className="space-y-5">
           <Card>
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-ent-ink">Needs your attention</h2>
+              <h2 className="hcn-caregiver-panel-title">Needs your attention</h2>
               {attentionItems.length > 0 && <span className="text-[11px] font-semibold text-ent-bronze bg-ent-amber px-2.5 py-1 rounded-full">{attentionItems.length} item{attentionItems.length === 1 ? '' : 's'}</span>}
             </div>
             {!loadingExtra && attentionItems.length === 0 ? (
@@ -1003,17 +891,25 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
               <ul className="space-y-2.5">
                 {attentionItems.map((item) => {
                   const Icon = item.kind === 'help' ? Flag : item.kind === 'incident' ? ShieldAlert : Moon;
-                  const tone = item.kind === 'note' ? 'bg-ent-amber border-ent-amber' : 'bg-gentle-coral/5 border-gentle-coral/30';
+                  const tone = item.help ? 'border-red-300 bg-red-50 border-l-4 border-l-red-700' : item.kind === 'note' ? 'bg-ent-amber border-ent-amber' : 'bg-gentle-coral/5 border-gentle-coral/30';
                   return (
                     <li key={item.id} className={`p-3 rounded-xl border ${tone}`}>
                       <div className="flex items-start gap-2">
                         <Icon className="w-4 h-4 text-ent-rust flex-shrink-0 mt-0.5" />
                         <div className="min-w-0 flex-1">
+                          {item.help && <p className="text-xs font-bold uppercase tracking-wide text-red-800">Help alert</p>}
                           <p className="text-sm font-semibold text-ent-ink">{item.title} · {item.patientName}</p>
                           <p className="text-xs text-ent-text mt-0.5">{item.detail}</p>
-                          <div className="flex items-center justify-between mt-1.5">
-                            <button type="button" onClick={() => onNavigate(item.nav)} className="text-xs font-semibold text-ent-forest hover:underline">Review →</button>
-                            <span className="text-[11px] text-ent-muted">{new Date(item.at).toLocaleString()}</span>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <button type="button" onClick={() => item.help ? onNavigate('patients', item.help.patientId, 'safety') : onNavigate(item.nav)}
+                              className="min-h-10 text-xs font-semibold text-ent-forest hover:underline">Review →</button>
+                            {item.help && (
+                              <button type="button" disabled={ackingHelp !== null} className="min-h-10 rounded-lg bg-red-800 px-3 text-xs font-semibold text-white disabled:opacity-60"
+                                onClick={() => { void acknowledgeDashboardHelp(item.help!.eventId); }}>
+                                {ackingHelp === item.help.eventId ? 'Acknowledging…' : 'Acknowledge'}
+                              </button>
+                            )}
+                            <span className="ml-auto text-[11px] text-ent-muted">{new Date(item.at).toLocaleString()}</span>
                           </div>
                         </div>
                       </div>
@@ -1024,76 +920,12 @@ function DashboardView({ patients, orgId, onOpenPatient, onOpenInformation, onNa
             )}
           </Card>
 
-          <Card>
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-ent-ink">Your patients</h2>
-              <button type="button" onClick={() => onNavigate('patients')} className="text-xs font-semibold text-ent-forest hover:underline">View all patients →</button>
-            </div>
-            {patients.length === 0 ? (
-              <p className="text-sm text-ent-muted">No patients are currently assigned to you. Your organization&apos;s director can assign you once a patient is covered.</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {patients.slice(0, 4).map((p) => {
-                  const legalName = `${p.firstName} ${p.lastName}`;
-                  const displayName = p.preferredName || legalName;
-                  return (
-                    <button key={p.patientId} type="button" onClick={() => onOpenPatient(p.patientId)} className="flex items-center gap-3 p-4 bg-ent-pale rounded-2xl border border-ent-line hover:shadow-md transition-all text-left">
-                      <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">{patientInitials(p.firstName, p.lastName)}</span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-semibold text-ent-ink truncate text-sm">{displayName}</span>
-                        {displayName !== legalName && <span className="block text-[11px] text-ent-muted truncate">{legalName}</span>}
-                      </span>
-                      <ChevronRight className="w-4 h-4 text-ent-muted flex-shrink-0" />
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
         </div>
 
         <div className="space-y-5">
           <Card>
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-ent-ink">Current or next visit</h2>
-              {nextVisit && <span className="text-[11px] font-semibold text-ent-forest bg-ent-green-active px-2.5 py-1 rounded-full">Today</span>}
-            </div>
-            {!nextVisit ? (
-              <p className="text-sm text-ent-muted">No active or upcoming visit is currently scheduled for today.</p>
-            ) : (
-              <div className="flex items-start gap-3">
-                <span className="w-9 h-9 rounded-full bg-ent-green flex items-center justify-center text-ent-forest font-bold text-xs flex-shrink-0">
-                  {nextVisitPatient ? patientInitials(nextVisitPatient.firstName, nextVisitPatient.lastName) : '?'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-ent-ink text-sm">{nextVisitPatient?.preferredName || nextVisitPatient?.firstName || 'Patient'}</p>
-                  <p className="text-xs text-ent-muted">{nextVisit.status === 'in_progress' ? 'In progress' : new Date(nextVisit.scheduledStart ?? '').toLocaleTimeString()}{nextVisit.scheduledEnd ? ` – ${new Date(nextVisit.scheduledEnd).toLocaleTimeString()}` : ''}</p>
-                  {/* MMA-CODEX-011 011-10 (H07, P2): the locked requirement
-                      says "show late/change alerts" -- this card never
-                      showed either. "Late" is directly derivable (a
-                      still-'scheduled' visit whose start time has already
-                      passed) and added here. A genuine reschedule/"change"
-                      alert would need a dedicated audit of what the visit's
-                      time WAS before an edit -- caregiver_visits only
-                      stores the current scheduled_start/end, no prior
-                      value or a server-set "rescheduled" flag -- so that
-                      half is NOT fabricated from updated_at (which also
-                      changes on every ordinary status transition and would
-                      false-positive on every visit that starts/completes
-                      normally); it remains open, honestly, not silently
-                      claimed done. */}
-                  {nextVisit.status === 'scheduled' && nextVisit.scheduledStart && new Date(nextVisit.scheduledStart).getTime() < Date.now() && (
-                    <span className="inline-block mt-1 text-[11px] font-semibold text-gentle-coral bg-gentle-coral/10 px-2 py-0.5 rounded-full">Late — past scheduled start</span>
-                  )}
-                  <button type="button" onClick={() => onNavigate('schedule')} className="text-xs font-semibold text-ent-forest hover:underline mt-2 inline-block">Open schedule →</button>
-                </div>
-              </div>
-            )}
-          </Card>
-
-          <Card>
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-ent-ink">Care communications</h2>
+              <h2 className="hcn-caregiver-panel-title">Care communications</h2>
             </div>
             {conversations.length === 0 ? (
               <p className="text-sm text-ent-muted">No conversations yet.</p>
@@ -1510,27 +1342,12 @@ function isToday(isoTimestamp: string | null): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
-function ScheduleView({ orgId, patients, onOpenPatient, showAll = false }: { orgId: string; patients: StaffPatient[]; onOpenPatient:(id:string)=>void; showAll?: boolean }) {
+function ScheduleView({ orgId, patients, onOpenVisit, completedOnly = false }: {
+  orgId: string; patients: StaffPatient[]; onOpenVisit: (visit: CaregiverVisit) => void; completedOnly?: boolean;
+}) {
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [reviewVisitId,setReviewVisitId]=useState<string|null>(null);
-  const [reviewSections,setReviewSections]=useState<string[]>([]);
-  const [todayOnly, setTodayOnly] = useState(!showAll);
-  // APPROVED ENTERPRISE UI DIRECTIVE follow-up — CONFIRMED DEFECT
-  // (FUNC01-UI-COMPLETION, codex_master_9023_acceptance/browser_verify.mjs):
-  // end_caregiver_visit() has required non-empty visit notes since
-  // migration 076 (FUNC-01), but this "End" button never collected or
-  // sent any — every click failed with "Visit notes are required to
-  // complete this visit," making visit completion impossible from the
-  // real UI. Fixed by requiring an inline notes entry before the RPC
-  // call, rather than reverting the backend requirement.
-  const [endingVisitId, setEndingVisitId] = useState<string | null>(null);
-  const [endNotesDraft, setEndNotesDraft] = useState('');
-  // MMA-ENT-CAREGIVER-MASTER-005 D02-005: getMyVisits() discards its
-  // error and returns [] on any failure, which this view then rendered
-  // as an authoritative "No visits scheduled" — a Caregiver with real
-  // scheduled work had no way to tell that apart from a failed query.
+  const [todayOnly, setTodayOnly] = useState(true);
   const [loadError, setScheduleLoadError] = useState<string | null>(null);
   const load = useCallback(async () => {
     const { data, error } = await getMyVisitsResult();
@@ -1539,45 +1356,21 @@ function ScheduleView({ orgId, patients, onOpenPatient, showAll = false }: { org
     setLoading(false);
   }, [orgId]);
   useEffect(() => { void load(); }, [load]);
-  const visibleVisits = todayOnly ? visits.filter((v) => isToday(v.scheduledStart)) : visits;
-
-
-  const startVisit = async (visitId: string) => {
-    if (!PREVISIT_SECTIONS.every(s=>reviewSections.includes(s.id))) {
-      toast.error('Review all five sections before acknowledging the visit.'); return;
-    }
-    setSaving(true);
-    try {
-      const attestation=await acknowledgePrevisit(visitId,reviewSections);
-      if(attestation.error){toast.error(attestation.error);return;}
-      const {error}=await startCaregiverVisit(visitId);
-      if(error){toast.error(error);return;}
-      toast.success('Arrival time recorded; visit is in progress.');
-      setReviewVisitId(null);setReviewSections([]);
-      await load();
-    }finally{setSaving(false);}
-  };
-
-  const completeVisit = async (visitId: string) => {
-    if (!endNotesDraft.trim()) { toast.error('Visit notes are required to complete this visit.'); return; }
-    setSaving(true);
-    try {
-      const { error } = await endCaregiverVisit(visitId, endNotesDraft.trim());
-      if (error) { toast.error(error); return; }
-      setEndingVisitId(null); setEndNotesDraft('');
-      await load();
-    } finally {
-      setSaving(false);
-    }
-  };
+  const visibleVisits = completedOnly
+    ? visits.filter(visit => visit.status === 'completed' && visit.actualEnd)
+      .sort((a, b) => Date.parse(b.actualEnd!) - Date.parse(a.actualEnd!))
+    : visits.filter(visit => visit.status === 'in_progress' || (visit.status === 'scheduled' && (
+      isToday(visit.scheduledStart) || (!todayOnly && Date.parse(visit.scheduledStart ?? '') > Date.now())
+    ))).sort((a, b) => Number(b.status === 'in_progress') - Number(a.status === 'in_progress')
+      || Date.parse(a.scheduledStart ?? a.actualStart ?? '') - Date.parse(b.scheduledStart ?? b.actualStart ?? ''));
 
   return (
     <Card>
-      <div className="flex items-center gap-2"><Calendar className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">{showAll ? "Clock In / Out — My Assigned Visits" : "My Schedule"}</h2></div>
-      <p className="text-sm text-medium-gray">Visit times are assigned by your Director. Use this page to review your schedule, acknowledge patient updates before the visit, and record your actual arrival and departure times.</p>
-      <label className="flex items-center gap-2 text-xs font-semibold text-medium-gray">
-        <input type="checkbox" checked={todayOnly} onChange={(e) => setTodayOnly(e.target.checked)} /> Today only
-      </label>
+      <div className="flex items-center gap-2"><Calendar className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">{completedOnly ? 'Visits & Time Records' : 'My Schedule'}</h2></div>
+      <p className="text-sm text-medium-gray">{completedOnly ? 'Review your completed visits, recorded times, and submitted notes.' : 'Open a scheduled or in-progress visit to review the patient and record attendance.'}</p>
+      {!completedOnly && <label className="flex items-center gap-2 text-xs font-semibold text-medium-gray">
+        <input type="checkbox" checked={todayOnly} onChange={(e) => setTodayOnly(e.target.checked)} /> Today and in-progress visits
+      </label>}
       {loadError && (
         <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Your schedule could not be loaded: {loadError}</p>
@@ -1588,7 +1381,7 @@ function ScheduleView({ orgId, patients, onOpenPatient, showAll = false }: { org
         loadError ? (
           <p className="text-sm text-medium-gray">Your schedule could not be confirmed right now.</p>
         ) : (
-          <p className="text-sm text-medium-gray">{todayOnly ? 'No visits scheduled for today.' : 'No visits scheduled yet.'}</p>
+          <p className="text-sm text-medium-gray">{completedOnly ? 'No completed visits with recorded times yet.' : todayOnly ? 'No visits scheduled for today.' : 'No upcoming visits scheduled.'}</p>
         )
       ) : (
         <ul className="space-y-2">
@@ -1604,7 +1397,7 @@ function ScheduleView({ orgId, patients, onOpenPatient, showAll = false }: { org
             return (
             <li key={v.id} className="flex items-start justify-between gap-3 p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-charcoal">{visitPatient?.preferredName || 'Patient'} — <span className="capitalize">{v.status.replace('_', ' ')}</span></p>
+                <p className="text-sm font-medium text-charcoal">{visitPatient?.preferredName || (visitPatient ? `${visitPatient.firstName} ${visitPatient.lastName}`.trim() : '') || 'Patient'} — <span className="capitalize">{v.status.replace('_', ' ')}</span></p>
                 <p className="text-xs text-medium-gray">
                   {v.scheduledStart ? new Date(v.scheduledStart).toLocaleString() : 'No time set'}
                   {v.scheduledEnd && <> – {new Date(v.scheduledEnd).toLocaleTimeString()}</>}
@@ -1612,100 +1405,14 @@ function ScheduleView({ orgId, patients, onOpenPatient, showAll = false }: { org
                 </p>
                 {facility && <p className="text-xs text-medium-gray">{facility}</p>}
                 {v.actualStart && <p className="text-xs font-semibold text-ent-forest">Clocked in: {new Date(v.actualStart).toLocaleString()}{v.actualEnd ? ' · Clocked out: ' + new Date(v.actualEnd).toLocaleString() : ''}</p>}
-                {v.status === 'scheduled' && reviewVisitId === v.id && (
-                  <section className="mt-3 space-y-3 rounded-xl border border-warm-bronze bg-white p-3" aria-label="Pre-visit acknowledgment">
-                    <h3 className="text-sm font-bold text-charcoal">Pre-Visit Review Required</h3>
-                    <p className="text-xs text-medium-gray">Open the assigned patient's record and review these sections before arriving. Updated notes or handoffs after review will require a fresh acknowledgment.</p>
-                    <button type="button" onClick={()=>onOpenPatient(v.patientId)} className="text-xs font-semibold text-warm-bronze underline">Open Patient Information</button>
-                    <div className="space-y-2">
-                      {PREVISIT_SECTIONS.map(section=>(
-                        <label className="flex items-start gap-2 text-sm text-charcoal" key={section.id}>
-                          <input type="checkbox" checked={reviewSections.includes(section.id)} onChange={e=>setReviewSections(prev=>e.target.checked?[...prev,section.id]:prev.filter(x=>x!==section.id))}/>
-                          {section.label}
-                        </label>
-                      ))}
-                    </div>
-                    <p className="text-xs text-medium-gray">Acknowledgment documents review only; it does not authorize medical decisions.</p>
-                    <div className="flex gap-2">
-                      <button type="button" disabled={saving||!PREVISIT_SECTIONS.every(section=>reviewSections.includes(section.id))}
-                        onClick={()=>{void startVisit(v.id);}} className="rounded-xl bg-warm-bronze px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
-                        {saving?'Processing…':'Acknowledge & Clock In'}
-                      </button>
-                      <button type="button" onClick={()=>{setReviewVisitId(null);setReviewSections([]);}} className="rounded-xl border border-soft-taupe px-3 py-2 text-xs">Cancel</button>
-                    </div>
-                  </section>
-                )}
-                {v.status === 'in_progress' && endingVisitId === v.id && (
-                  <div className="mt-2 space-y-1.5 w-full">
-                    <textarea
-                      value={endNotesDraft} onChange={(e) => setEndNotesDraft(e.target.value)} autoFocus
-                      placeholder="What care was provided, tasks completed, patient response, and any follow-up needed? (required to clock out)…"
-                      className="w-full px-3 py-2 rounded-xl border border-soft-taupe text-sm"
-                      rows={2}
-                    />
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => { void completeVisit(v.id); }} disabled={saving || !endNotesDraft.trim()} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gentle-coral text-white text-xs font-semibold disabled:opacity-60">
-                        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />} Complete Visit
-                      </button>
-                      <button type="button" onClick={() => { setEndingVisitId(null); setEndNotesDraft(''); }} className="px-3 py-1.5 rounded-lg border border-soft-taupe text-charcoal text-xs font-semibold">Cancel</button>
-                    </div>
-                  </div>
-                )}
               </div>
-              {v.status === 'scheduled' && <button type="button" onClick={() => { setReviewVisitId(v.id);setReviewSections([]); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-soft-sage text-white text-xs font-semibold flex-shrink-0"><PlayCircle className="w-3.5 h-3.5" /> Review & Clock In</button>}
-              {v.status === 'in_progress' && endingVisitId !== v.id && (
-                <button type="button" onClick={() => { setEndingVisitId(v.id); setEndNotesDraft(''); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gentle-coral text-white text-xs font-semibold flex-shrink-0"><StopCircle className="w-3.5 h-3.5" /> Clock Out</button>
-              )}
+              <button type="button" onClick={() => onOpenVisit(v)}
+                className="min-h-11 shrink-0 rounded-xl bg-ent-forest px-3 py-2 text-sm font-semibold text-white">
+                {v.status === 'in_progress' ? 'Resume Visit' : v.status === 'completed' ? 'View Visit Log' : 'Open Visit'}
+              </button>
             </li>
             );
           })}
-        </ul>
-      )}
-    </Card>
-  );
-}
-
-function VisitsListView({ orgId }: { orgId: string }) {
-  const [visits, setVisits] = useState<CaregiverVisit[]>([]);
-  const [loading, setLoading] = useState(true);
-  // MMA-ENT-CAREGIVER-MASTER-005 D02-007: same defect as ScheduleView —
-  // getMyVisits() silently returns [] on failure, which rendered here as
-  // an authoritative "No visit history yet."
-  const [loadError, setVisitsLoadError] = useState<string | null>(null);
-  const load = useCallback(async () => {
-    const { data, error } = await getMyVisitsResult();
-    setVisits((data ?? []).filter(v => v.organizationId === orgId));
-    setVisitsLoadError(error);
-    setLoading(false);
-  }, [orgId]);
-  useEffect(() => { void load(); }, [load]);
-  return (
-    <Card>
-      <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Visits &amp; Time Records</h2></div>
-      {loadError && (
-        <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-sm text-gentle-coral font-medium">Your visit history could not be loaded: {loadError}</p>
-          <button type="button" onClick={() => { setLoading(true); void load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
-        </div>
-      )}
-      {loading ? <Loader2 className="w-5 h-5 animate-spin text-warm-bronze" /> : visits.length === 0 ? (
-        loadError ? (
-          <p className="text-sm text-medium-gray">Your visit history could not be confirmed right now.</p>
-        ) : (
-          <p className="text-sm text-medium-gray">No visit history yet.</p>
-        )
-      ) : (
-        <ul className="space-y-2">
-          {visits.map((v) => (
-            <li key={v.id} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe text-sm">
-              <p className="font-medium text-charcoal capitalize">{v.status.replace('_', ' ')}</p>
-              <p className="text-xs text-medium-gray">
-                {v.actualStart ? `Started ${new Date(v.actualStart).toLocaleString()}` : 'Not started'}
-                {v.actualEnd ? ` · Ended ${new Date(v.actualEnd).toLocaleString()}` : ''}
-              </p>
-              {v.visitNotes && <p className="text-xs text-charcoal mt-1">{v.visitNotes}</p>}
-            </li>
-          ))}
         </ul>
       )}
     </Card>
@@ -1720,7 +1427,7 @@ function VisitsListView({ orgId }: { orgId: string }) {
 // representable status and is disclosed as a known gap rather than
 // silently mapped to one of the existing three.
 type TaskStatus = 'pending' | 'completed' | 'skipped' | 'not_applicable';
-interface TaskRow { id: string; patient_id: string; title: string; status: TaskStatus; refusal_reason: string | null }
+interface TaskRow { id: string; patient_id: string; title: string; description: string | null; status: TaskStatus; refusal_reason: string | null }
 
 // H08/W02/N04 — ROUND 6: all four locked statuses (Completed,
 // Declined [skipped], Not Completed [pending], Not Applicable) are now
@@ -1728,23 +1435,24 @@ interface TaskRow { id: string; patient_id: string; title: string; status: TaskS
 // constraint, which previously only allowed pending/completed/skipped).
 // A refusal reason is requested for skipped/not_applicable, matching
 // "documented patient refusal."
-function TasksView({ patients }: { patients: StaffPatient[] }) {
+function TasksView({ orgId, patients }: { orgId: string; patients: StaffPatient[] }) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   // MMA-ENT-CAREGIVER-MASTER-005 D02-006: this previously destructured
   // only `{ data }`, so a failed task query (RLS denial, network error)
   // produced the same tasks=[] as a patient with a genuinely empty care
-  // plan, rendered here as "No assigned tasks found for your patients."
+  // plan, rendered here as "There are no active tasks recorded for your assigned patients. There is nothing to enter here."
   const [loadError, setTasksLoadError] = useState<string | null>(null);
   const load = useCallback(() => {
     if (patients.length === 0) { setTasks([]); setTasksLoadError(null); setLoading(false); return; }
-    void supabase.from('tasks').select('id, patient_id, title, status, refusal_reason').in('patient_id', patients.map((p) => p.patientId)).eq('is_active', true)
+    void supabase.from('tasks').select('id, patient_id, title, description, status, refusal_reason').in('patient_id', patients.map((p) => p.patientId))
+      .or('organization_id.is.null,organization_id.eq.' + orgId).eq('is_active', true)
       .then(({ data, error }) => {
         setTasks((data ?? []) as TaskRow[]);
         setTasksLoadError(error ? (error.message || 'Could not load your assigned tasks.') : null);
         setLoading(false);
       });
-  }, [patients]);
+  }, [orgId, patients]);
   useEffect(() => { load(); }, [load]);
 
   // MMA-ENT-CAREGIVER-MASTER-003 D04 (P1): completed_at/status_updated_by/
@@ -1767,11 +1475,15 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status, refusal_reason: refusalReason } : t)));
   };
 
+  const patientNames = new Map(patients.map(patient => [
+    patient.patientId, patient.preferredName || (patient.firstName + ' ' + patient.lastName).trim(),
+  ]));
   const statusLabel: Record<TaskStatus, string> = { pending: 'Not Completed', completed: 'Completed', skipped: 'Declined', not_applicable: 'Not Applicable' };
 
   return (
     <Card>
       <div className="flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-warm-bronze" /><h2 className="font-bold text-charcoal">Care Plans &amp; Tasks</h2></div>
+      <p className="text-sm text-ent-muted">Tasks added for your assigned patients appear here. Record the outcome after providing care, and add a reason if the patient declined or the task did not apply. Open the patient’s chart to read their Care Plan.</p>
       {loadError && (
         <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Your care plan tasks could not be loaded: {loadError}</p>
@@ -1782,7 +1494,7 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
         loadError ? (
           <p className="text-sm text-medium-gray">Your care plan tasks could not be confirmed right now.</p>
         ) : (
-          <p className="text-sm text-medium-gray">No assigned tasks found for your patients.</p>
+          <p className="text-sm text-medium-gray">There are no active tasks recorded for your assigned patients. There is nothing to enter here.</p>
         )
       ) : (
         <ul className="space-y-2">
@@ -1790,7 +1502,8 @@ function TasksView({ patients }: { patients: StaffPatient[] }) {
             <li key={t.id} className="flex items-center justify-between p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
               <div>
                 <p className="text-sm font-medium text-charcoal">{t.title}</p>
-                <p className="text-xs text-medium-gray">{patients.find((p) => p.patientId === t.patient_id)?.preferredName} · {statusLabel[t.status]}</p>
+                {t.description && <p className="whitespace-pre-wrap break-words text-sm text-ent-text">{t.description}</p>}
+                <p className="text-xs text-medium-gray">{patientNames.get(t.patient_id)} · {statusLabel[t.status]}</p>
                 {t.refusal_reason && <p className="text-xs text-medium-gray italic">&quot;{t.refusal_reason}&quot;</p>}
               </div>
               <div className="flex gap-1.5">
@@ -1962,15 +1675,9 @@ function CommunicationsView({ patients }: { patients: StaffPatient[] }) {
   );
 }
 
-// H12/W07/N09 — file/view incidents across every assigned patient.
-// MMA-ENT-CAREGIVER-MASTER-003 D08 (P1): patientId added to both row
-// kinds (needed for the actionable "View" link below), and HELP rows
-// now carry acknowledgedCount so an unacknowledged HELP activation can
-// be acknowledged directly from this feed, not only from deep inside
-// the patient record's Safety tab.
-interface HelpAlertRow { kind: 'help'; id: string; patientId: string; patientName: string; occurredAt: string; detail: string; acknowledgedCount: number }
-interface IncidentAlertRow extends IncidentReport { kind: 'incident'; patientName: string; attachmentCount: number }
-type AlertRow = HelpAlertRow | IncidentAlertRow;
+// This list handles filed incidents. Patient HELP alerts live on the dashboard.
+interface IncidentAlertRow extends IncidentReport { patientName: string; attachmentCount: number }
+
 const SEVERITIES: IncidentSeverity[] = ['low', 'moderate', 'high', 'critical'];
 
 // A <input type="datetime-local"> value is always LOCAL wall-clock time
@@ -2068,7 +1775,7 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
   const myId = state.currentUser?.id ?? '';
   const draftKey = incidentDraftKey(myId, orgId);
   const authorizedIds = useMemo(() => new Set(patients.map((p) => p.patientId)), [patients]);
-  const [alerts, setAlerts] = useState<AlertRow[]>([]);
+  const [alerts, setAlerts] = useState<IncidentAlertRow[]>([]);
   const [loading, setLoading] = useState(true);
   const draft = myId ? loadIncidentDraft(draftKey, authorizedIds) : null;
   const [patientId, setPatientId] = useState(draft?.patientId ?? '');
@@ -2079,7 +1786,6 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
   const [description, setDescription] = useState(draft?.description ?? '');
   const [attachment, setAttachment] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
-  const [acking, setAcking] = useState<string | null>(null);
 
   // Persist on every change rather than only on unmount — a hard reload
   // (not just a nav switch) never runs a cleanup/unmount handler.
@@ -2091,14 +1797,6 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
     } catch { /* best-effort; draft recovery is a convenience, not a guarantee */ }
   }, [myId, draftKey, patientId, incidentType, severity, occurredAt, description]);
 
-  // MMA-ENT-CAREGIVER-MASTER-005 D02-010: this previously called the
-  // plain getPatientIncidentReports/getIncidentAttachments (both
-  // discard their error and return [] on failure) and destructured only
-  // `{ entries }` from getHelpActivationHistory, dropping its `error`
-  // entirely. A failed HELP-history or incident-report query therefore
-  // rendered as an authoritative "No alerts or incidents recorded" —
-  // exactly the defect this directive names: "A failed HELP query must
-  // never be presented as proof that no HELP event occurred."
   const [loadError, setAlertsLoadError] = useState<string | null>(null);
   const load = useCallback(async () => {
     setAlertsLoadError(null);
@@ -2108,20 +1806,9 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
     const incidentRows = await Promise.all(incidentResults.flatMap((r, idx) => (r.data ?? []).map(async (i): Promise<IncidentAlertRow> => {
       const attResult = await getIncidentAttachmentsResult(i.id);
       if (attResult.error) errors.push(attResult.error);
-      return { ...i, kind: 'incident', patientName: patients[idx].preferredName || patients[idx].firstName, attachmentCount: (attResult.data ?? []).length };
+      return { ...i, patientName: patients[idx].preferredName || patients[idx].firstName, attachmentCount: (attResult.data ?? []).length };
     })));
-    const helpRows = (await Promise.all(patients.map(async (p) => {
-      const { entries, error } = await getHelpActivationHistory(p.patientId);
-      if (error) errors.push(error);
-      return entries.map((e): HelpAlertRow => ({
-        kind: 'help', id: e.id, patientId: p.patientId, patientName: p.preferredName || p.firstName, occurredAt: e.createdAt,
-        detail: `HELP button activated${e.phoneDialed ? ` — attempted call to ${e.phoneDialed}` : ''} (${e.notificationStatus.replace('_', ' ')})`,
-        acknowledgedCount: e.acknowledgedCount,
-      }));
-    }))).flat();
-    const merged: AlertRow[] = [...incidentRows, ...helpRows];
-    merged.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
-    setAlerts(merged);
+    setAlerts(incidentRows.sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)));
     if (errors.length > 0) setAlertsLoadError(errors[0]);
     setLoading(false);
   }, [patients]);
@@ -2154,17 +1841,6 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
     if (error) { toast.error(error); return; }
     toast.success('Scope concern reported to your supervisor.');
     setDescription('');
-  };
-
-  const ackHelp = async (id: string) => {
-    setAcking(id);
-    try {
-      const { error } = await acknowledgeHelpActivation(id);
-      if (error) { toast.error(error); return; }
-      await load();
-    } finally {
-      setAcking(null);
-    }
   };
 
   return (
@@ -2206,7 +1882,7 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
       </div>
       {loadError && (
         <div role="alert" className="p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-sm text-gentle-coral font-medium">Some alerts or incidents could not be loaded: {loadError}{alerts.length > 0 ? ' — the list below may be incomplete.' : ''}</p>
+          <p className="text-sm text-gentle-coral font-medium">Some incidents could not be loaded: {loadError}{alerts.length > 0 ? ' — the list below may be incomplete.' : ''}</p>
           <button type="button" onClick={() => { setLoading(true); void load(); }} className="text-sm font-semibold text-warm-bronze hover:underline flex-shrink-0">Retry</button>
         </div>
       )}
@@ -2214,25 +1890,11 @@ function AlertsView({ patients, orgId, onOpenPatient }: { patients: StaffPatient
         loadError ? (
           <p className="text-sm text-medium-gray">Nothing could be confirmed right now — this is not necessarily an empty history.</p>
         ) : (
-          <p className="text-sm text-medium-gray">No alerts or incidents recorded.</p>
+          <p className="text-sm text-medium-gray">No incidents recorded.</p>
         )
       ) : (
         <ul className="space-y-2">
-          {alerts.map((a) => a.kind === 'help' ? (
-            <li key={`help-${a.id}`} className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
-              <div className="flex items-start justify-between gap-2">
-                <button type="button" onClick={() => onOpenPatient(a.patientId)} className="text-left text-sm font-medium text-charcoal hover:underline">
-                  {a.patientName} — {a.detail}
-                </button>
-                {a.acknowledgedCount === 0 && (
-                  <button type="button" onClick={() => { void ackHelp(a.id); }} disabled={acking === a.id} className="flex-shrink-0 px-2 py-1 rounded-lg bg-warm-bronze hover:bg-deep-bronze text-white text-xs font-semibold disabled:opacity-60">
-                    {acking === a.id ? 'Acknowledging…' : 'Acknowledge'}
-                  </button>
-                )}
-              </div>
-              <p className="text-[11px] text-medium-gray mt-1">{new Date(a.occurredAt).toLocaleString()} · recorded in app only, not a verified emergency dispatch</p>
-            </li>
-          ) : (
+          {alerts.map((a) => (
             <li key={`incident-${a.id}`} className="p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
               <button type="button" onClick={() => onOpenPatient(a.patientId)} className="text-left text-sm font-medium text-charcoal capitalize hover:underline">
                 {a.patientName} — {a.incidentType.replace('_', ' ')} ({a.severity})
@@ -2441,7 +2103,7 @@ function MyInvitationsCard() {
 // to be open. `patients` is this org's own already-filtered list
 // (EnterpriseCaregiverDashboard's own `patients`), so every count/list
 // below now reflects only this organization's patients.
-function MyActivityCard({ patients }: { patients: StaffPatient[] }) {
+function MyActivityCard({ orgId, patients }: { orgId: string; patients: StaffPatient[] }) {
   const { state } = useApp();
   const [visits, setVisits] = useState<CaregiverVisit[]>([]);
   const [taskUpdates, setTaskUpdates] = useState<{ id: string; title: string; status: string; status_updated_at: string | null }[]>([]);
@@ -2460,20 +2122,21 @@ function MyActivityCard({ patients }: { patients: StaffPatient[] }) {
     if (!myId || patientIds.length === 0) { setVisits([]); setTaskUpdates([]); setNoteCount(0); setActivityLoadError(null); setLoading(false); return; }
     void Promise.all([
       getMyVisitsResult(),
-      supabase.from('tasks').select('id, title, status, status_updated_at').eq('status_updated_by', myId).in('patient_id', patientIds).order('status_updated_at', { ascending: false }).limit(20),
+      supabase.from('tasks').select('id, title, status, status_updated_at').eq('status_updated_by', myId).in('patient_id', patientIds)
+        .or('organization_id.is.null,organization_id.eq.' + orgId).order('status_updated_at', { ascending: false }).limit(20),
       supabase.from('patient_notes').select('id', { count: 'exact', head: true }).eq('author_id', myId).in('patient_id', patientIds),
     ]).then(([v, t, n]) => {
       const errors: string[] = [];
       if (v.error) errors.push(v.error);
       if (t.error) errors.push(t.error.message);
       if (n.error) errors.push(n.error.message);
-      setVisits((v.data ?? []).filter((visit) => patientIds.includes(visit.patientId)));
+      setVisits((v.data ?? []).filter(visit => visit.organizationId === orgId && patientIds.includes(visit.patientId)));
       setTaskUpdates((t.data ?? []) as typeof taskUpdates);
       setNoteCount(n.count ?? 0);
       setActivityLoadError(errors.length > 0 ? errors[0] : null);
       setLoading(false);
     });
-  }, [state.currentUser?.id, patients]);
+  }, [state.currentUser?.id, orgId, patients]);
   if (loading) return null;
   return (
     <Card>
@@ -2739,7 +2402,7 @@ function OrganizationView({ orgId, orgName, patients }: { orgId: string; orgName
         )}
       </Card>
       <MyInvitationsCard />
-      <MyActivityCard patients={patients} />
+      <MyActivityCard orgId={orgId} patients={patients} />
       <NotificationsCard />
       <AccessibilityCard />
     </>

@@ -95,7 +95,11 @@ describe('W01 — caregiver visit lifecycle', () => {
 
   it('endCaregiverVisit surfaces a server rejection rather than fabricating a completed visit', async () => {
     rpcMock.mockResolvedValue({ data: null, error: { message: 'This visit is not currently in progress' } });
-    const { visit, error } = await endCaregiverVisit('v1', 'notes');
+    const departure = '2026-11-19T15:00:00.000Z';
+    const { visit, error } = await endCaregiverVisit('v1', 'notes', departure);
+    expect(rpcMock).toHaveBeenCalledWith('end_caregiver_visit', {
+      p_visit_id: 'v1', p_visit_notes: 'notes', p_actual_end: departure, p_checklist: null,
+    });
     expect(visit).toBeNull();
     expect(error).toMatch(/not currently in progress/);
   });

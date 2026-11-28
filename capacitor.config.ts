@@ -2,7 +2,7 @@ import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.memoriahelps.ap',
-  appName: 'My Memoria Ally',
+  appName: 'Haneen Care Network',
   webDir: 'dist',
   server: {
     url: 'https://www.mymemoriaally.com',

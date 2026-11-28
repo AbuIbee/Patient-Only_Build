@@ -98,8 +98,8 @@ function SectionCard({ title, icon: Icon, children }: { title: string; icon: typ
   );
 }
 
-export default function EnterprisePatientRecordTabs({ patientId, patientHeader, staffRole, orgId, onBack, initialTab }: {
-  patientId: string; patientHeader: PatientHeader; staffRole: StaffRole; orgId: string; onBack: () => void; initialTab?: TabKey;
+export default function EnterprisePatientRecordTabs({ patientId, patientHeader, staffRole, orgId, onBack, initialTab, headerAction, visitNavigation }: {
+  patientId: string; patientHeader: PatientHeader; staffRole: StaffRole; orgId: string; onBack: () => void; initialTab?: TabKey; headerAction?: React.ReactNode; visitNavigation?: boolean;
 }) {
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'info');
   const [tabSearch, setTabSearch] = useState('');
@@ -119,6 +119,21 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         <p className="text-sm text-medium-gray">{patientHeader.firstName} {patientHeader.lastName}</p>
         <CoverageBanner status={patientHeader.coverageStatus} />
       </div>
+
+      {headerAction}
+      {visitNavigation && (
+        <nav aria-label="Visit chart shortcuts" className="flex flex-wrap gap-2">
+          {([{ key: 'info', label: 'Patient Information' }, { key: 'medications', label: 'Medications' },
+            { key: 'carePlan', label: 'Care Plan' }, { key: 'tasks', label: 'Tasks' },
+            { key: 'contacts', label: 'Healthcare Contacts' }, { key: 'handoffs', label: 'Shift Handoffs' }] as const).map(link => (
+            <button key={link.key} type="button" onClick={() => {
+              setTab(link.key);
+              setTabSearch('');
+              document.getElementById('caregiver-visit-chart-section')?.focus();
+            }} className="min-h-11 rounded-lg border border-ent-line bg-white px-3 text-sm font-semibold text-ent-forest hover:bg-ent-pale">{link.label}</button>
+          ))}
+        </nav>
+      )}
 
       <section aria-label="Patient chart navigation" className="space-y-3">
         <label className="flex items-center gap-2 rounded-xl border border-soft-taupe bg-white px-3 py-2">
@@ -151,13 +166,13 @@ export default function EnterprisePatientRecordTabs({ patientId, patientHeader, 
         </nav>
       </section>
 
-      <div className="space-y-4">
+      <div className="space-y-4" id={visitNavigation ? 'caregiver-visit-chart-section' : undefined} tabIndex={visitNavigation ? -1 : undefined}>
         {tab === 'info' && <PatientInformation patientId={patientId} orgId={orgId} />}
         {tab === 'overview' && <OverviewTab patientId={patientId} patientHeader={patientHeader} orgId={orgId} staffRole={staffRole} />}
         {tab === 'medical' && <MedicalTab patientId={patientId} staffRole={staffRole} orgId={orgId} />}
         {tab === 'contacts' && <HealthcareContacts patientId={patientId} />}
         {tab === 'medications' && <MedicationsTab patientId={patientId} />}
-        {tab === 'tasks' && <TasksTab patientId={patientId} />}
+        {tab === 'tasks' && <TasksTab patientId={patientId} orgId={orgId} staffRole={staffRole} />}
         {tab === 'ag' && <AGTab patientId={patientId} staffRole={staffRole} />}
         {tab === 'carePlan' && <CarePlanTab patientId={patientId} orgId={orgId} staffRole={staffRole} />}
         {tab === 'appointments' && <AppointmentsTab patientId={patientId} orgId={orgId} />}
@@ -672,20 +687,21 @@ function MedicationsTab({ patientId }: { patientId: string }) {
 // reuses the exact tasks table query/update shape already proven in
 // EnterpriseCaregiverDashboard.tsx's TasksView (H08/W02, migration 071),
 // scoped to this one open patient.
-interface TaskRow { id: string; title: string; status: TaskStatus; refusal_reason: string | null }
-function TasksTab({ patientId }: { patientId: string }) {
+interface TaskRow { id: string; title: string; description: string | null; organization_id: string | null; status: TaskStatus; refusal_reason: string | null }
+function TasksTab({ patientId, orgId, staffRole }: { patientId: string; orgId: string; staffRole: StaffRole }) {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setTasksTabLoadError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    void supabase.from('tasks').select('id, title, status, refusal_reason').eq('patient_id', patientId).eq('is_active', true)
+    void supabase.from('tasks').select('id, title, description, organization_id, status, refusal_reason').eq('patient_id', patientId)
+      .or('organization_id.is.null,organization_id.eq.' + orgId).eq('is_active', true)
       .then(({ data, error }) => {
         setTasks((data ?? []) as TaskRow[]);
         setTasksTabLoadError(error ? (error.message || 'Could not load this patient’s care plan tasks.') : null);
         setLoading(false);
       });
-  }, [patientId]);
+  }, [orgId, patientId]);
   useEffect(() => { load(); }, [load]);
 
   // MMA-ENT-CAREGIVER-MASTER-003 D04 (P1): status_updated_by/at and
@@ -724,15 +740,16 @@ function TasksTab({ patientId }: { patientId: string }) {
             <li key={t.id} className="flex items-center justify-between gap-2 p-3 bg-warm-ivory rounded-xl border border-soft-taupe">
               <div>
                 <p className="text-sm font-medium text-charcoal">{t.title}</p>
+                {t.description && <p className="whitespace-pre-wrap break-words text-sm text-ent-text">{t.description}</p>}
                 <p className="text-xs text-medium-gray">{statusLabel[t.status]}</p>
                 {t.refusal_reason && <p className="text-xs text-medium-gray italic">&quot;{t.refusal_reason}&quot;</p>}
               </div>
-              <div className="flex gap-1.5 flex-shrink-0">
+              {(!t.organization_id || staffRole === 'caregiver') && <div className="flex flex-wrap gap-1.5">
                 <button type="button" title="Completed" onClick={() => { void markStatus(t.id, 'completed'); }} className="px-2 py-1 rounded-lg bg-soft-sage/20 text-soft-sage text-xs font-semibold">Done</button>
                 <button type="button" title="Declined" onClick={() => { void markStatus(t.id, 'skipped'); }} className="px-2 py-1 rounded-lg bg-gentle-coral/20 text-gentle-coral text-xs font-semibold">Declined</button>
                 <button type="button" title="Not Applicable" onClick={() => { void markStatus(t.id, 'not_applicable'); }} className="px-2 py-1 rounded-lg bg-medium-gray/20 text-medium-gray text-xs font-bold">N/A</button>
                 <button type="button" title="Not Completed" onClick={() => { void markStatus(t.id, 'pending'); }} className="px-2 py-1 rounded-lg bg-warm-bronze/10 text-warm-bronze text-xs font-semibold">Not Completed</button>
-              </div>
+              </div>}
             </li>
           ))}
         </ul>
