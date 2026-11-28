@@ -23,7 +23,7 @@ export type HandoffReceipt = {
   id: string; organization_id: string; patient_id: string; handoff_id: string;
   incoming_caregiver_id: string; incoming_visit_id: string;
   acknowledge_by: string; acknowledged_at: string | null;
-  outgoing_caregiver_id: string; handoff_created_at: string;
+  outgoing_caregiver_id: string; handoff_created_at: string; handoff_summary: string;
 };
 
 export type DirectorSafetySources = {
@@ -131,5 +131,20 @@ export async function createRequiredCareSlot(
 export async function cancelRequiredCareSlot(slotId: string, reason: string): Promise<DataResult<boolean>> {
   const { data, error } = await db.rpc('hcn_director_cancel_required_care',
     { p_slot: slotId, p_reason: reason });
+  return error ? { data: null, error: error.message } : { data: Boolean(data), error: null };
+}
+
+
+export async function recordDirectorVisitAction(
+  visitId: string, action: 'contact_attempted' | 'reviewed' | 'replacement_planned', note: string,
+): Promise<DataResult<string>> {
+  const { data, error } = await db.rpc('hcn_director_record_visit_action',
+    { p_visit: visitId, p_action: action, p_note: note });
+  return error ? { data: null, error: error.message } : { data: data as string, error: null };
+}
+
+export async function cancelScheduledVisit(visitId: string, reason: string): Promise<DataResult<boolean>> {
+  const { data, error } = await db.rpc('hcn_director_cancel_scheduled_visit',
+    { p_visit: visitId, p_reason: reason });
   return error ? { data: null, error: error.message } : { data: Boolean(data), error: null };
 }
