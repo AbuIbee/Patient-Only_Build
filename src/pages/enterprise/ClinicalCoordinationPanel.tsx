@@ -53,6 +53,24 @@ export default function ClinicalCoordinationPanel({
 }: {
   orgId: string; userId: string; role: Role; patients?: { id: string; name: string }[];
 }) {
+  const guideKey = `hcn:clinical-guide:${orgId}:${userId}`;
+  const [guidePreference, setGuidePreference] = useState<{ key: string; expanded: boolean } | null>(null);
+  const [guideStep, setGuideStep] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const guideExpanded = guidePreference?.key === guideKey ? guidePreference.expanded : true;
+  useEffect(() => {
+    if (role !== 'director') return;
+    let expanded = true;
+    try { expanded = localStorage.getItem(guideKey) !== 'collapsed'; } catch { /* Storage unavailable: use default. */ }
+    setGuidePreference({ key: guideKey, expanded });
+    setGuideStep(0);
+    setHelpOpen(false);
+  }, [guideKey, role]);
+  const toggleGuide = () => {
+    const expanded = !guideExpanded;
+    setGuidePreference({ key: guideKey, expanded });
+    try { localStorage.setItem(guideKey, expanded ? 'expanded' : 'collapsed'); } catch { /* In-memory preference still works. */ }
+  };
   const [providers, setProviders] = useState<HealthcareProvider[]>([]);
   const [providerAssociations, setProviderAssociations] = useState<ProviderPatientAssociation[]>([]);
   const [providerAccounts, setProviderAccounts] = useState<{provider_id:string;status:string;user_id:string}[]>([]);
@@ -459,6 +477,15 @@ export default function ClinicalCoordinationPanel({
     } finally { setBusy(false); }
   };
 
+  const guideSteps = [
+    { title: 'Add a healthcare provider', detail: 'Register the physician, therapist or specialist once. Enter professional contact information. Directory registration does not grant patient access.', target: 'hcn-clinical-directory' },
+    { title: 'Associate the provider with a patient', detail: 'Find the provider in the directory and choose Associate with patient. Confirm an appropriate care relationship. One provider may care for multiple patients.', target: 'hcn-clinical-directory' },
+    { title: 'Create and send a clinical request', detail: 'Choose the patient and provider, enter a title, instructions and requested items, and create a draft. Attach documents securely, then send the request when ready.', target: 'hcn-clinical-requests' },
+    { title: 'Receive the provider response', detail: 'Open the request to read secure provider responses and documents, or use Provider Conversations. Direct replies to notification emails are not imported into request history.', target: 'hcn-clinical-conversations' },
+    { title: 'Review documents and obtain clinical approval', detail: 'Open the relevant request and check submitted documents for administrative completeness. Forward clinical decisions to an authorized clinical professional; the Director role alone does not confer clinical approval authority.', target: 'hcn-clinical-requests' },
+    { title: 'Complete coordination and follow-up', detail: 'Use coordination plans to assign responsibilities, track tasks and caregiver acknowledgements. Close the plan when applicable requirements are satisfied.', target: 'hcn-clinical-plans' },
+  ];
+  const goToSection = (id: string) => document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'auto' });
   return (
     <section aria-label="Clinical Coordination" className="rounded-2xl border border-ent-line bg-white p-4 space-y-4">
       <div className="flex items-center justify-between gap-2">
@@ -469,6 +496,48 @@ export default function ClinicalCoordinationPanel({
         Manage healthcare provider contacts and structured requests for medical documentation, clinical clarification,
         and coordinated care — with secure, verified, time-limited external access for providers who do not use Haneen directly.
       </p>
+      {role === 'director' && (
+        <div className="rounded-xl border border-ent-line bg-ent-pale p-3 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold text-ent-ink">Getting started with Clinical Coordination</h3>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" aria-expanded={guideExpanded} aria-controls="hcn-clinical-guide" onClick={toggleGuide} className="rounded-lg border border-ent-line px-3 py-2 text-xs">{guideExpanded ? 'Collapse guide' : 'Expand guide'}</button>
+              <button type="button" aria-expanded={helpOpen} aria-controls="hcn-clinical-help" onClick={() => setHelpOpen(v => !v)} className="rounded-lg border border-ent-line px-3 py-2 text-xs">Help &amp; instructions</button>
+            </div>
+          </div>
+          {guideExpanded && <div id="hcn-clinical-guide" className="space-y-3">
+            <p className="text-sm text-ent-muted">Follow these six steps to coordinate care successfully. Select any step for instructions.</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
+              {guideSteps.map((step, index) => <button key={step.title} type="button" aria-pressed={guideStep === index} onClick={() => setGuideStep(index)} className={`rounded-lg border p-2 text-xs text-left ${guideStep === index ? 'border-ent-bronze bg-white font-semibold' : 'border-ent-line'}`}>{index + 1}. {step.title}</button>)}
+            </div>
+            <div className="rounded-lg bg-white p-3 space-y-2">
+              <h4 className="text-sm font-semibold">{guideSteps[guideStep].title}</h4>
+              <p className="text-sm text-ent-muted">{guideSteps[guideStep].detail}</p>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className="rounded-lg border border-ent-line px-3 py-2 text-xs" onClick={() => {
+                  if (guideStep === 0) setShowNewProvider(true);
+                  if (guideStep === 2) setShowNewRequest(true);
+                  goToSection(guideSteps[guideStep].target);
+                }}>Go to this step</button>
+                <button type="button" className="rounded-lg border border-ent-line px-3 py-2 text-xs" onClick={() => setGuideStep((guideStep + 1) % guideSteps.length)}>{guideStep === 5 ? 'Start again' : 'Next step'}</button>
+              </div>
+            </div>
+            <details className="text-sm"><summary className="cursor-pointer font-semibold">View a real-world example</summary><p className="mt-2">A caregiver reports dizziness after a medication change. Follow urgent escalation protocols when applicable. Locate the physician, confirm the patient relationship, send a clarification request, review the response with authorized clinical staff, and track approved follow-up instructions.</p></details>
+          </div>}
+          {helpOpen && <div id="hcn-clinical-help" className="rounded-lg bg-white p-3 space-y-2">
+            <h4 className="font-semibold text-sm">Clinical Coordination Help</h4>
+            {[
+              ['Does a provider need a staff license?', 'External providers may use the secure request workflow without a regular Haneen staff license.'],
+              ['What does Account not claimed mean?', 'The directory contact has not activated a provider account. Registration and access authorization are separate.'],
+              ['Do I verify a provider every time?', 'Account verification is distinct from individual secure request access, which may expire or be revoked.'],
+              ['Can I send documents?', 'Upload documents to the request and use the authorized sharing action. Internal uploads are not automatically shared externally.'],
+              ['Who can approve clinical decisions?', 'Administrative review is distinct from approval by an appropriately authorized clinical professional.'],
+              ['What if a response is overdue?', 'Review the deadline and request activity and follow your organization’s follow-up or escalation procedure.'],
+            ].map(([question, answer]) => <details key={question} className="border-b border-ent-line pb-2 text-sm"><summary className="cursor-pointer font-medium">{question}</summary><p className="mt-1 text-ent-muted">{answer}</p></details>)}
+            <p className="text-xs font-semibold text-ent-rust">For urgent medical concerns, follow emergency and clinical escalation protocols. Do not wait for an electronic response.</p>
+          </div>}
+        </div>
+      )}
       {error && <p role="alert" className="text-sm text-ent-rust">Could not load clinical coordination data: {error}</p>}
 
       {role === 'director' && taskMetrics && (
@@ -532,7 +601,7 @@ export default function ClinicalCoordinationPanel({
       )}
 
       {/* Provider directory */}
-      <div className="rounded-xl border border-ent-line p-3 space-y-3">
+      <div id="hcn-clinical-directory" className="rounded-xl border border-ent-line p-3 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-sm">Healthcare Provider Directory</h3>
           {role === 'director' && (
@@ -629,12 +698,12 @@ export default function ClinicalCoordinationPanel({
       </div>
 
       {role === 'director' && (
-        <DirectorProviderConversations organizationId={orgId} userId={userId}
-          patients={patients} providers={providers} />
+        <div id="hcn-clinical-conversations"><DirectorProviderConversations organizationId={orgId} userId={userId}
+          patients={patients} providers={providers} /></div>
       )}
 
       {/* Request list */}
-      <section role="region" aria-label="Clinical Requests" className="rounded-xl border border-ent-line p-3 space-y-3">
+      <section id="hcn-clinical-requests" role="region" aria-label="Clinical Requests" className="rounded-xl border border-ent-line p-3 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-sm">Clinical Requests</h3>
           {role === 'director' && (
@@ -807,7 +876,7 @@ export default function ClinicalCoordinationPanel({
       )}
 
       {/* Coordination Plans (Feature 5 -- Advanced Multi-Provider Coordination) */}
-      <div className="rounded-xl border border-ent-line p-3 space-y-3">
+      <div id="hcn-clinical-plans" className="rounded-xl border border-ent-line p-3 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-sm flex items-center gap-1"><Users className="h-4 w-4" /> Coordination Plans</h3>
           {role === 'director' && (
