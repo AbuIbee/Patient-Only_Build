@@ -55,6 +55,7 @@ function staffName(person: Person | undefined): string {
     : 'Caregiver not in current staff roster';
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- Shared deterministic data helper/hook, no mutable component state exported.
 export function buildAttentionRows(
   snapshot: DashboardSources, members: readonly Person[],
   patients: readonly OrgCoveredPatient[], timeZone: string, now: number,
@@ -173,6 +174,7 @@ export function buildAttentionRows(
   return rows.sort((a, b) => a.severity - b.severity || b.occurredAt - a.occurredAt || a.id.localeCompare(b.id));
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- Shared deterministic data helper/hook, no mutable component state exported.
 export function useDirectorCommandCenter(orgId: string, patientIds: readonly string[]) {
   const patientKey = patientIds.join('|');
   const [received, setReceived] = useState<{ orgId: string; snapshot: DashboardSources } | null>(null);
