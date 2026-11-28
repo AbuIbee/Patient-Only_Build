@@ -100,7 +100,7 @@ describe('HCN five Director safety capabilities',()=>{
       escalations:{data:[],error:null},incidents:{data:[],error:null},
       urgentConversations:{data:[],error:null},refreshedAt:NOW,
       safety:{assistance:{data:[safetyAlert],error:null},
-        requiredCare:{data:[required('req','2026-11-28T15:30:00Z','2026-11-28T16:30:00Z')],error:null},
+        requiredCare:{data:[required('req','2026-11-28T15:30:00Z','2026-11-28T16:50:00Z')],error:null},
         handoffReceipts:{data:[handoff('h','clash1','2026-11-28T15:20:00Z')],error:null}},
     } as DashboardSources;
     const rows=buildAttentionRows(data,staff.map(p=>({...p,email:'',id:p.userId,organizationId:'org-a'})) as never,[], 'UTC',NOW);
@@ -128,7 +128,7 @@ describe('HCN five Director safety capabilities',()=>{
     expect(queue).not.toContain('Director Operational Command Center');
     expect(care).toContain('<CaregiverAssistanceAction');
     expect(operations).toContain('focused={focusedVisitId === visit.id}');
-    expect(schedule).toContain('focus={'); // destination-focused schedule contract
+    expect(schedule).toContain('Selected scheduling issue'); // destination-focused schedule contract
     expect(schedule).toContain('Define required patient care before assigning visits');
   });
   it('requires RLS and separately grants only safe writes; all Director changes are audited',()=>{
