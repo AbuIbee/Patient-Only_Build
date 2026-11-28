@@ -59,6 +59,7 @@ test('a real signed-in Director creates a coordination plan, adds a participant,
     const directorNav = page.getByRole('navigation', { name: 'ADMIN OFFICE navigation' });
     await expect(directorNav.getByRole('button', { name: 'Clinical Coordination' })).toBeVisible({ timeout: 20000 });
     await directorNav.getByRole('button', { name: 'Clinical Coordination' }).click();
+    await page.getByRole('navigation', { name: 'Clinical Coordination workspace' }).getByRole('button', { name: 'Care Plans & Tasks', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Coordination Plans' })).toBeVisible({ timeout: 20000 });
 
     // Select the patient in the Coordination Plans section specifically
