@@ -176,7 +176,7 @@ export default function DirectorAttendancePanel({ organizationId, initialView = 
         <p className="text-sm text-ent-ink"><strong>{shown.length}</strong> visits need review.
           Select a visit to see the assigned caregiver, patient, scheduled times, actual times and notes.
         </p>}
-      {!error && <ul aria-label={view === 'exceptions' ? 'Today's actionable visit exceptions' : 'Caregiver attendance records'}
+      {!error && <ul aria-label={view === 'exceptions' ? "Today's actionable visit exceptions" : 'Caregiver attendance records'}
         className="space-y-2">
         {shown.map(visit => <AttendanceRow key={visit.id} visit={visit} exception={byExceptionId.get(visit.id)} />)}
       </ul>}
