@@ -1708,8 +1708,8 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   // The home-page visit exceptions use their separate complete, paginated source.
   const [loadError, setDirectorLoadError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [lic, mem, orgs, covered, inc, hoffs] = await Promise.all([
         getOrgLicense(organizationId),
@@ -1730,12 +1730,30 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       setHandoffs(hoffs.data ?? []);
       const errors = [inc.error, hoffs.error].filter((e): e is string => !!e);
       setDirectorLoadError(errors.length > 0 ? errors[0] : null);
+    } catch (error) {
+      setDirectorLoadError(error instanceof Error ? error.message : 'Could not refresh organizational dashboard information.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [organizationId]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    let active = true;
+    void refresh();
+    // Automatic while visible; returning to the tab fetches immediately.
+    const update = () => {
+      if (active && document.visibilityState === 'visible') void refresh(true);
+    };
+    const interval = window.setInterval(update, 60_000);
+    document.addEventListener('visibilitychange', update);
+    window.addEventListener('focus', update);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', update);
+      window.removeEventListener('focus', update);
+    };
+  }, [refresh]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -1764,7 +1782,11 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       {!loading && loadError && (nav === 'dashboard' || nav === 'scheduling' || nav === 'operations' || nav === 'incidents' || nav === 'reports') && (
         <div role="alert" className="mb-4 p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Some organization data could not be loaded: {loadError} — counts/lists on this page may be incomplete, not confirmed empty.</p>
-          <button type="button" onClick={() => { void refresh(); }} className="text-sm font-semibold text-ent-forest hover:underline flex-shrink-0">Retry</button>
+          {nav === 'dashboard' ? (
+            <span className="text-xs text-ent-muted">Automatic retry is enabled.</span>
+          ) : (
+            <button type="button" onClick={() => { void refresh(); }} className="text-sm font-semibold text-ent-forest hover:underline flex-shrink-0">Retry</button>
+          )}
         </div>
       )}
       {loading ? (
