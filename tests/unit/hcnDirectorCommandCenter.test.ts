@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { OrgVisit } from '../../src/services/organizationDirectorOpsService';
+import type { DashboardSources } from '../../src/services/hcnDirectorDashboardSources';
+import { buildAttentionRows } from '../../src/pages/enterprise/DirectorCommandCenter';
 import {
   dayKey, getVisitExceptions, getCoverageRisks, getMissingVisitNotes, getReadinessFindings,
 } from '../../src/services/hcnDirectorDashboardInsights';
@@ -81,20 +83,67 @@ describe('HCN Director exception-first dashboard', () => {
     expect(getReadinessFindings([person], [], [upcoming], acknowledged, NOW)).toHaveLength(0);
   });
 
-  it('preserves all original homepage sections and appends exactly the selected eight extensions', () => {
+  it('preserves the original homepage and consolidates attention items without duplicate panels', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/pages/enterprise/OrganizationDirectorDashboard.tsx'), 'utf8');
     const panel = readFileSync(resolve(process.cwd(), 'src/pages/enterprise/DirectorCommandCenter.tsx'), 'utf8');
     const existing = ['Director Quick Actions', 'Care Team Inventory', 'Open Incidents', 'Needs Your Attention', 'Recent Staff Activity'];
     for (const heading of existing) expect(source).toContain(heading);
     expect(source.indexOf('Director Quick Actions')).toBeLessThan(source.indexOf('<DirectorCommandCenter'));
     expect(source.indexOf('Recent Staff Activity')).toBeLessThan(source.indexOf('<DirectorCommandCenter'));
-    expect(source).toContain("label=\"Today's Coverage Exceptions\"");
+    expect(source).toContain('<DirectorNeedsAttention command={command}');
+    expect(source).toContain('id="hcn-needs-attention"');
+    expect(source).toContain('label="Today\'s Coverage Exceptions"');
     expect(source).not.toContain('label="Scheduled Visits"');
-    for (const heading of [
-      'Live Caregiver Status', "Today's Visit Exceptions", 'Coverage at Risk',
-      'Director Action Queue', 'Clinical Coordination Follow-Ups',
-      'Visit Documentation Review', 'Staff Readiness', 'Urgent Communications',
-    ]) expect(panel).toContain(heading);
+    expect(panel).toContain('Live Caregiver Status');
+    expect(panel).toContain('Next 48 Hours Coverage');
+    expect(panel).toContain('Clinical Coordination');
+    expect(panel).toContain('Urgent communications');
+    expect(panel).not.toContain('Director Operational Command Center');
+    expect(panel).not.toContain('Office operational time zone');
+    expect(panel).not.toContain('Select your office time zone');
+    expect(panel).not.toContain('hcn-office-timezone');
+    expect(panel).not.toContain('onClick={() => { void reload(); }}');
+    expect(panel).toContain('Intl.DateTimeFormat().resolvedOptions().timeZone');
+    expect(panel).toContain('60_000');
+    expect(panel).toContain("document.addEventListener('visibilitychange', onReturn)");
+    expect(panel).toContain("window.addEventListener('focus', onReturn)");
+  });
+
+  it('merges all actionable feeds into one prioritized Needs Your Attention queue', () => {
+    const safe = <T,>(data: T) => ({ data, error: null });
+    const input = {
+      visits: safe([
+        visit('late', '2026-11-27T16:30:00Z', 'scheduled'),
+        visit('future', '2026-11-27T18:00:00Z', 'scheduled'),
+        visit('note', '2026-11-27T14:00:00Z', 'completed', { actualEnd: '2026-11-27T15:00:00Z' }),
+      ]),
+      activeVisits: safe([]),
+      assignments: safe([]),
+      credentials: safe([]),
+      acknowledgments: safe([]),
+      clinicalRequests: safe([
+        { id: 'c1', patient_id: 'patient-a', title: 'Provider response', status: 'awaiting_response',
+          deadline_at: '2026-11-27T18:00:00Z', updated_at: '', sent_at: null, closed_at: null, cancelled_at: null },
+      ]),
+      coordinationTasks: safe([]),
+      escalations: safe([]),
+      incidents: safe([
+        { id: 'i1', patient_id: 'patient-a', incident_type: 'fall', severity: 'critical',
+          occurred_at: '2026-11-27T15:00:00Z', resolution_status: 'open' },
+      ]),
+      urgentConversations: safe([
+        { id: 'm1', conversation_id: 'conv1', created_at: '2026-11-27T16:50:00Z',
+          sender_id: 'sender', subject: 'Help needed', read_at: null, acknowledged_at: null },
+      ]),
+      refreshedAt: NOW,
+    } as DashboardSources;
+    const items = buildAttentionRows(input, [], [], 'UTC', NOW);
+    expect(new Set(items.map(i => i.category))).toEqual(new Set([
+      'visits', 'coverage', 'documentation', 'clinical', 'incidents', 'messages',
+    ]));
+    expect(items[0].severity).toBe(0);
+    expect(items).toHaveLength(6);
+    expect(items.every(item => item.route && item.title)).toBe(true);
   });
 
   it('reads real RLS-scoped organization visits and fails closed on data truncation', () => {
