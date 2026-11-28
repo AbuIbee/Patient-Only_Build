@@ -55,7 +55,7 @@ function staffName(person: Person | undefined): string {
     : 'Caregiver not in current staff roster';
 }
 
-function buildAttentionRows(
+export function buildAttentionRows(
   snapshot: DashboardSources, members: readonly Person[],
   patients: readonly OrgCoveredPatient[], timeZone: string, now: number,
 ): AttentionRow[] {
@@ -173,7 +173,7 @@ function buildAttentionRows(
   return rows.sort((a, b) => a.severity - b.severity || b.occurredAt - a.occurredAt || a.id.localeCompare(b.id));
 }
 
-export function useDirectorCommandCenter(orgId: string, patientIds: readonly string[], members: readonly Person[]) {
+export function useDirectorCommandCenter(orgId: string, patientIds: readonly string[]) {
   const patientKey = patientIds.join('|');
   const [received, setReceived] = useState<{ orgId: string; snapshot: DashboardSources } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -224,16 +224,12 @@ export function useDirectorCommandCenter(orgId: string, patientIds: readonly str
     };
   }, [orgId, patientKey]);
 
-  const attentionRows = useMemo(
-    () => snapshot ? buildAttentionRows(snapshot, members, [], timeZone, now) : [],
-    [snapshot, members, timeZone, now],
-  );
   const visitExceptions = useMemo(
     () => snapshot?.visits.data ? getVisitExceptions(snapshot.visits.data, timeZone, now) : null,
     [snapshot, timeZone, now],
   );
 
-  return { snapshot, loading, topError, timeZone, now, attentionRows, visitExceptions,
+  return { snapshot, loading, topError, timeZone, now, visitExceptions,
     attentionFilter: filter, setAttentionFilter };
 }
 
