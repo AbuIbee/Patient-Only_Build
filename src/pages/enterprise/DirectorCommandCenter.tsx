@@ -233,6 +233,7 @@ export function buildAttentionRows(
       const incoming = staffName(byMemberId.get(receipt.incoming_caregiver_id));
       rows.push({
         id: 'handoff:' + receipt.id, category: 'handoffs', recordId: receipt.id,
+        relatedVisitId: receipt.incoming_visit_id,
         patientId: receipt.patient_id, startsAt: receipt.acknowledge_by,
         title: item.secondsUntilDue <= 0 ? 'Shift handoff acknowledgment overdue' : 'Handoff acknowledgment due soon',
         detail: (patientNames.get(receipt.patient_id) || 'Patient') +
@@ -339,10 +340,11 @@ function sourceErrors(snapshot: DashboardSources | null): string[] {
   ];
 }
 
-export function DirectorNeedsAttention({ command, members, patients, onNavigate, onOpenVisitExceptions }: {
+export function DirectorNeedsAttention({ command, members, patients, onNavigate, onOpenVisitExceptions, onOpenScheduleRecord }: {
   command: DirectorCommandState; members: Person[]; patients: OrgCoveredPatient[];
   onNavigate: (route: DirectorCommandRoute) => void;
-  onOpenVisitExceptions: () => void;
+  onOpenVisitExceptions: (visitId?: string) => void;
+  onOpenScheduleRecord: (focus: ScheduleFocus) => void;
 }) {
   const { snapshot, topError, timeZone, now, loading, attentionFilter, setAttentionFilter } = command;
   const [visibleCount, setVisibleCount] = useState(7);
@@ -377,7 +379,58 @@ export function DirectorNeedsAttention({ command, members, patients, onNavigate,
         </p>
         : <ul className="hcn-office-activity-list">
           {shown.slice(0, visibleCount).map(row => <li key={row.id}>
-            <button type="button" onClick={() => row.category === 'visits' ? onOpenVisitExceptions() : onNavigate(row.route)}
+            {row.category === 'assistance' && snapshot?.safety?.assistance.data ? (() => {
+              const alert = snapshot.safety.assistance.data.find(a => a.id === row.recordId);
+              const caregiver = members.find(member => member.userId === alert?.created_by);
+              const patient = patients.find(p => p.patientId === alert?.patient_id);
+              return alert ? <DirectorAssistanceActions alert={alert}
+                caregiverName={staffName(caregiver)}
+                caregiverEmail={caregiver?.email ?? null}
+                patientName={patient?.preferredName || patient?.firstName || 'Authorized patient'}
+                onUpdated={command.refreshAfterAction}
+                onOpenCommunications={() => onNavigate('communications')} /> : null;
+            })() : row.category === 'handoffs' && snapshot?.safety?.handoffReceipts.data ? (() => {
+              const receipt = snapshot.safety.handoffReceipts.data.find(r => r.id === row.recordId);
+              if (!receipt) return null;
+              const outgoing = staffName(members.find(m => m.userId === receipt.outgoing_caregiver_id));
+              const incoming = staffName(members.find(m => m.userId === receipt.incoming_caregiver_id));
+              const patient = patients.find(p => p.patientId === receipt.patient_id);
+              const visit = snapshot.visits.data?.find(v => v.id === receipt.incoming_visit_id);
+              return <Dialog>
+                <DialogTrigger className="flex w-full items-start gap-3 rounded-lg border border-ent-line p-3 text-left hover:bg-ent-bg">
+                  <ChevronRight size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  <span className="text-sm font-semibold text-ent-ink">{row.title}
+                    <span className="block text-xs font-normal text-ent-muted">{row.detail}</span>
+                  </span>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogTitle>Incoming shift handoff acknowledgment</DialogTitle>
+                  <DialogDescription>{patient?.preferredName || patient?.firstName || 'Patient'} · Due {formatTime(receipt.acknowledge_by)}</DialogDescription>
+                  <p className="text-sm">Outgoing: <strong>{outgoing}</strong></p>
+                  <p className="text-sm">Incoming: <strong>{incoming}</strong></p>
+                  <p className="whitespace-pre-wrap rounded-lg bg-ent-bg p-3 text-sm">{receipt.handoff_summary}</p>
+                  <p className="text-xs text-ent-muted">
+                    The receiving caregiver must acknowledge the handoff. Director viewing it is not an acknowledgment.
+                  </p>
+                  {visit && <button type="button" onClick={() => onOpenScheduleRecord({
+                    patientId: visit.patientId, startsAt: visit.scheduledStart!,
+                    endsAt: visit.scheduledEnd!, visitId: visit.id,
+                  })} className="rounded-lg border border-ent-line p-2 text-sm font-semibold">Open incoming scheduled shift</button>}
+                </DialogContent>
+              </Dialog>;
+            })() : <button type="button" onClick={() => {
+              if (row.category === 'visits') { onOpenVisitExceptions(row.recordId); return; }
+              if ((row.category === 'coverage' || row.category === 'conflicts') && row.patientId && row.startsAt && row.endsAt) {
+                onOpenScheduleRecord({
+                  patientId: row.patientId, startsAt: row.startsAt, endsAt: row.endsAt,
+                  requirementId: row.id.startsWith('requirement:') ? row.recordId : undefined,
+                  visitId: row.id.startsWith('requirement:') ? undefined : row.recordId,
+                  conflictingVisitId: row.relatedVisitId,
+                });
+                return;
+              }
+              onNavigate(row.route);
+            }}
               className="flex min-w-0 w-full items-start gap-3 text-left rounded-lg hover:bg-ent-bg focus-visible:outline-2 focus-visible:outline-ent-bronze"
               aria-label={row.title + '. ' + row.detail + '. Open ' + row.route}>
               <span className="hcn-office-row-icon hcn-office-row-incident"><ChevronRight size={16} aria-hidden="true"/></span>
@@ -386,7 +439,7 @@ export function DirectorNeedsAttention({ command, members, patients, onNavigate,
                 <span className="block text-xs text-ent-muted">{row.detail}</span>
               </span>
               <span className="hcn-office-status">{row.severity <= 1 ? 'Priority' : 'Follow-up'}</span>
-            </button>
+            </button>}
           </li>)}
           {shown.length > visibleCount && <li>
             <button type="button" onClick={() => setVisibleCount(count => count + 20)}
