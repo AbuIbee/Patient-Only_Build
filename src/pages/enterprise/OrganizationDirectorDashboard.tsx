@@ -1136,16 +1136,16 @@ const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ADMINISTRATION', items: ['applications', 'settings'] },
 ];
 
-function DashboardHome({ organizationId, coveredPatients, members, incidents, handoffs, onNavigate }: {
+function DashboardHome({ organizationId, coveredPatients, members, handoffs, onNavigate }: {
   organizationId: string; coveredPatients: OrgCoveredPatient[];
   members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
-  incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
+  handoffs: OrgShiftHandoff[];
   onNavigate: (key: DirectorNavKey) => void;
 }) {
   const command = useDirectorCommandCenter(organizationId, coveredPatients.map(patient => patient.patientId));
   const activeStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'active').length;
   const invitedStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'invited').length;
-  const openIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').length;
+  const openIncidents = command.snapshot?.incidents.data?.filter(i => i.resolution_status !== 'resolved').length;
   const today = new Date();
   const recentHandoffs = handoffs.slice(0, 5);
 
@@ -1184,8 +1184,10 @@ function DashboardHome({ organizationId, coveredPatients, members, incidents, ha
       <section aria-label="Operational metrics" className="hcn-office-metrics">
         <MetricCard label="Care Team Inventory" value={String(activeStaff + invitedStaff)} icon={Users}
           sub={`${activeStaff} active · ${invitedStaff} pending activation`} onClick={() => onNavigate('staff')} />
-        <MetricCard label="Open Incidents" value={String(openIncidents)} icon={ShieldAlert}
-          sub="need review" onClick={() => onNavigate('incidents')} />
+        <MetricCard label="Open Incidents"
+          value={command.snapshot?.incidents.error || command.topError ? 'Error' : openIncidents === undefined ? '—' : String(openIncidents)}
+          icon={ShieldAlert} sub={command.snapshot?.incidents.error || command.topError ? 'Unable to verify incident count' : 'need review'}
+          onClick={() => onNavigate('incidents')} />
         <MetricCard label="Today's Coverage Exceptions"
           value={command.snapshot?.visits.error || command.topError ? 'Error' : command.visitExceptions ? String(command.visitExceptions.length) : '—'} icon={CalendarClock}
           sub={command.snapshot?.visits.error || command.topError ? 'Unable to verify today’s visits' : 'late check-ins · missed visits · overdue checkouts'}
@@ -1775,7 +1777,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : nav === 'dashboard' ? (
         <DashboardHome organizationId={organizationId} coveredPatients={coveredPatients}
-          members={members} incidents={incidents} handoffs={handoffs} onNavigate={navigate} />
+          members={members} handoffs={handoffs} onNavigate={navigate} />
       ) : nav === 'applications' ? (
         <ApplicationsReviewView organizationId={organizationId} />
       ) : nav === 'staff' ? (
