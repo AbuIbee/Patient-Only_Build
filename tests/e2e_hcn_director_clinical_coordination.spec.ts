@@ -90,19 +90,36 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
     await expect(guide).toBeVisible();
     await page.getByRole('button', { name: 'Help & instructions' }).click();
     await expect(page.locator('#hcn-clinical-help')).toContainText('Do not wait for an electronic response');
-    await page.getByRole('button', { name: 'Help & instructions' }).click();
+    await page.getByRole('button', { name: 'Close help' }).click();
+    const workspace = page.getByRole('navigation', { name: 'Clinical Coordination workspace' });
+    await expect(workspace.getByRole('button')).toHaveCount(7);
+    await workspace.getByRole('button', { name: 'Performance', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Provider response performance' })).toBeVisible();
+    await workspace.getByRole('button', { name: 'Provider Directory', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Healthcare Provider Directory' })).toBeVisible();
     await guide.getByRole('button', { name: /^1\. Add/ }).click();
     await guide.getByRole('button', { name: 'Go to this step' }).click();
     await expect(page.getByPlaceholder('Provider or practice name')).toBeVisible();
     await page.getByRole('button', { name: 'Close form' }).click();
 
     // Add a provider through the real form.
-    await page.getByRole('button', { name: /add provider/i }).click();
+    await page.locator('#hcn-clinical-directory').getByRole('button', { name: /add provider/i }).click();
     await page.getByPlaceholder('Provider or practice name').fill('Dr. E2E Director Flow');
     await page.getByPlaceholder('Secure contact email (used for external access, optional)').fill(`e2e-dirclin-provider-${Date.now()}@example-clinic.test`);
     await page.getByRole('button', { name: /^save provider$/i }).click();
     // Target visible provider-directory row, not an <option> in the separate conversation selector.
     await expect(page.locator('span').filter({ hasText: /^Dr\. E2E Director Flow \(/ })).toBeVisible({ timeout: 15000 });
+
+    // Associate through the dedicated Quick Action and verify the persisted relationship.
+    await page.getByRole('button', { name: /^Associate a patient/ }).click();
+    const association = page.locator('[aria-label="Associate a patient"]');
+    await expect(association).toBeVisible();
+    await association.getByLabel('Healthcare provider').selectOption({ label: 'Dr. E2E Director Flow' });
+    await association.getByLabel('Patient').selectOption({ index: 1 });
+    await association.getByRole('button', { name: 'Save association' }).click();
+    await expect(page.getByLabel('Associated patients for Dr. E2E Director Flow')).toContainText('E2E DirClin Patient nav');
+    await association.getByRole('button', { name: 'Close association form' }).click();
+    await workspace.getByRole('button', { name: 'Clinical Requests', exact: true }).click();
 
     // Create a clinical request through the real form. The Clinical
     // Requests section's own patient/provider selects appear earlier
