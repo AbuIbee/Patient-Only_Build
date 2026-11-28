@@ -26,6 +26,7 @@ type Props = {
   // participant is immediately assignable, instead of only appearing
   // after this panel's own unrelated refresh() happens to re-run.
   planParticipants: CoordinationPlanParticipant[];
+  onMutation?: () => Promise<void>;
 };
 const TYPES: { value: CoordinationTaskKind; label: string }[] = [
   { value: 'medical_review', label: 'Medical review' },
@@ -38,7 +39,7 @@ const EMPTY_FORM = {
   assigneeId: '', dueAt: '', sourceDocumentId: '', dependencyIds: [] as string[],
 };
 
-export default function CoordinationTasksPanel({ planId, patientId, userId, role, active, planParticipants }: Props) {
+export default function CoordinationTasksPanel({ planId, patientId, userId, role, active, planParticipants, onMutation }: Props) {
   const [tasks, setTasks] = useState<CoordinationTask[]>([]);
   const [dependencies, setDependencies] = useState<Record<string, string[]>>({});
   const [staff, setStaff] = useState<EligiblePlanStaff[]>([]);
@@ -97,6 +98,7 @@ export default function CoordinationTasksPanel({ planId, patientId, userId, role
       if (result.error) { toast.error(result.error); return; }
       toast.success(success);
       await refresh();
+      await onMutation?.();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Operation failed.');
     } finally {
