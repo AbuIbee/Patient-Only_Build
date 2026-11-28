@@ -66,6 +66,11 @@ describe('HCN five Director safety capabilities',()=>{
     expect(getUnscheduledCareRequirements([slot],[full],staff,[],NOW)).toHaveLength(1);
     expect(getUnscheduledCareRequirements([slot],[full],[{...staff[0],status:'invited'}],assigned,NOW)).toHaveLength(1);
     expect(getUnscheduledCareRequirements([slot],[full],staff,assigned,NOW)).toHaveLength(0);
+    const firstHalf=visit('one','2026-11-28T16:00:00Z','2026-11-28T16:30:00Z');
+    const secondHalf=visit('two','2026-11-28T16:30:00Z','2026-11-28T17:00:00Z');
+    expect(getUnscheduledCareRequirements([slot],[firstHalf,secondHalf],staff,assigned,NOW)).toHaveLength(0);
+    const gap=visit('gap','2026-11-28T16:31:00Z','2026-11-28T17:00:00Z');
+    expect(getUnscheduledCareRequirements([slot],[firstHalf,gap],staff,assigned,NOW)).toHaveLength(1);
   });
   it('does not fabricate care requirements from visits and honors cancelled or past slots',()=>{
     const slots=[
