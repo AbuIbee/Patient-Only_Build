@@ -261,7 +261,7 @@ BEGIN
       AND cv.scheduled_start>NEW.created_at
       AND cv.scheduled_start<=NEW.created_at+interval '48 hours'
     ORDER BY cv.caregiver_id,cv.scheduled_start ASC
-  ) v ON CONFLICT (handoff_id,incoming_caregiver_id) DO NOTHING;
+  ) v WHERE true ON CONFLICT (handoff_id,incoming_caregiver_id) DO NOTHING;
   RETURN NEW;
 END;
 $fn$;
