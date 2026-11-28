@@ -3,6 +3,7 @@ import {CalendarDays,ChevronLeft,ChevronRight,Loader2,Printer} from 'lucide-reac
 import {toast} from 'sonner';
 import {getOrgStaffPatientAssignmentsResult,type OrgCoveredPatient,type OrgMembershipRow,type StaffPatientAssignment} from '@/services/organizationService';
 import {getOrgVisitsWindow,scheduleAssignedCaregiverVisit,type OrgVisit} from '@/services/organizationDirectorOpsService';
+import { cancelRequiredCareSlot, cancelScheduledVisit, createRequiredCareSlot, recordDirectorVisitAction } from '@/services/hcnDirectorSafetyService';
 
 type CalendarMode='month'|'week'|'day';
 type RepeatMode='once'|'daily'|'weekly';
@@ -13,12 +14,17 @@ const startOfWeek=(d:Date)=>addDays(d,-d.getDay());
 const formatDate=(d:Date)=>d.toLocaleDateString(undefined,{month:'long',year:'numeric'});
 const formatShort=(d:Date)=>d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
 const cls='w-full rounded-xl border border-ent-line bg-white px-3 py-2 text-sm text-ent-ink';
+export interface ScheduleFocus {
+  patientId:string; startsAt:string; endsAt:string;
+  requirementId?:string; visitId?:string; conflictingVisitId?:string;
+}
 interface Props {
+  focus?:ScheduleFocus;
   orgId:string; patients:OrgCoveredPatient[];
   members:Array<OrgMembershipRow & {firstName:string;lastName:string;email:string}>;
   onChanged:()=>void;
 }
-export default function DirectorScheduleCalendar({orgId,patients,members,onChanged}:Props){
+export default function DirectorScheduleCalendar({orgId,patients,members,onChanged,focus}:Props){
   const [mode,setMode]=useState<CalendarMode>('month');
   const [anchor,setAnchor]=useState(()=>new Date());
   const [visits,setVisits]=useState<OrgVisit[]>([]);
@@ -36,6 +42,27 @@ export default function DirectorScheduleCalendar({orgId,patients,members,onChang
   const [saving,setSaving]=useState(false);
   const [statusFilter,setStatusFilter]=useState('all');
   const [staffFilter,setStaffFilter]=useState('all');
+  const [requirementNote,setRequirementNote]=useState('');
+  const [followUpNote,setFollowUpNote]=useState('');
+  const [actionBusy,setActionBusy]=useState(false);
+  const [requirementBusy,setRequirementBusy]=useState(false);
+  const focusKey=focus ? [focus.patientId,focus.startsAt,focus.endsAt,focus.requirementId,
+    focus.visitId,focus.conflictingVisitId].join('|') : '';
+  useEffect(()=>{
+    if(!focus)return;
+    const start=new Date(focus.startsAt),end=new Date(focus.endsAt);
+    if(!Number.isFinite(start.getTime())||!Number.isFinite(end.getTime()))return;
+    setAnchor(start);
+    setMode('day');
+    setPatientId(focus.patientId);
+    setStartTime([start.getHours(),start.getMinutes()].map(n=>String(n).padStart(2,'0')).join(':'));
+    setEndTime([end.getHours(),end.getMinutes()].map(n=>String(n).padStart(2,'0')).join(':'));
+    setRepeat('once');
+    setCaregiverIds([]);
+    setFollowUpNote('');
+  // Explicit focus ID change, not every re-render of the parent Dashboard.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[focusKey]);
   const startDay=mode==='month'?new Date(anchor.getFullYear(),anchor.getMonth(),1):
     mode==='week'?startOfWeek(anchor):new Date(anchor.getFullYear(),anchor.getMonth(),anchor.getDate());
   const endDay=mode==='month'?new Date(anchor.getFullYear(),anchor.getMonth()+1,1):
@@ -108,6 +135,43 @@ export default function DirectorScheduleCalendar({orgId,patients,members,onChang
       if(failure)toast.error(`Scheduling stopped after ${saved} of ${previewCount} visits: ${failure}. Review the calendar before retrying.`);
       else setCaregiverIds([]);
     }finally{setSaving(false);}
+  };
+  const createRequirement=async()=>{
+    if(!patientId||!validWindow||requirementNote.trim().length<6||requirementBusy||intervals.length>31)return;
+    setRequirementBusy(true);let created=0;let error:string|null=null;
+    try{
+      for(const interval of intervals){
+        const result=await createRequiredCareSlot(orgId,patientId,interval.start.toISOString(),interval.end.toISOString(),requirementNote.trim());
+        if(result.error){error=result.error;break;}
+        created++;
+      }
+      if(created){toast.success(created+' care requirement(s) recorded for coverage monitoring.');setRequirementNote('');onChanged();}
+      if(error)toast.error('Stopped after '+created+' required-care slot(s): '+error+'. Review the schedule before retrying.');
+    }finally{setRequirementBusy(false);}
+  };
+  const focusedVisit=focus?.visitId?visits.find(v=>v.id===focus.visitId):undefined;
+  const conflictingVisit=focus?.conflictingVisitId?visits.find(v=>v.id===focus.conflictingVisitId):undefined;
+  const actOnVisit=async(action:'cancel'|'contact_attempted'|'reviewed'|'replacement_planned')=>{
+    if(!focusedVisit||actionBusy||followUpNote.trim().length<10)return;
+    setActionBusy(true);
+    try{
+      const result=action==='cancel'
+        ? await cancelScheduledVisit(focusedVisit.id,followUpNote.trim())
+        : await recordDirectorVisitAction(focusedVisit.id,action,followUpNote.trim());
+      if(result.error){toast.error(result.error);return;}
+      toast.success(action==='cancel'?'Scheduled visit canceled; notify affected staff and arrange coverage.':'Director follow-up recorded with audit history.');
+      setFollowUpNote('');await load();onChanged();
+    }finally{setActionBusy(false);}
+  };
+  const cancelRequirement=async()=>{
+    if(!focus?.requirementId||actionBusy||followUpNote.trim().length<10)return;
+    setActionBusy(true);
+    try{
+      const result=await cancelRequiredCareSlot(focus.requirementId,followUpNote.trim());
+      if(result.error){toast.error(result.error);return;}
+      toast.success('Care requirement canceled with an audit reason.');
+      setFollowUpNote('');onChanged();
+    }finally{setActionBusy(false);}
   };
   const go=(direction:number)=>{
     const d=new Date(anchor);
