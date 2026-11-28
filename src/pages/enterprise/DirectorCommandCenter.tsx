@@ -257,6 +257,8 @@ export function DirectorNeedsAttention({ command, members, patients, onNavigate 
   onNavigate: (route: DirectorCommandRoute) => void;
 }) {
   const { snapshot, topError, timeZone, now, loading, attentionFilter, setAttentionFilter } = command;
+  const [visibleCount, setVisibleCount] = useState(7);
+  useEffect(() => { setVisibleCount(7); }, [attentionFilter]);
   const attentionRows = useMemo(
     () => snapshot ? buildAttentionRows(snapshot, members, patients, timeZone, now) : [],
     [snapshot, members, patients, timeZone, now],
@@ -286,7 +288,7 @@ export function DirectorNeedsAttention({ command, members, patients, onNavigate 
               : 'No outstanding items in this category.'}
         </p>
         : <ul className="hcn-office-activity-list">
-          {shown.slice(0, 7).map(row => <li key={row.id}>
+          {shown.slice(0, visibleCount).map(row => <li key={row.id}>
             <button type="button" onClick={() => onNavigate(row.route)}
               className="flex min-w-0 w-full items-start gap-3 text-left rounded-lg hover:bg-ent-bg focus-visible:outline-2 focus-visible:outline-ent-bronze"
               aria-label={row.title + '. ' + row.detail + '. Open ' + row.route}>
@@ -298,8 +300,11 @@ export function DirectorNeedsAttention({ command, members, patients, onNavigate 
               <span className="hcn-office-status">{row.severity <= 1 ? 'Priority' : 'Follow-up'}</span>
             </button>
           </li>)}
-          {shown.length > 7 && <li className="text-xs text-ent-muted">
-            {shown.length - 7} more issues. Use Show above to filter by category.
+          {shown.length > visibleCount && <li>
+            <button type="button" onClick={() => setVisibleCount(count => count + 20)}
+              className="text-sm font-semibold text-ent-ink hover:underline">
+              Show more ({shown.length - visibleCount} remaining)
+            </button>
           </li>}
         </ul>}
     </div>
