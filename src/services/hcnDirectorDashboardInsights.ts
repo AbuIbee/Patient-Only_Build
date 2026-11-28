@@ -110,3 +110,50 @@ export function getReadinessFindings(
   }
   return results;
 }
+
+
+export type ScheduleConflict = {
+  first: OrgVisit;
+  second: OrgVisit;
+  overlapStart: number;
+  overlapEnd: number;
+};
+
+/**
+ * Derive upcoming conflicts from all organization-scoped visits in the queried time window.
+ * Intervals are half-open [start,end): adjacent visits are not overlapping.
+ * The server must ALSO reject conflicting writes; this read-side detector is advisory.
+ */
+export function getUpcomingScheduleConflicts(
+  visits: readonly OrgVisit[], now: number, horizonHours = 48,
+): ScheduleConflict[] {
+  const horizon = now + horizonHours * 60 * 60_000;
+  const grouped = new Map<string, Array<{ visit: OrgVisit; start: number; end: number }>>();
+  for (const visit of visits) {
+    if (!['scheduled', 'in_progress'].includes(visit.status)) continue;
+    const start = Date.parse(visit.scheduledStart ?? '');
+    const end = Date.parse(visit.scheduledEnd ?? '');
+    if (!visit.caregiverId || !Number.isFinite(start) || !Number.isFinite(end) ||
+        start >= end || end <= now || start > horizon) continue;
+    const row = { visit, start, end };
+    const list = grouped.get(visit.caregiverId) ?? [];
+    list.push(row);
+    grouped.set(visit.caregiverId, list);
+  }
+  const result: ScheduleConflict[] = [];
+  for (const rows of grouped.values()) {
+    rows.sort((a,b) => a.start - b.start || a.visit.id.localeCompare(b.visit.id));
+    for (let i = 0; i < rows.length; i++) {
+      for (let j = i + 1; j < rows.length && rows[j].start < rows[i].end; j++) {
+        if (rows[i].visit.id === rows[j].visit.id) continue;
+        const overlapStart = Math.max(rows[i].start,rows[j].start);
+        const overlapEnd = Math.min(rows[i].end,rows[j].end);
+        if (overlapEnd > now && overlapStart <= horizon) {
+          result.push({ first:rows[i].visit, second:rows[j].visit, overlapStart, overlapEnd });
+        }
+      }
+    }
+  }
+  return result.sort((a,b) => a.overlapStart - b.overlapStart ||
+    a.first.id.localeCompare(b.first.id) || a.second.id.localeCompare(b.second.id));
+}
