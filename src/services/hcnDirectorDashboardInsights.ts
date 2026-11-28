@@ -1,4 +1,5 @@
 import type { OrgVisit } from './organizationDirectorOpsService';
+import type { RequiredCareSlot, HandoffReceipt } from './hcnDirectorSafetyService';
 
 /** A single visit may have several reasons, but appears only once in headline counts. */
 export type VisitException = { visit: OrgVisit; reasons: string[]; level: 'urgent' | 'warning' };
@@ -156,4 +157,61 @@ export function getUpcomingScheduleConflicts(
   }
   return result.sort((a,b) => a.overlapStart - b.overlapStart ||
     a.first.id.localeCompare(b.first.id) || a.second.id.localeCompare(b.second.id));
+}
+
+
+export type UnscheduledCareRequirement = {
+  slot: RequiredCareSlot;
+  reason: 'No valid scheduled visit covers the required time window';
+};
+
+/**
+ * A requirement is only covered if ONE visit fully spans it, is active/valid and
+ * has an active caregiver-to-patient assignment. A 5-minute overlap does not
+ * satisfy a one-hour required-care slot.
+ */
+export function getUnscheduledCareRequirements(
+  slots: readonly RequiredCareSlot[], visits: readonly OrgVisit[],
+  staff: readonly StaffIdentity[], assignments: readonly PatientAssignment[], now: number,
+): UnscheduledCareRequirement[] {
+  const until = now + 48 * 60 * 60_000;
+  const validStaff = new Set(staff.filter(s => s.status === 'active' && s.orgRole === 'caregiver')
+    .map(s => s.userId));
+  const validAssignments = new Set(assignments.filter(a => a.is_active && a.org_role === 'caregiver')
+    .map(a => a.user_id + ':' + a.patient_id));
+  return slots.flatMap(slot => {
+    const start = Date.parse(slot.starts_at);
+    const end = Date.parse(slot.ends_at);
+    if (slot.status !== 'required' || !Number.isFinite(start) || !Number.isFinite(end) ||
+        end <= now || start > until || end <= start) return [];
+    const covered = visits.some(visit => {
+      if (visit.patientId !== slot.patient_id ||
+          !['scheduled', 'in_progress', 'completed'].includes(visit.status)) return false;
+      const visitStart = Date.parse(visit.scheduledStart ?? '');
+      const visitEnd = Date.parse(visit.scheduledEnd ?? '');
+      return Number.isFinite(visitStart) && Number.isFinite(visitEnd) &&
+        visitStart <= start && visitEnd >= end &&
+        validStaff.has(visit.caregiverId) &&
+        validAssignments.has(visit.caregiverId + ':' + visit.patientId);
+    });
+    return covered ? [] : [{
+      slot, reason: 'No valid scheduled visit covers the required time window' as const,
+    }];
+  });
+}
+
+export type OverdueHandoff = { receipt: HandoffReceipt; secondsUntilDue: number };
+/** Alert within 30 minutes of the receiving caregiver's first visit; remain until acknowledged. */
+export function getUnacknowledgedHandoffReceipts(
+  receipts: readonly HandoffReceipt[], visits: readonly OrgVisit[], now: number,
+): OverdueHandoff[] {
+  const activeByVisit = new Map(visits.filter(v => ['scheduled','in_progress'].includes(v.status))
+    .map(v => [v.id, v]));
+  return receipts.flatMap(receipt => {
+    const due = Date.parse(receipt.acknowledge_by);
+    if (receipt.acknowledged_at || !Number.isFinite(due) ||
+        !activeByVisit.has(receipt.incoming_visit_id) ||
+        due > now + 30 * 60_000 || due < now - 7 * 86400000) return [];
+    return [{ receipt, secondsUntilDue: Math.round((due-now)/1000) }];
+  });
 }
