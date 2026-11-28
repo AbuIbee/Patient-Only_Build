@@ -181,6 +181,31 @@ export async function revokeClinicalRequestAccess(requestId: string) {
   return { error: error ? err(error, 'Unable to revoke access for this request') : null };
 }
 
+/** Director review queue; authenticated client and existing RLS remain authoritative.
+ * Stable keyset pagination avoids the API row cap and per-request queries.
+ */
+export async function getOrganizationReviewDocuments(orgId: string) {
+  const documents: ClinicalDocument[] = [];
+  let cursor: string | null = null;
+  const pageSize = 200;
+  for (;;) {
+    let query = supabase.from('hcn_clinical_documents').select('*')
+      .eq('organization_id', orgId)
+      .in('review_status', ['received_unreviewed', 'forwarded_for_clinical_review'])
+      .order('id', { ascending: true }).limit(pageSize);
+    if (cursor) query = query.gt('id', cursor);
+    const { data, error } = await query;
+    if (error) return { data: null, error: err(error, 'Unable to load organization review documents') };
+    const batch = (data ?? []).map(row => mapDocument(row as unknown as Record<string, unknown>));
+    documents.push(...batch);
+    if (batch.length < pageSize) break;
+    const next = batch[batch.length - 1].id;
+    if (!next || next === cursor) return { data: null, error: 'Document queue pagination did not advance.' };
+    cursor = next;
+  }
+  return { data: documents, error: null as string | null };
+}
+
 export async function getDocumentsForPatient(patientId: string) {
   const { data, error } = await supabase.from('hcn_clinical_documents').select('*').eq('patient_id', patientId).order('created_at', { ascending: false });
   if (error) return { data: null, error: err(error, 'Unable to load documents') };
