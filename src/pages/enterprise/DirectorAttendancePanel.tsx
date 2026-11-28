@@ -5,6 +5,7 @@ import {
   getOrgVisitsResult, getOrgVisitsWindow, type OrgVisit,
 } from '@/services/organizationDirectorOpsService';
 import { getVisitExceptions, type VisitException } from '@/services/hcnDirectorDashboardInsights';
+import { cancelScheduledVisit, recordDirectorVisitAction } from '@/services/hcnDirectorSafetyService';
 
 type AttendanceView = 'all' | 'exceptions';
 
@@ -19,11 +20,30 @@ function formatTime(value: string | null): string {
   return Number.isFinite(valueDate.getTime()) ? valueDate.toLocaleString() : 'Not recorded';
 }
 
-function AttendanceRow({ visit, exception }: { visit: OrgVisit; exception?: VisitException }) {
+function AttendanceRow({ visit, exception, focused, onUpdated, onOpenSchedule }: {
+  visit: OrgVisit; exception?: VisitException; focused?: boolean;
+  onUpdated: () => void; onOpenSchedule?: () => void;
+}) {
+  const [open, setOpen] = useState(Boolean(focused));
+  const [note, setNote] = useState('');
+  const [working, setWorking] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  useEffect(() => { if (focused) setOpen(true); }, [focused]);
+  const directorAction = async (action: 'reviewed' | 'contact_attempted' | 'replacement_planned' | 'cancel') => {
+    if (working || note.trim().length < 10) return;
+    setWorking(true); setActionError(null);
+    try {
+      const result = action === 'cancel'
+        ? await cancelScheduledVisit(visit.id, note.trim())
+        : await recordDirectorVisitAction(visit.id, action, note.trim());
+      if (result.error) { setActionError(result.error); return; }
+      setOpen(false); setNote(''); onUpdated();
+    } finally { setWorking(false); }
+  };
   const status = visit.status === 'in_progress' ? 'Working now' : visit.status.replaceAll('_', ' ');
   return (
     <li>
-      <Dialog>
+      <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger className="group relative block w-full space-y-1 rounded-xl border border-ent-line bg-ent-bg p-3 pr-10 text-left hover:bg-ent-pale">
           <span className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm font-semibold text-ent-ink">{visit.caregiverName} — {visit.patientName}</span>
@@ -52,6 +72,33 @@ function AttendanceRow({ visit, exception }: { visit: OrgVisit; exception?: Visi
           <p className="whitespace-pre-wrap break-words rounded-lg bg-ent-bg p-3 text-sm text-ent-ink">
             {visit.visitNotes?.trim() || 'No visit notes recorded.'}
           </p>
+          <div className="space-y-2 rounded-lg border border-ent-line p-3">
+            <h3 className="text-sm font-bold text-ent-ink">Director visit resolution actions</h3>
+            <label className="block text-xs font-semibold text-ent-ink">
+              Audited follow-up notes or cancellation reason (minimum 10 characters)
+              <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2} maxLength={2000}
+                className="mt-1 block w-full rounded-lg border border-ent-line p-2 text-sm"
+                placeholder="Describe the follow-up performed or the cancellation decision." />
+            </label>
+            {actionError && <p role="alert" className="text-xs text-ent-rust">{actionError}</p>}
+            <div className="flex flex-wrap gap-2">
+              {(['contact_attempted','reviewed','replacement_planned'] as const).map(action =>
+                <button key={action} type="button" disabled={working||note.trim().length<10}
+                  onClick={()=>{void directorAction(action);}}
+                  className="rounded-lg border border-ent-line px-2 py-2 text-xs font-semibold disabled:opacity-50">
+                  Record {action.replaceAll('_',' ')}
+                </button>)}
+              {visit.status==='scheduled' && !visit.actualStart && <button type="button"
+                disabled={working||note.trim().length<10} onClick={()=>{void directorAction('cancel');}}
+                className="rounded-lg border border-red-600 px-2 py-2 text-xs font-semibold text-red-800 disabled:opacity-50">
+                Cancel unstarted visit
+              </button>}
+              {onOpenSchedule && <button type="button" onClick={()=>{setOpen(false);onOpenSchedule();}}
+                className="rounded-lg bg-ent-bronze px-3 py-2 text-xs font-semibold text-white">
+                Schedule replacement / correct staffing
+              </button>}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </li>
@@ -62,10 +109,12 @@ function AttendanceRow({ visit, exception }: { visit: OrgVisit; exception?: Visi
  * The main Director KPI opens this screen in exceptions mode, not another homepage webpart.
  * Both modes use the same organization-scoped RLS permissions as existing Care Operations.
  */
-export default function DirectorAttendancePanel({ organizationId, initialView = 'all', onOpenSchedule }: {
+export default function DirectorAttendancePanel({ organizationId, initialView = 'all', onOpenSchedule, onOpenScheduleForVisit, focusedVisitId }: {
   organizationId: string;
   initialView?: AttendanceView;
+  focusedVisitId?: string;
   onOpenSchedule?: () => void;
+  onOpenScheduleForVisit?: (visit: OrgVisit) => void;
 }) {
   const [view, setView] = useState<AttendanceView>(initialView);
   const [visits, setVisits] = useState<OrgVisit[]>([]);
@@ -178,7 +227,10 @@ export default function DirectorAttendancePanel({ organizationId, initialView = 
         </p>}
       {!error && <ul aria-label={view === 'exceptions' ? "Today's actionable visit exceptions" : 'Caregiver attendance records'}
         className="space-y-2">
-        {shown.map(visit => <AttendanceRow key={visit.id} visit={visit} exception={byExceptionId.get(visit.id)} />)}
+        {shown.map(visit => <AttendanceRow key={visit.id} visit={visit}
+          focused={focusedVisitId === visit.id} exception={byExceptionId.get(visit.id)}
+          onUpdated={() => { void refresh(); }}
+          onOpenSchedule={() => onOpenScheduleForVisit ? onOpenScheduleForVisit(visit) : onOpenSchedule?.()} />)}
       </ul>}
     </section>
   );

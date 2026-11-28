@@ -1,4 +1,5 @@
 import type { OrgVisit } from './organizationDirectorOpsService';
+import type { RequiredCareSlot, HandoffReceipt } from './hcnDirectorSafetyService';
 
 /** A single visit may have several reasons, but appears only once in headline counts. */
 export type VisitException = { visit: OrgVisit; reasons: string[]; level: 'urgent' | 'warning' };
@@ -109,4 +110,118 @@ export function getReadinessFindings(
     });
   }
   return results;
+}
+
+
+export type ScheduleConflict = {
+  first: OrgVisit;
+  second: OrgVisit;
+  overlapStart: number;
+  overlapEnd: number;
+};
+
+/**
+ * Derive upcoming conflicts from all organization-scoped visits in the queried time window.
+ * Intervals are half-open [start,end): adjacent visits are not overlapping.
+ * The server must ALSO reject conflicting writes; this read-side detector is advisory.
+ */
+export function getUpcomingScheduleConflicts(
+  visits: readonly OrgVisit[], now: number, horizonHours = 48,
+): ScheduleConflict[] {
+  const horizon = now + horizonHours * 60 * 60_000;
+  const grouped = new Map<string, Array<{ visit: OrgVisit; start: number; end: number }>>();
+  for (const visit of visits) {
+    if (!['scheduled', 'in_progress'].includes(visit.status)) continue;
+    const start = Date.parse(visit.scheduledStart ?? '');
+    const end = Date.parse(visit.scheduledEnd ?? '');
+    if (!visit.caregiverId || !Number.isFinite(start) || !Number.isFinite(end) ||
+        start >= end || end <= now || start > horizon) continue;
+    const row = { visit, start, end };
+    const list = grouped.get(visit.caregiverId) ?? [];
+    list.push(row);
+    grouped.set(visit.caregiverId, list);
+  }
+  const result: ScheduleConflict[] = [];
+  for (const rows of grouped.values()) {
+    rows.sort((a,b) => a.start - b.start || a.visit.id.localeCompare(b.visit.id));
+    for (let i = 0; i < rows.length; i++) {
+      for (let j = i + 1; j < rows.length && rows[j].start < rows[i].end; j++) {
+        if (rows[i].visit.id === rows[j].visit.id) continue;
+        const overlapStart = Math.max(rows[i].start,rows[j].start);
+        const overlapEnd = Math.min(rows[i].end,rows[j].end);
+        if (overlapEnd > now && overlapStart <= horizon) {
+          result.push({ first:rows[i].visit, second:rows[j].visit, overlapStart, overlapEnd });
+        }
+      }
+    }
+  }
+  return result.sort((a,b) => a.overlapStart - b.overlapStart ||
+    a.first.id.localeCompare(b.first.id) || a.second.id.localeCompare(b.second.id));
+}
+
+
+export type UnscheduledCareRequirement = {
+  slot: RequiredCareSlot;
+  reason: 'No valid scheduled visit covers the required time window';
+};
+
+/**
+ * A requirement is only covered if ONE visit fully spans it, is active/valid and
+ * has an active caregiver-to-patient assignment. A 5-minute overlap does not
+ * satisfy a one-hour required-care slot.
+ */
+export function getUnscheduledCareRequirements(
+  slots: readonly RequiredCareSlot[], visits: readonly OrgVisit[],
+  staff: readonly StaffIdentity[], assignments: readonly PatientAssignment[], now: number,
+): UnscheduledCareRequirement[] {
+  const until = now + 48 * 60 * 60_000;
+  const validStaff = new Set(staff.filter(s => s.status === 'active' && s.orgRole === 'caregiver')
+    .map(s => s.userId));
+  const validAssignments = new Set(assignments.filter(a => a.is_active && a.org_role === 'caregiver')
+    .map(a => a.user_id + ':' + a.patient_id));
+  return slots.flatMap(slot => {
+    const start = Date.parse(slot.starts_at);
+    const end = Date.parse(slot.ends_at);
+    if (slot.status !== 'required' || !Number.isFinite(start) || !Number.isFinite(end) ||
+        end <= now || start > until || end <= start) return [];
+    // A required window may be covered by sequential *different* eligible
+    // caregivers. Merge valid scheduled intervals and reject any gap.
+    const windows = visits.flatMap(visit => {
+      if (visit.patientId !== slot.patient_id ||
+          !['scheduled', 'in_progress', 'completed'].includes(visit.status) ||
+          !validStaff.has(visit.caregiverId) ||
+          !validAssignments.has(visit.caregiverId + ':' + visit.patientId)) return [];
+      const visitStart = Date.parse(visit.scheduledStart ?? '');
+      const visitEnd = Date.parse(visit.scheduledEnd ?? '');
+      return Number.isFinite(visitStart) && Number.isFinite(visitEnd) &&
+        visitEnd > start && visitStart < end
+        ? [{ start: Math.max(start, visitStart), end: Math.min(end, visitEnd) }] : [];
+    }).sort((a,b) => a.start - b.start || a.end - b.end);
+    let cursor = start;
+    for (const window of windows) {
+      if (window.start > cursor) break;
+      cursor = Math.max(cursor, window.end);
+      if (cursor >= end) break;
+    }
+    const covered = cursor >= end;
+    return covered ? [] : [{
+      slot, reason: 'No valid scheduled visit covers the required time window' as const,
+    }];
+  });
+}
+
+export type OverdueHandoff = { receipt: HandoffReceipt; secondsUntilDue: number };
+/** Alert within 30 minutes of the receiving caregiver's first visit; remain until acknowledged. */
+export function getUnacknowledgedHandoffReceipts(
+  receipts: readonly HandoffReceipt[], visits: readonly OrgVisit[], now: number,
+): OverdueHandoff[] {
+  const activeByVisit = new Map(visits.filter(v => ['scheduled','in_progress'].includes(v.status))
+    .map(v => [v.id, v]));
+  return receipts.flatMap(receipt => {
+    const due = Date.parse(receipt.acknowledge_by);
+    if (receipt.acknowledged_at || !Number.isFinite(due) ||
+        !activeByVisit.has(receipt.incoming_visit_id) ||
+        due > now + 30 * 60_000 || due < now - 7 * 86400000) return [];
+    return [{ receipt, secondsUntilDue: Math.round((due-now)/1000) }];
+  });
 }

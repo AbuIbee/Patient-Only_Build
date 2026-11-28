@@ -50,7 +50,7 @@ import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import OfficeHeaderTools from './OfficeHeaderTools';
 import DirectorCommandCenter, { DirectorNeedsAttention, useDirectorCommandCenter } from './DirectorCommandCenter';
-import DirectorScheduleCalendar from './DirectorScheduleCalendar';
+import DirectorScheduleCalendar, { type ScheduleFocus } from './DirectorScheduleCalendar';
 import DirectorAttendancePanel from './DirectorAttendancePanel';
 import DirectorOfficeAccessPanel from './DirectorOfficeAccessPanel';
 import DirectorReportBuilder from './DirectorReportBuilder';
@@ -1136,12 +1136,13 @@ const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ADMINISTRATION', items: ['applications', 'settings'] },
 ];
 
-function DashboardHome({ organizationId, coveredPatients, members, handoffs, onNavigate, onOpenVisitExceptions }: {
+function DashboardHome({ organizationId, coveredPatients, members, handoffs, onNavigate, onOpenVisitExceptions, onOpenScheduleRecord }: {
   organizationId: string; coveredPatients: OrgCoveredPatient[];
   members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
   handoffs: OrgShiftHandoff[];
   onNavigate: (key: DirectorNavKey) => void;
-  onOpenVisitExceptions: () => void;
+  onOpenVisitExceptions: (visitId?: string) => void;
+  onOpenScheduleRecord: (focus: ScheduleFocus) => void;
 }) {
   const command = useDirectorCommandCenter(organizationId, coveredPatients.map(patient => patient.patientId));
   const activeStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'active').length;
@@ -1201,7 +1202,8 @@ function DashboardHome({ organizationId, coveredPatients, members, handoffs, onN
             <h2>Needs Your Attention</h2>
           </div>
           <DirectorNeedsAttention command={command} members={members} patients={coveredPatients}
-            onNavigate={onNavigate} onOpenVisitExceptions={onOpenVisitExceptions} />
+            onNavigate={onNavigate} onOpenVisitExceptions={onOpenVisitExceptions}
+            onOpenScheduleRecord={onOpenScheduleRecord} />
         </section>
 
         <section className="hcn-office-card hcn-office-activity-panel">
@@ -1706,6 +1708,8 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   const [loading, setLoading] = useState(true);
   const [nav, setNav] = useOfficeUrlSync<DirectorNavKey>(basePath, DIRECTOR_NAV_KEYS, 'dashboard');
   const [attendanceView, setAttendanceView] = useState<'all' | 'exceptions'>('all');
+  const [focusedVisitId, setFocusedVisitId] = useState<string | undefined>();
+  const [scheduleFocus, setScheduleFocus] = useState<ScheduleFocus | undefined>();
   // Legacy incident and handoff views retain explicit error handling.
   // The home-page visit exceptions use their separate complete, paginated source.
   const [loadError, setDirectorLoadError] = useState<string | null>(null);
@@ -1767,12 +1771,18 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   const initials = (state.currentUser?.firstName?.[0] ?? 'D').toUpperCase();
 
   const navigate = (key: DirectorNavKey) => {
-    if (key === 'operations') setAttendanceView('all');
+    if (key === 'operations') { setAttendanceView('all'); setFocusedVisitId(undefined); }
+    if (key === 'scheduling') setScheduleFocus(undefined);
     setNav(key);
   };
-  const openVisitExceptions = () => {
+  const openVisitExceptions = (visitId?: string) => {
     setAttendanceView('exceptions');
+    setFocusedVisitId(visitId);
     setNav('operations');
+  };
+  const openScheduleRecord = (focus: ScheduleFocus) => {
+    setScheduleFocus(focus);
+    setNav('scheduling');
   };
   const openPatientInformation = (patientId: string) => {
     setSelectedInformationPatientId(patientId);
@@ -1803,7 +1813,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       ) : nav === 'dashboard' ? (
         <DashboardHome organizationId={organizationId} coveredPatients={coveredPatients}
           members={members} handoffs={handoffs} onNavigate={navigate}
-          onOpenVisitExceptions={openVisitExceptions} />
+          onOpenVisitExceptions={openVisitExceptions} onOpenScheduleRecord={openScheduleRecord} />
       ) : nav === 'applications' ? (
         <ApplicationsReviewView organizationId={organizationId} />
       ) : nav === 'staff' ? (
@@ -1816,11 +1826,20 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       ) : nav === 'assignments' ? (
         <AssignmentsCard orgId={organizationId} members={members} />
       ) : nav === 'scheduling' ? (
-        <DirectorScheduleCalendar orgId={organizationId} patients={coveredPatients} members={members} onChanged={() => { void refresh(); }} />
+        <DirectorScheduleCalendar orgId={organizationId} patients={coveredPatients} members={members}
+          focus={scheduleFocus} onChanged={() => { void refresh(); }} />
       ) : nav === 'operations' ? (
         <div className="space-y-4">
           <DirectorAttendancePanel key={organizationId} organizationId={organizationId}
-            initialView={attendanceView} onOpenSchedule={() => navigate('scheduling')} />
+            initialView={attendanceView} focusedVisitId={focusedVisitId}
+            onOpenSchedule={() => navigate('scheduling')}
+            onOpenScheduleForVisit={visit => {
+              if (visit.scheduledStart && visit.scheduledEnd) openScheduleRecord({
+                patientId: visit.patientId, startsAt: visit.scheduledStart,
+                endsAt: visit.scheduledEnd, visitId: visit.id,
+              });
+              else navigate('scheduling');
+            }} />
           <CareOperationsView handoffs={handoffs} loadError={loadError} />
         </div>
       ) : nav === 'incidents' ? (

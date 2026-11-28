@@ -28,6 +28,7 @@ import {
 import { regenerateActivationLink } from '@/services/caregiverRegistrationService';
 import { getMyConversationsResult, createConversation, searchMyConversationsResult, type ConversationSummary } from '@/services/communicationsService';
 import CareConversations, { ConversationThread } from '@/components/communications/CareConversations';
+import CaregiverAssistanceAction from './CaregiverAssistanceAction';
 import { inviteTherapist } from '@/services/therapistConnectionService';
 import { getHelpActivationHistory } from '@/services/helpActivationService';
 import { requestAccountDeletion, cancelAccountDeletionRequest, getMyAccountDeletionRequestsResult, type AccountDeletionRequest } from '@/services/accountDeletionService';
@@ -836,6 +837,10 @@ function DashboardView({ patients, orgId, onNavigate, onOpenVisit, onPatientRegi
             </div>
           </div>
         )}
+        <CaregiverAssistanceAction orgId={orgId}
+          patients={patients.map(p => ({ patientId: p.patientId,
+            name: p.preferredName || (p.firstName + ' ' + p.lastName).trim() }))}
+          suggestedPatientId={nextVisit?.patientId} />
       </Card>
 
       {/* H02 — the FIVE approved summary counts ("assigned patients,

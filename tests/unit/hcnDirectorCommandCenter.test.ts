@@ -162,7 +162,7 @@ describe('HCN Director exception-first dashboard', () => {
     expect(attendance).toContain("getOrgVisitsWindow(");
     expect(attendance).toContain("getVisitExceptions(visits, localZone(), now)");
     const attention = readFileSync(resolve(process.cwd(), 'src/pages/enterprise/DirectorCommandCenter.tsx'), 'utf8');
-    expect(attention).toContain("row.category === 'visits' ? onOpenVisitExceptions() : onNavigate(row.route)");
+    expect(attention).toContain("if (row.category === 'visits') { onOpenVisitExceptions(row.recordId); return; }");
     expect(attendance).toContain('Open Employee Schedule');
     expect(attendance).toContain('No verified late arrivals, missed visits or overdue checkouts today.');
     expect(attendance).not.toContain("visits.filter(v => v.actualStart || v.actualEnd).filter");
