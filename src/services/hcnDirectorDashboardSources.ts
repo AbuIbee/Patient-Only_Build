@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getOrgVisitsWindow, type OrgVisit } from './organizationDirectorOpsService';
 import { getMyConversationsResult } from './communicationsService';
+import { loadDirectorSafetySources, type DirectorSafetySources } from './hcnDirectorSafetyService';
 import type { Credential, PatientAssignment, PrevisitAck } from './hcnDirectorDashboardInsights';
 
 const api = supabase as unknown as SupabaseClient;
@@ -40,6 +41,7 @@ export type DashboardSources = {
   escalations: Result<CareEscalationRow[]>;
   incidents: Result<IncidentRow[]>;
   urgentConversations: Result<UrgentConversationRow[]>;
+  safety: DirectorSafetySources;
   refreshedAt: number;
 };
 
@@ -124,7 +126,7 @@ export async function loadDirectorDashboardSources(
   const end = new Date(now + 3 * 86400000).toISOString();
   const [
     visitsResult, activeVisits, assignments, credentials, clinicalRequests,
-    coordinationTasks, escalations, incidents, urgentConversations,
+    coordinationTasks, escalations, incidents, urgentConversations, safety,
   ] = await Promise.all([
     getOrgVisitsWindow(orgId, start, end),
     readOrgRows<ActiveVisitRow>('caregiver_visits',
@@ -143,6 +145,7 @@ export async function loadDirectorDashboardSources(
     readOrgRows<IncidentRow>('incident_reports',
       'id,patient_id,incident_type,severity,occurred_at,resolution_status', orgId),
     readUrgentConversations(coveredPatientIds, now),
+    loadDirectorSafetySources(orgId, now),
   ]);
   const visits: Result<OrgVisit[]> = {
     data: visitsResult.error ? null : visitsResult.data,
@@ -156,6 +159,6 @@ export async function loadDirectorDashboardSources(
   return {
     visits, activeVisits, assignments, credentials, acknowledgments,
     clinicalRequests, coordinationTasks, escalations, incidents, urgentConversations,
-    refreshedAt: now,
+    safety, refreshedAt: now,
   };
 }
