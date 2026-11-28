@@ -10,7 +10,7 @@ import {
   type CoordinationPlan, type CoordinationPlanParticipant, type CoordinationPlanUpdate,
   getProviders, getProviderPatientAssociations, upsertProvider, setProviderActive, associateProviderWithPatient, getClinicalRequests, createClinicalRequest,
   sendClinicalRequest, resendClinicalRequestInvitation, cancelClinicalRequest, revokeClinicalRequestAccess,
-  getDocumentsForRequest, getRequestEvents, reviewClinicalDocument, clinicalApproveDocument,
+  getDocumentsForRequest, getOrganizationReviewDocuments, getRequestEvents, reviewClinicalDocument, clinicalApproveDocument,
   publishProviderDocumentToPatient,
   attachInternalDocumentToRequest, shareClinicalDocumentWithProvider,
   uploadInternalDocument, getSignedDownloadUrl, sendClinicalRequestNotification,
@@ -57,7 +57,7 @@ export default function ClinicalCoordinationPanel({
   const [guidePreference, setGuidePreference] = useState<{ key: string; expanded: boolean } | null>(null);
   const [guideStep, setGuideStep] = useState(0);
   const [workspaceTab, setWorkspaceTab] = useState('directory');
-  const [reviewRequestIds, setReviewRequestIds] = useState<{ review: string[]; approval: string[] } | null>(null);
+  const [reviewDocuments, setReviewDocuments] = useState<ClinicalDocument[] | null>(null);
   const [requestFilter, setRequestFilter] = useState<'all' | 'overdue' | 'review' | 'approval'>('all');
   const [pendingAccountsOnly, setPendingAccountsOnly] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -147,15 +147,9 @@ export default function ClinicalCoordinationPanel({
         setProviderAssociations(associations.data ?? []);
         try { setProviderAccounts(await listOrgProviderAccounts(orgId)); }
         catch (e) { setError(e instanceof Error ? e.message : 'Provider account status could not load'); }
-        setReviewRequestIds(null);
-        if (!r.error) {
-          const requestDocuments = await Promise.all((r.data ?? []).map(async request => ({ id: request.id, result: await getDocumentsForRequest(request.id) })));
-          if (requestDocuments.some(entry => entry.result.error)) setError('Some request document queues could not be loaded.');
-          else setReviewRequestIds({
-            review: requestDocuments.filter(entry => entry.result.data?.some(item => item.document.reviewStatus === 'received_unreviewed')).map(entry => entry.id),
-            approval: requestDocuments.filter(entry => entry.result.data?.some(item => item.document.reviewStatus === 'forwarded_for_clinical_review')).map(entry => entry.id),
-          });
-        }
+        const queue = await getOrganizationReviewDocuments(orgId);
+        setReviewDocuments(queue.error ? null : queue.data);
+        if (queue.error) setError(queue.error);
         const rep = await getClinicalCoordinationReport(orgId);
         if (!rep.error) setReport(rep.data); else { setReport(null); setError(rep.error); }
         const metrics = await getCoordinationTaskMetrics(orgId);
@@ -534,10 +528,8 @@ export default function ClinicalCoordinationPanel({
     { count: report?.documentsPendingClinicalApproval ?? 0, title: 'Clinical approvals required', detail: 'Coordinate review by an authorized clinical professional.', action: () => { chooseTab('reviews'); setRequestFilter('approval'); } },
   ];
   const shownRequests = requests.filter(r => requestFilter === 'all' ||
-    (requestFilter === 'review' && !!reviewRequestIds?.review.includes(r.id)) ||
-    (requestFilter === 'approval' && !!reviewRequestIds?.approval.includes(r.id)) ||
     (requestFilter === 'overdue' && ['sent', 'response_received'].includes(r.status) && !!r.deadlineAt && new Date(r.deadlineAt).getTime() <= Date.now()));
-  const showRequestList = role !== 'director' || ['requests', 'reviews', 'history'].includes(workspaceTab);
+  const showRequestList = role !== 'director' || ['requests', 'history'].includes(workspaceTab);
   return (
     <section aria-label="Clinical Coordination" className="rounded-2xl border border-ent-line bg-white p-4 space-y-4">
       <div className="flex items-center justify-between gap-2">
@@ -789,6 +781,32 @@ export default function ClinicalCoordinationPanel({
           patients={patients} providers={providers} /></div>
       )}
 
+      {role === 'director' && workspaceTab === 'reviews' && (
+        <section aria-label="Document review and clinical approvals" className="rounded-xl border border-ent-line p-3 space-y-3">
+          <h3 className="font-semibold text-sm">Document Review &amp; Clinical Approvals</h3>
+          <p className="text-sm text-ent-muted">Confirm administrative completeness and coordinate clinical review. Only an authorized clinical professional may approve clinical decisions.</p>
+          <div className="flex flex-wrap gap-2">
+            {([['all', 'All outstanding documents'], ['review', 'Administrative review'], ['approval', 'Clinical approval']] as const).map(([filter, label]) => <button key={filter} type="button" aria-pressed={requestFilter === filter} onClick={() => setRequestFilter(filter)} className="rounded-lg border border-ent-line px-3 py-2 text-xs">{label}</button>)}
+          </div>
+          <label className="block text-xs">Document review notes<input className="block w-full rounded-lg border border-ent-line p-2 text-sm" value={reviewNotes} onChange={e => setReviewNotes(e.target.value)} placeholder="Administrative review notes" /></label>
+          {loading ? <p role="status" className="text-sm">Loading review queue…</p> : reviewDocuments === null ? <p role="alert" className="text-sm text-ent-rust">Review queue unavailable. Refresh to retry.</p> : (() => {
+            const visible = reviewDocuments.filter(doc => requestFilter === 'all' || (requestFilter === 'review' && doc.reviewStatus === 'received_unreviewed') || (requestFilter === 'approval' && doc.reviewStatus === 'forwarded_for_clinical_review'));
+            return visible.length === 0 ? <p className="text-sm text-ent-muted">No authorized documents match this review queue.</p> : <ul className="space-y-2">{visible.map(doc => <li key={doc.id} className="rounded-lg border border-ent-line p-3 space-y-2">
+              <div className="font-semibold text-sm break-words">{doc.originalFilename}</div>
+              <p className="text-xs text-ent-muted">{patients.find(patient => patient.id === doc.patientId)?.name ?? 'Authorized patient record'} · {doc.reviewStatus === 'received_unreviewed' ? 'Awaiting administrative review' : 'Awaiting authorized clinical approval'}</p>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => { void doDownload(doc); }} className="rounded border border-ent-line px-2 py-1 text-xs">Download</button>
+                {doc.reviewStatus === 'received_unreviewed' && <>
+                  <button type="button" disabled={busy} onClick={() => { void doAdministrativeReview(doc.id, 'accepted'); }} className="rounded border border-ent-green px-2 py-1 text-xs">Accept</button>
+                  <button type="button" disabled={busy} onClick={() => { void doAdministrativeReview(doc.id, 'revision_required'); }} className="rounded border border-ent-amber px-2 py-1 text-xs">Needs revision</button>
+                  <button type="button" disabled={busy} onClick={() => { void doAdministrativeReview(doc.id, 'forwarded_for_clinical_review'); }} className="rounded border border-ent-line px-2 py-1 text-xs">Forward for clinical review</button>
+                </>}
+              </div>
+            </li>)}</ul>;
+          })()}
+        </section>
+      )}
+
       {/* Request list */}
       <section hidden={!showRequestList} id="hcn-clinical-requests" role="region" aria-label="Clinical Requests" className="rounded-xl border border-ent-line p-3 space-y-3">
         <div className="flex items-center justify-between">
@@ -798,7 +816,6 @@ export default function ClinicalCoordinationPanel({
           )}
         </div>
         {role === 'director' && <p className="text-xs text-ent-muted">{workspaceTab === 'reviews' ? 'Select a request to review documents and coordinate clinical approval.' : workspaceTab === 'history' ? 'Select a request to view its clinical activity summary.' : 'Create a draft, attach supporting documents securely, then send and track the response.'}</p>}
-        {(requestFilter === 'review' || requestFilter === 'approval') && <p className="text-xs text-ent-muted">{reviewRequestIds === null ? 'Document queues are loading or unavailable.' : 'This list contains matching request-linked documents. Organization totals can also include documents not attached to a request.'}</p>}
         {requestFilter !== 'all' && <button type="button" className="text-xs underline" onClick={() => setRequestFilter('all')}>Show all requests</button>}
         {showNewRequest && role === 'director' && (
           <div className="rounded-lg bg-ent-pale p-3 space-y-2">
