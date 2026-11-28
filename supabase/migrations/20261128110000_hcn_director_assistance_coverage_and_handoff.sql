@@ -282,12 +282,12 @@ RETURNS TABLE(
   id uuid, organization_id uuid, patient_id uuid, handoff_id uuid,
   incoming_caregiver_id uuid, incoming_visit_id uuid,
   acknowledge_by timestamptz, acknowledged_at timestamptz,
-  outgoing_caregiver_id uuid, handoff_created_at timestamptz
+  outgoing_caregiver_id uuid, handoff_created_at timestamptz, handoff_summary text
 )
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO '' AS $fn$
   SELECT t.id,t.organization_id,t.patient_id,t.handoff_id,
     t.incoming_caregiver_id,t.incoming_visit_id,t.acknowledge_by,
-    ack.acknowledged_at,s.author_id,s.created_at
+    ack.acknowledged_at,s.author_id,s.created_at,s.summary
   FROM public.hcn_handoff_receipt_targets t
   JOIN public.shift_handoffs s ON s.id=t.handoff_id
   LEFT JOIN public.shift_handoff_acknowledgments ack
@@ -338,3 +338,74 @@ $fn$;
 CREATE TRIGGER hcn_capture_handoff_on_visit_trg AFTER INSERT ON public.caregiver_visits
 FOR EACH ROW EXECUTE FUNCTION public.hcn_capture_handoff_on_new_visit();
 REVOKE ALL ON FUNCTION public.hcn_capture_handoff_on_new_visit() FROM PUBLIC,anon,authenticated;
+
+
+-- Director can document an operational visit follow-up, but cannot forge caregiver
+-- check-in/out times or alter clinical notes. Each entry is immutable.
+CREATE TABLE public.hcn_director_visit_actions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id uuid NOT NULL REFERENCES public.organizations(id),
+  patient_id uuid NOT NULL REFERENCES public.patients(id),
+  visit_id uuid NOT NULL REFERENCES public.caregiver_visits(id),
+  actor_user_id uuid NOT NULL,
+  action_type text NOT NULL CHECK(action_type IN ('contact_attempted','reviewed','replacement_planned','visit_cancelled')),
+  note text NOT NULL CHECK(char_length(btrim(note)) BETWEEN 10 AND 2000),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX hcn_visit_actions_visit_idx ON public.hcn_director_visit_actions(visit_id,created_at);
+ALTER TABLE public.hcn_director_visit_actions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.hcn_director_visit_actions FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.hcn_director_visit_actions TO authenticated;
+CREATE POLICY hcn_visit_actions_director_read ON public.hcn_director_visit_actions
+FOR SELECT TO authenticated USING (
+  hcn_private.current_director_patient_v1(organization_id,patient_id)
+);
+
+CREATE FUNCTION public.hcn_director_record_visit_action(
+  p_visit uuid,p_action text,p_note text
+) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path TO '' AS $fn$
+DECLARE v public.caregiver_visits%ROWTYPE; v_id uuid;
+BEGIN
+  SELECT * INTO v FROM public.caregiver_visits WHERE id=p_visit;
+  IF v.id IS NULL OR NOT hcn_private.current_director_patient_v1(v.organization_id,v.patient_id) THEN
+    RAISE EXCEPTION 'Visit is unavailable for this Director' USING ERRCODE='42501';
+  END IF;
+  IF p_action NOT IN ('contact_attempted','reviewed','replacement_planned')
+      OR char_length(btrim(coalesce(p_note,''))) NOT BETWEEN 10 AND 2000 THEN
+    RAISE EXCEPTION 'A valid operational action and note (10-2000 characters) are required'
+      USING ERRCODE='22023';
+  END IF;
+  INSERT INTO public.hcn_director_visit_actions(organization_id,patient_id,visit_id,actor_user_id,action_type,note)
+  VALUES(v.organization_id,v.patient_id,v.id,(SELECT auth.uid()),p_action,btrim(p_note))
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.hcn_director_record_visit_action(uuid,text,text) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.hcn_director_record_visit_action(uuid,text,text) TO authenticated;
+
+-- Cancellation is limited to NOT STARTED visits. Do not alter actual attendance.
+-- This permits Director correction of legacy/overlapping scheduled visits.
+CREATE FUNCTION public.hcn_director_cancel_scheduled_visit(
+  p_visit uuid,p_reason text
+) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path TO '' AS $fn$
+DECLARE v public.caregiver_visits%ROWTYPE;
+BEGIN
+  SELECT * INTO v FROM public.caregiver_visits WHERE id=p_visit FOR UPDATE;
+  IF v.id IS NULL OR NOT hcn_private.current_director_patient_v1(v.organization_id,v.patient_id) THEN
+    RAISE EXCEPTION 'Visit is unavailable for this Director' USING ERRCODE='42501';
+  END IF;
+  IF v.status<>'scheduled' OR v.actual_start IS NOT NULL OR v.actual_end IS NOT NULL THEN
+    RAISE EXCEPTION 'Only visits that have not started can be cancelled' USING ERRCODE='23514';
+  END IF;
+  IF char_length(btrim(coalesce(p_reason,''))) NOT BETWEEN 10 AND 2000 THEN
+    RAISE EXCEPTION 'Cancellation reason must contain 10-2000 characters';
+  END IF;
+  UPDATE public.caregiver_visits SET status='canceled',updated_at=now() WHERE id=v.id;
+  INSERT INTO public.hcn_director_visit_actions(organization_id,patient_id,visit_id,actor_user_id,action_type,note)
+  VALUES(v.organization_id,v.patient_id,v.id,(SELECT auth.uid()),'visit_cancelled',btrim(p_reason));
+  RETURN true;
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.hcn_director_cancel_scheduled_visit(uuid,text) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.hcn_director_cancel_scheduled_visit(uuid,text) TO authenticated;
