@@ -56,6 +56,9 @@ export default function ClinicalCoordinationPanel({
   const guideKey = `hcn:clinical-guide:${orgId}:${userId}`;
   const [guidePreference, setGuidePreference] = useState<{ key: string; expanded: boolean } | null>(null);
   const [guideStep, setGuideStep] = useState(0);
+  const [workspaceTab, setWorkspaceTab] = useState('directory');
+  const [requestFilter, setRequestFilter] = useState<'all' | 'overdue' | 'review' | 'approval'>('all');
+  const [pendingAccountsOnly, setPendingAccountsOnly] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const guideExpanded = guidePreference?.key === guideKey ? guidePreference.expanded : true;
   useEffect(() => {
@@ -64,6 +67,9 @@ export default function ClinicalCoordinationPanel({
     try { expanded = localStorage.getItem(guideKey) !== 'collapsed'; } catch { /* Storage unavailable: use default. */ }
     setGuidePreference({ key: guideKey, expanded });
     setGuideStep(0);
+    setWorkspaceTab('directory');
+    setRequestFilter('all');
+    setPendingAccountsOnly(false);
     setHelpOpen(false);
   }, [guideKey, role]);
   const toggleGuide = () => {
@@ -485,7 +491,31 @@ export default function ClinicalCoordinationPanel({
     { title: 'Review documents and obtain clinical approval', detail: 'Open the relevant request and check submitted documents for administrative completeness. Forward clinical decisions to an authorized clinical professional; the Director role alone does not confer clinical approval authority.', target: 'hcn-clinical-requests' },
     { title: 'Complete coordination and follow-up', detail: 'Use coordination plans to assign responsibilities, track tasks and caregiver acknowledgements. Close the plan when applicable requirements are satisfied.', target: 'hcn-clinical-plans' },
   ];
-  const goToSection = (id: string) => document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'auto' });
+  const tabs = [
+    ['directory', 'Provider Directory'], ['requests', 'Clinical Requests'], ['conversations', 'Conversations'],
+    ['reviews', 'Review & Approvals'], ['plans', 'Care Plans & Tasks'], ['performance', 'Performance'], ['history', 'Event History'],
+  ];
+  const chooseTab = (tab: string) => {
+    setWorkspaceTab(tab);
+    setRequestFilter('all');
+    setPendingAccountsOnly(false);
+  };
+  const goToSection = (id: string) => {
+    const target = id === 'hcn-clinical-directory' ? 'directory' : id === 'hcn-clinical-requests' ? 'requests' : id === 'hcn-clinical-conversations' ? 'conversations' : 'plans';
+    chooseTab(target);
+  };
+  const pendingAccounts = providerAccounts.filter(a => a.status === 'pending').length;
+  const attention = [
+    { count: pendingAccounts, title: 'Provider account verification', detail: 'Review professional identity before approving account access.', action: () => { chooseTab('directory'); setPendingAccountsOnly(true); } },
+    { count: report?.requestsOverdue ?? 0, title: 'Provider responses overdue', detail: 'Review the deadline and determine whether follow-up or escalation is needed.', action: () => { chooseTab('requests'); setRequestFilter('overdue'); } },
+    { count: report?.documentsPendingAdministrativeReview ?? 0, title: 'Documents awaiting review', detail: 'Check submitted documents for administrative completeness.', action: () => { chooseTab('reviews'); setRequestFilter('review'); } },
+    { count: report?.documentsPendingClinicalApproval ?? 0, title: 'Clinical approvals required', detail: 'Coordinate review by an authorized clinical professional.', action: () => { chooseTab('reviews'); setRequestFilter('approval'); } },
+  ];
+  const shownRequests = requests.filter(r => requestFilter === 'all' ||
+    (requestFilter === 'review' && r.status === 'pending_review') ||
+    (requestFilter === 'approval' && r.status === 'pending_clinical_approval') ||
+    (requestFilter === 'overdue' && r.status === 'sent' && !!r.deadlineAt && new Date(r.deadlineAt).getTime() < Date.now()));
+  const showRequestList = role !== 'director' || ['requests', 'reviews', 'history'].includes(workspaceTab);
   return (
     <section aria-label="Clinical Coordination" className="rounded-2xl border border-ent-line bg-white p-4 space-y-4">
       <div className="flex items-center justify-between gap-2">
@@ -540,6 +570,28 @@ export default function ClinicalCoordinationPanel({
       )}
       {error && <p role="alert" className="text-sm text-ent-rust">Could not load clinical coordination data: {error}</p>}
 
+      {role === 'director' && <div className="space-y-3">
+        <h3 className="font-semibold text-ent-ink">What would you like to do?</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {[
+            ['Add a healthcare provider', 'Register a physician, therapist or specialist.', () => { chooseTab('directory'); setShowNewProvider(true); }],
+            ['Associate a patient', 'Connect a patient to their healthcare provider.', () => chooseTab('directory')],
+            ['Create clinical request', 'Request records, guidance or clarification.', () => { chooseTab('requests'); setShowNewRequest(true); }],
+            ['Provider conversations', 'Read responses and communicate securely.', () => chooseTab('conversations')],
+          ].map(([title, detail, action]) => <button key={String(title)} type="button" onClick={action as () => void} className="rounded-xl border border-ent-line bg-white p-3 text-left hover:bg-ent-pale"><span className="block font-semibold text-sm">{String(title)}</span><span className="block text-xs text-ent-muted mt-1">{String(detail)}</span></button>)}
+        </div>
+        <section aria-label="Needs Your Attention" className="rounded-xl border border-ent-line p-3 space-y-2">
+          <h3 className="font-semibold text-ent-ink">Needs Your Attention</h3>
+          {attention.filter(item => item.count > 0).map(item => <div key={item.title} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border-l-4 border-ent-amber bg-ent-pale p-3">
+            <div><h4 className="text-sm font-semibold">{item.count} · {item.title}</h4><p className="text-xs text-ent-muted">{item.detail}</p></div>
+            <button type="button" onClick={item.action} className="rounded-lg border border-ent-line bg-white px-3 py-2 text-xs font-semibold">Review {item.title.toLowerCase()}</button>
+          </div>)}
+          {loading ? <p role="status" className="text-xs">Checking outstanding work…</p> : error || !report ? <p className="text-xs text-ent-rust">Some coordination information is unavailable. Do not assume all work is complete.</p> : attention.every(item => item.count === 0) && <p className="text-xs text-ent-muted">No outstanding provider or document items in this summary.</p>}
+        </section>
+        <nav aria-label="Clinical Coordination workspace" className="flex flex-wrap gap-1 border-b border-ent-line pb-2">
+          {tabs.map(([id, label]) => <button type="button" key={id} aria-pressed={workspaceTab === id} onClick={() => chooseTab(id)} className={`rounded-lg px-3 py-2 text-xs ${workspaceTab === id ? 'bg-ent-pale font-semibold border border-ent-line' : 'text-ent-muted'}`}>{label}</button>)}
+        </nav>
+      </div>}
       {role === 'director' && taskMetrics && (
         <div aria-label="Coordination task metrics" className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           {[
@@ -577,7 +629,7 @@ export default function ClinicalCoordinationPanel({
         </div>
       )}
 
-      {role === 'director' && providerMetrics.length > 0 && (
+      {role === 'director' && workspaceTab === 'performance' && (
         <section aria-label="Provider response performance" className="rounded-xl border border-ent-line p-3 space-y-2">
           <h3 className="text-sm font-semibold">Provider response performance</h3>
           <p className="text-xs text-ent-muted">Operational metrics only; hours measure first response since sending.</p>
@@ -601,7 +653,7 @@ export default function ClinicalCoordinationPanel({
       )}
 
       {/* Provider directory */}
-      <div id="hcn-clinical-directory" className="rounded-xl border border-ent-line p-3 space-y-3">
+      <div hidden={role === 'director' && workspaceTab !== 'directory'} id="hcn-clinical-directory" className="rounded-xl border border-ent-line p-3 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-sm">Healthcare Provider Directory</h3>
           {role === 'director' && (
@@ -610,6 +662,8 @@ export default function ClinicalCoordinationPanel({
             </button>
           )}
         </div>
+        {role === 'director' && <p className="text-xs text-ent-muted">Register each healthcare professional once. Manage patient associations when care relationships change. Review account identity before granting access.</p>}
+        {pendingAccountsOnly && <button type="button" className="text-xs underline" onClick={() => setPendingAccountsOnly(false)}>Show all providers</button>}
         {showNewProvider && role === 'director' && (
           <div className="rounded-lg bg-ent-pale p-3 space-y-2">
             <input className="block w-full rounded-lg border border-ent-line p-2 text-sm" placeholder="Provider or practice name"
@@ -646,7 +700,7 @@ export default function ClinicalCoordinationPanel({
           value={providerSearch} onChange={(e) => setProviderSearch(e.target.value)} />
         {loading ? <p role="status" className="text-sm">Loading…</p> : providers.length === 0 ? <p className="text-sm text-ent-muted">No providers in the directory yet.</p> : (
           <ul className="space-y-1">
-            {providers.filter((p) => [p.displayName, p.practiceName, p.specialty].some((value) =>
+            {providers.filter((p) => (!pendingAccountsOnly || providerAccounts.some(a => a.provider_id === p.id && a.status === 'pending')) && [p.displayName, p.practiceName, p.specialty].some((value) =>
               (value ?? '').toLowerCase().includes(providerSearch.toLowerCase().trim())
             )).map((p) => (
               <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-sm border-b border-ent-line/50 pb-2">
@@ -698,18 +752,20 @@ export default function ClinicalCoordinationPanel({
       </div>
 
       {role === 'director' && (
-        <div id="hcn-clinical-conversations"><DirectorProviderConversations organizationId={orgId} userId={userId}
+        <div hidden={workspaceTab !== 'conversations'} id="hcn-clinical-conversations"><p className="text-xs text-ent-muted mb-2">Read secure provider messages and continue conversations when additional information is needed.</p><DirectorProviderConversations organizationId={orgId} userId={userId}
           patients={patients} providers={providers} /></div>
       )}
 
       {/* Request list */}
-      <section id="hcn-clinical-requests" role="region" aria-label="Clinical Requests" className="rounded-xl border border-ent-line p-3 space-y-3">
+      <section hidden={!showRequestList} id="hcn-clinical-requests" role="region" aria-label="Clinical Requests" className="rounded-xl border border-ent-line p-3 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-sm">Clinical Requests</h3>
           {role === 'director' && (
             <button type="button" className="rounded-lg border border-ent-line px-3 py-1 text-xs font-semibold" onClick={() => setShowNewRequest((v) => !v)}>New request</button>
           )}
         </div>
+        {role === 'director' && <p className="text-xs text-ent-muted">{workspaceTab === 'reviews' ? 'Select a request to review documents and coordinate clinical approval.' : workspaceTab === 'history' ? 'Select a request to view its clinical activity summary.' : 'Create a draft, attach supporting documents securely, then send and track the response.'}</p>}
+        {requestFilter !== 'all' && <button type="button" className="text-xs underline" onClick={() => setRequestFilter('all')}>Show all requests</button>}
         {showNewRequest && role === 'director' && (
           <div className="rounded-lg bg-ent-pale p-3 space-y-2">
             <select className="block w-full rounded-lg border border-ent-line p-2 text-sm" value={requestForm.patientId} onChange={(e) => setRequestForm((f) => ({ ...f, patientId: e.target.value }))}>
@@ -733,9 +789,9 @@ export default function ClinicalCoordinationPanel({
             <button type="button" disabled={busy} onClick={() => { void submitNewRequest(); }} className="rounded-lg bg-ent-bronze px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">Create as draft</button>
           </div>
         )}
-        {loading ? <p role="status" className="text-sm">Loading…</p> : requests.length === 0 ? <p className="text-sm text-ent-muted">No clinical requests yet.</p> : (
+        {loading ? <p role="status" className="text-sm">Loading…</p> : shownRequests.length === 0 ? <p className="text-sm text-ent-muted">No matching clinical requests. Create a request when you need information from a healthcare provider.</p> : (
           <ul className="space-y-2">
-            {requests.map((r) => (
+            {shownRequests.map((r) => (
               <li key={r.id} className={`rounded-xl border p-2 cursor-pointer ${selectedRequestId === r.id ? 'border-ent-bronze bg-ent-pale' : 'border-ent-line'}`} onClick={() => { void openRequest(r.id); }}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium">{r.title}</span>
@@ -757,7 +813,7 @@ export default function ClinicalCoordinationPanel({
 
       {/* Request detail */}
       {selectedRequest && (
-        <div className="rounded-xl border border-ent-line p-3 space-y-3">
+        <div hidden={!showRequestList} className="rounded-xl border border-ent-line p-3 space-y-3">
           <h3 className="font-semibold text-sm">{selectedRequest.title} — request, provider replies &amp; documents</h3>
           <section aria-label="Original clinical request" className="rounded-lg border border-ent-line bg-ent-bg p-3 space-y-1">
             <h4 className="text-sm font-semibold text-ent-ink">Original request to provider</h4>
@@ -876,13 +932,14 @@ export default function ClinicalCoordinationPanel({
       )}
 
       {/* Coordination Plans (Feature 5 -- Advanced Multi-Provider Coordination) */}
-      <div id="hcn-clinical-plans" className="rounded-xl border border-ent-line p-3 space-y-3">
+      <div hidden={role === 'director' && workspaceTab !== 'plans'} id="hcn-clinical-plans" className="rounded-xl border border-ent-line p-3 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-sm flex items-center gap-1"><Users className="h-4 w-4" /> Coordination Plans</h3>
           {role === 'director' && (
             <button type="button" className="rounded-lg border border-ent-line px-3 py-1 text-xs font-semibold" onClick={() => setShowNewPlan((v) => !v)}>New plan</button>
           )}
         </div>
+        {role === 'director' && <p className="text-xs text-ent-muted">Use a plan when a patient requires ongoing coordination, assigned responsibilities or follow-up among multiple care professionals.</p>}
         <select className="rounded-lg border border-ent-line p-2 text-sm" value={planPatientId} onChange={(e) => { setPlanPatientId(e.target.value); setSelectedPlanId(null); }}>
           <option value="">Select patient…</option>
           {patients.map((pt) => <option key={pt.id} value={pt.id}>{pt.name}</option>)}
