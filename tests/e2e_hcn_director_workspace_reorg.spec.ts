@@ -54,7 +54,7 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
 
     const header = page.locator('header').first();
     await expect(header.getByText(/E2E Director Navigation/)).toBeVisible();
-    await expect(header.getByRole('button', { name: 'Director’s Assistant' })).toBeVisible();
+    await expect(header.getByRole('button', { name: 'Director’s AI Assistant' })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Director quick actions' }).getByRole('button')).toHaveCount(5);
     await expect(page.getByRole('button', { name: 'Open Assign Caregivers' })).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'Recent caregiver attendance' })).toHaveCount(0);
@@ -71,8 +71,8 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     await page.keyboard.press('Escape');
     await expect(search).toBeHidden();
 
-    await header.getByRole('button', { name: 'Director’s Assistant' }).click();
-    await expect(page.getByRole('dialog', { name: 'Director’s Assistant' }).getByRole('button', { name: 'Ask', exact: true })).toBeVisible();
+    await header.getByRole('button', { name: 'Director’s AI Assistant' }).click();
+    await expect(page.getByRole('dialog', { name: 'Director’s AI Assistant' }).getByRole('button', { name: 'Ask', exact: true })).toBeVisible();
     await page.keyboard.press('Escape');
 
     const headerBox = await header.boundingBox();
@@ -153,7 +153,7 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     // Shared shell's mobile drawer must reflect the same regrouped navigation.
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(header.getByRole('button', { name: 'Search organization patients' })).toBeVisible();
-    await expect(header.getByRole('button', { name: 'Director’s Assistant' })).toBeVisible();
+    await expect(header.getByRole('button', { name: 'Director’s AI Assistant' })).toBeVisible();
     const menuButton = header.getByRole('button', { name: 'Open navigation' });
     await menuButton.click();
     const menu = page.getByRole('dialog', { name: 'Director navigation' });
