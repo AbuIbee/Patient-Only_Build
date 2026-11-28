@@ -151,13 +151,13 @@ export default function DirectorScheduleCalendar({orgId,patients,members,onChang
   };
   const focusedVisit=focus?.visitId?visits.find(v=>v.id===focus.visitId):undefined;
   const conflictingVisit=focus?.conflictingVisitId?visits.find(v=>v.id===focus.conflictingVisitId):undefined;
-  const actOnVisit=async(action:'cancel'|'contact_attempted'|'reviewed'|'replacement_planned')=>{
-    if(!focusedVisit||actionBusy||followUpNote.trim().length<10)return;
+  const actOnVisit=async(action:'cancel'|'contact_attempted'|'reviewed'|'replacement_planned',visitId=focusedVisit?.id)=>{
+    if(!visitId||actionBusy||followUpNote.trim().length<10)return;
     setActionBusy(true);
     try{
       const result=action==='cancel'
-        ? await cancelScheduledVisit(focusedVisit.id,followUpNote.trim())
-        : await recordDirectorVisitAction(focusedVisit.id,action,followUpNote.trim());
+        ? await cancelScheduledVisit(visitId,followUpNote.trim())
+        : await recordDirectorVisitAction(visitId,action,followUpNote.trim());
       if(result.error){toast.error(result.error);return;}
       toast.success(action==='cancel'?'Scheduled visit canceled; notify affected staff and arrange coverage.':'Director follow-up recorded with audit history.');
       setFollowUpNote('');await load();onChanged();
@@ -195,6 +195,74 @@ export default function DirectorScheduleCalendar({orgId,patients,members,onChang
         <button type="button" onClick={()=>window.print()} className="flex items-center gap-1 rounded-lg border border-ent-line px-3 py-2 text-sm print:hidden"><Printer className="h-4 w-4"/>Print</button>
       </div>
     </header>
+    {focus && <section aria-label="Focused operational scheduling record"
+      className="space-y-3 rounded-xl border-2 border-ent-bronze bg-ent-pale p-4">
+      <h3 className="font-bold text-ent-ink">Selected scheduling issue</h3>
+      <p className="text-sm text-ent-text">
+        {patients.find(p=>p.patientId===focus.patientId)?.preferredName ||
+          patients.find(p=>p.patientId===focus.patientId)?.firstName || 'Authorized patient'}
+        {' · '}{new Date(focus.startsAt).toLocaleString()}
+        {' – '}{new Date(focus.endsAt).toLocaleString()}
+      </p>
+      {focus.requirementId && <p className="text-sm font-semibold text-ent-rust">
+        Required care has no fully covering eligible caregiver visit. Select an assigned caregiver below to schedule it.
+      </p>}
+      {focus.visitId && !loading && !focusedVisit &&
+        <p role="alert" className="text-sm text-ent-rust">
+          The selected visit is no longer in this calendar window or is not authorized. Reopen the alert after automatic refresh.
+        </p>}
+      {focusedVisit && <div className="space-y-2">
+        <p className="text-sm font-semibold text-ent-ink">
+          Visit {focusedVisit.id.slice(0,8)} · {focusedVisit.caregiverName} · {focusedVisit.patientName} · {focusedVisit.status.replaceAll('_',' ')}
+        </p>
+        <p className="text-sm text-ent-text">Scheduled {focusedVisit.scheduledStart ? new Date(focusedVisit.scheduledStart).toLocaleString() : 'unknown'}
+          {' – '}{focusedVisit.scheduledEnd ? new Date(focusedVisit.scheduledEnd).toLocaleString() : 'unknown'}</p>
+      </div>}
+      {conflictingVisit && <p className="rounded-lg border border-ent-rust bg-white p-3 text-sm font-semibold text-ent-rust">
+        Conflicts with {conflictingVisit.caregiverName} · {conflictingVisit.patientName} ·
+        {conflictingVisit.scheduledStart ? new Date(conflictingVisit.scheduledStart).toLocaleString() : 'time unavailable'}
+        {' – '}{conflictingVisit.scheduledEnd ? new Date(conflictingVisit.scheduledEnd).toLocaleString() : 'time unavailable'}
+      </p>}
+      {(focus.requirementId || focusedVisit || conflictingVisit) && <div className="space-y-2">
+        <label className="block text-sm font-semibold text-ent-ink">
+          Director's auditable action / cancellation reason (minimum 10 characters)
+          <textarea rows={2} maxLength={2000} className={cls} value={followUpNote}
+            onChange={e=>setFollowUpNote(e.target.value)}
+            placeholder="Describe who was contacted, the decision, or why coverage is no longer needed." />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {focusedVisit && <>
+            {(['contact_attempted','reviewed','replacement_planned'] as const).map(action =>
+              <button key={action} type="button" disabled={actionBusy||followUpNote.trim().length<10}
+                onClick={()=>{void actOnVisit(action);}}
+                className="rounded-lg border border-ent-line bg-white px-3 py-2 text-xs font-semibold disabled:opacity-50">
+                Record {action.replaceAll('_',' ')}
+              </button>)}
+            {focusedVisit.status==='scheduled' && !focusedVisit.actualStart &&
+              <button type="button" disabled={actionBusy||followUpNote.trim().length<10}
+                onClick={()=>{void actOnVisit('cancel');}}
+                className="rounded-lg border border-red-600 bg-white px-3 py-2 text-xs font-semibold text-red-800 disabled:opacity-50">
+                Cancel selected unstarted visit
+              </button>}
+          </>}
+          {conflictingVisit?.status==='scheduled' && !conflictingVisit.actualStart &&
+            <button type="button" disabled={actionBusy||followUpNote.trim().length<10}
+              onClick={()=>{void actOnVisit('cancel',conflictingVisit.id);}}
+              className="rounded-lg border border-red-600 bg-white px-3 py-2 text-xs font-semibold text-red-800 disabled:opacity-50">
+              Cancel conflicting unstarted visit
+            </button>}
+          {focus.requirementId && <button type="button" disabled={actionBusy||followUpNote.trim().length<10}
+            onClick={()=>{void cancelRequirement();}}
+            className="rounded-lg border border-red-600 bg-white px-3 py-2 text-xs font-semibold text-red-800 disabled:opacity-50">
+            Cancel required-care slot (only if care is no longer needed)
+          </button>}
+        </div>
+        <p className="text-xs text-ent-muted">
+          These actions are server-authorized and audited. Canceling a visit does not guarantee a caregiver
+          has been notified. Contact the affected staff and schedule replacement coverage as appropriate.
+        </p>
+      </div>}
+    </section>}
     <section aria-label="Director create schedule" className="space-y-3 rounded-xl border border-ent-line bg-ent-bg p-4 print:hidden">
       <h3 className="font-semibold text-ent-ink">Assign visits to one or more caregivers</h3>
       <div className="grid gap-3 md:grid-cols-3">
@@ -230,6 +298,27 @@ export default function DirectorScheduleCalendar({orgId,patients,members,onChang
             'Maximum 60 appointments per batch.')}</p>}
       <button type="button" disabled={!canSave} onClick={()=>{void save();}}
         className="rounded-xl bg-ent-bronze px-4 py-2 font-semibold text-white disabled:opacity-40">{saving?'Scheduling…':`Schedule ${previewCount} visit${previewCount===1?'':'s'}`}</button>
+      <details className="rounded-xl border border-ent-line bg-white p-3">
+        <summary className="cursor-pointer text-sm font-semibold text-ent-ink">
+          Define required patient care before assigning visits
+        </summary>
+        <p className="mt-2 text-xs text-ent-muted">
+          Reuses the selected patient, dates, start/end time and repeat choices above.
+          Required slots are tracked independently of scheduled visits; the dashboard detects unmet care automatically.
+        </p>
+        <label className="mt-3 block text-sm font-semibold text-ent-ink">
+          Care requirement / staffing instruction
+          <textarea rows={2} className={cls} maxLength={1000}
+            value={requirementNote} onChange={e=>setRequirementNote(e.target.value)}
+            placeholder="Describe the required care and staffing obligation (minimum 6 characters)." />
+        </label>
+        <button type="button"
+          disabled={requirementBusy||!patientId||!validWindow||requirementNote.trim().length<6||intervals.length>31}
+          onClick={()=>{void createRequirement();}}
+          className="mt-2 rounded-lg border border-ent-bronze bg-ent-pale px-3 py-2 text-sm font-semibold text-ent-ink disabled:opacity-50">
+          {requirementBusy?'Saving requirements…':`Record ${intervals.length} required-care slot(s)`}
+        </button>
+      </details>
     </section>
     <section aria-label="Calendar timeline" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
