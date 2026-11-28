@@ -109,11 +109,12 @@ function AttendanceRow({ visit, exception, focused, onUpdated, onOpenSchedule }:
  * The main Director KPI opens this screen in exceptions mode, not another homepage webpart.
  * Both modes use the same organization-scoped RLS permissions as existing Care Operations.
  */
-export default function DirectorAttendancePanel({ organizationId, initialView = 'all', onOpenSchedule, focusedVisitId }: {
+export default function DirectorAttendancePanel({ organizationId, initialView = 'all', onOpenSchedule, onOpenScheduleForVisit, focusedVisitId }: {
   organizationId: string;
   initialView?: AttendanceView;
   focusedVisitId?: string;
   onOpenSchedule?: () => void;
+  onOpenScheduleForVisit?: (visit: OrgVisit) => void;
 }) {
   const [view, setView] = useState<AttendanceView>(initialView);
   const [visits, setVisits] = useState<OrgVisit[]>([]);
@@ -228,7 +229,8 @@ export default function DirectorAttendancePanel({ organizationId, initialView = 
         className="space-y-2">
         {shown.map(visit => <AttendanceRow key={visit.id} visit={visit}
           focused={focusedVisitId === visit.id} exception={byExceptionId.get(visit.id)}
-          onUpdated={() => { void refresh(); }} onOpenSchedule={onOpenSchedule} />)}
+          onUpdated={() => { void refresh(); }}
+          onOpenSchedule={() => onOpenScheduleForVisit ? onOpenScheduleForVisit(visit) : onOpenSchedule?.()} />)}
       </ul>}
     </section>
   );
