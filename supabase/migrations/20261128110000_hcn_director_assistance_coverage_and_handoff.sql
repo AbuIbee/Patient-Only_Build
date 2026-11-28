@@ -273,3 +273,68 @@ COMMENT ON TABLE public.hcn_required_care_slots IS
   'Director-authored mandatory care windows; compares against actual scheduled visits for next 48-hour uncovered-care alerts.';
 COMMENT ON TABLE public.hcn_handoff_receipt_targets IS
   'Immutable designated handoff recipients captured at record creation from future scheduled shifts. Receipt verified separately by shift_handoff_acknowledgments.';
+
+
+-- Handoff acknowledgment receipts are available to Directors without widening
+-- the caregiver-only RLS policy on shift_handoff_acknowledgments.
+CREATE FUNCTION public.hcn_director_handoff_receipts(p_org uuid, p_until timestamptz)
+RETURNS TABLE(
+  id uuid, organization_id uuid, patient_id uuid, handoff_id uuid,
+  incoming_caregiver_id uuid, incoming_visit_id uuid,
+  acknowledge_by timestamptz, acknowledged_at timestamptz,
+  outgoing_caregiver_id uuid, handoff_created_at timestamptz
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO '' AS $fn$
+  SELECT t.id,t.organization_id,t.patient_id,t.handoff_id,
+    t.incoming_caregiver_id,t.incoming_visit_id,t.acknowledge_by,
+    ack.acknowledged_at,s.author_id,s.created_at
+  FROM public.hcn_handoff_receipt_targets t
+  JOIN public.shift_handoffs s ON s.id=t.handoff_id
+  LEFT JOIN public.shift_handoff_acknowledgments ack
+    ON ack.handoff_id=t.handoff_id AND ack.acknowledged_by=t.incoming_caregiver_id
+  WHERE t.organization_id=p_org
+    AND t.acknowledge_by >= now()-interval '7 days'
+    AND t.acknowledge_by <= LEAST(p_until,now()+interval '48 hours')
+    AND hcn_private.current_director_patient_v1(t.organization_id,t.patient_id)
+  ORDER BY t.acknowledge_by,t.id;
+$fn$;
+REVOKE ALL ON FUNCTION public.hcn_director_handoff_receipts(uuid,timestamptz)
+  FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.hcn_director_handoff_receipts(uuid,timestamptz)
+  TO authenticated;
+
+-- If the next shift is scheduled AFTER handoff creation, populate its
+-- acknowledgement expectation as well. Only the most recent relevant handoff
+-- is attached, avoiding stale historical handoffs.
+CREATE FUNCTION public.hcn_capture_handoff_on_new_visit() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO '' AS $fn$
+DECLARE v_handoff public.shift_handoffs%ROWTYPE;
+BEGIN
+  IF NEW.status<>'scheduled' OR NEW.scheduled_start IS NULL THEN RETURN NEW; END IF;
+  SELECT * INTO v_handoff FROM public.shift_handoffs sh
+    WHERE sh.organization_id=NEW.organization_id
+      AND sh.patient_id=NEW.patient_id
+      AND sh.author_id IS DISTINCT FROM NEW.caregiver_id
+      AND sh.created_at<=NEW.scheduled_start
+      AND sh.created_at>=NEW.scheduled_start-interval '48 hours'
+    ORDER BY sh.created_at DESC LIMIT 1;
+  IF v_handoff.id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.staff_patient_assignments spa
+    JOIN public.organization_memberships m
+      ON m.organization_id=spa.organization_id AND m.user_id=spa.user_id
+       AND m.org_role='caregiver' AND m.status='active'
+    WHERE spa.organization_id=NEW.organization_id AND spa.patient_id=NEW.patient_id
+      AND spa.user_id=NEW.caregiver_id AND spa.org_role='caregiver' AND spa.is_active
+  ) THEN
+    INSERT INTO public.hcn_handoff_receipt_targets(
+      organization_id,patient_id,handoff_id,incoming_caregiver_id,incoming_visit_id,acknowledge_by
+    ) VALUES(NEW.organization_id,NEW.patient_id,v_handoff.id,
+      NEW.caregiver_id,NEW.id,NEW.scheduled_start)
+    ON CONFLICT(handoff_id,incoming_caregiver_id) DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+CREATE TRIGGER hcn_capture_handoff_on_visit_trg AFTER INSERT ON public.caregiver_visits
+FOR EACH ROW EXECUTE FUNCTION public.hcn_capture_handoff_on_new_visit();
+REVOKE ALL ON FUNCTION public.hcn_capture_handoff_on_new_visit() FROM PUBLIC,anon,authenticated;
