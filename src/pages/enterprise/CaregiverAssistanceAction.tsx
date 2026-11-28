@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, LifeBuoy } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import {
@@ -11,6 +11,8 @@ export default function CaregiverAssistanceAction({
   orgId, patients, suggestedPatientId,
 }: { orgId: string; patients: PatientChoice[]; suggestedPatientId?: string }) {
   const [patientId, setPatientId] = useState(suggestedPatientId ?? patients[0]?.patientId ?? '');
+  const currentPatientRef = useRef(patientId);
+  currentPatientRef.current = patientId;
   const [reason, setReason] = useState('');
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -21,9 +23,11 @@ export default function CaregiverAssistanceAction({
     if (suggestedPatientId && patients.some(p => p.patientId === suggestedPatientId))
       setPatientId(suggestedPatientId);
   }, [suggestedPatientId, patients]);
+  useEffect(() => { setAlerts([]); setLastConfirmed(null); setError(null); }, [patientId,orgId]);
   const refresh = useCallback(async () => {
     if (!patientId) return;
     const result = await getCaregiverAssistanceAlerts(orgId, patientId);
+    if (currentPatientRef.current !== patientId) return;
     if (result.error) setError(result.error);
     else { setAlerts(result.data ?? []); setError(null); setLastConfirmed(Date.now()); }
   }, [orgId, patientId]);
@@ -52,7 +56,7 @@ export default function CaregiverAssistanceAction({
     } finally { setSending(false); }
   };
   if (!patients.length) return null;
-  const unresolved = alerts.filter(a => a.status !== 'resolved');
+  const unresolved = alerts.filter(a => a.patient_id === patientId && a.status !== 'resolved');
   return <div className="mt-3 space-y-2 rounded-xl border border-ent-line bg-ent-pale p-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-2">
