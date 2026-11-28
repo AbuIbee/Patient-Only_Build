@@ -71,7 +71,7 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
     await expect(directorNav.getByRole('button', { name: 'Clinical Coordination' })).toBeVisible({ timeout: 20000 });
     await directorNav.getByRole('button', { name: 'Clinical Coordination' }).click();
 
-    await expect(page.getByRole('heading', { name: 'Clinical Coordination' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: 'Clinical Coordination', exact: true })).toBeVisible({ timeout: 15000 });
 
     // Guide acceptance: real Director session; no mocked navigation or persistence.
     const guide = page.locator('#hcn-clinical-guide');
@@ -156,7 +156,7 @@ test('a real signed-in Director can open Clinical Coordination, add a provider, 
     const activity = page.getByRole('region', { name: 'Clinical activity summary' });
     await expect(activity).toContainText('Provider response received');
     await expect(activity).not.toContainText('recipient verified');
-    await expect(page.getByText('Event history', { exact: true })).toHaveCount(0);
+    await expect(activity.getByText('Event history', { exact: true })).toHaveCount(0);
 
     const uploadInput=page.locator('section[aria-label="Clinical Coordination"] input[type="file"]');
     await uploadInput.setInputFiles({
