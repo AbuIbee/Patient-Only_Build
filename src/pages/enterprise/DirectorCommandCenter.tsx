@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Clock3, Users } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import DirectorAssistanceActions from './DirectorAssistanceActions';
+import type { ScheduleFocus } from './DirectorScheduleCalendar';
+import { getUpcomingScheduleConflicts, getUnscheduledCareRequirements, getUnacknowledgedHandoffReceipts } from '@/services/hcnDirectorDashboardInsights';
 import type { OrgCoveredPatient, OrgMembershipRow } from '@/services/organizationService';
 import { type DashboardSources, loadDirectorDashboardSources } from '@/services/hcnDirectorDashboardSources';
 import {
@@ -11,19 +15,24 @@ export type DirectorCommandRoute =
   'operations' | 'scheduling' | 'staff' | 'clinical' | 'incidents' |
   'communications' | 'applications' | 'assignments' | 'patients';
 export type AttentionCategory =
-  'all' | 'visits' | 'coverage' | 'incidents' | 'clinical' | 'documentation' | 'staff' | 'messages';
+  'all' | 'assistance' | 'visits' | 'coverage' | 'conflicts' | 'handoffs' | 'incidents' | 'clinical' | 'documentation' | 'staff' | 'messages';
 
 type Person = OrgMembershipRow & { firstName: string; lastName: string; email: string };
 export type AttentionRow = {
   id: string; category: Exclude<AttentionCategory, 'all'>;
   title: string; detail: string; route: DirectorCommandRoute;
   severity: 0 | 1 | 2 | 3; occurredAt: number;
+  recordId?: string; relatedVisitId?: string; patientId?: string;
+  startsAt?: string; endsAt?: string;
 };
 
 const CLOSED_REQUESTS = new Set(['draft', 'closed', 'cancelled', 'canceled', 'completed', 'fulfilled']);
 const CLOSED_TASKS = new Set(['completed', 'cancelled', 'canceled', 'approved', 'closed']);
 const CATEGORIES: { key: AttentionCategory; label: string }[] = [
   { key: 'all', label: 'All issues' },
+  { key: 'assistance', label: 'Caregiver needs help' },
+  { key: 'conflicts', label: 'Overlapping schedules' },
+  { key: 'handoffs', label: 'Handoff acknowledgment' },
   { key: 'visits', label: 'Visit exceptions' },
   { key: 'coverage', label: 'Coverage' },
   { key: 'incidents', label: 'Incidents' },
@@ -73,7 +82,9 @@ export function buildAttentionRows(
   if (visits) {
     for (const item of getVisitExceptions(visits, timeZone, now)) {
       rows.push({
-        id: 'visit:' + item.visit.id, category: 'visits',
+        id: 'visit:' + item.visit.id, category: 'visits', recordId: item.visit.id,
+        patientId: item.visit.patientId, startsAt: item.visit.scheduledStart ?? undefined,
+        endsAt: item.visit.scheduledEnd ?? undefined,
         title: item.reasons.join(' / '),
         detail: item.visit.caregiverName + ' · ' + item.visit.patientName + ' · ' + formatTime(item.visit.scheduledStart),
         route: 'operations', severity: item.level === 'urgent' ? 0 : 1,
@@ -93,7 +104,9 @@ export function buildAttentionRows(
   if (visits && snapshot.assignments.data) {
     for (const risk of getCoverageRisks(visits, staff, snapshot.assignments.data, now)) {
       rows.push({
-        id: 'coverage:' + risk.visit.id, category: 'coverage',
+        id: 'coverage:' + risk.visit.id, category: 'coverage', recordId: risk.visit.id,
+        patientId: risk.visit.patientId, startsAt: risk.visit.scheduledStart ?? undefined,
+        endsAt: risk.visit.scheduledEnd ?? undefined,
         title: risk.reason,
         detail: risk.visit.caregiverName + ' · ' + risk.visit.patientName + ' · ' + formatTime(risk.visit.scheduledStart),
         route: 'scheduling', severity: 1,
@@ -168,6 +181,65 @@ export function buildAttentionRows(
         title: 'Urgent message awaiting acknowledgment',
         detail: message.subject + ' · Received ' + formatTime(message.created_at),
         route: 'communications', severity: 0, occurredAt: Date.parse(message.created_at) || now,
+      });
+    }
+  }
+  // P0 assistance alerts always rank above ordinary visit issues.
+  const safety = snapshot.safety;
+  if (safety?.assistance.data) {
+    for (const alert of safety.assistance.data) {
+      if (alert.status === 'resolved') continue;
+      rows.push({
+        id: 'assistance:' + alert.id, category: 'assistance', recordId: alert.id,
+        patientId: alert.patient_id, title: 'Caregiver assistance request',
+        detail: 'Director action needed · ' + formatTime(alert.created_at),
+        route: 'communications', severity: 0, occurredAt: Date.parse(alert.created_at) || now,
+      });
+    }
+  }
+  if (safety?.requiredCare.data && visits && snapshot.assignments.data) {
+    for (const item of getUnscheduledCareRequirements(
+      safety.requiredCare.data, visits, staff, snapshot.assignments.data, now)) {
+      rows.push({
+        id: 'requirement:' + item.slot.id, category: 'coverage',
+        recordId: item.slot.id, patientId: item.slot.patient_id,
+        startsAt: item.slot.starts_at, endsAt: item.slot.ends_at,
+        title: 'Required care has no complete, valid scheduled visit',
+        detail: (patientNames.get(item.slot.patient_id) || 'Patient') + ' · ' +
+          formatTime(item.slot.starts_at) + ' – ' + formatTime(item.slot.ends_at),
+        route: 'scheduling', severity: 0, occurredAt: Date.parse(item.slot.starts_at),
+      });
+    }
+  }
+  if (visits) {
+    for (const pair of getUpcomingScheduleConflicts(visits, now)) {
+      rows.push({
+        id: 'conflict:' + pair.first.id + ':' + pair.second.id, category: 'conflicts',
+        recordId: pair.first.id, relatedVisitId: pair.second.id,
+        patientId: pair.first.patientId, startsAt: pair.first.scheduledStart ?? undefined,
+        endsAt: pair.first.scheduledEnd ?? undefined,
+        title: 'Caregiver has overlapping visits',
+        detail: pair.first.caregiverName + ' · ' + pair.first.patientName + ' / ' +
+          pair.second.patientName + ' · Conflict ' + formatTime(new Date(pair.overlapStart).toISOString()),
+        route: 'scheduling', severity: 1, occurredAt: pair.overlapStart,
+      });
+    }
+  }
+  if (safety?.handoffReceipts.data && visits) {
+    const byMemberId = new Map(members.map(member => [member.userId, member]));
+    for (const item of getUnacknowledgedHandoffReceipts(safety.handoffReceipts.data, visits, now)) {
+      const receipt = item.receipt;
+      const outgoing = staffName(byMemberId.get(receipt.outgoing_caregiver_id));
+      const incoming = staffName(byMemberId.get(receipt.incoming_caregiver_id));
+      rows.push({
+        id: 'handoff:' + receipt.id, category: 'handoffs', recordId: receipt.id,
+        patientId: receipt.patient_id, startsAt: receipt.acknowledge_by,
+        title: item.secondsUntilDue <= 0 ? 'Shift handoff acknowledgment overdue' : 'Handoff acknowledgment due soon',
+        detail: (patientNames.get(receipt.patient_id) || 'Patient') +
+          ' · Outgoing: ' + outgoing + ' · Incoming: ' + incoming +
+          ' · Due ' + formatTime(receipt.acknowledge_by),
+        route: 'operations', severity: item.secondsUntilDue <= 0 ? 1 : 2,
+        occurredAt: Date.parse(receipt.acknowledge_by),
       });
     }
   }
