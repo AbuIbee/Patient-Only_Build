@@ -96,7 +96,7 @@ describe('HCN Director exception-first dashboard', () => {
     expect(source).not.toContain('label="Scheduled Visits"');
     expect(panel).toContain('Live Caregiver Status');
     expect(panel).toContain('Next 48 Hours Coverage');
-    expect(panel).toContain('Clinical Coordination');
+    expect(panel).toContain('Clinical coordination');
     expect(panel).toContain('Urgent communications');
     expect(panel).not.toContain('Director Operational Command Center');
     expect(panel).not.toContain('Office operational time zone');
