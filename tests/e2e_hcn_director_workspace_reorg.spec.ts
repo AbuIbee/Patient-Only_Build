@@ -87,7 +87,7 @@ test('Director sidebar grouping, patient/staff order, consolidated settings and 
     // Clinical Coordination is a top-priority Organization destination.
     await nav.getByRole('button', { name: 'Clinical Coordination' }).click();
     await expect(page).toHaveURL(/\/Professional\/Admin\/clinical$/i);
-    await expect(page.getByRole('heading', { name: 'Clinical Coordination' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Clinical Coordination', exact: true })).toBeVisible();
 
     expect((await nav.locator('button').allTextContents()).map(t => t.trim())).toEqual([
       'Director Dashboard', 'Clinical Coordination', 'Staff Management', 'Patient Management', 'Employee Schedule',
