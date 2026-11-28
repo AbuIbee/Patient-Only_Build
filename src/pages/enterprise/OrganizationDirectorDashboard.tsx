@@ -26,8 +26,8 @@ import {
   getApplicationDocuments, getSignedDocumentUrl,
 } from '@/services/professionalApplicationService';
 import {
-  getOrgVisitsResult, getOrgIncidentReportsResult, getOrgShiftHandoffsResult, resolveOrgIncidentReport,
-  type OrgVisit, type OrgIncidentReport, type OrgShiftHandoff, type IncidentResolutionStatus,
+  getOrgIncidentReportsResult, getOrgShiftHandoffsResult, resolveOrgIncidentReport,
+  type OrgIncidentReport, type OrgShiftHandoff, type IncidentResolutionStatus,
 } from '@/services/organizationDirectorOpsService';
 import {
   getMyOrganizationOriginatingQuoteId, getMyEnterpriseBillingStatus, startEnterpriseCheckout, openEnterpriseBillingPortal,
@@ -49,6 +49,7 @@ import { EnterpriseOfficeShell, OfficeCard, type OfficeNavItem, type OfficeNavGr
 import CareEscalationPanel from './CareEscalationPanel';
 import ClinicalCoordinationPanel from './ClinicalCoordinationPanel';
 import OfficeHeaderTools from './OfficeHeaderTools';
+import DirectorCommandCenter, { DirectorNeedsAttention, useDirectorCommandCenter } from './DirectorCommandCenter';
 import DirectorScheduleCalendar from './DirectorScheduleCalendar';
 import DirectorAttendancePanel from './DirectorAttendancePanel';
 import DirectorOfficeAccessPanel from './DirectorOfficeAccessPanel';
@@ -1135,18 +1136,19 @@ const DIRECTOR_NAV_GROUPS: OfficeNavGroup<DirectorNavKey>[] = [
   { label: 'ADMINISTRATION', items: ['applications', 'settings'] },
 ];
 
-function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
+function DashboardHome({ organizationId, coveredPatients, members, handoffs, onNavigate, onOpenVisitExceptions }: {
+  organizationId: string; coveredPatients: OrgCoveredPatient[];
   members: (OrgMembershipRow & { firstName: string; lastName: string; email: string })[];
-  visits: OrgVisit[]; incidents: OrgIncidentReport[]; handoffs: OrgShiftHandoff[];
+  handoffs: OrgShiftHandoff[];
   onNavigate: (key: DirectorNavKey) => void;
+  onOpenVisitExceptions: () => void;
 }) {
+  const command = useDirectorCommandCenter(organizationId, coveredPatients.map(patient => patient.patientId));
   const activeStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'active').length;
   const invitedStaff = members.filter((m) => m.orgRole !== 'director' && m.status === 'invited').length;
-  const openIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').length;
-  const scheduledVisits = visits.filter((v) => v.status === 'scheduled' || v.status === 'in_progress').length;
+  const openIncidents = command.snapshot?.incidents.data?.filter(i => i.resolution_status !== 'resolved').length;
   const today = new Date();
   const recentHandoffs = handoffs.slice(0, 5);
-  const recentIncidents = incidents.filter((i) => i.resolutionStatus !== 'resolved').slice(0, 5);
 
   return (
     <div className="hcn-office-dashboard space-y-5">
@@ -1183,34 +1185,23 @@ function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
       <section aria-label="Operational metrics" className="hcn-office-metrics">
         <MetricCard label="Care Team Inventory" value={String(activeStaff + invitedStaff)} icon={Users}
           sub={`${activeStaff} active · ${invitedStaff} pending activation`} onClick={() => onNavigate('staff')} />
-        <MetricCard label="Open Incidents" value={String(openIncidents)} icon={ShieldAlert}
-          sub="need review" onClick={() => onNavigate('incidents')} />
-        <MetricCard label="Scheduled Visits" value={String(scheduledVisits)} icon={CalendarClock}
-          sub="upcoming or in progress" onClick={() => onNavigate('scheduling')} />
+        <MetricCard label="Open Incidents"
+          value={command.snapshot?.incidents.error || command.topError ? 'Error' : openIncidents === undefined ? '—' : String(openIncidents)}
+          icon={ShieldAlert} sub={command.snapshot?.incidents.error || command.topError ? 'Unable to verify incident count' : 'need review'}
+          onClick={() => onNavigate('incidents')} />
+        <MetricCard label="Today's Coverage Exceptions"
+          value={command.snapshot?.visits.error || command.topError ? 'Error' : command.visitExceptions ? String(command.visitExceptions.length) : '—'} icon={CalendarClock}
+          sub={command.snapshot?.visits.error || command.topError ? 'Unable to verify today’s visits' : 'late check-ins · missed visits · overdue checkouts'}
+          onClick={onOpenVisitExceptions} />
       </section>
 
       <div className="hcn-office-activity">
-        <section className="hcn-office-card hcn-office-activity-panel">
+        <section id="hcn-needs-attention" className="hcn-office-card hcn-office-activity-panel">
           <div className="hcn-office-panel-header">
             <h2>Needs Your Attention</h2>
-            <button type="button" onClick={() => onNavigate('incidents')}>View all incidents <ChevronRight size={15} aria-hidden="true" /></button>
           </div>
-          {recentIncidents.length === 0 ? (
-            <p className="text-sm text-ent-text">No unresolved incidents across your organization right now.</p>
-          ) : (
-            <ul className="hcn-office-activity-list">
-              {recentIncidents.map(incident => (
-                <li key={incident.id}>
-                  <span className="hcn-office-row-icon hcn-office-row-incident"><ShieldAlert size={19} aria-hidden="true" /></span>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-ent-ink capitalize">{incident.incidentType.replaceAll('_', ' ')} — {incident.patientName}</p>
-                    <p className="text-xs text-ent-muted">{new Date(incident.occurredAt).toLocaleString()}</p>
-                  </div>
-                  <span className="hcn-office-status">{incident.severity}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+          <DirectorNeedsAttention command={command} members={members} patients={coveredPatients}
+            onNavigate={onNavigate} onOpenVisitExceptions={onOpenVisitExceptions} />
         </section>
 
         <section className="hcn-office-card hcn-office-activity-panel">
@@ -1236,6 +1227,10 @@ function DashboardHome({ members, visits, incidents, handoffs, onNavigate }: {
           )}
         </section>
       </div>
+
+      {/* Keep the original webpart order. Only unique operational snapshots appear below. */}
+      <DirectorCommandCenter members={members} patients={coveredPatients}
+        command={command} onNavigate={onNavigate} />
     </div>
   );
 }
@@ -1706,29 +1701,23 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   const [coveredCount, setCoveredCount] = useState(0);
   const [coveredPatients, setCoveredPatients] = useState<OrgCoveredPatient[]>([]);
   const [selectedInformationPatientId, setSelectedInformationPatientId] = useState<string | null>(null);
-  const [visits, setVisits] = useState<OrgVisit[]>([]);
   const [incidents, setIncidents] = useState<OrgIncidentReport[]>([]);
   const [handoffs, setHandoffs] = useState<OrgShiftHandoff[]>([]);
   const [loading, setLoading] = useState(true);
   const [nav, setNav] = useOfficeUrlSync<DirectorNavKey>(basePath, DIRECTOR_NAV_KEYS, 'dashboard');
-  // MMA-CODEX-011 finding 011-03 (NAV-06/F-18, P1): getOrgVisits/
-  // getOrgIncidentReports/getOrgShiftHandoffs (all plain) discarded
-  // their error and returned [] on failure, which Scheduling Oversight
-  // (and Incidents & Escalations / handoff-adjacent views) then
-  // rendered as an authoritative "no visits/incidents/handoffs" --
-  // independently reproduced by the audit: a known real visit existing,
-  // with the read faulted, still produced the successful-empty message.
+  const [attendanceView, setAttendanceView] = useState<'all' | 'exceptions'>('all');
+  // Legacy incident and handoff views retain explicit error handling.
+  // The home-page visit exceptions use their separate complete, paginated source.
   const [loadError, setDirectorLoadError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
-      const [lic, mem, orgs, covered, v, inc, hoffs] = await Promise.all([
+      const [lic, mem, orgs, covered, inc, hoffs] = await Promise.all([
         getOrgLicense(organizationId),
         getOrgMembers(organizationId),
         getMyOrganizations(),
         getOrgCoveredPatients(organizationId),
-        getOrgVisitsResult(organizationId),
         getOrgIncidentReportsResult(organizationId),
         getOrgShiftHandoffsResult(organizationId),
       ]);
@@ -1739,17 +1728,34 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       setPackageType(org?.packageType ?? 'integrated_care');
       setCoveredCount(covered.filter((r) => r.status === 'active').length);
       setCoveredPatients(covered.filter((r) => r.status === 'active'));
-      setVisits(v.data ?? []);
       setIncidents(inc.data ?? []);
       setHandoffs(hoffs.data ?? []);
-      const errors = [v.error, inc.error, hoffs.error].filter((e): e is string => !!e);
+      const errors = [inc.error, hoffs.error].filter((e): e is string => !!e);
       setDirectorLoadError(errors.length > 0 ? errors[0] : null);
+    } catch (error) {
+      setDirectorLoadError(error instanceof Error ? error.message : 'Could not refresh organizational dashboard information.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [organizationId]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    let active = true;
+    void refresh();
+    // Automatic while visible; returning to the tab fetches immediately.
+    const update = () => {
+      if (active && document.visibilityState === 'visible') void refresh(true);
+    };
+    const interval = window.setInterval(update, 60_000);
+    document.addEventListener('visibilitychange', update);
+    window.addEventListener('focus', update);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', update);
+      window.removeEventListener('focus', update);
+    };
+  }, [refresh]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -1760,7 +1766,14 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   const fullName = state.currentUser?.firstName ? `${state.currentUser.firstName} ${state.currentUser.lastName ?? ''}`.trim() : 'Director';
   const initials = (state.currentUser?.firstName?.[0] ?? 'D').toUpperCase();
 
-  const navigate = (key: DirectorNavKey) => { setNav(key); };
+  const navigate = (key: DirectorNavKey) => {
+    if (key === 'operations') setAttendanceView('all');
+    setNav(key);
+  };
+  const openVisitExceptions = () => {
+    setAttendanceView('exceptions');
+    setNav('operations');
+  };
   const openPatientInformation = (patientId: string) => {
     setSelectedInformationPatientId(patientId);
     navigate('patients');
@@ -1778,13 +1791,19 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       {!loading && loadError && (nav === 'dashboard' || nav === 'scheduling' || nav === 'operations' || nav === 'incidents' || nav === 'reports') && (
         <div role="alert" className="mb-4 p-3 rounded-xl bg-gentle-coral/10 border border-gentle-coral/30 flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm text-gentle-coral font-medium">Some organization data could not be loaded: {loadError} — counts/lists on this page may be incomplete, not confirmed empty.</p>
-          <button type="button" onClick={() => { void refresh(); }} className="text-sm font-semibold text-ent-forest hover:underline flex-shrink-0">Retry</button>
+          {nav === 'dashboard' ? (
+            <span className="text-xs text-ent-muted">Automatic retry is enabled.</span>
+          ) : (
+            <button type="button" onClick={() => { void refresh(); }} className="text-sm font-semibold text-ent-forest hover:underline flex-shrink-0">Retry</button>
+          )}
         </div>
       )}
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-ent-forest" /></div>
       ) : nav === 'dashboard' ? (
-        <DashboardHome members={members} visits={visits} incidents={incidents} handoffs={handoffs} onNavigate={navigate} />
+        <DashboardHome organizationId={organizationId} coveredPatients={coveredPatients}
+          members={members} handoffs={handoffs} onNavigate={navigate}
+          onOpenVisitExceptions={openVisitExceptions} />
       ) : nav === 'applications' ? (
         <ApplicationsReviewView organizationId={organizationId} />
       ) : nav === 'staff' ? (
@@ -1800,7 +1819,8 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
         <DirectorScheduleCalendar orgId={organizationId} patients={coveredPatients} members={members} onChanged={() => { void refresh(); }} />
       ) : nav === 'operations' ? (
         <div className="space-y-4">
-          <DirectorAttendancePanel key={organizationId} organizationId={organizationId} />
+          <DirectorAttendancePanel key={organizationId} organizationId={organizationId}
+            initialView={attendanceView} onOpenSchedule={() => navigate('scheduling')} />
           <CareOperationsView handoffs={handoffs} loadError={loadError} />
         </div>
       ) : nav === 'incidents' ? (
