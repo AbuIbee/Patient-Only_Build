@@ -26,7 +26,7 @@ import {
   getApplicationDocuments, getSignedDocumentUrl,
 } from '@/services/professionalApplicationService';
 import {
-  getOrgVisitsResult, getOrgIncidentReportsResult, getOrgShiftHandoffsResult, resolveOrgIncidentReport,
+  getOrgIncidentReportsResult, getOrgShiftHandoffsResult, resolveOrgIncidentReport,
   type OrgIncidentReport, type OrgShiftHandoff, type IncidentResolutionStatus,
 } from '@/services/organizationDirectorOpsService';
 import {
@@ -1704,24 +1704,18 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
   const [handoffs, setHandoffs] = useState<OrgShiftHandoff[]>([]);
   const [loading, setLoading] = useState(true);
   const [nav, setNav] = useOfficeUrlSync<DirectorNavKey>(basePath, DIRECTOR_NAV_KEYS, 'dashboard');
-  // MMA-CODEX-011 finding 011-03 (NAV-06/F-18, P1): getOrgVisits/
-  // getOrgIncidentReports/getOrgShiftHandoffs (all plain) discarded
-  // their error and returned [] on failure, which Scheduling Oversight
-  // (and Incidents & Escalations / handoff-adjacent views) then
-  // rendered as an authoritative "no visits/incidents/handoffs" --
-  // independently reproduced by the audit: a known real visit existing,
-  // with the read faulted, still produced the successful-empty message.
+  // Legacy incident and handoff views retain explicit error handling.
+  // The home-page visit exceptions use their separate complete, paginated source.
   const [loadError, setDirectorLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [lic, mem, orgs, covered, v, inc, hoffs] = await Promise.all([
+      const [lic, mem, orgs, covered, inc, hoffs] = await Promise.all([
         getOrgLicense(organizationId),
         getOrgMembers(organizationId),
         getMyOrganizations(),
         getOrgCoveredPatients(organizationId),
-        getOrgVisitsResult(organizationId),
         getOrgIncidentReportsResult(organizationId),
         getOrgShiftHandoffsResult(organizationId),
       ]);
@@ -1734,7 +1728,7 @@ export default function OrganizationDirectorDashboard({ organizationId, basePath
       setCoveredPatients(covered.filter((r) => r.status === 'active'));
       setIncidents(inc.data ?? []);
       setHandoffs(hoffs.data ?? []);
-      const errors = [v.error, inc.error, hoffs.error].filter((e): e is string => !!e);
+      const errors = [inc.error, hoffs.error].filter((e): e is string => !!e);
       setDirectorLoadError(errors.length > 0 ? errors[0] : null);
     } finally {
       setLoading(false);
