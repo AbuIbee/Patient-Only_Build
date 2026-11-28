@@ -1201,7 +1201,7 @@ function DashboardHome({ organizationId, coveredPatients, members, handoffs, onN
             <h2>Needs Your Attention</h2>
           </div>
           <DirectorNeedsAttention command={command} members={members} patients={coveredPatients}
-            onNavigate={onNavigate} />
+            onNavigate={onNavigate} onOpenVisitExceptions={onOpenVisitExceptions} />
         </section>
 
         <section className="hcn-office-card hcn-office-activity-panel">
