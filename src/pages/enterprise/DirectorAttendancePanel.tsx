@@ -36,11 +36,11 @@ function AttendanceRow({ visit, exception }: { visit: OrgVisit; exception?: Visi
           <span className="block text-sm text-ent-text">
             Clock in: {formatTime(visit.actualStart)} · Clock out: {formatTime(visit.actualEnd)}
           </span>
-          <span className="block text-sm font-semibold text-ent-forest group-hover:underline">Review visit details and notes</span>
+          <span className="block text-sm font-semibold text-ent-forest group-hover:underline">View visit notes</span>
           <ChevronRight size={17} aria-hidden="true" className="absolute right-3 top-1/2 -translate-y-1/2 text-ent-forest" />
         </DialogTrigger>
         <DialogContent className="max-h-[85dvh] overflow-y-auto">
-          <DialogTitle>Visit details and notes</DialogTitle>
+          <DialogTitle>Visit notes</DialogTitle>
           <DialogDescription>{visit.caregiverName} — {visit.patientName}</DialogDescription>
           {exception && <p className="rounded-lg bg-ent-bg p-3 text-sm font-semibold text-ent-rust">{exception.reasons.join(' · ')}</p>}
           <dl className="grid gap-2 text-sm sm:grid-cols-2">
